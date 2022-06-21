@@ -1,0 +1,45 @@
+--- a/DataProbe.py
++++ b/DataProbe.py
+@@ -1,3 +1,5 @@
++import colorsys
++
+ import ctk
+ import qt
+ import vtk
+@@ -177,16 +179,34 @@ class DataProbeInfoWidget:
+         numberOfComponents = imageData.GetNumberOfScalarComponents()
+         if numberOfComponents > 3:
+             return "%d components" % numberOfComponents
++
++        components = []
+         for c in range(numberOfComponents):
+             component = imageData.GetScalarComponentAsDouble(ijk[0], ijk[1], ijk[2], c)
+             if component.is_integer():
+                 component = int(component)
++            components.append(component)
++
++        pixel += "RGB: <font size=\"+1\" face=\"Courier New\">(" if numberOfComponents == 3 else ""
++        for component in components:
+             # format string according to suggestion here:
+             # https://stackoverflow.com/questions/2440692/formatting-floats-in-python-without-superfluous-zeros
+             # also set the default field width for each coordinate
+-            componentString = ("%4f" % component).rstrip('0').rstrip('.')
++            componentString = ("%4f" % component).rstrip('0').rstrip('.').rjust(3,'\u00A0')
+             pixel += ("%s, " % componentString)
+-        return pixel[:-2]
++        pixel = pixel[:-2]
++        pixel += ")</font>" if numberOfComponents == 3 else ""
++
++        if numberOfComponents == 3:
++            pixel += " - HSV: <font size=\"+1\" face=\"Courier New\">("
++            components = colorsys.rgb_to_hsv(*[c / 255 for c in components])
++            for component, multiplier in list(zip(components, (360,100,100))):
++                component = round(component * multiplier)
++                componentString = ("%4f" % component).rstrip('0').rstrip('.').rjust(3,'\u00A0')
++                pixel += ("%s, " % componentString)
++            pixel = pixel[:-2] + ")</font>"
++
++        return pixel
+
+     def processEvent(self, observee, event):
+         # TODO: use a timer to delay calculation and compress events

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Background Tasks</category>
+  <index>3</index>
+  <title>Mineralogy CLI</title>
+  <description>LTrace Algorithms Wrapper</description>
+  <version>0.1.0.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Frederico Damian Preve Neto (LTrace)</contributor>
+  <acknowledgements>LTrace Geophysical Solutions in partnership with Petrobras</acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <image type="label" reference="inputVolume">
+      <name>labelVolume</name>
+      <longflag>input</longflag>
+      <label>Segmentation</label>
+      <description></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+    <string>
+      <name>params</name>
+      <label>Parameters</label>
+      <longflag>params</longflag>
+      <description><![CDATA[Model configuration string]]></description>
+      <default></default>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <string>
+      <name>pixelLabels</name>
+      <label>Pixel Labels</label>
+      <longflag>labels</longflag>
+      <description></description>
+      <default></default>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <table>
+      <name>outputReport</name>
+      <longflag>output</longflag>
+      <label>Output</label>
+      <description></description>
+      <channel>output</channel>
+      <default></default>
+    </table>
+  </parameters>
+
+
+</executable>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>InstanceSegmenterCLI</title>
+  <description>CLI for instance segmentation.</description>
+  <contributor>Giovanni Formighieri (LTrace)</contributor>
+  <parameters>
+    <string>
+      <longflag>model</longflag>
+    </string>
+    <image type="scalar">
+      <longflag>redChannelImagePath</longflag>
+      <name>redChannelImage</name>
+      <channel>input</channel>
+    </image>
+    <image type="scalar">
+      <longflag>greenChannelImagePath</longflag>
+      <name>greenChannelImage</name>
+      <channel>input</channel>
+    </image>
+    <image type="scalar">
+      <longflag>blueChannelImagePath</longflag>
+      <name>blueChannelImage</name>
+      <channel>input</channel>
+    </image>
+    <float>
+      <longflag>minimumScore</longflag>
+      <default>0</default>
+    </float>
+    <integer>
+      <longflag>maximumDetections</longflag>
+      <default>999</default>
+    </integer>
+    <image type="label">
+      <longflag>outputLabelMapNodePath</longflag>
+      <name>outputLabelMapNode</name>
+      <channel>output</channel>
+    </image>
+    <file>
+      <longflag>outputParametersFilePath</longflag>
+      <name>outputParametersFile</name>
+      <channel>output</channel>
+    </file>
+    <boolean>
+      <longflag>gpuEnabled</longflag>
+    </boolean>
+  </parameters>
+</executable>

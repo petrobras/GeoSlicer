@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>UnwrapSinusoidsCLI</title>
+  <description>CLI for unwrap sinusoids calculation (sinusoids and phases, for each starting position).</description>
+  <contributor>LTrace Geophysical Solutions</contributor>
+  <parameters>
+    <image>
+      <index>0</index>
+      <name>volume</name>
+      <channel>input</channel>
+    </image>
+    <string>
+      <index>1</index>
+      <name>sinusoidsStartingPositions</name>
+    </string>
+    <string>
+      <index>2</index>
+      <name>unwrapSinusoidsDataFile</name>
+    </string>
+  </parameters>
+</executable>

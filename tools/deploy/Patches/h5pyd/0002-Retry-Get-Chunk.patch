@@ -1,0 +1,90 @@
+diff --git a/h5pyd/_hl/dataset.py b/h5pyd/_hl/dataset.py
+index f0060e7..e8547b3 100644
+--- a/h5pyd/_hl/dataset.py
++++ b/h5pyd/_hl/dataset.py
+@@ -1162,41 +1162,52 @@ class Dataset(HLObject):
+                     self.log.info(f"page_mshape: {page_mshape}")
+ 
+                     params["select"] = self._getQueryParam( page_start, page_stop, sel_step)
+-                    try:
+-                        rsp = self.GET(req, params=params, format="binary")
+-                    except IOError as ioe:
+-                        self.log.info(f"got IOError: {ioe.errno}")
+-                        if ioe.errno == 413 and chunks_per_page > 1:
+-                            # server rejected the request, reduce the page size
+-                            chunks_per_page //= 2
+-                            self.log.info(f"New chunks_per_page: {chunks_per_page}")
++                    tries = 20
++                    break_outer_loop = False
++                    for attempt_i in range(tries):
++                        try:
++                            try:
++                                rsp = self.GET(req, params=params, format="binary")
++                            except IOError as ioe:
++                                self.log.info(f"got IOError: {ioe.errno}")
++                                if ioe.errno == 413 and chunks_per_page > 1:
++                                    # server rejected the request, reduce the page size
++                                    chunks_per_page //= 2
++                                    self.log.info(f"New chunks_per_page: {chunks_per_page}")
++                                    break_outer_loop = True
++                                    break
++                                else:
++                                    raise IOError(f"Error retrieving data: {ioe.errno}")
++                            if isinstance(rsp, str):
++                                # hexencoded response?
++                                # this is returned by API Gateway for lamba responses
++                                rsp = bytes.fromhex(rsp)
++                                # from here treat it like a byte responses
++                            if type(rsp) in (bytes, bytearray):
++                                # got binary response
++                                # TBD - check expected number of bytes
++                                self.log.info(f"binary response, {len(rsp)} bytes")
++                                # arr1d = numpy.frombuffer(rsp, dtype=mtype)
++                                arr1d = bytesToArray(rsp, mtype, page_mshape)
++                                page_arr = numpy.reshape(arr1d, page_mshape)
++                            else:
++                                # got JSON response
++                                # need some special conversion for compound types --
++                                # each element must be a tuple, but the JSON decoder
++                                # gives us a list instead.
++                                self.log.info("json response")
++
++                                data = rsp["value"]
++                                self.log.debug(data)
++
++                                page_arr = jsonToArray(page_mshape, mtype, data)
++                                self.log.debug(f"jsontoArray returned: {page_arr}")
+                             break
+-                        else:
+-                            raise IOError(f"Error retrieving data: {ioe.errno}")
+-                    if isinstance(rsp, str):
+-                        # hexencoded response?
+-                        # this is returned by API Gateway for lamba responses
+-                        rsp = bytes.fromhex(rsp)
+-                        # from here treat it like a byte responses
+-                    if type(rsp) in (bytes, bytearray):
+-                        # got binary response
+-                        # TBD - check expected number of bytes
+-                        self.log.info(f"binary response, {len(rsp)} bytes")
+-                        # arr1d = numpy.frombuffer(rsp, dtype=mtype)
+-                        arr1d = bytesToArray(rsp, mtype, page_mshape)
+-                        page_arr = numpy.reshape(arr1d, page_mshape)
+-                    else:
+-                        # got JSON response
+-                        # need some special conversion for compound types --
+-                        # each element must be a tuple, but the JSON decoder
+-                        # gives us a list instead.
+-                        self.log.info("json response")
++                        except ValueError as e:
++                            self.log.info(f"Attempt {attempt_i} got ValueError: {e}")
+ 
+-                        data = rsp["value"]
+-                        self.log.debug(data)
+-
+-                        page_arr = jsonToArray(page_mshape, mtype, data)
+-                        self.log.debug(f"jsontoArray returned: {page_arr}")
++                    if break_outer_loop:
++                        break
+ 
+                     # get the slices to copy into the target array
+                     slices = []

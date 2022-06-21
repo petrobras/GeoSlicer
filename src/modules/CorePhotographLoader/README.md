@@ -1,0 +1,1 @@
+Plugin to extract the core image from the core boxes photographs and build a volume with a complete core's image.

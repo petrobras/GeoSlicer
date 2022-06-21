@@ -1,0 +1,82 @@
+cff-version: 1.2.0
+message: "If you use any resource published in this repository, please cite it as below."
+authors:
+- family-names: "Passos de Figueiredo"
+  given-names: "Leandro"
+  email: leandro@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Bordignon"
+  given-names: "Fernando Luis"
+  email: fernando@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: "https://orcid.org/0000-0001-5205-8042"
+- family-names: "Surmas"
+  given-names: "Rodrigo"
+  email: surmas@petrobras.com.br
+  affiliation: "Petróleo Brasileiro S.A."
+  orcid: ""
+- family-names: "Weck Pereira"
+  given-names: "Marcio Valerio"
+  email: marcio.weck@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Damian"
+  given-names: "Frederico"
+  email: frederico.damian@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Arenhart"
+  given-names: "Rafael"
+  email: rafael.arenhart@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Exterkoetter"
+  given-names: "Rodrigo"
+  email: rodrigo@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Müller"
+  given-names: "Gabriel"
+  email: gabriel.muller@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Formighieri"
+  given-names: "Giovanni"
+  email: giovanni@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Schwedersky"
+  given-names: "Rodrigo"
+  email: rodrigo.schwedersky@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Costa"
+  given-names: "Fernando"
+  email: fernando.costa@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Mello"
+  given-names: "Jean"
+  email: jean.mello@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Cenci"
+  given-names: "Rômulo"
+  email: romulo.cenci@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Boing de Souza"
+  given-names: "José Vinícius"
+  email: jose.boing@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+- family-names: "Pacheco"
+  given-names: "Robim"
+  email: robim.pacheco@ltrace.com.br
+  affiliation: "LTrace Geociências"
+  orcid: ""
+title: "GeoSlicerPublic"
+version: 2.3.2
+date-released: "2024-02-04"
+url: "https://www.ltrace.com.br/geoslicer/"

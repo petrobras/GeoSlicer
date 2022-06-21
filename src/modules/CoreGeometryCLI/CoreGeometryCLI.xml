@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>CoreGeometryCLI</title>
+  <description>CLI for core geometry calculation (core center and radius for each volume slice).</description>
+  <contributor>LTrace Geophysical Solutions</contributor>
+  <parameters>
+    <image>
+      <index>0</index>
+      <name>volume</name>
+      <channel>input</channel>
+    </image>
+    <float>
+      <index>1</index>
+      <name>coreRadius</name>
+    </float>
+    <string>
+      <index>2</index>
+      <name>coreGeometryDataFile</name>
+    </string>
+  </parameters>
+</executable>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Tutorials/Examples</category>
+  <index>3</index>
+  <title>Table K-Means CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Autor (LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Inputs</label>
+    <table>
+      <name>inputTable</name>
+      <longflag>table</longflag>
+      <label>Input Table</label>
+      <description><![CDATA[Pick the input table to apply kmeans.]]></description>
+      <channel>input</channel>
+    </table>
+    <image type="label">
+      <name>inputLabel</name>
+      <longflag>labelmap</longflag>
+      <label>Input Labelmap</label>
+      <description><![CDATA[Pick the input labelmap to cluster the segments.]]></description>
+      <channel>input</channel>
+    </image>
+    <integer>
+      <name>inputK</name>
+      <longflag>k</longflag>
+      <label>Number of clusters (k)</label>
+      <description><![CDATA[Pick the number of clusters for K-Means.]]></description>
+      <default>3</default>
+      <channel>input</channel>
+    </integer>
+  </parameters>
+
+  <parameters advanced="false">
+    <image type="label">
+      <name>outputVolume</name>
+      <longflag>outputvolume</longflag>
+      <label>Output</label>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+
+</executable>

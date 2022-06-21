@@ -1,0 +1,10 @@
+# Note: graphical related libraries must be disabled
+setuptools==59.8.0
+numpy==1.23.1
+dask-image==0.4.0
+dask[complete]==2.30.0
+netCDF4==1.5.4
+paramiko==2.10.3
+scikit-image==0.19.2
+scipy==1.8.1
+xarray==2022.3.0

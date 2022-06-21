@@ -1,0 +1,25 @@
+{
+  "defaults": {
+    "defaultModel": "model.segmenter.superpixel",
+    "defaultOutputNameFormat": "{input}-{model}-{window}-{token}-SegmentationOutput",
+    "defaultModelNameFormat": "{model}-{window}-{token}-Model",
+    "inputWindowFormat": "3,3,3:1:full",
+    "outputWindowFormat": "1,1,1:1:full"
+  },
+  "modelSegmenterRandomForest": {
+    "displayName": "Label-assisted Random Forest",
+    "notes": "Fast Label-assisted Semantic Segmentation of Texture Features",
+    "trainable": true,
+    "method": "random_forest",
+    "nEstimators" : 20,
+    "maxDepth": 7
+  },
+  "modelSegmenterXgboost": {
+    "displayName": "Label-assisted Gradient Boosting",
+    "notes": "Robust Label-assisted Semantic Segmentation of Texture Features",
+    "trainable": true,
+    "method": "xgboost",
+    "nEstimators": 100,
+    "maxDepth": 4
+  }
+}

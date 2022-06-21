@@ -1,0 +1,1357 @@
+{
+  "SegmentationCategoryTypeContextName": "Segmentation category and type - DICOM master list",
+  "@schema": "https://raw.githubusercontent.com/qiicr/dcmqi/master/doc/segment-context-schema.json#",
+  "SegmentationCodes": {
+    "Category": [
+
+      {
+        "CodeMeaning": "Image Log",
+        "CodingSchemeDesignator": "SCT",
+        "showAnatomy": true,
+        "cid": "7150",
+        "CodeValue": "85756007",
+        "contextGroupName": "SegmentationPropertyCategories",
+        "Type": [
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 51, 137 ],
+            "CodeValue": "1000",
+            "cid": "1000",
+            "CodeMeaning": "Breakout",
+            "3dSlicerLabel": "Breakout",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 58, 132, 167 ],
+            "CodeValue": "1001",
+            "cid": "1001",
+            "CodeMeaning": "Sidewall sample",
+            "3dSlicerLabel": "Sidewall sample",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 151, 40, 42 ],
+            "CodeValue": "1002",
+            "cid": "1002",
+            "CodeMeaning": "Collapsed layer",
+            "3dSlicerLabel": "Collapsed layer",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 0 ],
+            "CodeValue": "1003",
+            "cid": "1003",
+            "CodeMeaning": "Pores",
+            "3dSlicerLabel": "Pores",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 255, 247 ],
+            "CodeValue": "1004",
+            "cid": "1004",
+            "CodeMeaning": "High porosity",
+            "3dSlicerLabel": "High porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 179, 255 ],
+            "CodeValue": "1005",
+            "cid": "1005",
+            "CodeMeaning": "Average porosity",
+            "3dSlicerLabel": "Average porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 95, 255 ],
+            "CodeValue": "1006",
+            "cid": "1006",
+            "CodeMeaning": "Low porosity",
+            "3dSlicerLabel": "Low porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 255, 163 ],
+            "CodeValue": "1007",
+            "cid": "1007",
+            "CodeMeaning": "Fluid sampling",
+            "3dSlicerLabel": "Fluid sampling",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 102, 47, 194 ],
+            "CodeValue": "1008",
+            "cid": "1008",
+            "CodeMeaning": "Key seat",
+            "3dSlicerLabel": "Key seat",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 240, 100, 67 ],
+            "CodeValue": "1009",
+            "cid": "1009",
+            "CodeMeaning": "Stop",
+            "3dSlicerLabel": "Stop",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 220, 150, 40 ],
+            "CodeValue": "1010",
+            "cid": "1010",
+            "CodeMeaning": "Natural fractures",
+            "3dSlicerLabel": "Natural fractures",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 150, 150, 40 ],
+            "CodeValue": "1011",
+            "cid": "1011",
+            "CodeMeaning": "Induced fractures",
+            "3dSlicerLabel": "Induced fractures",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 220, 35, 40 ],
+            "CodeValue": "1012",
+            "cid": "1012",
+            "CodeMeaning": "Faults",
+            "3dSlicerLabel": "Faults",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 107, 110, 97 ],
+            "CodeValue": "1013",
+            "cid": "1013",
+            "CodeMeaning": "Karst",
+            "3dSlicerLabel": "Karst",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          }
+
+        ]
+      },
+
+
+      {
+        "CodeMeaning": "Core",
+        "CodingSchemeDesignator": "SCT",
+        "showAnatomy": true,
+        "cid": "7151",
+        "CodeValue": "85756008",
+        "contextGroupName": "SegmentationPropertyCategories",
+        "Type": [
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 51, 137 ],
+            "CodeValue": "1000",
+            "cid": "1000",
+            "CodeMeaning": "Breakout",
+            "3dSlicerLabel": "Breakout",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 58, 132, 167 ],
+            "CodeValue": "1001",
+            "cid": "1001",
+            "CodeMeaning": "Sidewall sample",
+            "3dSlicerLabel": "Sidewall sample",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 151, 40, 42 ],
+            "CodeValue": "1002",
+            "cid": "1002",
+            "CodeMeaning": "Collapsed layer",
+            "3dSlicerLabel": "Collapsed layer",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 0 ],
+            "CodeValue": "1003",
+            "cid": "1003",
+            "CodeMeaning": "Pores",
+            "3dSlicerLabel": "Pores",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 255, 247 ],
+            "CodeValue": "1004",
+            "cid": "1004",
+            "CodeMeaning": "High porosity",
+            "3dSlicerLabel": "High porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 179, 255 ],
+            "CodeValue": "1005",
+            "cid": "1005",
+            "CodeMeaning": "Average porosity",
+            "3dSlicerLabel": "Average porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 95, 255 ],
+            "CodeValue": "1006",
+            "cid": "1006",
+            "CodeMeaning": "Low porosity",
+            "3dSlicerLabel": "Low porosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 87, 255, 163 ],
+            "CodeValue": "1007",
+            "cid": "1007",
+            "CodeMeaning": "Fluid sampling",
+            "3dSlicerLabel": "Fluid sampling",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 102, 47, 194 ],
+            "CodeValue": "1008",
+            "cid": "1008",
+            "CodeMeaning": "Key seat",
+            "3dSlicerLabel": "Key seat",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 240, 100, 67 ],
+            "CodeValue": "1009",
+            "cid": "1009",
+            "CodeMeaning": "Stop",
+            "3dSlicerLabel": "Stop",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 220, 150, 40 ],
+            "CodeValue": "1010",
+            "cid": "1010",
+            "CodeMeaning": "Natural fractures",
+            "3dSlicerLabel": "Natural fractures",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 150, 150, 40 ],
+            "CodeValue": "1011",
+            "cid": "1011",
+            "CodeMeaning": "Induced fractures",
+            "3dSlicerLabel": "Induced fractures",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 220, 35, 40 ],
+            "CodeValue": "1012",
+            "cid": "1012",
+            "CodeMeaning": "Faults",
+            "3dSlicerLabel": "Faults",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 107, 110, 97 ],
+            "CodeValue": "1013",
+            "cid": "1013",
+            "CodeMeaning": "Karst",
+            "3dSlicerLabel": "Karst",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          }
+
+        ]
+      },
+
+
+      {
+        "CodeMeaning": "Micro CT",
+        "CodingSchemeDesignator": "SCT",
+        "showAnatomy": true,
+        "cid": "7152",
+        "CodeValue": "85756009",
+        "contextGroupName": "SegmentationPropertyCategories",
+        "Type": [
+          
+          {
+            "recommendedDisplayRGBValue": [ 0, 128, 255 ],
+            "CodeValue": "3000",
+            "cid": "3000",
+            "CodeMeaning": "Pore",
+            "3dSlicerLabel": "Pore",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 255 ],
+            "CodeValue": "3001",
+            "cid": "3001",
+            "CodeMeaning": "Quartz",
+            "3dSlicerLabel": "Quartz",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 0, 0 ],
+            "CodeValue": "3002",
+            "cid": "3002",
+            "CodeMeaning": "Microporosity",
+            "3dSlicerLabel": "Microporosity",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 0, 255, 0 ],
+            "CodeValue": "3003",
+            "cid": "3003",
+            "CodeMeaning": "Calcite",
+            "3dSlicerLabel": "Calcite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 255, 0 ],
+            "CodeValue": "3004",
+            "cid": "3004",
+            "CodeMeaning": "High attenuation coefficient",
+            "3dSlicerLabel": "High attenuation coefficient",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 0, 255 ],
+            "CodeValue": "3005",
+            "cid": "3005",
+            "CodeMeaning": "Outer",
+            "3dSlicerLabel": "Outer",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 149, 0 ],
+            "CodeValue": "3006",
+            "cid": "3006",
+            "CodeMeaning": "Solid",
+            "3dSlicerLabel": "Solid",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          }
+
+        ]
+      },
+
+
+      {
+        "CodeMeaning": "Thin Section",
+        "CodingSchemeDesignator": "SCT",
+        "showAnatomy": true,
+        "cid": "7153",
+        "CodeValue": "85756010",
+        "contextGroupName": "SegmentationPropertyCategories",
+        "Type": [
+
+      		{
+            "recommendedDisplayRGBValue": [ 0, 192, 0 ],
+            "CodeValue": "4000",
+            "cid": "4000",
+            "CodeMeaning": "Al-Micas+Ilite+Al-Smectite",
+            "3dSlicerLabel": "Al-Micas+Ilite+Al-Smectite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 184, 222, 101 ],
+            "CodeValue": "4001",
+            "cid": "4001",
+            "CodeMeaning": "Amphibole",
+            "3dSlicerLabel": "Amphibole",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 192, 128 ],
+            "CodeValue": "4002",
+            "cid": "4002",
+            "CodeMeaning": "Ankerite",
+            "3dSlicerLabel": "Ankerite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 220, 19, 59 ],
+            "CodeValue": "4003",
+            "cid": "4003",
+            "CodeMeaning": "Anorthoclase",
+            "3dSlicerLabel": "Anorthoclase",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 128, 128 ],
+            "CodeValue": "4004",
+            "cid": "4004",
+            "CodeMeaning": "Apatite",
+            "3dSlicerLabel": "Apatite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 200, 72, 221 ],
+            "CodeValue": "4005",
+            "cid": "4005",
+            "CodeMeaning": "Badeleite ",
+            "3dSlicerLabel": "Badeleite ",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 196, 189, 151 ],
+            "CodeValue": "4006",
+            "cid": "4006",
+            "CodeMeaning": "Baryte",
+            "3dSlicerLabel": "Baryte",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 255, 255 ],
+            "CodeValue": "4007",
+            "cid": "4007",
+            "CodeMeaning": "Calcite (0% to 1%MgO)",
+            "3dSlicerLabel": "Calcite (0% to 1%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 32, 178, 170 ],
+            "CodeValue": "4008",
+            "cid": "4008",
+            "CodeMeaning": "Calcite (1% to 4%MgO)",
+            "3dSlicerLabel": "Calcite (1% to 4%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 90, 90 ],
+            "CodeValue": "4009",
+            "cid": "4009",
+            "CodeMeaning": "Calcite (4% to 7%MgO)",
+            "3dSlicerLabel": "Calcite (4% to 7%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 50, 50 ],
+            "CodeValue": "4010",
+            "cid": "4010",
+            "CodeMeaning": "Calcite (7% to 10%MgO)",
+            "3dSlicerLabel": "Calcite (7% to 10%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 169, 133, 181 ],
+            "CodeValue": "4011",
+            "cid": "4011",
+            "CodeMeaning": "Chalcopyrite",
+            "3dSlicerLabel": "Chalcopyrite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 64, 0 ],
+            "CodeValue": "4012",
+            "cid": "4012",
+            "CodeMeaning": "Kaolinite",
+            "3dSlicerLabel": "Kaolinite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 135, 206, 235 ],
+            "CodeValue": "4013",
+            "cid": "4013",
+            "CodeMeaning": "Celestite",
+            "3dSlicerLabel": "Celestite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 255, 0 ],
+            "CodeValue": "4014",
+            "cid": "4014",
+            "CodeMeaning": "Chlorite+Chlorite-Smectite",
+            "3dSlicerLabel": "Chlorite+Chlorite-Smectite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 157, 153, 81 ],
+            "CodeValue": "4015",
+            "cid": "4015",
+            "CodeMeaning": "Cryolite",
+            "3dSlicerLabel": "Cryolite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 118, 147, 60 ],
+            "CodeValue": "4016",
+            "cid": "4016",
+            "CodeMeaning": "Dawsonite",
+            "3dSlicerLabel": "Dawsonite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 128 ],
+            "CodeValue": "4017",
+            "cid": "4017",
+            "CodeMeaning": "Dolomite (17% to 20%MgO)",
+            "3dSlicerLabel": "Dolomite (17% to 20%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 128, 128, 255 ],
+            "CodeValue": "4018",
+            "cid": "4018",
+            "CodeMeaning": "Dolomite (20% to 22%MgO)",
+            "3dSlicerLabel": "Dolomite (20% to 22%MgO)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 188, 143, 143 ],
+            "CodeValue": "4019",
+            "cid": "4019",
+            "CodeMeaning": "Epidote",
+            "3dSlicerLabel": "Epidote",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 189, 183, 106 ],
+            "CodeValue": "4020",
+            "cid": "4020",
+            "CodeMeaning": "Sphalerite",
+            "3dSlicerLabel": "Sphalerite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 192, 255 ],
+            "CodeValue": "4021",
+            "cid": "4021",
+            "CodeMeaning": "Strontianite",
+            "3dSlicerLabel": "Strontianite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 106, 142, 34 ],
+            "CodeValue": "4022",
+            "cid": "4022",
+            "CodeMeaning": "Phase with Al, Si, Ca, Fe",
+            "3dSlicerLabel": "Phase with Al, Si, Ca, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 149, 71, 212 ],
+            "CodeValue": "4023",
+            "cid": "4023",
+            "CodeMeaning": "Phase with F, Al, Si, Ca",
+            "3dSlicerLabel": "Phase with F, Al, Si, Ca",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 255 ],
+            "CodeValue": "4024",
+            "cid": "4024",
+            "CodeMeaning": "Phase with F, Mg, Si, Al",
+            "3dSlicerLabel": "Phase with F, Mg, Si, Al",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 46, 78, 78 ],
+            "CodeValue": "4025",
+            "cid": "4025",
+            "CodeMeaning": "Phase with Mg, Al, Si, Fe",
+            "3dSlicerLabel": "Phase with Mg, Al, Si, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 93, 41, 233 ],
+            "CodeValue": "4026",
+            "cid": "4026",
+            "CodeMeaning": "Phase with Mg, Si, Ca, Fe",
+            "3dSlicerLabel": "Phase with Mg, Si, Ca, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 185, 133, 24 ],
+            "CodeValue": "4027",
+            "cid": "4027",
+            "CodeMeaning": "Phase with Na, Mg, Al, Si",
+            "3dSlicerLabel": "Phase with Na, Mg, Al, Si",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 14, 163, 240 ],
+            "CodeValue": "4028",
+            "cid": "4028",
+            "CodeMeaning": "Phase with Na, Mg, Si, Ca, Fe",
+            "3dSlicerLabel": "Phase with Na, Mg, Si, Ca, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 215, 0 ],
+            "CodeValue": "4029",
+            "cid": "4029",
+            "CodeMeaning": "Phase with S, Ti, Fe",
+            "3dSlicerLabel": "Phase with S, Ti, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 98, 70 ],
+            "CodeValue": "4030",
+            "cid": "4030",
+            "CodeMeaning": "Phase with Si, Ca",
+            "3dSlicerLabel": "Phase with Si, Ca",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 46, 46, 142 ],
+            "CodeValue": "4031",
+            "cid": "4031",
+            "CodeMeaning": "Phase with Si, Ca, Ti, Fe",
+            "3dSlicerLabel": "Phase with Si, Ca, Ti, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 210, 200, 140 ],
+            "CodeValue": "4032",
+            "cid": "4032",
+            "CodeMeaning": "Phase with Si, Fe",
+            "3dSlicerLabel": "Phase with Si, Fe",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 152, 251, 152 ],
+            "CodeValue": "4033",
+            "cid": "4033",
+            "CodeMeaning": "Fe-Micas",
+            "3dSlicerLabel": "Fe-Micas",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 110, 135, 178 ],
+            "CodeValue": "4034",
+            "cid": "4034",
+            "CodeMeaning": "Fluorite",
+            "3dSlicerLabel": "Fluorite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 0, 0 ],
+            "CodeValue": "4035",
+            "cid": "4035",
+            "CodeMeaning": "Gypsum/Anhydrite",
+            "3dSlicerLabel": "Gypsum/Anhydrite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 143, 59, 211 ],
+            "CodeValue": "4036",
+            "cid": "4036",
+            "CodeMeaning": "Goyazite",
+            "3dSlicerLabel": "Goyazite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 128, 128, 128 ],
+            "CodeValue": "4037",
+            "cid": "4037",
+            "CodeMeaning": "Halite",
+            "3dSlicerLabel": "Halite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 64, 64, 64 ],
+            "CodeValue": "4038",
+            "cid": "4038",
+            "CodeMeaning": "Ilmenite",
+            "3dSlicerLabel": "Ilmenite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 210, 180, 140 ],
+            "CodeValue": "4039",
+            "cid": "4039",
+            "CodeMeaning": "Jarosite",
+            "3dSlicerLabel": "Jarosite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 206, 107, 10 ],
+            "CodeValue": "4040",
+            "cid": "4040",
+            "CodeMeaning": "K-Feldspar",
+            "3dSlicerLabel": "K-Feldspar",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 82, 165, 178 ],
+            "CodeValue": "4041",
+            "cid": "4041",
+            "CodeMeaning": "Magnesite",
+            "3dSlicerLabel": "Magnesite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 0, 255 ],
+            "CodeValue": "4042",
+            "cid": "4042",
+            "CodeMeaning": "Carbon Rich Material (CM)",
+            "3dSlicerLabel": "Carbon Rich Material (CM)",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 218, 165, 32 ],
+            "CodeValue": "4043",
+            "cid": "4043",
+            "CodeMeaning": "Mg-Clay minerals",
+            "3dSlicerLabel": "Mg-Clay minerals",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 128, 0, 0 ],
+            "CodeValue": "4044",
+            "cid": "4044",
+            "CodeMeaning": "Mg-Micas+Mg-Smectites",
+            "3dSlicerLabel": "Mg-Micas+Mg-Smectites",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 30, 56, 68 ],
+            "CodeValue": "4045",
+            "cid": "4045",
+            "CodeMeaning": "Al Rich Mineral",
+            "3dSlicerLabel": "Al Rich Mineral",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 192, 192 ],
+            "CodeValue": "4046",
+            "cid": "4046",
+            "CodeMeaning": "Morinite",
+            "3dSlicerLabel": "Morinite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 222, 173 ],
+            "CodeValue": "4047",
+            "cid": "4047",
+            "CodeMeaning": "Natrojarosite",
+            "3dSlicerLabel": "Natrojarosite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 128, 0 ],
+            "CodeValue": "4048",
+            "cid": "4048",
+            "CodeMeaning": "Nepheline",
+            "3dSlicerLabel": "Nepheline",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 192, 0 ],
+            "CodeValue": "4049",
+            "cid": "4049",
+            "CodeMeaning": "Nosean",
+            "3dSlicerLabel": "Nosean",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 96, 73, 122 ],
+            "CodeValue": "4050",
+            "cid": "4050",
+            "CodeMeaning": "Olivine",
+            "3dSlicerLabel": "Olivine",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 255, 255 ],
+            "CodeValue": "4051",
+            "cid": "4051",
+            "CodeMeaning": "Others",
+            "3dSlicerLabel": "Others",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 192, 192 ],
+            "CodeValue": "4052",
+            "cid": "4052",
+            "CodeMeaning": "Aluminium oxide",
+            "3dSlicerLabel": "Aluminium oxide",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 111, 128, 144 ],
+            "CodeValue": "4053",
+            "cid": "4053",
+            "CodeMeaning": "Iron oxide",
+            "3dSlicerLabel": "Iron oxide",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 105, 105, 105 ],
+            "CodeValue": "4054",
+            "cid": "4054",
+            "CodeMeaning": "Titanium-iron oxide",
+            "3dSlicerLabel": "Titanium-iron oxide",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 255, 255 ],
+            "CodeValue": "4055",
+            "cid": "4055",
+            "CodeMeaning": "Titanium oxide",
+            "3dSlicerLabel": "Titanium oxide",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 151, 71, 6 ],
+            "CodeValue": "4056",
+            "cid": "4056",
+            "CodeMeaning": "Pyrite",
+            "3dSlicerLabel": "Pyrite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 204, 153, 255 ],
+            "CodeValue": "4057",
+            "cid": "4057",
+            "CodeMeaning": "Pyroxene",
+            "3dSlicerLabel": "Pyroxene",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 214, 184, 54 ],
+            "CodeValue": "4058",
+            "cid": "4058",
+            "CodeMeaning": "Plagioclase/Zeolite",
+            "3dSlicerLabel": "Plagioclase/Zeolite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 0, 0, 0 ],
+            "CodeValue": "4059",
+            "cid": "4059",
+            "CodeMeaning": "Pores",
+            "3dSlicerLabel": "Pores",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 103, 105, 178 ],
+            "CodeValue": "4060",
+            "cid": "4060",
+            "CodeMeaning": "Prosopite",
+            "3dSlicerLabel": "Prosopite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 255, 0 ],
+            "CodeValue": "4061",
+            "cid": "4061",
+            "CodeMeaning": "Quartz",
+            "3dSlicerLabel": "Quartz",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 128, 0 ],
+            "CodeValue": "4062",
+            "cid": "4062",
+            "CodeMeaning": "Siderite",
+            "3dSlicerLabel": "Siderite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 191, 191, 191 ],
+            "CodeValue": "4063",
+            "cid": "4063",
+            "CodeMeaning": "Sylvite",
+            "3dSlicerLabel": "Sylvite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 101, 66, 162 ],
+            "CodeValue": "4064",
+            "cid": "4064",
+            "CodeMeaning": "Sodalite",
+            "3dSlicerLabel": "Sodalite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 192, 192, 255 ],
+            "CodeValue": "4065",
+            "cid": "4065",
+            "CodeMeaning": "Svanbergite",
+            "3dSlicerLabel": "Svanbergite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 143, 188, 139 ],
+            "CodeValue": "4066",
+            "cid": "4066",
+            "CodeMeaning": "Titanite",
+            "3dSlicerLabel": "Titanite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 97, 81, 174 ],
+            "CodeValue": "4067",
+            "cid": "4067",
+            "CodeMeaning": "Tunisite",
+            "3dSlicerLabel": "Tunisite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 0, 153 ],
+            "CodeValue": "4068",
+            "cid": "4068",
+            "CodeMeaning": "Zircon",
+            "3dSlicerLabel": "Zircon",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 255, 192, 203 ],
+            "CodeValue": "4069",
+            "cid": "4069",
+            "CodeMeaning": "Zoisite",
+            "3dSlicerLabel": "Zoisite",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          },
+      
+          {
+            "recommendedDisplayRGBValue": [ 128, 0, 128 ],
+            "CodeValue": "4070",
+            "cid": "4070",
+            "CodeMeaning": "Sr-Baryte",
+            "3dSlicerLabel": "Sr-Baryte",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          }
+
+        ]
+      },
+
+
+      {
+        "CodeMeaning": "Other",
+        "CodingSchemeDesignator": "SCT",
+        "showAnatomy": true,
+        "cid": "7154",
+        "CodeValue": "85756011",
+        "contextGroupName": "SegmentationPropertyCategories",
+        "Type": [
+
+          {
+            "recommendedDisplayRGBValue": [ 255, 255, 0 ],
+            "CodeValue": "5000",
+            "cid": "5000",
+            "CodeMeaning": "Default Terminology",
+            "3dSlicerLabel": "Default Terminology",
+            "UMLSConceptUID": "",
+            "contextGroupName": "SegmentationPropertyCategories",
+            "CodingSchemeDesignator": "SCT",
+            "SNOMEDCTConceptID": ""
+          }
+        ]
+      }
+
+
+    ]
+  }
+}

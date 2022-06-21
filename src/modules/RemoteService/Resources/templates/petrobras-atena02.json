@@ -1,0 +1,12 @@
+{
+    "name": "PETROBRAS Atena02",
+    "address": "atena02",
+    "username": "",
+    "rsa_key": "",
+    "protocol": "ssh",
+    "port": 22,
+    "opening_command": "source /etc/bashrc && source /nethome/drp/microtom/init.sh",
+    "remote_mount": "/nethome",
+    "cpu_partition": "cpu",
+    "gpu_partition": "default"
+}

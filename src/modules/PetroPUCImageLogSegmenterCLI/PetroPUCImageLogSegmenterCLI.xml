@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PetroPUCImageLogSegmenterCLI</title>
+  <parameters>
+    <image type="scalar">
+      <longflag>inputImagePath</longflag>
+      <name>inputImage</name>
+      <channel>input</channel>
+    </image>
+    <image type="label">
+      <longflag>outputLabelPath</longflag>
+      <name>outputLabel</name>
+      <channel>output</channel>
+    </image>
+    <string>
+      <longflag>segmentClass</longflag>
+    </string>
+    <integer-vector>
+      <longflag>depthInterval</longflag>
+    </integer-vector>
+  </parameters>
+</executable>

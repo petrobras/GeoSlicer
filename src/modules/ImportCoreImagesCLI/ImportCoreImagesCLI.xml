@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Geophysics</category>
+  <title>ImportCoreImagesCLI</title>
+  <description>
+  Runs ImportCoreImagesCLI
+  </description>
+  <version>1.0</version>
+  <documentation-url></documentation-url>
+  <license></license>
+  <contributor>LTrace</contributor>
+
+  <parameters>
+    <label>
+      CoreImagesImportCLI Parameters
+    </label>
+
+    <description>
+      Parameters for the CoreImagesImportCLI
+    </description>
+
+    <directory>
+      <index>0</index>
+      <name>core_images_folder</name>
+      <description>Core Images Folder</description>
+      <label>Core Images Folder</label>
+      <channel>input</channel>
+    </directory>
+
+    <file>
+      <channel>output</channel>
+      <index>1</index>
+      <name>output_file</name>
+      <description>File to use for writing output</description>
+      <label>Output File</label>
+    </file>
+
+    <integer>
+      <channel>input</channel>
+      <index>2</index>
+      <name>zmq_port</name>
+      <description>Port to use for interprocess communication</description>
+      <label>ZMQ Port</label>
+    </integer>
+
+  </parameters>
+</executable>

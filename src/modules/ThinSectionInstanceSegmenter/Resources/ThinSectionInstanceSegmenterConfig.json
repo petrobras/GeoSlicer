@@ -1,0 +1,6 @@
+{
+    "atena02": {
+        "pythonInterpreter": "servicos/LTRACE/GEOSLICER/bin/geoslicer_remote/GeoSlicer-2.0.1/bin/PythonSlicer",
+        "script": "servicos/LTRACE/GEOSLICER/bin/geoslicer_remote/GeoSlicer-2.0.1/lib/GeoSlicer-5.1/cli-modules/ThinSectionInstanceSegmenterCLI/ThinSectionInstanceSegmenterCLI.py"
+    },
+}

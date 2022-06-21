@@ -1,0 +1,10 @@
+# Requirements for running deploy_slicer.py
+# If import name differs from PyPI, include import name after a # in the same line
+patch==1.16
+GitPython==3.1.27 # git
+vswhere==1.3.0
+packaging==21.3
+mkdocs==1.3.0
+mkdocs-localsearch==0.9.1
+mkdocs-material==8.2.16
+pathvalidate==2.5.0

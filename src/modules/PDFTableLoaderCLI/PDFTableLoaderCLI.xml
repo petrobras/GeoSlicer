@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Thin Section</category>
+  <index>3</index>
+  <title>PDF Table Loader</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Leandro Figueiredo(LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Parameters</label>
+    <file fileExtensions=".pdf,.PDF">
+      <name>file</name>
+      <longflag>file</longflag>
+      <label>PDF File</label>
+      <description>PDF File</description>
+      <channel>input</channel>
+    </file>
+    <string>
+      <name>pages</name>
+      <longflag>pages</longflag>
+      <label>Pages</label>
+      <description>(optional) List of pages ("1", "2" e etc) or intervals to be read ("2-4"). To indicate "until the end" use "-end", for example, "5-end". This parameter improve table detection and speed.</description>
+      <channel>input</channel>
+      <default>1-end</default>
+    </string>
+    <string-vector>
+      <name>columns</name>
+      <longflag>columns</longflag>
+      <label>Columns</label>
+      <description>(optional) List some columns to identify the target table. This parameter improve table detection and speed.</description>
+      <channel>input</channel>
+      <default></default>
+    </string-vector>
+    <string-enumeration>
+      <name>filter</name>
+      <longflag>filter</longflag>
+      <label>Filter</label>
+      <description>Filter result by columns parameter</description>
+      <default>no</default>
+      <element>yes</element>
+      <element>no</element>
+    </string-enumeration>	
+  </parameters>
+
+  <parameters advanced="false">
+    <label>Output</label>
+    <table fileExtensions=".csv">
+      <name>table</name>
+      <longflag>table</longflag>
+      <label>Output Table</label>
+      <description>Extracted table.</description>
+      <channel>output</channel>
+    </table>
+  </parameters>
+
+
+</executable>

@@ -1,0 +1,282 @@
+--- a/SampleData.py
++++ b/SampleDataPatched.py
+@@ -94,10 +94,6 @@ use it for commercial purposes.</p>
+         if slicer.mrmlScene.GetTagByClassName("vtkMRMLScriptedModuleNode") != 'ScriptedModule':
+             slicer.mrmlScene.RegisterNodeClass(vtkMRMLScriptedModuleNode())
+ 
+-        # Trigger the menu to be added when application has started up
+-        if not slicer.app.commandOptions().noMainWindow:
+-            slicer.app.connect("startupCompleted()", self.addMenu)
+-
+         # allow other modules to register sample data sources by appending
+         # instances or subclasses SampleDataSource objects on this list
+         try:
+@@ -105,18 +101,6 @@ use it for commercial purposes.</p>
+         except AttributeError:
+             slicer.modules.sampleDataSources = {}
+ 
+-    def addMenu(self):
+-        a = qt.QAction('Download Sample Data', slicer.util.mainWindow())
+-        a.setToolTip('Go to the SampleData module to download data from the network')
+-        a.connect('triggered()', self.select)
+-
+-        fileMenu = slicer.util.lookupTopLevelWidget('FileMenu')
+-        if fileMenu:
+-            for action in fileMenu.actions():
+-                if action.objectName == "FileSaveSceneAction":
+-                    fileMenu.insertAction(action, a)
+-                    fileMenu.insertSeparator(action)
+-
+     def select(self):
+         m = slicer.util.mainWindow()
+         m.moduleSelector().selectModule('SampleData')
+@@ -241,171 +225,6 @@ class SampleDataSource:
+         return "\n".join(output)
+ 
+ 
+-#
+-# SampleData widget
+-#
+-
+-class SampleDataWidget(ScriptedLoadableModuleWidget):
+-    """Uses ScriptedLoadableModuleWidget base class, available at:
+-    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
+-    """
+-
+-    def setup(self):
+-        ScriptedLoadableModuleWidget.setup(self)
+-
+-        # This module is often used in developer mode, therefore
+-        # collapse reload & test section by default.
+-        if hasattr(self, "reloadCollapsibleButton"):
+-            self.reloadCollapsibleButton.collapsed = True
+-
+-        self.logic = SampleDataLogic(self.logMessage)
+-
+-        self.categoryLayout = qt.QVBoxLayout()
+-        self.categoryLayout.setContentsMargins(0, 0, 0, 0)
+-        self.layout.addLayout(self.categoryLayout)
+-
+-        SampleDataWidget.setCategoriesFromSampleDataSources(self.categoryLayout, slicer.modules.sampleDataSources, self.logic)
+-        if self.developerMode is False:
+-            self.setCategoryVisible(self.logic.developmentCategoryName, False)
+-
+-        self.log = qt.QTextEdit()
+-        self.log.readOnly = True
+-        self.layout.addWidget(self.log)
+-        self.logMessage('<p>Status: <i>Idle</i></p>')
+-
+-        # Add spacer to layout
+-        self.layout.addStretch(1)
+-
+-    def cleanup(self):
+-        SampleDataWidget.setCategoriesFromSampleDataSources(self.categoryLayout, {}, self.logic)
+-
+-    @staticmethod
+-    def removeCategories(categoryLayout):
+-        """Remove all categories from the given category layout.
+-        """
+-        while categoryLayout.count() > 0:
+-            frame = categoryLayout.itemAt(0).widget()
+-            frame.visible = False
+-            categoryLayout.removeWidget(frame)
+-            frame.setParent(0)
+-            del frame
+-
+-    @staticmethod
+-    def setCategoriesFromSampleDataSources(categoryLayout, dataSources, logic):
+-        """Update categoryLayout adding buttons for downloading dataSources.
+-
+-        Download buttons are organized in collapsible GroupBox with one GroupBox
+-        per category.
+-        """
+-        iconPath = os.path.join(os.path.dirname(__file__).replace('\\', '/'), 'Resources', 'Icons')
+-        mainWindow = slicer.util.mainWindow()
+-        if mainWindow:
+-            # Set thumbnail size from default icon size. This results in toolbutton size that makes
+-            # two columns of buttons fit into the size of the Welcome module's minimum width
+-            # on screens with a various resolution and scaling (see qt.QDesktopWidget().size,
+-            # desktop.devicePixelRatioF(), qt.QDesktopWidget().physicalDpiX())
+-            iconSize = qt.QSize(int(mainWindow.iconSize.width() * 6), int(mainWindow.iconSize.height() * 4))
+-        else:
+-            # There is no main window in the automated tests
+-            desktop = qt.QDesktopWidget()
+-            mainScreenSize = desktop.availableGeometry(desktop.primaryScreen)
+-            iconSize = qt.QSize(int(mainScreenSize.width() / 15), int(mainScreenSize.height() / 10))
+-
+-        categories = sorted(dataSources.keys())
+-
+-        # Ensure "builtIn" catergory is always first
+-        if logic.builtInCategoryName in categories:
+-            categories.remove(logic.builtInCategoryName)
+-            categories.insert(0, logic.builtInCategoryName)
+-
+-        # Clear category layout
+-        SampleDataWidget.removeCategories(categoryLayout)
+-
+-        # Populate category layout
+-        for category in categories:
+-            frame = ctk.ctkCollapsibleGroupBox(categoryLayout.parentWidget())
+-            categoryLayout.addWidget(frame)
+-            frame.title = category
+-            frame.name = '%sCollapsibleGroupBox' % category
+-            layout = ctk.ctkFlowLayout()
+-            layout.preferredExpandingDirections = qt.Qt.Vertical
+-            frame.setLayout(layout)
+-            for source in dataSources[category]:
+-                name = source.sampleDescription
+-                if not name:
+-                    name = source.nodeNames[0]
+-
+-                b = qt.QToolButton()
+-                b.setText(name)
+-
+-                # Set thumbnail
+-                if source.thumbnailFileName:
+-                    # Thumbnail provided
+-                    thumbnailImage = source.thumbnailFileName
+-                else:
+-                    # Look for thumbnail image with the name of any node name with .png extension
+-                    thumbnailImage = None
+-                    for nodeName in source.nodeNames:
+-                        if not nodeName:
+-                            continue
+-                        thumbnailImageAttempt = os.path.join(iconPath, nodeName + '.png')
+-                        if os.path.exists(thumbnailImageAttempt):
+-                            thumbnailImage = thumbnailImageAttempt
+-                            break
+-                if thumbnailImage and os.path.exists(thumbnailImage):
+-                    b.setIcon(qt.QIcon(thumbnailImage))
+-
+-                b.setIconSize(iconSize)
+-                b.setToolButtonStyle(qt.Qt.ToolButtonTextUnderIcon)
+-                qSize = qt.QSizePolicy()
+-                qSize.setHorizontalPolicy(qt.QSizePolicy.Expanding)
+-                b.setSizePolicy(qSize)
+-
+-                b.name = '%sPushButton' % name
+-                layout.addWidget(b)
+-                if source.customDownloader:
+-                    b.connect('clicked()', lambda s=source: s.customDownloader(s))
+-                else:
+-                    b.connect('clicked()', lambda s=source: logic.downloadFromSource(s))
+-
+-    def logMessage(self, message, logLevel=logging.DEBUG):
+-        # Set text color based on log level
+-        if logLevel >= logging.ERROR:
+-            message = '<font color="red">' + message + '</font>'
+-        elif logLevel >= logging.WARNING:
+-            message = '<font color="orange">' + message + '</font>'
+-        # Show message in status bar
+-        doc = qt.QTextDocument()
+-        doc.setHtml(message)
+-        slicer.util.showStatusMessage(doc.toPlainText(), 3000)
+-        # Show message in log window at the bottom of the module widget
+-        self.log.insertHtml(message)
+-        self.log.insertPlainText('\n')
+-        self.log.ensureCursorVisible()
+-        self.log.repaint()
+-        logging.log(logLevel, message)
+-        slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+-
+-    def isCategoryVisible(self, category):
+-        """Check the visibility of a SampleData category given its name.
+-
+-        Returns False if the category is not visible or if it does not exist,
+-        otherwise returns True.
+-        """
+-        if not SampleDataLogic.sampleDataSourcesByCategory(category):
+-            return False
+-        return slicer.util.findChild(self.parent, '%sCollapsibleGroupBox' % category).isVisible()
+-
+-    def setCategoryVisible(self, category, visible):
+-        """Update visibility of a SampleData category given its name.
+-
+-        The function is a no-op if the category does not exist.
+-        """
+-        if not SampleDataLogic.sampleDataSourcesByCategory(category):
+-            return
+-        slicer.util.findChild(self.parent, '%sCollapsibleGroupBox' % category).setVisible(visible)
+-
+-
+ #
+ # SampleData logic
+ #
+@@ -519,76 +338,7 @@ class SampleDataLogic:
+         #     fileNames=None, nodeNames=None,
+         #     checksums=None,
+         #     loadFiles=None, customDownloader=None, thumbnailFileName=None, loadFileType=None, loadFileProperties=None
+-        sourceArguments = (
+-            ('MRHead', None, TESTING_DATA_URL + 'SHA256/cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93',
+-             'MR-head.nrrd', 'MRHead', 'SHA256:cc211f0dfd9a05ca3841ce1141b292898b2dd2d3f08286affadf823a7e58df93'),
+-            ('CTChest', None, TESTING_DATA_URL + 'SHA256/4507b664690840abb6cb9af2d919377ffc4ef75b167cb6fd0f747befdb12e38e',
+-             'CT-chest.nrrd', 'CTChest', 'SHA256:4507b664690840abb6cb9af2d919377ffc4ef75b167cb6fd0f747befdb12e38e'),
+-            ('CTACardio', None, TESTING_DATA_URL + 'SHA256/3b0d4eb1a7d8ebb0c5a89cc0504640f76a030b4e869e33ff34c564c3d3b88ad2',
+-             'CTA-cardio.nrrd', 'CTACardio', 'SHA256:3b0d4eb1a7d8ebb0c5a89cc0504640f76a030b4e869e33ff34c564c3d3b88ad2'),
+-            ('DTIBrain', None, TESTING_DATA_URL + 'SHA256/5c78d00c86ae8d968caa7a49b870ef8e1c04525b1abc53845751d8bce1f0b91a',
+-             'DTI-Brain.nrrd', 'DTIBrain', 'SHA256:5c78d00c86ae8d968caa7a49b870ef8e1c04525b1abc53845751d8bce1f0b91a'),
+-            ('MRBrainTumor1', None, TESTING_DATA_URL + 'SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
+-             'RegLib_C01_1.nrrd', 'MRBrainTumor1', 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95'),
+-            ('MRBrainTumor2', None, TESTING_DATA_URL + 'SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
+-             'RegLib_C01_2.nrrd', 'MRBrainTumor2', 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97'),
+-            ('BaselineVolume', None, TESTING_DATA_URL + 'SHA256/dff28a7711d20b6e16d5416535f6010eb99fd0c8468aaa39be4e39da78e93ec2',
+-             'BaselineVolume.nrrd', 'BaselineVolume', 'SHA256:dff28a7711d20b6e16d5416535f6010eb99fd0c8468aaa39be4e39da78e93ec2'),
+-            ('DTIVolume', None,
+-             (TESTING_DATA_URL + 'SHA256/d785837276758ddd9d21d76a3694e7fd866505a05bc305793517774c117cb38d',
+-              TESTING_DATA_URL + 'SHA256/67564aa42c7e2eec5c3fd68afb5a910e9eab837b61da780933716a3b922e50fe', ),
+-             ('DTIVolume.raw.gz', 'DTIVolume.nhdr'), (None, 'DTIVolume'),
+-             ('SHA256:d785837276758ddd9d21d76a3694e7fd866505a05bc305793517774c117cb38d',
+-              'SHA256:67564aa42c7e2eec5c3fd68afb5a910e9eab837b61da780933716a3b922e50fe')),
+-            ('DWIVolume', None,
+-             (TESTING_DATA_URL + 'SHA256/cf03fd53583dc05120d3314d0a82bdf5946799b1f72f2a7f08963f3fd24ca692',
+-              TESTING_DATA_URL + 'SHA256/7666d83bc205382e418444ea60ab7df6dba6a0bd684933df8809da6b476b0fed'),
+-             ('dwi.raw.gz', 'dwi.nhdr'), (None, 'dwi'),
+-             ('SHA256:cf03fd53583dc05120d3314d0a82bdf5946799b1f72f2a7f08963f3fd24ca692',
+-              'SHA256:7666d83bc205382e418444ea60ab7df6dba6a0bd684933df8809da6b476b0fed')),
+-            ('CTAAbdomenPanoramix', 'CTA abdomen\n(Panoramix)', TESTING_DATA_URL + 'SHA256/146af87511520c500a3706b7b2bfb545f40d5d04dd180be3a7a2c6940e447433',
+-             'Panoramix-cropped.nrrd', 'Panoramix-cropped', 'SHA256:146af87511520c500a3706b7b2bfb545f40d5d04dd180be3a7a2c6940e447433'),
+-            ('CBCTDentalSurgery', None,
+-             (TESTING_DATA_URL + 'SHA256/7bfa16945629c319a439f414cfb7edddd2a97ba97753e12eede3b56a0eb09968',
+-              TESTING_DATA_URL + 'SHA256/4cdc3dc35519bb57daeef4e5df89c00849750e778809e94971d3876f95cc7bbd',),
+-             ('PreDentalSurgery.gipl.gz', 'PostDentalSurgery.gipl.gz'), ('PreDentalSurgery', 'PostDentalSurgery'),
+-             ('SHA256:7bfa16945629c319a439f414cfb7edddd2a97ba97753e12eede3b56a0eb09968',
+-              'SHA256:4cdc3dc35519bb57daeef4e5df89c00849750e778809e94971d3876f95cc7bbd')),
+-            ('MRUSProstate', 'MR-US Prostate',
+-             (TESTING_DATA_URL + 'SHA256/4843cdc9ea5d7bcce61650d1492ce01035727c892019339dca726380496896aa',
+-              TESTING_DATA_URL + 'SHA256/34decf58b1e6794069acbe947b460252262fe95b6858c5e320aeab03bc82ebb2',),
+-             ('Case10-MR.nrrd', 'case10_US_resampled.nrrd'), ('MRProstate', 'USProstate'),
+-             ('SHA256:4843cdc9ea5d7bcce61650d1492ce01035727c892019339dca726380496896aa',
+-              'SHA256:34decf58b1e6794069acbe947b460252262fe95b6858c5e320aeab03bc82ebb2')),
+-            ('CTMRBrain', 'CT-MR Brain',
+-             (TESTING_DATA_URL + 'SHA256/6a5b6caccb76576a863beb095e3bfb910c50ca78f4c9bf043aa42f976cfa53d1',
+-              TESTING_DATA_URL + 'SHA256/2da3f655ed20356ee8cdf32aa0f8f9420385de4b6e407d28e67f9974d7ce1593',
+-              TESTING_DATA_URL + 'SHA256/fa1fe5910a69182f2b03c0150d8151ac6c75df986449fb5a6c5ae67141e0f5e7',),
+-             ('CT-brain.nrrd', 'MR-brain-T1.nrrd', 'MR-brain-T2.nrrd'),
+-             ('CTBrain', 'MRBrainT1', 'MRBrainT2'),
+-             ('SHA256:6a5b6caccb76576a863beb095e3bfb910c50ca78f4c9bf043aa42f976cfa53d1',
+-              'SHA256:2da3f655ed20356ee8cdf32aa0f8f9420385de4b6e407d28e67f9974d7ce1593',
+-              'SHA256:fa1fe5910a69182f2b03c0150d8151ac6c75df986449fb5a6c5ae67141e0f5e7')),
+-            ('CBCTMRHead', 'CBCT-MR Head',
+-             (TESTING_DATA_URL + 'SHA256/4ce7aa75278b5a7b757ed0c8d7a6b3caccfc3e2973b020532456dbc8f3def7db',
+-              TESTING_DATA_URL + 'SHA256/b5e9f8afac58d6eb0e0d63d059616c25a98e0beb80f3108410b15260a6817842',),
+-             ('DZ-CBCT.nrrd', 'DZ-MR.nrrd'),
+-             ('DZ-CBCT', 'DZ-MR'),
+-             ('SHA256:4ce7aa75278b5a7b757ed0c8d7a6b3caccfc3e2973b020532456dbc8f3def7db',
+-              'SHA256:b5e9f8afac58d6eb0e0d63d059616c25a98e0beb80f3108410b15260a6817842')),
+-            ('CTLiver', None, TESTING_DATA_URL + 'SHA256/e16eae0ae6fefa858c5c11e58f0f1bb81834d81b7102e021571056324ef6f37e',
+-             'CTLiver.nrrd', 'CTLiver', 'SHA256:e16eae0ae6fefa858c5c11e58f0f1bb81834d81b7102e021571056324ef6f37e'),
+-            ('CTPCardioSeq', "CTP Cardio Sequence",
+-             'https://github.com/Slicer/SlicerDataStore/releases/download/SHA256/7fbb6ad0aed9c00820d66e143c2f037568025ed63db0a8db05ae7f26affeb1c2',
+-             'CTP-cardio.seq.nrrd', 'CTPCardioSeq',
+-             'SHA256:7fbb6ad0aed9c00820d66e143c2f037568025ed63db0a8db05ae7f26affeb1c2',
+-             None, None, None, "SequenceFile"),
+-            ('CTCardioSeq', "CT Cardio Sequence",
+-             'https://github.com/Slicer/SlicerDataStore/releases/download/SHA256/d1a1119969acead6c39c7c3ec69223fa2957edc561bc5bf384a203e2284dbc93',
+-             'CT-cardio.seq.nrrd', 'CTCardioSeq',
+-             'SHA256:d1a1119969acead6c39c7c3ec69223fa2957edc561bc5bf384a203e2284dbc93',
+-             None, None, None, "SequenceFile"),
+-        )
++        sourceArguments = ()
+ 
+         if self.builtInCategoryName not in slicer.modules.sampleDataSources:
+             slicer.modules.sampleDataSources[self.builtInCategoryName] = []

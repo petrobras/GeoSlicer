@@ -1,0 +1,111 @@
+From f30210a05c11ceeb81859b691e31cd36fdac3b35 Mon Sep 17 00:00:00 2001
+From: Felipe Silveira <felipessilveira@gmail.com>
+Date: Wed, 10 Jun 2020 10:13:34 -0300
+Subject: [PATCH 2/2] Backend Qt5Agg uses QImage.loadFromData instead of
+ constructor
+
+This was needed to workaround a bug in Slicer's PythonQt where the QImage's
+constructor that receives a buffer was displaying garbage.
+---
+ lib/matplotlib/backends/backend_qt5agg.py | 66 +++++++++++------------
+ 1 file changed, 30 insertions(+), 36 deletions(-)
+
+diff --git a/lib/matplotlib/backends/backend_qt5agg.py b/lib/matplotlib/backends/backend_qt5agg.py
+index 6e90dc8a8..f97778c1e 100644
+--- a/lib/matplotlib/backends/backend_qt5agg.py
++++ b/lib/matplotlib/backends/backend_qt5agg.py
+@@ -2,9 +2,12 @@
+ Render to qt from agg.
+ """
+ 
++import io
++
+ import ctypes
+ 
+ from matplotlib.transforms import Bbox
++from matplotlib.image import imsave
+ 
+ from .. import cbook
+ from .backend_agg import FigureCanvasAgg
+@@ -39,44 +42,21 @@ class FigureCanvasQTAgg(FigureCanvasAgg, FigureCanvasQT):
+ 
+         painter = QtGui.QPainter(self)
+ 
+-        # See documentation of QRect: bottom() and right() are off by 1, so use
+-        # left() + width() and top() + height().
+-        rect = event.rect()
+-        # scale rect dimensions using the screen dpi ratio to get
+-        # correct values for the Figure coordinates (rather than QT5's coords)
+-        width = rect.width() * self._dpi_ratio
+-        height = rect.height() * self._dpi_ratio
+-        left, top = self.mouseEventCoords(rect.topLeft())
+-        # shift the "top" by the height of the image to get the
+-        # correct corner for our coordinate system
+-        bottom = top - height
+-        # same with the right side of the image
+-        right = left + width
+-        # create a buffer using the image bounding box
+-        bbox = Bbox([[left, bottom], [right, top]])
+-        reg = self.copy_from_bbox(bbox)
+-        buf = cbook._unmultiplied_rgba8888_to_premultiplied_argb32(
+-            memoryview(reg))
+-
+-        # clear the widget canvas
+-        painter.eraseRect(rect)
+-
+-        qimage = QtGui.QImage(buf, buf.shape[1], buf.shape[0],
+-                              QtGui.QImage.Format_ARGB32_Premultiplied)
+-        if hasattr(qimage, 'setDevicePixelRatio'):
+-            # Not available on Qt4 or some older Qt5.
+-            qimage.setDevicePixelRatio(self._dpi_ratio)
+-        # set origin using original QT coordinates
+-        origin = QtCore.QPoint(rect.left(), rect.top())
+-        painter.drawImage(origin, qimage)
+-        # Adjust the buf reference count to work around a memory
+-        # leak bug in QImage under PySide on Python 3.
+-        if QT_API in ('PySide', 'PySide2'):
+-            ctypes.c_long.from_address(id(buf)).value = 1
++        try:
++            rect = event.rect()
++
++            # clear the widget canvas
++            painter.eraseRect(rect)
++
++            qimage = self.save_to_qimage()
+ 
+-        self._draw_rect_callback(painter)
++            # set origin using original QT coordinates
++            origin = QtCore.QPoint(rect.left(), rect.top())
++            painter.drawImage(origin, qimage)
+ 
+-        painter.end()
++            self._draw_rect_callback(painter)
++        finally:
++            painter.end()
+ 
+     def blit(self, bbox=None):
+         # docstring inherited
+@@ -90,6 +70,20 @@ class FigureCanvasQTAgg(FigureCanvasAgg, FigureCanvasQT):
+         t = b + h
+         self.repaint(l, self.renderer.height / self._dpi_ratio - t, w, h)
+ 
++    def save_to_qimage(self):
++        in_memory_file = io.BytesIO()
++        imsave(
++            in_memory_file, self.buffer_rgba(), format="png", origin="upper",
++            dpi=self.figure.dpi, metadata=None, pil_kwargs=None)
++
++        qimage = QtGui.QImage()
++        qimage.loadFromData(in_memory_file.getbuffer().tobytes())
++        if hasattr(qimage, 'setDevicePixelRatio'):
++            # Not available on Qt4 or some older Qt5.
++            qimage.setDevicePixelRatio(self._dpi_ratio)
++
++        return qimage
++
+     def print_figure(self, *args, **kwargs):
+         super().print_figure(*args, **kwargs)
+         self.draw()
+-- 
+2.26.2
+

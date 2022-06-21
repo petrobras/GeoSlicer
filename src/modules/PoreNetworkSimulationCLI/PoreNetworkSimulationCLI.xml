@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PoreNetworkSimulationCLI</title>
+  <description>LTrace pore network simulation CLI.</description>
+  <contributor>Giovanni Formighieri (LTrace)</contributor>
+  <parameters>
+    <string>
+      <longflag>model</longflag>
+    </string>
+    <string>
+      <longflag>cwd</longflag>
+    </string>
+    <string>
+      <longflag>statoilDir</longflag>
+    </string>
+    <integer>
+      <longflag>maxSubprocesses</longflag>
+      <default>8</default>
+    </integer>
+    <string>
+      <name>tempDir</name>
+      <label>Temporary directory</label>
+      <longflag>tempDir</longflag>
+      <description><![CDATA[Temporary directory path]]></description>
+      <default></default>
+    </string>
+    <string>
+      <name>saturation_steps</name>
+      <label>Saturation steps</label>
+      <description><![CDATA[Saturation steps to cycles visualization. JSON format.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </string>
+  </parameters>
+</executable>

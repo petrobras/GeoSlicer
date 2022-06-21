@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Background Tasks</category>
+  <index>3</index>
+  <title>Core Photograph Loader CLI</title>
+  <description>LTrace Algorithms Wrapper</description>
+  <version>1.0</version>
+  <documentation-url></documentation-url>
+  <license></license>
+  <contributor>LTrace</contributor>
+
+  <parameters advanced="false">
+    <string>
+      <name>data</name>
+      <label>Data</label>
+      <longflag>data</longflag>
+      <description><![CDATA[Model configuration string]]></description>
+      <default></default>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <image>
+      <name>outputVolume</name>
+      <longflag>output</longflag>
+      <label>Output</label>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+  
+    <table>
+      <name>outputReport</name>
+      <longflag>report</longflag>
+      <label>Report</label>
+      <description></description>
+      <channel>output</channel>
+      <default></default>
+    </table>
+    <boolean>
+      <longflag>gpuEnabled</longflag>
+    </boolean>
+  </parameters>
+
+</executable>

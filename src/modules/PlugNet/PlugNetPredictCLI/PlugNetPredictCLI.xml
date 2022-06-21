@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PlugNetPredictCLI</title>
+  <description><![CDATA[Loads a convolutional neural network and infers
+  porosity, permeability and density of a given 32x32x32 volume.]]></description>
+  <category>Upscaling</category>
+  <parameters advanced="false">
+    <string>
+      <name>model</name>
+      <label>Model path</label>
+      <longflag>model</longflag>
+      <description><![CDATA[TensorFlow SavedModel path]]></description>
+      <default></default>
+    </string>
+
+    <string>
+      <name>coreDir</name>
+      <label>Core directory</label>
+      <longflag>coreDir</longflag>
+      <description><![CDATA[Core .nrrd files directory]]></description>
+      <default></default>
+    </string>
+
+    <boolean>
+      <longflag>gpuEnabled</longflag>
+    </boolean>
+
+  </parameters>
+  <parameters advanced="false">
+    <table>
+      <name>outputTable</name>
+      <label>Output Table</label>
+      <longflag>outputTable</longflag>
+      <description><![CDATA[Output Table]]></description>
+      <channel>output</channel>
+      <default></default>
+    </table>
+  </parameters>
+</executable>

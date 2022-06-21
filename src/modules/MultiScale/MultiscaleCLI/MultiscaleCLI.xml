@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>1</index>
+  <title>Multiscale CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions]]></acknowledgements>
+
+  <parameters advanced="false">
+    <label>Parameters configuration</label>
+    <string>
+      <name>params</name>
+      <longflag>params</longflag>
+      <label>Parameters</label>
+      <description>Python dictionary with Final image resolution and size.</description>
+      <default></default>
+      <channel>input</channel>
+    </string>
+    <integer>
+      <name>nreal</name>
+      <label>Number of realizations</label>
+      <longflag>nreal</longflag>
+      <description>Number of realizations to be generated.</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>ncond</name>
+      <label>Number of conditioning points</label>
+      <longflag>ncond</longflag>
+      <description>Number of conditioning points to be used by the algorithm.</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>iterations</name>
+      <label>Number of iterations</label>
+      <longflag>iterations</longflag>
+      <description>Maximum number of iterations. Use -1 for full training image scan.</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>rseed</name>
+      <label>Random seed</label>
+      <longflag>rseed</longflag>
+      <description>Random seed used by the algorithm. Use a set value to obtain the same results. Use 0 for a random seed.</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>colocateDimensions</name>
+      <label>colocateDimensions</label>
+      <longflag>colocateDimensions</longflag>
+      <description>Dimension that will be prioritized.</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>maxSearchRadius</name>
+      <label>maxSearchRadius</label>
+      <longflag>maxSearchRadius</longflag>
+      <description>Radius in which data will be used as conditional data</description>
+      <default></default>
+    </integer>
+    <float>
+      <name>distanceMax</name>
+      <label>distanceMax</label>
+      <longflag>distanceMax</longflag>
+      <description>Maximum distance what will lead to accepting a conditional template match</description>
+      <default></default>
+    </float>
+    <integer>
+      <name>distancePower</name>
+      <label>distancePower</label>
+      <longflag>distancePower</longflag>
+      <description>Set the distace power to weight the conditioning data</description>
+      <default></default>
+    </integer>
+    <integer>
+      <name>distanceMeasure</name>
+      <label>Distance Measure</label>
+      <longflag>distanceMeasure</longflag>
+      <description>Set if data is continuous or discrete</description>
+      <default></default>
+    </integer>
+  </parameters>
+
+  <parameters advanced="false">
+    <directory>
+      <name>temporaryPath</name>
+      <longflag>temporaryPath</longflag>
+      <label>Temporary path</label>
+      <description>Temporary directory path that some files will be generated</description>
+      <channel>output</channel>
+      <default></default>
+    </directory>
+  </parameters>
+</executable>

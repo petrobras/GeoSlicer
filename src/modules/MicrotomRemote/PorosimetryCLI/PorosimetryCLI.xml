@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Tutorials/Examples</category>
+  <index>1</index>
+  <title>Porosimetry CLI</title>
+  <description><![CDATA[Microtom Tutorial]]></description>
+  <version>0.0.1.</version>
+  <documentation-url></documentation-url>
+  <license/>
+  <contributor></contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <image>
+      <name>inputVolume</name>
+      <longflag>master</longflag>
+      <label>Input Volume</label>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+    </image>
+    <image>
+      <name>outputVolume</name>
+      <longflag>output</longflag>
+      <label>Output</label>
+      <description><![CDATA[Pick the PSD output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+    <table>
+      <name>outputAxis</name>
+      <longflag>psdaxis</longflag>
+      <label>Output Axis</label>
+      <description></description>
+      <channel>output</channel>
+      <default></default>
+    </table>
+    <string>
+      <name>simulator</name>
+      <longflag>simulator</longflag>
+      <label>Simulator</label>
+      <description>Command to be executed on the remote machine</description>
+      <channel>input</channel>
+    </string>
+    <directory>
+      <name>outputDir</name>
+      <longflag>outputdir</longflag>
+      <label>Output Directory</label>
+      <channel>input</channel>
+    </directory>
+    <string>
+      <name>params</name>
+      <longflag>params</longflag>
+      <label>Parameters</label>
+      <description>Simulator configuration</description>
+      <default></default>
+      <channel>input</channel>
+    </string>
+    <string>
+      <name>workspace</name>
+      <longflag>workspace</longflag>
+      <label>Workspace</label>
+      <description>Workspace where the data is going to be made available to the command on the remote machine</description>
+      <channel>input</channel>
+    </string>
+    <string>
+      <name>porosimetry</name>
+      <label>Porosimetry</label>
+      <description><![CDATA[Porosimetry data in JSON format. Each measure is a key.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </string>
+  </parameters>
+</executable>

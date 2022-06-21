@@ -1,0 +1,6 @@
+ONE_PHASE = "One-phase"
+TWO_PHASE = "Two-phase"
+MICP = "Mercury injection"
+VALVATNE_BLUNT = "Valvatne-Blunt"
+ONE_ANGLE = "Single orientation"
+MULTI_ANGLE = "Multiple orientations"

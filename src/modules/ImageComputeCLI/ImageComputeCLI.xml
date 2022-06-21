@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>Image Compute CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.2.0.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Marcio Weck (LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <image type="any">
+      <name>inputVolume</name>
+      <longflag>master</longflag>
+      <label>Input Volume</label>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <image type="any" reference="inputVolume">
+      <name>additional1</name>
+      <longflag>add1</longflag>
+      <label>Additional 1 Volume (optional)</label>
+      <description><![CDATA[Pick the volume segmentaton representing the ROI to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <image type="any" reference="inputVolume">
+      <name>additional2</name>
+      <longflag>add2</longflag>
+      <label>Additional 2 Volume (optional)</label>
+      <description><![CDATA[Pick the volume segmentaton representing the ROI to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <image type="label" reference="inputVolume">
+      <name>roiVolume</name>
+      <longflag>roi</longflag>
+      <label>ROI Volume (optional)</label>
+      <description><![CDATA[Pick the volume segmentaton representing the ROI to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <image type="label" reference="inputVolume">
+      <name>labelVolume</name>
+      <longflag>labels</longflag>
+      <label>Labelmap Volume (optional)</label>
+      <description><![CDATA[Pick the input labeled data to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+    <string>
+      <name>command</name>
+      <label>Command</label>
+      <flag>c</flag>
+      <longflag>command</longflag>
+      <description><![CDATA[Command name]]></description>
+      <default></default>
+    </string>
+
+    <string>
+      <name>xargs</name>
+      <label>Parameters</label>
+      <flag>m</flag>
+      <longflag>xargs</longflag>
+      <description><![CDATA[Model configuration string]]></description>
+      <default></default>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <image>
+      <name>outputVolume</name>
+      <longflag>outputvolume</longflag>
+      <label>Output</label>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+
+    <string>
+      <name>report</name>
+      <label>Report</label>
+      <description><![CDATA[Report data in JSON format. Each measure is a key.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </string>
+
+  </parameters>
+
+
+</executable>

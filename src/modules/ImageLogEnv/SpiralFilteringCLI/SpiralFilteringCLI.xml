@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Tutorials/Examples</category>
+  <index>6</index>
+  <title>Spiral filtering CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Leandro Figueiredo (LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input</label>
+    <image>
+      <name>inputVolume1</name>
+      <longflag>master1</longflag>
+      <label>Image</label>
+      <description>Select the input image to the algorithm.</description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+	<label>Parameters</label>
+    <double>
+      <name>wlength_min</name>
+      <label>Minimum wavelength (meters)</label>
+      <longflag>wlength_min</longflag>
+      <description><![CDATA[Minimum vertical wavelength of the spiraling effect in meters]]></description>
+      <default>4</default>
+    </double>
+    <double>
+      <name>wlength_max</name>
+      <label>Maximum wavelength (meters)</label>
+      <longflag>wlength_max</longflag>
+      <description><![CDATA[Maximum vertical wavelength of the spiraling effect in meters]]></description>
+      <default>100</default>
+    </double>    
+  </parameters>
+   
+  <parameters advanced="false">
+    <image>
+      <name>outputVolume_std</name>
+      <longflag>outputvolume_std</longflag>
+      <label>Output</label>
+      <description><![CDATA[Type the output volume of the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image> 
+	
+  </parameters>
+
+  <parameters advanced="true">
+    <label>Advanced Settings</label>
+
+    <double>
+      <name>nullable</name>
+      <longflag>nullable</longflag>
+      <label>Null Value</label>
+      <description><![CDATA[Null value]]></description>
+      <channel>input</channel>
+      <default>-999.25</default>
+    </double>
+
+    <double>
+      <name>multip_factor</name>
+      <longflag>multip_factor</longflag>
+      <label>Filtering Factor</label>
+      <description><![CDATA[Multiplicative factor of the filter. 0 leads to  no filtering at all. 1 leads to the maximum filtering]]></description>
+      <channel>input</channel>
+      <default>1.0</default>
+    </double>
+
+    <double>
+      <name>smoothstep_factor</name>
+      <longflag>smoothstep_factor</longflag>
+      <label>Band spectrum step length</label>
+      <description><![CDATA[Step length of the filter spectrum band. Higher this values, more smooth the step of the band width]]></description>
+      <channel>input</channel>
+      <default>0.02</default>
+    </double>     
+    
+  </parameters>
+
+
+</executable>

@@ -1,0 +1,31 @@
+diff --git a/lib/monai/inferers/utils.py b/lib/monai/inferers/utils.py
+index fe83c416..08435ca4 100644
+--- a/lib/monai/inferers/utils.py
++++ b/lib/monai/inferers/utils.py
+@@ -12,6 +12,7 @@
+ import warnings
+ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+ 
++import sys
+ import torch
+ import torch.nn.functional as F
+ 
+@@ -47,6 +48,7 @@ def sliding_window_inference(
+     sw_device: Union[torch.device, str, None] = None,
+     device: Union[torch.device, str, None] = None,
+     progress: bool = False,
++    geoslicer_progress: bool = False,
+     roi_weight_map: Optional[torch.Tensor] = None,
+     process_fn: Optional[Callable] = None,
+     *args: Any,
+@@ -174,6 +176,10 @@ def sliding_window_inference(
+ 
+     # for each patch
+     for slice_g in tqdm(range(0, total_slices, sw_batch_size)) if progress else range(0, total_slices, sw_batch_size):
++        if geoslicer_progress:
++            print(f"<filter-progress>{float(slice_g) / total_slices}</filter-progress>")
++            sys.stdout.flush()
++
+         slice_range = range(slice_g, min(slice_g + sw_batch_size, total_slices))
+         unravel_slice = [
+             [slice(int(idx / num_win), int(idx / num_win) + 1), slice(None)] + list(slices[idx % num_win])

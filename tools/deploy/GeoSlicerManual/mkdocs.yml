@@ -1,0 +1,34 @@
+site_name: GeoSlicer Manual
+
+theme:
+    name: material
+    custom_dir: theme
+    logo: assets/logo.png
+    favicon: assets/logo.ico
+    palette:
+      primary: white
+plugins:
+    - search
+    - localsearch
+use_directory_urls: false
+nav:
+  - Página inicial: "index.md"
+  - Image Log:
+    - Usabilidade: "Image Log/Usabilidade/usabilidade.md"
+    - Instance Segmenter: "Image Log/Instance Segmenter/instance_segmenter.md"
+  - Core CT:
+    - Usabilidade: "Core CT/Usabilidade/usabilidade.md"
+  - Micro CT:
+    - Usabilidade: "Micro CT/Usabilidade/usabilidade.md"
+    - Polynomial Shading Correction: "Micro CT/Polynomial Shading Correction/polynomial_shading_correction.md"
+    - Gradient Anisotropic Diffusion: "Micro CT/Gradient Anisotropic Diffusion/gradient_anisotropic_diffusion.md"
+  - Thin Section:
+    - Usabilidade: "Thin Section/Usabilidade/usabilidade.md"
+  - Segmentação:
+    - Semi-automática: "Segmenter/Semiauto/semiauto.md"
+    - Automática (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
+    - Automática (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
+    - Inspector:
+      - Estudos de porosidade: "Inspector/Watershed/estudos_de_porosidade.md"
+extra:
+  homepage: index.html

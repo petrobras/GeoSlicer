@@ -1,0 +1,138 @@
+From e75d95d5901ae86aa0ea1b4c37ebd1eb30cf072b Mon Sep 17 00:00:00 2001
+From: Felipe Silveira <felipessilveira@gmail.com>
+Date: Wed, 10 Jun 2020 08:09:45 -0300
+Subject: [PATCH 1/2] Adding Slicer's PythonQt in matplotlib
+
+---
+ lib/matplotlib/backends/backend_qt5.py | 15 ++++++++++-----
+ lib/matplotlib/backends/qt_compat.py   | 19 +++++++++++++++++--
+ 2 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/lib/matplotlib/backends/backend_qt5.py b/lib/matplotlib/backends/backend_qt5.py
+index f3dcf1c51..01a8e2bc1 100644
+--- a/lib/matplotlib/backends/backend_qt5.py
++++ b/lib/matplotlib/backends/backend_qt5.py
+@@ -20,6 +20,9 @@ from .qt_compat import (
+     QtCore, QtGui, QtWidgets, _isdeleted, _getSaveFileName,
+     is_pyqt5, __version__, QT_API)
+ 
++from .qt_compat import (
++   QT_API_PYQT5, QT_API_SLICER_PYTHONQT, get_size, get_width, get_height)
++
+ backend_version = __version__
+ 
+ # SPECIAL_KEYS are keys that do *not* return their unicode name
+@@ -141,8 +144,7 @@ def _allow_super_init(__init__):
+     Decorator for ``__init__`` to allow ``super().__init__`` on PyQt4/PySide2.
+     """
+ 
+-    if QT_API == "PyQt5":
+-
++    if QT_API in [QT_API_PYQT5, QT_API_SLICER_PYTHONQT]:
+         return __init__
+ 
+     else:
+@@ -234,7 +236,8 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
+     @_allow_super_init
+     def __init__(self, figure):
+         _create_qApp()
+-        super().__init__(figure=figure)
++        QtWidgets.QWidget.__init__(self)
++        FigureCanvasBase.__init__(self, figure=figure)
+ 
+         self.figure = figure
+         # We don't want to scale up the figure DPI more than once.
+@@ -287,13 +290,15 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
+             # The easiest way to resize the canvas is to emit a resizeEvent
+             # since we implement all the logic for resizing the canvas for
+             # that event.
+-            event = QtGui.QResizeEvent(self.size(), self.size())
++            event = QtGui.QResizeEvent(get_size(self), get_size(self))
+             self.resizeEvent(event)
+             # resizeEvent triggers a paintEvent itself, so we exit this one
+             # (after making sure that the event is immediately handled).
+             return True
+         return False
+ 
++
++
+     def get_width_height(self):
+         w, h = FigureCanvasBase.get_width_height(self)
+         return int(w / self._dpi_ratio), int(h / self._dpi_ratio)
+@@ -492,7 +497,7 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
+             if not self._draw_pending:
+                 return
+             self._draw_pending = False
+-            if self.height() < 0 or self.width() < 0:
++            if get_height(self) < 0 or get_width(self) < 0:
+                 return
+             try:
+                 self.draw()
+diff --git a/lib/matplotlib/backends/qt_compat.py b/lib/matplotlib/backends/qt_compat.py
+index b3367ea91..c6758a837 100644
+--- a/lib/matplotlib/backends/qt_compat.py
++++ b/lib/matplotlib/backends/qt_compat.py
+@@ -23,11 +23,13 @@ QT_API_PYSIDE2 = "PySide2"
+ QT_API_PYQTv2 = "PyQt4v2"
+ QT_API_PYSIDE = "PySide"
+ QT_API_PYQT = "PyQt4"   # Use the old sip v1 API (Py3 defaults to v2).
++QT_API_SLICER_PYTHONQT = "SlicerPythonQt"
+ QT_API_ENV = os.environ.get("QT_API")
+ # Mapping of QT_API_ENV to requested binding.  ETS does not support PyQt4v1.
+ # (https://github.com/enthought/pyface/blob/master/pyface/qt/__init__.py)
+ _ETS = {"pyqt5": QT_API_PYQT5, "pyside2": QT_API_PYSIDE2,
+         "pyqt": QT_API_PYQTv2, "pyside": QT_API_PYSIDE,
++        "slicer-pythonqt": QT_API_SLICER_PYTHONQT,
+         None: None}
+ # First, check if anything is already imported.
+ if "PyQt5.QtCore" in sys.modules:
+@@ -38,11 +40,13 @@ elif "PyQt4.QtCore" in sys.modules:
+     QT_API = QT_API_PYQTv2
+ elif "PySide.QtCore" in sys.modules:
+     QT_API = QT_API_PYSIDE
++elif "PythonQt" in sys.modules:
++    QT_API = QT_API_SLICER_PYTHONQT
+ # Otherwise, check the QT_API environment variable (from Enthought).  This can
+ # only override the binding, not the backend (in other words, we check that the
+ # requested backend actually matches).
+ elif rcParams["backend"] in ["Qt5Agg", "Qt5Cairo"]:
+-    if QT_API_ENV in ["pyqt5", "pyside2"]:
++    if QT_API_ENV in ["pyqt5", "pyside2", "slicer-pythonqt"]:
+         QT_API = _ETS[QT_API_ENV]
+     else:
+         QT_API = None
+@@ -78,6 +82,10 @@ def _setup_pyqt5():
+         from PySide2 import QtCore, QtGui, QtWidgets, __version__
+         import shiboken2
+         def _isdeleted(obj): return not shiboken2.isValid(obj)
++    elif QT_API == QT_API_SLICER_PYTHONQT:
++        from PythonQt import QtCore, QtGui, QtGui as QtWidgets
++        def _isdeleted(obj): return False  # TODO: This might lead to a crash
++        __version__ = QtCore.qVersion()
+     else:
+         raise ValueError("Unexpected value for the 'backend.qt5' rcparam")
+     _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
+@@ -141,7 +149,7 @@ def _setup_pyqt4():
+         return False
+ 
+ 
+-if QT_API in [QT_API_PYQT5, QT_API_PYSIDE2]:
++if QT_API in [QT_API_PYQT5, QT_API_PYSIDE2, QT_API_SLICER_PYTHONQT]:
+     _setup_pyqt5()
+ elif QT_API in [QT_API_PYQTv2, QT_API_PYSIDE, QT_API_PYQT]:
+     _setup_pyqt4()
+@@ -173,4 +181,11 @@ else:  # We should not get there.
+ # These globals are only defined for backcompatibility purposes.
+ ETS = dict(pyqt=(QT_API_PYQTv2, 4), pyside=(QT_API_PYSIDE, 4),
+            pyqt5=(QT_API_PYQT5, 5), pyside2=(QT_API_PYSIDE2, 5))
++
+ QT_RC_MAJOR_VERSION = 5 if is_pyqt5() else 4
++
++
++def is_slicer_python_qt(): return QT_API == QT_API_SLICER_PYTHONQT
++def get_size(obj): return obj.size if is_slicer_python_qt() else obj.size()
++def get_width(obj): return obj.width if is_slicer_python_qt() else obj.width()
++def get_height(obj): return obj.height if is_slicer_python_qt() else obj.height()
+-- 
+2.26.2
+

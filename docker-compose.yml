@@ -1,0 +1,59 @@
+version: "3"
+services:
+  slicerltrace-windows:
+    image: slicerltrace-windows:latest
+    build:
+      context: .
+      dockerfile: tools/docker/windows.Dockerfile
+    volumes:
+      - .git:c:/slicerltrace/.git
+      - ~/.oci/:C:/Users/ContainerAdministrator/.oci/
+      - ~/.ssh/:C:/Users/ContainerAdministrator/.ssh/
+    storage_opt:
+      size: '70G'
+  slicerltrace-base-windows:
+    image: slicerltrace-base-windows:latest
+    build:
+      context: .
+      dockerfile: tools/docker/windows_base.Dockerfile
+    volumes:
+      - ~/.oci/:C:/Users/ContainerAdministrator/.oci/
+      - ~/.ssh/:C:/Users/ContainerAdministrator/.ssh/
+    storage_opt:
+      size: '70G'
+  slicerltrace-linux:
+    image: slicerltrace-linux:latest
+    build:
+      context: .
+      dockerfile: tools/docker/linux.Dockerfile
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - "$HOME/.oci:/root/.oci"
+      - ~/.ssh/:/root/.ssh/
+    user: "${UID}:${GID}"
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+  slicerltrace-base-linux:
+    image: slicerltrace-base-linux:latest
+    build:
+      context: .
+      dockerfile: tools/docker/linux_base.Dockerfile
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - "$HOME/.oci:/root/.oci"
+      - ~/.ssh/:/root/.ssh/
+    user: "${UID}:${GID}"
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse

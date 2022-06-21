@@ -1,0 +1,45 @@
+From 295817ca1641c4b5b0d1dfbcacf8b37d252c8dcd Mon Sep 17 00:00:00 2001
+From: Felipe Silveira <felipessilveira@gmail.com>
+Date: Mon, 15 Jun 2020 09:54:50 -0300
+Subject: [PATCH 3/3] Patching PythonQt backend for matplotlib 3.2.1
+
+---
+ lib/matplotlib/backends/backend_qt5agg.py | 15 +++++++++++----
+ 1 file changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/lib/matplotlib/backends/backend_qt5agg.py b/lib/matplotlib/backends/backend_qt5agg.py
+index f97778c1e..44bf3d533 100644
+--- a/lib/matplotlib/backends/backend_qt5agg.py
++++ b/lib/matplotlib/backends/backend_qt5agg.py
+@@ -7,7 +7,9 @@ import io
+ import ctypes
+ 
+ from matplotlib.transforms import Bbox
+-from matplotlib.image import imsave
++
++from matplotlib import _png  # To use only on matplotlib 3.2.1
++# from matplotlib.image import imsave  # To use only after matplotlib 3.2.1
+ 
+ from .. import cbook
+ from .backend_agg import FigureCanvasAgg
+@@ -72,9 +74,14 @@ class FigureCanvasQTAgg(FigureCanvasAgg, FigureCanvasQT):
+ 
+     def save_to_qimage(self):
+         in_memory_file = io.BytesIO()
+-        imsave(
+-            in_memory_file, self.buffer_rgba(), format="png", origin="upper",
+-            dpi=self.figure.dpi, metadata=None, pil_kwargs=None)
++
++        # To use only on matplotlib 3.2.1
++        _png.write_png(self.buffer_rgba(), in_memory_file, dpi=self.figure.dpi, metadata=None)
++
++        # To use after matplotlib 3.2.1
++        # imsave(
++        #     in_memory_file, self.buffer_rgba(), format="png", origin="upper",
++        #     dpi=self.figure.dpi, metadata=None, pil_kwargs={})
+ 
+         qimage = QtGui.QImage()
+         qimage.loadFromData(in_memory_file.getbuffer().tobytes())
+-- 
+2.26.2
+

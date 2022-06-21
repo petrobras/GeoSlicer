@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Thin Section</category>
+  <index>3</index>
+  <title>Import QEMSCAN CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1.</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>Leandro Figueiredo(LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <file fileExtensions=".tif,.TIF">
+      <name>file1</name>
+      <longflag>file1</longflag>
+      <label>TIF file</label>
+      <description>TIF file</description>
+      <channel>input</channel>
+    </file>
+    <file fileExtensions=".csv">
+      <name>file2</name>
+      <longflag>file2</longflag>
+      <label>Table os segment ids</label>
+      <description>CSV file.</description>
+      <channel>input</channel>
+    </file>
+    <string>
+      <name>csvstring</name>
+      <longflag>csvstring</longflag>
+      <label>Lookup color table CSV</label>
+      <description>Lookup color table in CSV format.</description>
+      <channel>input</channel>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <image>
+      <name>outputVolume</name>
+      <longflag>outputvolume</longflag>
+      <label>Output</label>
+      <description>Pick the output volume to the algorithm.</description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+
+    <image>
+      <name>labelVolume</name>
+      <longflag>labelvolume</longflag>
+      <label>Labels</label>
+      <description>Pick the labels volume to the algorithm.</description>
+      <channel>output</channel>
+    </image>    
+
+    <string>
+      <name>lookup_table</name>
+      <label>Lookup Table</label>
+      <description>Lookup Color Table in JSON format. Each segment value is a key to get its name and color.</description>
+      <channel>output</channel>
+      <default></default>
+    </string>
+  </parameters>
+
+
+</executable>

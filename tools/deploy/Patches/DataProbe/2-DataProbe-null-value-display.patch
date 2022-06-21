@@ -1,0 +1,32 @@
+--- a/DataProbe.py
++++ b/DataProbe.py
+@@ -4,6 +4,7 @@ import ctk
+ import qt
+ import vtk
+ import vtkTeem
++import math
+ 
+ import slicer
+ from slicer.ScriptedLoadableModule import *
+@@ -187,12 +188,20 @@ class DataProbeInfoWidget:
+                 component = int(component)
+             components.append(component)
+ 
++        # handle null value display when available
++        nullValue = volumeNode.GetAttribute("NullValue")
++        if nullValue is not None:
++            nullValue = float(nullValue)
++
+         pixel += "RGB: <font size=\"+1\" face=\"Courier New\">(" if numberOfComponents == 3 else ""
+         for component in components:
+             # format string according to suggestion here:
+             # https://stackoverflow.com/questions/2440692/formatting-floats-in-python-without-superfluous-zeros
+             # also set the default field width for each coordinate
+-            componentString = ("%4f" % component).rstrip('0').rstrip('.').rjust(3,'\u00A0')
++            if math.isnan(component) or component == nullValue:
++                componentString = "Null"
++            else:
++                componentString = ("%4f" % component).rstrip('0').rstrip('.').rjust(3,'\u00A0')
+             pixel += ("%s, " % componentString)
+         pixel = pixel[:-2]
+         pixel += ")</font>" if numberOfComponents == 3 else ""

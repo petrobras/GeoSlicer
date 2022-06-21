@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PlugNetTrainCLI</title>
+  <description><![CDATA[Trains a convolutional neural network that infers
+  porosity, permeability and density of a given 32x32x32 volume.]]></description>
+  <category>Upscaling</category>
+  <parameters advanced="false">
+    <string>
+      <name>input</name>
+      <label>Training data</label>
+      <longflag>input</longflag>
+      <description><![CDATA[Input training data filename]]></description>
+      <default></default>
+    </string>
+
+    <boolean>
+      <longflag>gpuEnabled</longflag>
+    </boolean>
+
+    <string>
+      <name>output</name>
+      <label>Trained model</label>
+      <longflag>output</longflag>
+      <description><![CDATA[Output trained model filename]]></description>
+      <default></default>
+    </string>
+  </parameters>
+</executable>

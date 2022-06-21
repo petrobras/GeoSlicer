@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>SegmentationKmeans CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input</label>
+    <image>
+      <name>input_volume</name>
+      <label>Input Volume</label>
+      <flag>i</flag>
+      <longflag>input_volume</longflag>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters>
+    <label>Parameters</label>
+    <string>
+      <name>spacing</name>
+      <label>Spacing</label>
+      <flag>s</flag>
+      <longflag>spacing</longflag>
+      <description><![CDATA[Spacing resample]]></description>
+      <default>1, 1, 1</default>
+    </string>
+    <string>
+      <name>radii</name>
+      <label>Radii</label>
+      <flag>r</flag>
+      <longflag>radii</longflag>
+      <description><![CDATA[Radii values]]></description>
+      <default>3, 5</default>
+    </string>
+    <string>
+      <name>classes</name>
+      <label>Quantity of classes</label>
+      <flag>c</flag>
+      <longflag>classes</longflag>
+      <description><![CDATA[Classes quantity]]></description>
+      <default>6</default>
+    </string>
+    <string>
+      <name>threads</name>
+      <label>Number of threads</label>
+      <flag>t</flag>
+      <longflag>threads</longflag>
+      <description><![CDATA[Number of threads]]></description>
+      <default>6</default>
+    </string>
+  </parameters>
+
+  <parameters advanced="false">
+    <label>Output</label>
+    <image>
+      <name>output_volume</name>
+      <label>Output Volume</label>
+      <flag>o</flag>
+      <longflag>output_volume</longflag>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+
+</executable>

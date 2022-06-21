@@ -1,0 +1,41 @@
+diff --git a/mpslib/plot.py b/mpslib/plot.py
+index c68cd6c..7c34674 100755
+--- a/mpslib/plot.py
++++ b/mpslib/plot.py
+@@ -12,21 +12,21 @@ functions for plotting with mpslib
+   
+ 
+ 
+-def module_exists(module_name,show_info=0):
+-    try:
+-        __import__(module_name)
+-    except ImportError:
+-        if (show_info>0):
+-            print('%s cannot be loaded. please install it using e.g' % module_name)
+-            print('pip install %s' % module_name)
+-        return False
+-    else:
+-        return True
+-
+-if module_exists('pyvista',1):
+-    import pyvista
+-else:
+-    print('pyvista is not installed')
++# def module_exists(module_name,show_info=0):
++#     try:
++#         __import__(module_name)
++#     except ImportError:
++#         if (show_info>0):
++#             print('%s cannot be loaded. please install it using e.g' % module_name)
++#             print('pip install %s' % module_name)
++#         return False
++#     else:
++#         return True
++
++# if module_exists('pyvista',1):
++#     import pyvista
++# else:
++#     print('pyvista is not installed')
+     
+ import numpy as np 
+ import matplotlib.pyplot as plt

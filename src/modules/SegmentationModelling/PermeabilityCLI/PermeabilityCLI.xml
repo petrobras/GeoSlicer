@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>SegmentationModelling CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <image>
+      <name>input_volume</name>
+      <label>Input Volume</label>
+      <flag>i</flag>
+      <longflag>input_volume</longflag>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters>
+    <label>Segmentation Node</label>
+    <image>
+      <name>segmentation_volume</name>
+      <label>Segmentation Volume</label>
+      <flag>s</flag>
+      <longflag>segmentation_volume</longflag>
+      <description><![CDATA[Segmentation Node]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+    <double>
+      <name>segment_equation_dict</name>
+      <label>Segment equation</label>
+      <flag>e</flag>
+      <longflag>segment_equation_dict</longflag>
+      <description><![CDATA[Equation for each segment]]></description>
+      <default></default>
+    </double>
+  </parameters>
+
+  <parameters advanced="false">
+    <image>
+      <name>output_volume</name>
+      <label>Output Volume</label>
+      <flag>o</flag>
+      <longflag>output_volume</longflag>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+
+</executable>

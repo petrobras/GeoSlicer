@@ -1,0 +1,61 @@
+diff --git a/h5pyd/_hl/base.py b/h5pyd/_hl/base.py
+index 675f583..4c3b776 100644
+--- a/h5pyd/_hl/base.py
++++ b/h5pyd/_hl/base.py
+@@ -24,6 +24,10 @@ from collections.abc import (
+ from .objectid import GroupID
+ from .h5type import Reference, check_dtype, special_dtype
+ 
++from multiprocessing.shared_memory import SharedMemory
++from humanize import naturalsize, precisedelta
++from time import perf_counter
++
+ numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
+ numpy_float_types = (np.float16, np.float32, np.float64)
+ 
+@@ -971,11 +975,44 @@ class HLObject(CommonStateObject):
+             HTTP_CHUNK_SIZE=4096
+             http_chunks = []
+             downloaded_bytes = 0
++
++            try:
++                progress_mem = SharedMemory(name="ProgressBar")
++                progress_data = bytes(progress_mem.buf)
++                progress_data = progress_data[: progress_data.index(b"\x00")]
++                progress_data = json.loads(progress_data)
++                total_size = progress_data["total_size"]
++                last_update = perf_counter()
++                last_total = 0
++            except Exception:
++                progress_mem = None
+             for http_chunk in rsp.iter_content(chunk_size=HTTP_CHUNK_SIZE):
++
+                 if http_chunk:  # filter out keep alive chunks
+-                    self.log.info(f"got http_chunk - {len(http_chunk)} bytes")
+                     downloaded_bytes += len(http_chunk)
+                     http_chunks.append(http_chunk)
++                    if progress_mem is None:
++                        continue
++
++                    now = perf_counter()
++                    time_delta = now - last_update
++                    if time_delta > 0.5:
++                        downloaded_delta = downloaded_bytes - last_total
++                        transfer_rate = downloaded_delta / time_delta
++                        seconds_remaining = (total_size - downloaded_bytes) / transfer_rate
++                        message = (
++                            f'Downloading, '
++                            f"{naturalsize(downloaded_bytes)} / {naturalsize(total_size)}, "
++                            f"{naturalsize(transfer_rate)}/s, "
++                            f"ETA: {precisedelta(seconds_remaining)}"
++                        )
++                        progress = downloaded_bytes * 100 / total_size
++                        progress_dict = {"message": message, "progress": progress, "title": "Downloading"}
++                        progress_data = json.dumps(progress_dict).encode()
++                        progress_mem.buf[: len(progress_data)] = progress_data
++                        last_update = now
++                        last_total = downloaded_bytes
++
+             if len(http_chunks) == 0:
+                 raise IOError("no data returned")
+             if len(http_chunks) == 1:
