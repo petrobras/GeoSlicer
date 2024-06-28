@@ -77,8 +77,9 @@ class WelcomeGeoSlicerWidget(LTracePluginWidget):
                     ("NetCDF", "NetCDF.png", "NetCDF", [1, 3]),
                     ("Workflow (Beta)", "Workflow.png", self.workflow, [2, 0]),  # Hiding workflow for now
                     ("BIAEP Browser", "BIAEPBrowser.png", "BIAEPBrowser", [2, 1]),
-                    ("Multiple\nImage Analysis", "MultipleImageAnalysis.png", "MultipleImageAnalysis", [2, 2]),
-                    ("Representative\nVolume", "VariogramAnalysis.png", "VariogramAnalysis", [2, 3]),
+                    ("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData", [2, 2]),
+                    ("Multiple\nImage Analysis", "MultipleImageAnalysis.png", "MultipleImageAnalysis", [2, 3]),
+                    ("Representative\nVolume", "VariogramAnalysis.png", "VariogramAnalysis", [3, 0]),
                 ],
             ),
         ]

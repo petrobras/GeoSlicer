@@ -66,3 +66,4 @@ zarr==2.5.0
 statsmodels== 0.14.0
 detect_delimiter==0.1.1
 jsonschema==3.2.0
+drd==0.1.2
