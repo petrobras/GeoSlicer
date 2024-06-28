@@ -61,7 +61,12 @@ class ScalarVolumeWidget(qt.QWidget):
 
         # Add scalar type information
         self.scalarTypeLabel = qt.QLabel("")
-        contentsFrameLayout.addRow("Scalar Type:", self.scalarTypeLabel)
+        self.memoryLabel = qt.QLabel("")
+        sizeHBoxLayout = qt.QHBoxLayout()
+        sizeHBoxLayout.addWidget(self.scalarTypeLabel)
+        sizeHBoxLayout.addWidget(self.memoryLabel)
+        sizeHBoxLayout.addWidget(qt.QLabel(""))
+        contentsFrameLayout.addRow("Scalar Type:", sizeHBoxLayout)
         contentsFrameLayout.addRow(" ", None)
 
         checkBoxLayout = qt.QHBoxLayout()
@@ -176,6 +181,17 @@ class ScalarVolumeWidget(qt.QWidget):
         self.imageDimensions2LineEdit.text = imageDimensions[1]
         self.imageDimensions3LineEdit.text = imageDimensions[2]
         self.scalarTypeLabel.text = getScalarTypesAsString(self.node.GetImageData().GetScalarType())
+        gibs = (
+            imageDimensions[0]
+            * imageDimensions[1]
+            * imageDimensions[2]
+            * self.node.GetImageData().GetScalarSize()
+            / (1024**3)
+        )
+        if gibs < 1:  # less than 1 GiB. Print in MiB
+            self.memoryLabel.text = "In-memory use: {:.2f}".format(gibs * 1024) + " MiB"
+        else:
+            self.memoryLabel.text = "In-memory use: {:.2f}".format(gibs) + " GiB"
 
         if not self.isLabelMap:
             self.histogramFrame.set_data(self.node)

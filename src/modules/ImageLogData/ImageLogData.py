@@ -651,6 +651,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         sliceViewWidget = self.viewWidgets[identifier]
         sliceController = sliceViewWidget.sliceController()
         sliceController.setVisible(False)
+        sliceController.setSliceVisible(False)
 
         sliceView = sliceViewWidget.sliceView()
         sliceViewInteractorStyle = (

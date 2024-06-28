@@ -3,7 +3,7 @@
 	url = git@github.com:ltracegeo/pyedt.git
 [submodule "src/submodules/porespy"]
 	path = src/submodules/porespy
-	url = git@github.com:Arenhart/porespy.git
+	url = git@github.com:ltracegeo/porespy.git
 [submodule "src/submodules/pnflow"]
 	path = src/submodules/pnflow
-	url = ../pnflow.git
+	url = git@github.com:ltracegeo/pnflow.git

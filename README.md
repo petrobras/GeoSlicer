@@ -1,15 +1,17 @@
 # GeoSlicer
 
-GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple aprouches involving thin section, CT and mCT imagery. We use advanced technices, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform.
+GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple approaches involving thin section, CT and mCT imagery. We use advanced techniques, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform.
+
+Download GeoSlicer latest public release [here](https://grrjnyzvhu1t.objectstorage.sa-saopaulo-1.oci.customer-oci.com/p/21K1LIUA6UiqhKhzhp9lGq8ZG9T6uDmzTOFsyhqep1C1wSczZzpbEr62pkQMBiUP/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/builds/windows/GeoSlicer-latest-public.exe)
 
 ## Intro
 
-The GeoSlicer code is a set of modules and auxiliary functions to work with digital rock images. The modules are installed onto a modified version of 3D Slicer which we call GeoSlicer-base. To do so, a deploy script is used to deploy install modules, generate a release, install in development mode, generate the public and opensource versions and commit them to the open source repository.
-GeoSlicer-base can be obtained from pre-built binaries available for windows and linux or built from source using the geoslicerbase and internal slicer repositories. 
+The GeoSlicer code is a set of modules and auxiliary functions to work with digital rock images. The modules are installed onto a modified version of [3D Slicer](https://github.com/Slicer/Slicer) which we call GeoSlicer-base. To do so, a deploy script is used to deploy and install modules, generate a release, install in development mode, generate the public and opensource versions and commit them to the open source repository.
+GeoSlicer-base can be obtained from pre-built binaries available for [windows](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/9YamKS-nDFknDBbJ_J3Dr8bgiUxfRDVnI5VhGXJpp81l1DUOCMPTZ58H0qHa056V/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.2.2-2024-04-01-win-amd64.zip) and [linux](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/ODrLP5ha4lH7usFggSHCVUbRTl70-bqYdf7gXUscC6AI82Kbd8namWWXmfknZ0J9/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz) or built from source using the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories. 
 
 ## Repository Structure
 
-Basically our repository is structured as follows:
+Basically, our repository is structured as follows:
 
 * slicerltrace
     * __general files__, documentation, README, icons
@@ -48,12 +50,12 @@ This project uses 3D Slicer version 4.11 and beyond with support for Python 3.9.
 
 1. Check your environment variables. You should have a variable CUDA_PATH_V11_2 pointing to CUDA's installation directory.
 
-1. Download GeoSlicer base version geoslicer-1.6.0-2021-12-21-win-amd64 (or later) from https://drive.google.com/drive/folders/15vSYL31kycLnRlcQqOtpVAeNTyuFe8h5?usp=sharing
+2. Download GeoSlicer base from the URLs at the INTRO section
 
-1. Run the command below to generate a GeoSlicer Development Version from a new installation of 3D Slicer or even update an existing version of GeoSlicer with new plugins during development:
+3. Run the command below to generate a GeoSlicer Development Version from a new installation of 3D Slicer or even update an existing version of GeoSlicer with new plugins during development:
 
     ```console
-    python .\tools\deploy\deploy_slicer.py --dev "path_of_base\GeoSlicer-1.6.0-2021-12-21-win-amd64"
+    python .\tools\deploy\deploy_slicer.py --dev "..\GeoSlicer-2.2.2-2024-04-01-win-amd64"
     ```
 
 
@@ -66,9 +68,9 @@ This project uses 3D Slicer version 4.11 and beyond with support for Python 3.9.
 3. Run the command below to generate a GeoSlicer from a new installation of 3D Slicer or even update an existing version of GeoSlicer with new plugins:
 
     ```console
-    python3 tools/deploy/deploy_slicer.py --dev ~/Slicer-4-11-amd64/
+    python3 tools/deploy/deploy_slicer.py --dev ~/SGeoSlicer-2.2.2-2024-04-01-linux-amd64/
     # or
-    python3 tools/deploy/deploy_slicer.py --dev ~/Slicer-4-11-amd64.tar.gz
+    python3 tools/deploy/deploy_slicer.py --dev ~/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz
     ```
 
 Obs.: Some software used to predict the scale in thin section images are included with an AppImage package, that will run in almost any distribution. But in some cases it will be necessary install FUSE manually, as can be follow [here](https://github.com/AppImage/AppImageKit/wiki/FUSE).
@@ -88,9 +90,9 @@ For developing plugins, you need to setup our environment in a Slicer installati
 The script in `tools/deploy/deploy_slicer.py` does that. And you can call it like this:
 
 ```console
-python3 tools/deploy/deploy_slicer.py --dev ~/Slicer-4-11-amd64/
+python3 tools/deploy/deploy_slicer.py --dev ~/GeoSlicer-2.2.2-2024-04-01-linux-amd64/
 # or
-python3 tools/deploy/deploy_slicer.py --dev ~/Slicer-4-11-amd64.tar.gz
+python3 tools/deploy/deploy_slicer.py --dev ~/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz
 ```
 
 ## Deployment
@@ -98,11 +100,11 @@ python3 tools/deploy/deploy_slicer.py --dev ~/Slicer-4-11-amd64.tar.gz
 To generate an archive that is self contained, so that we can deliver it to clients use:
 
 ```console
-python3 tools/deploy/deploy_slicer.py ~/Slicer-4-11-amd64.tar.gz --geoslicer-version <somesuffixhere>
+python3 tools/deploy/deploy_slicer.py ~/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz --geoslicer-version <somesuffixhere>
 ```
-or on Windows, remeber to copy from a fresh install on AppData\Local\NA-MIC and zip it,
+or on Windows:
 ```console
-python3 tools/deploy/deploy_slicer.py ~/Slicer-4-11-amd64.zip --geoslicer-version <somesuffixhere>
+python3 tools/deploy/deploy_slicer.py ~/GeoSlicer-2.2.2-2024-04-01-win-amd64.zip --geoslicer-version <somesuffixhere>
 ```
 
 ## Debugging
@@ -119,7 +121,7 @@ Windows PATH and other environment variables influence on the installation of th
 If you are having trouble installing ltrace or others, remove any references of python directories from your PATH and other environment variables.
 Do not forget to restart your console after removing them.
 
-Windows need to be configured to allow file paths longer than 260 characters, which usually hapens when installing tensorflow, to solve this, it may be necessary to allow long path names and then install tensorflow manually before running deploy:
+Windows need to be configured to allow file paths longer than 260 characters, which usually happens when installing tensorflow, to solve this, it may be necessary to allow long path names and then install tensorflow manually before running deploy:
 - New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `-Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
 - {geoslicer_folder}\bin\PythonSlicer.exe -m pip install tensorflow==2.7.0
 
@@ -128,12 +130,12 @@ Newer versions OpenCV requires Windows Media Feature, which is not automatically
 
 ## VSCode tips
 
-Add Slicer/bin/PythonSlicer.exe as the python interpreter
+Add GeoSlicer/bin/PythonSlicer.exe as the python interpreter
 
 
 ## Code style
 
-Multiples third-party libraries are used in the Geoslicer’s base, such as vtk, ctk, slicer and Qt. Futhermore, we create code as well.
+Multiples third-party libraries are used in the GeoSlicer’s base, such as vtk, ctk, slicer and Qt. Furthermore, we create code as well.
 
 Dealing with those libraries, we will probably encounter different code styles among them, and it might confuse you how we should do our own code. A list of the code style relation is described below:
 
@@ -143,7 +145,7 @@ vtk: PascalCase
 LTrace: snake_case
 ```
 
-As [discussed](https://bitbucket.org/ltrace/slicerltrace/pull-requests/626?w=1), Geoslicer will use the default PEP-8 code style (snake_case and other patterns), only enlarging the line lenght limit to 120 characters. For further details about PEP-8, please read this [article](https://www.python.org/dev/peps/pep-0008/) (30 min read).
+As [discussed](https://bitbucket.org/ltrace/slicerltrace/pull-requests/626?w=1), GeoSlicer will use the default PEP-8 code style (snake_case and other patterns), only enlarging the line length limit to 120 characters. For further details about PEP-8, please read this [article](https://www.python.org/dev/peps/pep-0008/) (30 min read).
 
 If you find some code without the current code style, please change it if it wouldn’t be a big deal.
 
@@ -155,7 +157,7 @@ black
 
 ### Pre-commit hook
 
-Install pre-commit hook to force the black code formating use as you commit the code. To install it, use the command below inside the repository folder:
+Install pre-commit hook to force the black code formatting use as you commit the code. To install it, use the command below inside the repository folder:
 
 ```
 python .\tools\install_pre_commit_hook.py 

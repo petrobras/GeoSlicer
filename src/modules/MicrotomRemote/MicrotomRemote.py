@@ -26,6 +26,7 @@ from RemoteTasks.OneResultSlurm import OneResultSlurmHandler
 from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
 from ltrace.slicer_utils import print_stack
 
+
 try:
     from Test.MicrotomRemoteTest import MicrotomRemoteTest
 except:
@@ -466,8 +467,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.modeSelectors = {}
         self.modeWidgets = {}
 
-        self.logic = MicrotomRemoteLogic(self)
-
         # Instantiate and connect widgets ...
         self.layout.addWidget(self._setupMethodsSection())
         self.layout.addWidget(self._setupInputsSection())
@@ -487,6 +486,8 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         # Add vertical spacer
         self.layout.addStretch(1)
 
+        self.logic = MicrotomRemoteLogic(self.parent, self.progressBar)
+
     def _setupMethodsSection(self):
         widget = ctk.ctkCollapsibleButton()
         widget.text = "Methods"
@@ -494,6 +495,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         methodsLayout = qt.QFormLayout()
 
         self.simOptions = qt.QComboBox()
+        self.simOptions.objectName = "Simulation ComboBox"
         self.simOptions.addItem("Pore Size Distribution", "psd")
         self.simOptions.addItem("Hierarquical Pore Size Distribution", "hpsd")
         self.simOptions.addItem("Mercury Injection Capillary Pressure", "micp")
@@ -987,8 +989,10 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 # MicrotomRemoteLogic
 #
 class MicrotomRemoteLogic(LTracePluginLogic):
-    def __init__(self, widget):
-        self.widget = widget
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
+        self.progressBar = progressBar
+        self.cliNode = None
 
     def loadDataset(self, ds, key, name, refNode=None):
         ds_ref = ds[key]
@@ -1290,13 +1294,18 @@ class MicrotomRemoteLogic(LTracePluginLogic):
 
         except Exception as e:
             print_stack()
-            print_debug(f"Failed to load custom log file. Cause: {repr(e)}", channel=logging.warning)
+            print_debug(
+                f"Failed to load custom log file. Path: {path.as_posix()}. Cause: {repr(e)}.",
+                channel=logging.warning,
+            )
             return None
 
     def onPorosimetryCLIModified(self, sim_info, cliNode, event):
         sequenceIndex = -1
 
         if cliNode is None:
+            del self.cliNode
+            self.cliNode = None
             return
 
         if cliNode.GetStatusString() == "Completed":
@@ -1324,7 +1333,7 @@ class MicrotomRemoteLogic(LTracePluginLogic):
                 nodes.append(node)
 
             try:
-                output_file_dir = Path(slicer.app.temporaryPath).absolute() / rf"{simulator}.csv"
+                output_file_dir = Path(slicer.app.temporaryPath).absolute() / f"{sim_info['simulator']}.csv"
                 df = self.loadCustomLog(Path(output_file_dir))
                 output_file_dir.unlink()
 
@@ -1335,7 +1344,7 @@ class MicrotomRemoteLogic(LTracePluginLogic):
                     nodes.append(tableNode)
 
             except Exception as e:
-                logging.error(f"Failed to load runtime log. Cause: {repr(e)}")
+                logging.error(f"Failed to load runtime log. Path: {output_file_dir.as_posix()}. Cause: {repr(e)}.")
 
             if sequenceIndex < 1:
                 self.addNodesToScene(nodes)
@@ -1346,6 +1355,8 @@ class MicrotomRemoteLogic(LTracePluginLogic):
 
         if not cliNode.IsBusy():
             print("ExecCmd CLI %s" % cliNode.GetStatusString())
+            del self.cliNode
+            self.cliNode = None
 
             if sequenceIndex < 1:
                 try:
@@ -1407,10 +1418,13 @@ class MicrotomRemoteLogic(LTracePluginLogic):
         You can catch the cliNode and handle events, like messages, progress, errors and flow controls
         like Cancel.
         """
-        cliNode = slicer.cli.run(slicer.modules.porosimetrycli, None, cliParams, wait_for_completion=False)
-        cliNode.AddObserver("ModifiedEvent", partial(self.onPorosimetryCLIModified, sim_info))
+        if self.cliNode:
+            del self.cliNode
+
+        self.cliNode = slicer.cli.run(slicer.modules.porosimetrycli, None, cliParams, wait_for_completion=False)
+        self.cliNode.AddObserver("ModifiedEvent", partial(self.onPorosimetryCLIModified, sim_info))
         # Setup progress bar
-        self.widget.progressBar.setCommandLineModuleNode(cliNode)
+        self.progressBar.setCommandLineModuleNode(self.cliNode)
 
     def run(
         self,

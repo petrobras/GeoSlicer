@@ -16,7 +16,7 @@ import re
 
 from ltrace.algorithms.common import FlowSetter
 from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-from ltrace.wrappers import sanitize_file_path
+from ltrace.wrappers import sanitize_file_path, filter_module_name
 from pathvalidate.argparse import sanitize_filepath_arg
 
 
@@ -129,10 +129,10 @@ if __name__ == "__main__":
     if args.outputVolume:
         args.outputVolume = sanitize_file_path(args.outputVolume)
     args.outputdir = sanitize_file_path(args.outputdir)
-    args.simulator = re.sub("[^a-zA-Z0-9]", "", args.simulator)
+    args.simulator = filter_module_name(args.simulator)
 
     if not hasattr(microtom, args.simulator):
-        raise ValueError(f"Unknown simulator.")
+        raise ValueError(f"Unknown simulator: {args.simulator}")
 
     main(args)
 

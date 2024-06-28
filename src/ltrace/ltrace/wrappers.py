@@ -61,6 +61,10 @@ def addAttributes(**attributes):
     return _addAttributes
 
 
+def filter_module_name(module_name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9\.\:\_\- ]", "", module_name)
+
+
 def filter_path_string(path_string: str) -> str:
     return re.sub(r'[^a-zA-Z0-9.\/\\\:-_#@!%*()="\+\- ]', "", path_string)
 
