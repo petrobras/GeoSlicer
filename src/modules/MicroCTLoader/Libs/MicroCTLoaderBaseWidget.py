@@ -365,7 +365,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
     def checkNormalization(self, *args, **kwargs):
         # Not available in base
-        return False, None, None
+        return False, None, None, None
 
     def normalize(self, *args, **kwargs):
         # Not available in base
