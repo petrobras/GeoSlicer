@@ -22,14 +22,23 @@ from ltrace.slicer_utils import dataframeFromTable
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
 from MercurySimulationLib.SubscaleModelWidget import SubscaleModelWidget
+from PoreNetworkSimulationLib.constants import *
 
 
 class MercurySimulationWidget(qt.QFrame):
+    DEFAULT_VALUES = {
+        "simulation type": MICP,
+        "keep_temporary": False,
+        "subres_model_name": "Fixed Radius",
+        "subres_params": {"radius": 0.1},
+        "pressures": 100,
+        "save_radii_distrib_plots": True,
+        "experimental_radius": None,
+    }
+
     def __init__(self):
         super().__init__()
         layout = qt.QFormLayout(self)
-
-        self.mercury_logic = MercurySimulationLogic()
 
         self.subscaleModelWidget = SubscaleModelWidget()
         layout.addWidget(self.subscaleModelWidget)
@@ -37,11 +46,11 @@ class MercurySimulationWidget(qt.QFrame):
         #
         # MICP Graph visualization
         #
-        micpCollapsibleButton = ctk.ctkCollapsibleButton()
-        micpCollapsibleButton.text = "MICP Visualization"
-        micpCollapsibleButton.setChecked(False)
-        layout.addRow(micpCollapsibleButton)
-        micpFormLayout = qt.QFormLayout(micpCollapsibleButton)
+        self.micpCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.micpCollapsibleButton.text = "MICP Visualization"
+        self.micpCollapsibleButton.setChecked(False)
+        layout.addRow(self.micpCollapsibleButton)
+        micpFormLayout = qt.QFormLayout(self.micpCollapsibleButton)
 
         # input volume selector
         self.micpSelector = hierarchyVolumeInput(nodeTypes=["vtkMRMLTableNode"])
@@ -95,31 +104,6 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiPlotItem.addLegend()
         pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
-    def runMICPSimulation(self, pb, pore_node, output_prefix):
-        pb.setMessage("Beginning simulation")
-        pb.setProgress(0)
-        pb.setMessage("Running mercury injection simulation")
-        pb.setProgress(0)
-
-        pore_network = geo2spy(pore_node)
-        x_size = float(pore_node.GetAttribute("x_size"))
-        y_size = float(pore_node.GetAttribute("y_size"))
-        z_size = float(pore_node.GetAttribute("z_size"))
-        volume = x_size * y_size * z_size
-
-        subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
-        subres_model = self.subscaleModelWidget.parameter_widgets[subres_model_name]
-        subresolution_function = subres_model.get_subradius_function(pore_network, volume)
-
-        for progress in self.mercury_logic.run_mercury(
-            pore_node,
-            subresolution_function=subresolution_function,
-            prefix=output_prefix,
-        ):
-            pb.setProgress(progress)
-        pb.setMessage("Done")
-        pb.setProgress(100)
-
     def onChangeMicp(self):
         micp_table_node = self.micpSelector.currentNode()
         if not micp_table_node:
@@ -153,3 +137,26 @@ class MercurySimulationWidget(qt.QFrame):
             pore_network, volume
         )
         return capillary_function
+
+    def getParams(self):
+        subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
+        subres_params = self.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
+            subres_params = {
+                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
+            }
+
+        return {
+            "simulation type": MICP,
+            "keep_temporary": False,
+            "subresolution function call": self.getFunction,
+            "subres_model_name": subres_model_name,
+            "subres_params": subres_params,
+            "pressures": 100,
+            "save_radii_distrib_plots": True,
+            "experimental_radius": subres_params.get("pore radii"),
+        }
+
+    def setParams(self, params):
+        self.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])

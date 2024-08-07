@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PoreNetworkExtractorCLI</title>
+  <description>LTrace pore network extractor CLI.</description>
+  <contributor>LTrace Team</contributor>
+  <parameters>
+    <image type="any">
+      <name>volume</name>
+      <longflag>volume</longflag>
+      <label>Input Volume</label>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <image type="any">
+      <name>label</name>
+      <longflag>label</longflag>
+      <label>Input LabelMap</label>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
+
+    <string>
+      <longflag>xargs</longflag>
+    </string>
+    <string>
+      <longflag>cwd</longflag>
+    </string>
+  </parameters>
+</executable>

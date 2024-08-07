@@ -1,0 +1,54 @@
+#!/bin/bash
+
+run_black() {
+    python -m black $@ -q --config "pyproject.toml"
+}
+
+get_modified_files() {
+    modified_files_string=$(git diff --name-only --cached --diff-filter=d --line-prefix='./')
+    modified_files_array=($modified_files_string)
+    modified_py_files_string=""
+
+    for file in "${modified_files_array[@]}"
+    do
+    if [[ $file == *.py ]] ; then 
+        modified_py_files_string="${modified_py_files_string} ${file}"
+    fi;
+    done
+
+    echo "${modified_py_files_string}"
+}
+
+
+# Start!
+echo "Running pre-commit hook:"
+
+# Check which files were modified.
+# Bypass when there is no modified files available.
+modified_files="$(get_modified_files)"
+if [ -z "$modified_files" ]
+then
+    echo "There are no modified python files at the current status. Bypassing..."
+    exit 0
+fi
+
+# Execute black in the modified files
+echo "Executing black [Code Auto-Formatter]..."
+run_black --check $modified_files
+black_ret_code=$?
+
+# Execute pylint in the modified files
+echo "Executing pylint [JUST WARNING]..."
+python -m pylint $modified_files --exit-zero 
+
+# If auto formatter detects necessary changes, apply auto-formater
+# and cancel commit by exiting with code different from 0
+if [ $black_ret_code -ne 0 ]; then
+    echo "The code formatter detected some necessary changes. Applying auto-formatter and cancelling the commit..."
+    run_black $modified_files
+    exit $black_ret_code
+fi
+
+# Process finished
+echo "Pre-commit process done!"
+exit 0

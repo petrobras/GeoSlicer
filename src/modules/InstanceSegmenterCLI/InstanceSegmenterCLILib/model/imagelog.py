@@ -86,11 +86,11 @@ class ImageLogSidewallSampleModel(Model):
     def segment(self, p):
         import tensorflow as tf
 
-        if p.model == "petrobras_sidewall_sample_mask_rcnn_1":
+        if p.model == "side_1":
             self.inferenceConfig = PetrobrasSidewallSampleConfig1()
-        elif p.model == "petrobras_sidewall_sample_mask_rcnn_2":
+        elif p.model == "side_2":
             self.inferenceConfig = PetrobrasSidewallSampleConfig2()
-        elif p.model == "synthetic_sidewall_sample_mask_rcnn":
+        elif p.model == "synth_side":
             self.inferenceConfig = SyntheticSidewallSampleConfig()
         else:
             raise RuntimeError(f"Model {p.model} isn't implemented.")

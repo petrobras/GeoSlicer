@@ -14,13 +14,12 @@ import vtk, slicer, slicer.util, mrml
 
 import io
 import json
-import numpy as np
 import sys
 
-from pathvalidate.argparse import sanitize_filepath_arg
+import numpy as np
+
 from PIL import Image
 from ltrace.file_utils import read_csv
-from ltrace.wrappers import sanitize_file_path
 
 
 def progressUpdate(value):
@@ -29,6 +28,14 @@ def progressUpdate(value):
     """
     print(f"<filter-progress>{value}</filter-progress>")
     sys.stdout.flush()
+
+
+def readFrom(volumeFile, builder):
+    sn = slicer.vtkMRMLNRRDStorageNode()
+    sn.SetFileName(volumeFile)
+    nodeIn = builder()
+    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
+    return nodeIn
 
 
 def writeDataInto(volumeFile, dataVoxelArray, builder, reference=None):
@@ -57,25 +64,19 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    parser.add_argument(
-        "--file1", type=sanitize_filepath_arg, dest="file1", required=True, help="QEMSCAN image file path"
-    )
-    parser.add_argument(
-        "--file2", type=sanitize_filepath_arg, dest="file2", required=False, help="Lookup iolor table file path"
-    )
-    parser.add_argument(
-        "--csvstring", type=sanitize_filepath_arg, dest="csvstring", required=False, help="Lookup color table string"
-    )
+    parser.add_argument("--file1", type=str, dest="file1", required=True, help="QEMSCAN image file path")
+    parser.add_argument("--file2", type=str, dest="file2", required=False, help="Lookup iolor table file path")
+    parser.add_argument("--csvstring", type=str, dest="csvstring", required=False, help="Lookup color table string")
     parser.add_argument(
         "--outputvolume",
-        type=sanitize_filepath_arg,
+        type=str,
         dest="outputVolume",
         default=None,
         help="Output scalar values",
     )
     parser.add_argument(
         "--labelvolume",
-        type=sanitize_filepath_arg,
+        type=str,
         dest="labelVolume",
         default=None,
         help="Output labelmap values",
@@ -84,16 +85,11 @@ if __name__ == "__main__":
     # This argument is automatically provided by Slicer channels, just capture it when using argparse
     parser.add_argument(
         "--returnparameterfile",
-        type=sanitize_filepath_arg,
+        type=str,
         default=None,
         help="File destination to store an execution outputs",
     )
     args = parser.parse_args()
-    args.file1 = sanitize_file_path(args.file1).as_posix()
-    args.file2 = sanitize_file_path(args.file2).as_posix()
-    args.csvstring = sanitize_file_path(args.csvstring).as_posix()
-    args.outputVolume = sanitize_file_path(args.outputVolume).as_posix()
-    args.labelVolume = sanitize_file_path(args.labelVolume).as_posix()
 
     # read tif
     try:
@@ -107,9 +103,6 @@ if __name__ == "__main__":
         paleta = np.array(paleta).reshape(256, 3)
     except RuntimeError:
         raise RuntimeError("The format of the input file is invalid.")
-    finally:
-        if img:
-            img.close()
 
     if args.file2 is not None:
         data = read_csv(args.file2).values
@@ -172,8 +165,7 @@ if __name__ == "__main__":
     # Write output data
     writeDataInto(labelsNodeID, outputArray, mrml.vtkMRMLLabelMapVolumeNode)
 
-    returnParameterFile = sanitize_file_path(args.returnparameterfile)
-    with open(returnParameterFile.as_posix(), "w") as outputStream:
+    with open(args.returnparameterfile, "w") as outputStream:
         outputStream.write("lookup_table=" + json.dumps(segments) + "\n")
 
     progressUpdate(1.0)

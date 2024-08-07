@@ -68,7 +68,7 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         # Adds confirmation step before delete action
         nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
-        deleteAction = nodeMenu.actions()[3]  # Delete
+        self.deleteAction = nodeMenu.actions()[3]  # Delete
 
         def confirmDeleteSelectedItems():
             message = "Are you sure you want to delete the selected nodes?"
@@ -80,14 +80,16 @@ class CustomizedDataWidget(LTracePluginWidget):
                 )
                 self.subjectHierarchyTreeView.deleteSelectedItems()
 
-        deleteAction.triggered.disconnect()
-        deleteAction.triggered.connect(confirmDeleteSelectedItems)
+        self.deleteAction.triggered.disconnect()
+        self.deleteAction.triggered.connect(confirmDeleteSelectedItems)
 
         # hack to workaround currentItemChanged firing twice
         self.subjectHierarchyTreeView.currentItemsChanged.connect(self.currentItemChanged)
 
         # Add observer
-        slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndCloseEvent, lambda *args: self.currentItemChanged(None))
+        self.endSceneObserver = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.EndCloseEvent, lambda *args: self.currentItemChanged(None)
+        )
 
         self.subjectHierarchyTreeView.setMinimumHeight(310)
         self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
@@ -147,3 +149,10 @@ class CustomizedDataWidget(LTracePluginWidget):
         except Exception as error:
             logging.info(f"{error}\n{traceback.print_exc()}")
             pass
+
+    def cleanup(self):
+        super().cleanup()
+        self.subjectHierarchyTreeView.currentItemsChanged.disconnect()
+        slicer.mrmlScene.RemoveObserver(self.endSceneObserver)
+        self.deleteAction.triggered.disconnect()
+        self.scalarVolumeWidget.cleanup()

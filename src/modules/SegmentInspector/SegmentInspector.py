@@ -44,7 +44,6 @@ from ltrace.slicer_utils import (
     LTracePluginWidget,
     LTracePluginLogic,
     dataFrameToTableNode,
-    print_debug,
 )
 from ltrace.algorithms.partition import runPartitioning, ResultInfo
 from Output import SegmentInspectorVariablesOutput as SegmentInspectorVariablesOutputClass
@@ -100,10 +99,11 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.currentMode = widgets.SingleShotInputWidget.MODE_NAME
 
-        self.logic = SegmentInspectorLogic(self)
+        self.logic = SegmentInspectorLogic()
 
         self.filterUpdateThread = None
         self.blockVisibilityChanges = False
+        self.supports3D = True
 
     def onReload(self) -> None:
         LTracePluginWidget.onReload(self)
@@ -152,8 +152,8 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         optionsLayout.addWidget(btn1)
         btn1.toggled.connect(self._onModeClicked)
         panel1 = widgets.SingleShotInputWidget()
-        panel1.onMainSelected = self._onInputSelected
-        panel1.onReferenceSelected = self._onReferenceSelected
+        panel1.onMainSelectedSignal.connect(self._onInputSelected)
+        panel1.onReferenceSelectedSignal.connect(self._onReferenceSelected)
         self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME] = panel1
         self.optionsStack.addWidget(self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME])
 
@@ -178,24 +178,24 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         formLayout = qt.QFormLayout(widget)
 
         self.methodSelector = ui.StackedSelector(text="Methods:")
-        self.methodSelector.addWidget(
-            OSWatershedSettingsWidget(
-                voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
-                onSelect=lambda: self.modeWidgets[self.currentMode].segmentsOn(),
-            )
+        oswsw = OSWatershedSettingsWidget(
+            voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
+            onSelect=lambda: self.modeWidgets[self.currentMode].segmentsOn(),
         )
+        self.methodSelector.addWidget(oswsw)
         self.methodSelector.addWidget(
             IslandsSettingsWidget(
                 voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
                 onSelect=lambda: self.modeWidgets[self.currentMode].segmentsOn(),
             )
         )
-        self.methodSelector.addWidget(
-            MedialSurfaceSettingsWidget(
-                voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
-                onSelect=lambda: self.modeWidgets[self.currentMode].segmentsOn(),
+        if self.supports3D:
+            self.methodSelector.addWidget(
+                MedialSurfaceSettingsWidget(
+                    voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
+                    onSelect=lambda: self.modeWidgets[self.currentMode].segmentsOn(),
+                )
             )
-        )
         self.methodSelector.addWidget(
             DeepWatershedSettingsWidget(
                 voxelSizeGetter=lambda: self.modeWidgets[self.currentMode].inputVoxelSize,
@@ -309,6 +309,8 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         pass
 
     def cleanup(self):
+        super().cleanup()
+        self.removeObservers()
         del self.logic
 
     def _onInputSelected(self, node):
@@ -603,9 +605,8 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
             lambda v, w=self.minDistPixelLabel: self._onPixelArgumentChanged2(v, w)
         )
 
-        qt.QTimer.singleShot(
-            100, lambda: self._onPixelArgumentChanged2(self.minimumDistance.value, self.minDistPixelLabel)
-        )
+        slicer.app.processEvents(1000)
+        self._onPixelArgumentChanged2(self.minimumDistance.value, self.minDistPixelLabel)
 
     def _onPixelArgumentChanged(self, value, labelWidget):
         voxelSize = self.voxeSizeGetter()
@@ -748,6 +749,10 @@ class IslandsSettingsWidget(BaseSettingsWidget):
             "size_min_threshold": float(self.sizeFilterThreshold.value),
             "direction": self.orientationInput.currentNode(),
         }
+
+    def fromJson(self, json):
+        self.sizeFilterThreshold.value = json["size_min_threshold"]
+        self.orientationInput.setCurrentNode(json["direction"])
 
     def validatePrerequisites(self):
         return True
@@ -1079,12 +1084,12 @@ class SegmentInspectorLogic(LTracePluginLogic):
 
         try:
             return self.__callSelectedMethod(segmentationNode, segments, outputPrefix, **kwargs)
-        except InvalidSegmentError:
-            print_debug("An invalid segment was selected", channel=logging.warning)
+        except InvalidSegmentError as e:
+            logging.warning(repr(e))
             raise
         except Exception as e:
             helpers.removeTemporaryNodes(environment=self.tag)
-            print_debug(f"An error occurred: {repr(e)}", channel=logging.warning)
+            print(repr(e))
             raise
 
     def __callSelectedMethod(self, segmentationNode, segments, outputPrefix, **kwargs):
@@ -1141,6 +1146,15 @@ class SegmentInspectorLogic(LTracePluginLogic):
                     soiNode=kwargs["soiNode"],
                     topSegments=[s + 1 for s in segments],
                 )
+
+                if params["method"] == "medial surface":
+                    array = slicer.util.arrayFromVolume(labelMapNode)
+                    ndim = np.squeeze(array).ndim
+                    if ndim != 3:
+                        msg = "Medial surface segmentation is only available for 3D images."
+                        slicer.util.errorDisplay(msg)
+                        helpers.removeTemporaryNodes(environment=self.tag)
+                        raise AttributeError(msg)
 
                 if params.get("generate_throat_analysis", False) == True:
                     self.__throatAnalysisGenerator = ThroatAnalysisGenerator(
@@ -1319,6 +1333,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
                         if len(output_report_data.index) > 0:
                             makeTemporaryNodePermanent(reportNode, show=True)
                             reportNode.SetAttribute("ReferenceVolumeNode", resultNode.GetID())
+                            resultNode.SetAttribute("ResultReport", reportNode.GetID())  # não existia
                             dataFrameToTableNode(output_report_data, tableNode=reportNode)
 
                         dpath.unlink(missing_ok=True)

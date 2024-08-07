@@ -33,17 +33,9 @@ for i, j, k in [(a, b, c) for a in range(2) for b in range(2) for c in range(2)]
     indexing_template[i, j, k] = 2 ** (i + 2 * j + 4 * k)
 
 with open(os.path.join(CURRENT_PATH, "minkowsy_values.csv"), mode="r") as file:
-    header = file.readline()
-    if not header:
-        raise ValueError("Missing header in minkowsy_values.csv")
-
-    header = header.strip().split(",")
+    header = file.readline().strip().split(",")
     minkowsky_names = [i.strip() for i in header[1:]]
-    divisors = file.readline()
-    if not divisors:
-        raise ValueError("Missing divisors in minkowsy_values.csv")
-
-    divisors = divisors.strip().split(",")
+    divisors = file.readline().strip().split(",")
     minkowsky_divisors = np.array([int(i) for i in divisors[1:]], dtype=np.int8)
     minkowsky_values = np.zeros((22, 6), dtype=np.int64)
     for line in file:
@@ -96,17 +88,9 @@ for i, j in [(a, b) for a in range(2) for b in range(2)]:
     indexing_template_2d[i, j] = 2 ** (i + 2 * j)
 
 with open(os.path.join(CURRENT_PATH, "minkowsy_values_2d.csv"), mode="r") as file:
-    header = file.readline()
-    if not header:
-        raise ValueError("Missing header in minkowsy_values_2d.csv")
-
-    header = header.strip().split(",")
+    header = file.readline().strip().split(",")
     minkowsky_names = [i.strip() for i in header[1:]]
-    divisors = file.readline()
-    if not divisors:
-        raise ValueError("Missing divisors in minkowsy_values_2d.csv")
-
-    divisors = divisors.strip().split(",")
+    divisors = file.readline().strip().split(",")
     minkowsky_divisors = np.array([int(i) for i in divisors[1:]], dtype=np.int8)
     minkowsky_values_2d = np.zeros((6, 4), dtype=np.int64)
     for line in file:

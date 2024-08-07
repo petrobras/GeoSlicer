@@ -10,6 +10,7 @@ import vtk
 
 import pathlib
 import sys
+import numpy as np
 
 import lasio
 import mrml
@@ -22,7 +23,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 
 from ltrace.slicer.helpers import getDepthArrayFromVolume
-from ltrace.slicer.cli_utils import writeToTable
+from ltrace.slicer.cli_utils import writeToTable, readFrom
 from PermeabilityModelingLib import *
 
 
@@ -34,12 +35,47 @@ def progressUpdate(value):
     sys.stdout.flush()
 
 
-def readFrom(volumeFile, builder):
-    sn = slicer.vtkMRMLNRRDStorageNode()
-    sn.SetFileName(volumeFile)
-    nodeIn = builder()
-    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
-    return nodeIn
+def dataframeFromTable(tableNode):
+    """Optimized version from slicer.util.dataframeFromTable
+
+    Convert table node content to pandas dataframe.
+
+    Table content is copied. Therefore, changes in table node do not affect the dataframe,
+    and dataframe changes do not affect the original table node.
+    """
+    try:
+        # Suppress "lzma compression not available" UserWarning when loading pandas
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter(action="ignore", category=UserWarning)
+            import pandas as pd
+    except ImportError:
+        raise ImportError(
+            "Failed to convert to pandas dataframe. Please install pandas by running `slicer.util.pip_install('pandas')`"
+        )
+
+    vtable = tableNode.GetTable()
+    data = []
+    columns = []
+    for columnIndex in range(vtable.GetNumberOfColumns()):
+        vcolumn = vtable.GetColumn(columnIndex)
+        numberOfComponents = vcolumn.GetNumberOfComponents()
+        column_name = vcolumn.GetName()
+        columns.append(column_name)
+
+        if numberOfComponents == 1:
+            column_data = [vcolumn.GetValue(rowIndex) for rowIndex in range(vcolumn.GetNumberOfValues())]
+        else:
+            column_data = []
+            for rowIndex in range(vcolumn.GetNumberOfTuples()):
+                item = [vcolumn.GetValue(rowIndex, componentIndex) for componentIndex in range(numberOfComponents)]
+                column_data.append(tuple(item))
+        data.append(column_data)
+
+    dataframe = pd.DataFrame(zip(*data), columns=columns)
+
+    return dataframe
 
 
 if __name__ == "__main__":
@@ -51,6 +87,17 @@ if __name__ == "__main__":
     parser.add_argument("--master1", type=str, dest="inputVolume1", required=True, help="Amplitude image log")
     parser.add_argument("--depth_plugs", type=str, dest="depth_plugs", required=True, help="Amplitude image log")
     parser.add_argument("--perm_plugs", type=str, dest="perm_plugs", required=True, help="Amplitude image log")
+    parser.add_argument(
+        "--kdsOptimizationTable", dest="kdsOptimizationTable", required=False, help="Kds Optimization Table"
+    )
+    parser.add_argument(
+        "--kdsOptimizationWeight",
+        type=float,
+        dest="kdsOptimizationWeight",
+        required=False,
+        help="Kds Optimization Weight",
+    )
+
     parser.add_argument(
         "--outputvolume", type=str, dest="outputVolume", default=None, help="Output labelmap (3d) Values"
     )
@@ -69,11 +116,11 @@ if __name__ == "__main__":
     ## LOAD DATA
     progressUpdate(value=0.0)
     # Read as slicer node (copy)
-    porosity_las_vol = readFrom(args.log_por, mrml.vtkMRMLScalarVolumeNode)
-    porosity_depth_las_vol = readFrom(args.depth_por, mrml.vtkMRMLScalarVolumeNode)
-    segmentation = readFrom(args.inputVolume1, mrml.vtkMRMLScalarVolumeNode)
-    depth_plugs_vol = readFrom(args.depth_plugs, mrml.vtkMRMLScalarVolumeNode)
-    permebility_plugs_vol = readFrom(args.perm_plugs, mrml.vtkMRMLScalarVolumeNode)
+    porosity_las_vol = readFrom(args.log_por, slicer.vtkMRMLScalarVolumeNode)
+    porosity_depth_las_vol = readFrom(args.depth_por, slicer.vtkMRMLScalarVolumeNode)
+    segmentation = readFrom(args.inputVolume1, slicer.vtkMRMLScalarVolumeNode)
+    depth_plugs_vol = readFrom(args.depth_plugs, slicer.vtkMRMLScalarVolumeNode)
+    permebility_plugs_vol = readFrom(args.perm_plugs, slicer.vtkMRMLScalarVolumeNode)
 
     # Access numpy view (reference)
     porosity_las = slicer.util.arrayFromVolume(porosity_las_vol).squeeze()
@@ -83,6 +130,13 @@ if __name__ == "__main__":
     depth_plugs = (slicer.util.arrayFromVolume(depth_plugs_vol) / 1000).squeeze()
     permebility_plugs = slicer.util.arrayFromVolume(permebility_plugs_vol)
     permebility_plugs[permebility_plugs < 0.001] = 0.001
+
+    kdsOptimizationDataFrame = None
+    if args.kdsOptimizationTable is not None:
+        kdsOptimizationTable = readFrom(
+            args.kdsOptimizationTable, slicer.vtkMRMLTableNode, slicer.vtkMRMLTableStorageNode
+        )
+        kdsOptimizationDataFrame = dataframeFromTable(kdsOptimizationTable)
 
     # Mantain segmentation image in ascending order
     if depth_image_array[0] > depth_image_array[-1]:
@@ -143,6 +197,9 @@ if __name__ == "__main__":
             segment_list,
             np.array(porosity_2opt, np.double),
             ids_,
+            depth_2opt,
+            kdsOptimizationDataFrame,
+            args.kdsOptimizationWeight,
         ),
         method="SLSQP",
         bounds=bnds,
@@ -151,10 +208,28 @@ if __name__ == "__main__":
     print(res.x)
 
     error_initial = objective_funcion(
-        perm_parameters, permebility_plugs, proportions_2opt, segment_list, porosity_2opt, ids_
+        perm_parameters,
+        permebility_plugs,
+        proportions_2opt,
+        segment_list,
+        porosity_2opt,
+        ids_,
+        depth_2opt,
+        kdsOptimizationDataFrame,
+        args.kdsOptimizationWeight,
     )
     print("Initial error: ", error_initial)
-    error_final = objective_funcion(res.x, permebility_plugs, proportions_2opt, segment_list, porosity_2opt, ids_)
+    error_final = objective_funcion(
+        res.x,
+        permebility_plugs,
+        proportions_2opt,
+        segment_list,
+        porosity_2opt,
+        ids_,
+        depth_2opt,
+        kdsOptimizationDataFrame,
+        args.kdsOptimizationWeight,
+    )
     print("Optimized error: ", error_final)
 
     progressUpdate(value=0.9)

@@ -85,9 +85,6 @@ def detect_csv_file_delimiter(filepath, encoding, whitelist=[",", ";"]):
         # read in non binary with encoding, to detect delimiter
         with open(filepath, "r", encoding=encoding) as file:
             data = file.readlines(50)
-            if not data:
-                return None
-
             counters = {}
             for delimiter in whitelist:
                 count = number_of_delimiters_per_line(data, delimiter)

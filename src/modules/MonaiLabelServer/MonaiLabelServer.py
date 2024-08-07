@@ -178,6 +178,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 lock_file = open(Path(LOCK_FILE), "r")
                 line = lock_file.readline()
                 self.PID = int(line.split("=")[1])
+                lock_file.close()
 
                 self.timer = qt.QTimer()
                 self.timer.timeout.connect(self.CheckIfServerIsRunning)
@@ -187,12 +188,8 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 self.widget.startServerButton.setEnabled(False)
                 self.widget.stopServerButton.setEnabled(True)
                 self.widget.localRadioButton.setChecked(True)
-            except Exception as error:
+            except:
                 os.remove(Path(LOCK_FILE))
-                logging.debug(f"Error: {error}")
-            finally:
-                if lock_file:
-                    lock_file.close()
 
         for job in JobManager.jobs:
             if JobManager.jobs[job].job_type == "monai" and JobManager.jobs[job].status == "RUNNING":
@@ -293,14 +290,9 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             print(f"Starting {self.PID}...\n")
 
             # create the lock file
-            try:
-                lock_file = open(Path(LOCK_FILE), "w")
-                lock_file.write(f"PID={self.PID}")
-            except Exception as error:
-                logging.debug(f"Error: {error}")
-            finally:
-                if lock_file:
-                    lock_file.close()
+            lock_file = open(Path(LOCK_FILE), "w")
+            lock_file.write(f"PID={self.PID}")
+            lock_file.close()
 
             # set a timer to check if the process is still running
             self.timer = qt.QTimer()

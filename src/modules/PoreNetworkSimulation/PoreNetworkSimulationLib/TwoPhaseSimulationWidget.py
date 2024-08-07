@@ -11,6 +11,53 @@ from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
 
 
+class TwoPhaseParametersEditDialog:
+    def __init__(self, node):
+        self.node = node
+
+    def show(self):
+        dialog = qt.QDialog(slicer.util.mainWindow())
+        dialog.setWindowTitle("Sensibility Parameters Edit")
+        dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
+
+        formLayout = qt.QFormLayout()
+
+        twoPhaseWidget = TwoPhaseSimulationWidget(hide_parameters_io=True)
+        twoPhaseWidget.parameterInputWidget.setCurrentNode(self.node)
+        twoPhaseWidget.onParameterInputLoad()
+
+        scroll = qt.QScrollArea()
+        scroll.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(twoPhaseWidget)
+        scroll.setMinimumSize(800, 800)
+        formLayout.addRow(scroll)
+
+        buttonBox = qt.QDialogButtonBox(qt.Qt.Horizontal)
+        buttonBox.setStandardButtons(qt.QDialogButtonBox.Cancel | qt.QDialogButtonBox.Ok)
+        formLayout.addRow(buttonBox)
+
+        buttonBox.accepted.connect(dialog.accept)
+        buttonBox.rejected.connect(dialog.reject)
+
+        dialog.setLayout(formLayout)
+
+        status = dialog.exec()
+
+        if status:
+            parameterValues, invalidParameter = twoPhaseWidget.getFormParams()
+            if parameterValues is None:
+                slicer.util.errorDisplay(f"Could not save parameter input. {invalidParameter} has invalid value.")
+                return 0, None
+            name = self.node.GetName()
+            outNode = dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
+            outNode.SetName(name)
+            return status, outNode
+
+        return status, None
+
+
 class TwoPhaseSimulationWidget(qt.QFrame):
     DEFAULT_VALUES = {
         "sensibility test": False,
@@ -18,6 +65,8 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         "angle steps": 5,
         "keep_temporary": False,
         "create_sequence": False,
+        "subres_model_name": "Fixed Radius",
+        "subres_params": {"radius": 0.1},
     }
 
     WIDGET_TYPES = {
@@ -29,7 +78,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         "integerspinbox": IntegerSpinBoxWidget,
     }
 
-    def __init__(self):
+    def __init__(self, hide_parameters_io=False):
         super().__init__()
         layout = qt.QFormLayout(self)
         self.widgets = {}
@@ -51,7 +100,8 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameterInputLayout.addRow(parameterInputLoadButton)
         parameterInputLoadIcon = qt.QLabel()
         parameterInputLoadIcon.setPixmap(qt.QIcon(str(Customizer.LOAD_ICON_PATH)).pixmap(qt.QSize(13, 13)))
-        layout.addRow(parameterInputLoadIcon, self.parameterInputLoadCollapsible)
+        if not hide_parameters_io:
+            layout.addRow(parameterInputLoadIcon, self.parameterInputLoadCollapsible)
 
         ### Two-phase fluids properties inputs
 
@@ -188,7 +238,8 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameterInputLayout.addRow(parameterInputSaveButton)
         parameterInputSaveIcon = qt.QLabel()
         parameterInputSaveIcon.setPixmap(qt.QIcon(str(Customizer.SAVE_ICON_PATH)).pixmap(qt.QSize(13, 13)))
-        layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
+        if not hide_parameters_io:
+            layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
 
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
@@ -208,7 +259,8 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.updateSimulationCount()
 
         self.mercury_widget = MercurySimulationWidget()
-        layout.addRow(self.mercury_widget)
+        if not hide_parameters_io:
+            layout.addRow(self.mercury_widget)
 
     def create_custom_widget(self, name, params):
         full_params = params.copy()
@@ -257,10 +309,25 @@ class TwoPhaseSimulationWidget(qt.QFrame):
     def getParams(self):
         params = {}
 
+        subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
+        subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
+            subres_params = {
+                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
+            }
+
         for widget in self.widgets.values():
             params.update(widget.get_values())
+
         params["subresolution function call"] = self.mercury_widget.getFunction
+        params["subres_model_name"] = subres_model_name
+        params["subres_params"] = subres_params
+
         return params
+
+    def setParams(self, params):
+        self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
 
     def getFormParams(self):
         """

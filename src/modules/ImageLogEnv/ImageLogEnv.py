@@ -14,21 +14,23 @@ from InstanceSegmenterEditor import InstanceSegmenterEditor
 from SegmentInspector import SegmentInspector
 from UnwrapRegistration import UnwrapRegistration
 from AzimuthShiftTool import AzimuthShiftTool
+from ImageLogInpaint import ImageLogInpaint
 
 # Checks if closed source code is available
 try:
     from ImageLogsLib.Eccentricity import EccentricityWidget
 except:
     EccentricityWidget = None
-try:
-    from Test.EccentricityTest import EccentricityTest
-except ImportError:
-    EccentricityTest = None
 
 from QualityIndicator import QualityIndicator
 from SpiralFilter import SpiralFilter
 from ImageLogExport import ImageLogExport
 from ImageLogCropVolume import ImageLogCropVolume
+
+try:
+    from Test.PermeabilityModelingTest import PermeabilityModelingTest
+except ImportError:
+    pass
 
 
 class ImageLogEnv(LTracePlugin):
@@ -59,6 +61,7 @@ class ImageLogEnv(LTracePlugin):
             + UnwrapRegistration.help()
             + PermeabilityModelingWidget.help()
             + AzimuthShiftTool.help()
+            + ImageLogInpaint.help()
         )
 
     @classmethod
@@ -72,24 +75,29 @@ class ImageLogEnvWidget(LTracePluginWidget):
         self.logic = ImageLogEnvLogic()
 
         self.mainTab = qt.QTabWidget()
+        self.mainTab.setObjectName("Image Log Main Tab")
 
         dataTab = qt.QTabWidget()
+        dataTab.setObjectName("Image Log Data Tab")
         processingTab = qt.QTabWidget()
         self.segmentationTab = qt.QTabWidget()
         registrationTab = qt.QTabWidget()
-        self.imageLogDataWidget = slicer.modules.imagelogdata.widgetRepresentation()
-        self.imageLogCropVolume = slicer.modules.imagelogcropvolume.widgetRepresentation()
+        self.inpaintTab = qt.QTabWidget()
+        self.imageLogDataWidget = slicer.modules.imagelogdata.createNewWidgetRepresentation()
+        self.imageLogCropVolume = slicer.modules.imagelogcropvolume.createNewWidgetRepresentation()
         self.segment_inspector_env = slicer.modules.segmentinspector.createNewWidgetRepresentation()
-        self.imageLogSegmenterWidget = slicer.modules.imagelogsegmenter.widgetRepresentation()
-        self.instanceSegmenterWidget = slicer.modules.imageloginstancesegmenter.widgetRepresentation()
-        self.instanceSegmenterEditorWidget = slicer.modules.instancesegmentereditor.widgetRepresentation()
-        self.imageLogUnwrapImportWidget = slicer.modules.imagelogunwrapimport.widgetRepresentation()
-        self.imageLogExportWidget = slicer.modules.imagelogexport.widgetRepresentation()
-        self.spiralFiterWidget = slicer.modules.spiralfilter.widgetRepresentation()
-        self.qualityIndicatorWidget = slicer.modules.qualityindicator.widgetRepresentation()
-        self.heterogeneityIndexWidget = slicer.modules.heterogeneityindex.widgetRepresentation()
-        self.unwrapRegistrationWidget = slicer.modules.unwrapregistration.widgetRepresentation()
-        self.AzimuthShiftToolWidget = slicer.modules.azimuthshifttool.widgetRepresentation()
+        self.imageLogSegmenterWidget = slicer.modules.imagelogsegmenter.createNewWidgetRepresentation()
+        self.instanceSegmenterWidget = slicer.modules.imageloginstancesegmenter.createNewWidgetRepresentation()
+        self.instanceSegmenterEditorWidget = slicer.modules.instancesegmentereditor.createNewWidgetRepresentation()
+        self.imageLogUnwrapImportWidget = slicer.modules.imagelogunwrapimport.createNewWidgetRepresentation()
+        self.imageLogExportWidget = slicer.modules.imagelogexport.createNewWidgetRepresentation()
+        self.spiralFiterWidget = slicer.modules.spiralfilter.createNewWidgetRepresentation()
+        self.qualityIndicatorWidget = slicer.modules.qualityindicator.createNewWidgetRepresentation()
+        self.heterogeneityIndexWidget = slicer.modules.heterogeneityindex.createNewWidgetRepresentation()
+        self.unwrapRegistrationWidget = slicer.modules.unwrapregistration.createNewWidgetRepresentation()
+        self.AzimuthShiftToolWidget = slicer.modules.azimuthshifttool.createNewWidgetRepresentation()
+        self.imageLogInpaint = slicer.modules.imageloginpaint.createNewWidgetRepresentation()
+        self.coreInpaint = slicer.modules.coreinpaint.createNewWidgetRepresentation()
 
         self.segment_inspector_env.self().blockVisibilityChanges = True
 
@@ -100,13 +108,15 @@ class ImageLogEnvWidget(LTracePluginWidget):
         self.imageLogSegmenterWidget.self().logic.setImageLogDataLogic(imageDataLogic)
         self.instanceSegmenterEditorWidget.self().logic.setImageLogDataLogic(imageDataLogic)
         self.imageLogDataWidget.self().logic.setImageLogSegmenterWidget(self.imageLogSegmenterWidget)
+        self.imageLogInpaint.self().logic.setImageLogDataLogic(imageDataLogic)
 
         logImportWidget = DLISImportLib.WellLogImportWidget()
+        logImportWidget.setObjectName("Well Log Import Widget")
         logImportWidget.setAppFolder("Well Logs")
 
         self.eccentricityWidget = EccentricityWidget() if EccentricityWidget else None
 
-        permeabilityModelingWidget = PermeabilityModelingWidget()
+        self.permeabilityModelingWidget = PermeabilityModelingWidget()
 
         cornerButtonsFrame = qt.QFrame()
         cornerButtonsLayout = qt.QHBoxLayout(cornerButtonsFrame)
@@ -160,18 +170,24 @@ class ImageLogEnvWidget(LTracePluginWidget):
         # Registration tab
         registrationTab.addTab(self.unwrapRegistrationWidget, "Unwrap Registration")
 
+        # Inpaint tab
+        self.inpaintTab.addTab(self.imageLogInpaint, "Interactive")
+        self.inpaintTab.addTab(self.coreInpaint, "Automatic")
+
         self.mainTab.addTab(dataTab, "Data")
         self.mainTab.addTab(self.imageLogCropVolume, "Crop")
         self.mainTab.addTab(processingTab, "Processing")
         self.mainTab.addTab(self.segmentationTab, "Segmentation")
         self.mainTab.addTab(registrationTab, "Registration")
 
-        self.mainTab.addTab(permeabilityModelingWidget, "Modeling")
+        self.mainTab.addTab(self.permeabilityModelingWidget, "Modeling")
+        self.mainTab.addTab(self.inpaintTab, "Inpaint")
 
         self.lastAccessedWidget = dataTab.widget(0)
 
         self.mainTab.tabBarClicked.connect(self.onMainTabClicked)
         self.segmentationTab.tabBarClicked.connect(self.onSegmentationTabClicked)
+        self.inpaintTab.tabBarClicked.connect(self.onInpaintTabClicked)
         self.layout.addWidget(self.mainTab)
 
     def onMainTabClicked(self, index):
@@ -203,6 +219,14 @@ class ImageLogEnvWidget(LTracePluginWidget):
         )
         if self.eccentricityWidget:
             self.eccentricityWidget.logic.process_finished.disconnect(self._on_external_process_finished)
+
+    def onInpaintTabClicked(self, index):
+        if self.lastAccessedWidget != self.inpaintTab.widget(
+            index
+        ):  # To avoid calling exit by clicking over the active tab
+            self.lastAccessedWidgetExit()
+            self.lastAccessedWidget = self.inpaintTab.widget(index)
+            self.lastAccessedWidgetEnter()
 
     def enter(self) -> None:
         super().enter()
@@ -241,6 +265,14 @@ class ImageLogEnvWidget(LTracePluginWidget):
 
     def fit(self):
         self.imageLogDataWidget.self().logic.fit()
+
+    def cleanup(self):
+        super().cleanup()
+        self.imageLogDataWidget.self().cleanup()
+        self.imageLogSegmenterWidget.self().cleanup()
+        self.segment_inspector_env.self().cleanup()
+        self.imageLogInpaint.self().cleanup()
+        self.eccentricityWidget.logic.process_finished.disconnect()
 
 
 class ImageLogEnvLogic(LTracePluginLogic):

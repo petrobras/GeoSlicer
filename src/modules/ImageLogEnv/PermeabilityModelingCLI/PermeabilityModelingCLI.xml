@@ -71,6 +71,27 @@
 
   </parameters>
 
+    <parameters advanced="true">
+    <label>Kds Optimization</label>
+    <table>
+      <name>kdsOptimizationTable</name>
+      <longflag>kdsOptimizationTable</longflag>
+      <label>Kds Optimization Table</label>
+      <description>Table with parameters related to the Kds Optimization equation per depth interval</description>
+      <channel>input</channel>
+      <default></default>
+    </table>
+
+    <double>
+      <name>kdsOptimizationWeight</name>
+      <longflag>kdsOptimizationWeight</longflag>
+      <label>Kds Optimization Weight</label>
+      <description>Kds Optimization's weight value</description>
+      <channel>input</channel>
+      <default>1</default>
+    </double>
+  </parameters>
+
   <parameters advanced="false">
     <table>
       <name>outputVolume</name>

@@ -14,6 +14,7 @@ from ltrace.file_utils import read_csv
 from ltrace.slicer.helpers import (
     triggerNodeModified,
     highlight_error,
+    remove_highlight,
     labels_to_color_node,
     save_path,
     reset_style_on_valid_text,
@@ -55,7 +56,8 @@ class SidewallSampleWidget(qt.QWidget):
 
     def setup(self):
         self.progressBar = LocalProgressBar()
-        self.logic = SidewallSampleLogic(self.progressBar)
+        self.logic = SidewallSampleLogic(self, self.progressBar)
+        self.logic.processFinished.connect(lambda: self.updateButtonsEnablement(False))
 
         formLayout = qt.QFormLayout(self)
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -139,6 +141,7 @@ class SidewallSampleWidget(qt.QWidget):
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.setObjectName("Sidewall Sample Cancel Button " + self.identifier)
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
@@ -148,6 +151,7 @@ class SidewallSampleWidget(qt.QWidget):
         formLayout.addRow(buttonsHBoxLayout)
 
         formLayout.addRow(self.progressBar)
+        self.updateButtonsEnablement(running=False)
 
     def onAmplitudeImageNodeChanged(self, itemId):
         amplitudeImage = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
@@ -184,6 +188,10 @@ class SidewallSampleWidget(qt.QWidget):
                 highlight_error(self.outputPrefixLineEdit)
                 return
 
+            remove_highlight(self.amplitudeImageNodeComboBox)
+            remove_highlight(self.transitTimeImageNodeComboBox)
+            remove_highlight(self.outputPrefixLineEdit)
+
             nominalDepthsDataFrame = self.logic.readNominalDepthsCSV(self.nominalDepthsPathLineEdit.currentPath)
             save_path(self.nominalDepthsPathLineEdit)
             self.instanceSegmenterClass.set_setting("model", self.instanceSegmenterWidget.modelComboBox.currentData)
@@ -199,6 +207,7 @@ class SidewallSampleWidget(qt.QWidget):
                 initialDepth=-1,
                 finalDepth=-1,
             )
+            self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
         except MaskRCNNInfo as e:
             slicer.util.infoDisplay(str(e))
@@ -207,9 +216,16 @@ class SidewallSampleWidget(qt.QWidget):
     def onCancelButtonClicked(self):
         self.logic.cancel()
 
+    def updateButtonsEnablement(self, running: bool) -> None:
+        self.applyButton.setEnabled(not running)
+        self.cancelButton.setEnabled(running)
 
-class SidewallSampleLogic:
-    def __init__(self, progressBar):
+
+class SidewallSampleLogic(qt.QObject):
+    processFinished = qt.Signal()
+
+    def __init__(self, parent, progressBar) -> None:
+        super().__init__(parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.outputLabelMapNodeId = None
@@ -290,6 +306,7 @@ class SidewallSampleLogic:
             return
         status = caller.GetStatusString()
         if "Completed" in status or status == "Cancelled":
+            self.processFinished.emit()
             logging.info(status)
             del self.cliNode
             self.cliNode = None

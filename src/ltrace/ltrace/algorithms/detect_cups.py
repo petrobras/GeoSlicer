@@ -163,9 +163,18 @@ def detect_rock_cylinder(array):
 PADDING = 15
 
 
+def find_suitable_null_value(array):
+    if np.issubdtype(array.dtype, np.floating):
+        return int(array.min()) - 1
+    if np.issubdtype(array.dtype, np.signedinteger):
+        return array.min() - 1
+    if np.issubdtype(array.dtype, np.unsignedinteger):
+        return 0
+
+
 def crop_cylinder(array, cylinder):
     x, y, r, z_min, z_max = cylinder
-    min_ = array.min()
+    null_value = np.array(find_suitable_null_value(array)).astype(array.dtype)
     x_min, x_max = round(x - r), round(x + r)
     y_min, y_max = round(y - r), round(y + r)
     z_min, z_max = round(z_min), round(z_max)
@@ -178,10 +187,10 @@ def crop_cylinder(array, cylinder):
     dist = np.sqrt((xx - r) ** 2 + (yy - r) ** 2)
     mask = dist <= r
     mask = mask[np.newaxis, ...]
-    array = (array * mask) + (~mask * min_)
+    array = (array * mask) + (~mask * null_value)
 
-    array = np.pad(array, ((0, 0), (PADDING, PADDING), (PADDING, PADDING)), mode="constant", constant_values=min_)
-    return array
+    array = np.pad(array, ((0, 0), (PADDING, PADDING), (PADDING, PADDING)), mode="constant", constant_values=null_value)
+    return array, null_value
 
 
 def get_origin_offset(cylinder):
@@ -314,10 +323,10 @@ def full_detect(array, callback=lambda *args: None):
     logging.debug(f"x, y, r, z0, z1 = {cylinder}")
 
     callback(50, "Cropping cylinder")
-    rock = crop_cylinder(array, cylinder)
+    rock, null_value = crop_cylinder(array, cylinder)
     callback(70, "Detecting cups")
     cup_left, cup_right = isolated_cups_slice(array, cylinder)
     refs = detect_cups_from_sides(cup_left, cup_right)
     if refs:
         logging.debug(f"(Q - T) / (A - T) = {quartz_ratio(refs)}")
-    return rock, refs, cylinder
+    return rock, null_value, refs, cylinder

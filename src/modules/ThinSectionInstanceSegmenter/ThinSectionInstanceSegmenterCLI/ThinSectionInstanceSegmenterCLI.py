@@ -4,28 +4,28 @@
 from __future__ import print_function
 
 import vtk, slicer, slicer.util, mrml
-import cv2
 import json
 import numpy as np
-import pandas as pd
-import scipy
 import sys
 import time
-import torch
 
-from ltrace import transforms
-from ltrace.assets_utils import get_metadata
+from pathlib import Path
+from ltrace.assets_utils import get_metadata, get_pth
 from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
 from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
 from ltrace.algorithms.measurements import LabelStatistics2D, calculate_statistics_on_segments
-from ltrace.wrappers import sanitize_file_path
+from ltrace import transforms
+
+import cv2
 from mmdet.apis import init_detector, inference_detector
 from mmdet.utils import register_all_modules
 from mmengine import Config
-from pathlib import Path
+import torch
+import pandas as pd
 from sahi import AutoDetectionModel
 from sahi.postprocess.combine import NMSPostprocess
 from sahi.predict import get_prediction, get_sliced_prediction
+import scipy
 from skimage.transform import resize
 
 
@@ -115,7 +115,7 @@ class mmdetInference:
     def __init__(self, image, scale_percent, config, model_path, device):
         self.scale_percent = scale_percent
         self.config = config
-        self.model = (model_path / f"{model_path.name}.pth").as_posix()
+        self.model = get_pth(model_path).as_posix()
         self.device = device
 
         self.classes = get_metadata(model_path)["classes"]
@@ -343,7 +343,7 @@ class sahiInference:
     def __init__(self, image, scale_percent, config, model_path, device):
         self.scale_percent = scale_percent
         self.config = config
-        self.model = (model_path / f"{model_path.name}.pth").as_posix()
+        self.model = get_pth(model_path).as_posix()
         self.device = device
 
         self.classes = get_metadata(model_path)["classes"]
@@ -556,7 +556,7 @@ def runcli(args):
 
     image = channels[0]
 
-    model_path = sanitize_file_path(args.input_model)
+    model_path = Path(args.input_model)
     metadata = get_metadata(model_path)
     classes = metadata["classes"]
 
@@ -621,8 +621,7 @@ def runcli(args):
         df, instances = calculate_statistics(df, instances, class_ids, classes, scale, spacing)
 
         if len(df) != 0 and args.output_table:
-            output_table_path = sanitize_file_path(args.output_table)
-            df.to_pickle(output_table_path.as_posix())
+            df.to_pickle(args.output_table)
 
     # Resize output labelmap
     new_instances = np.zeros((len(classes),) + tuple(ref_shape[1:]), dtype=np.uint16)

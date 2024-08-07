@@ -1,9 +1,9 @@
 import csv
+import logging
 import os
 import subprocess
 import time
 import traceback
-import logging
 from pathlib import Path
 from typing import Tuple, Union
 
@@ -14,6 +14,8 @@ import qt
 import slicer
 import slicer.util
 import vtk
+import json
+import shutil
 
 import ltrace.pore_networks.functions as pn
 from ltrace.image import optimized_transforms
@@ -25,6 +27,7 @@ from ltrace.slicer_utils import (
     slicer_is_in_developer_mode,
     dataFrameToTableNode,
 )
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
@@ -80,7 +83,8 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
 class PoreNetworkExtractorWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
-        self.logic = PoreNetworkExtractorLogic()
+        self.progressBar = LocalProgressBar()
+        self.logic = PoreNetworkExtractorLogic(self.progressBar)
 
         #
         # Input Area: inputFormLayout
@@ -140,6 +144,8 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.warningsLabel.setVisible(False)
         self.layout.addWidget(self.warningsLabel)
 
+        self.layout.addWidget(self.progressBar)
+
         #
         # Connections
         #
@@ -150,34 +156,16 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def onExtractButton(self):
+        self.extractButton.setEnabled(False)
         self.warningsLabel.setText("")
         self.warningsLabel.setVisible(False)
-        try:
-            with ProgressBarProc() as pb:
-                pb.setMessage("Extracting network")
-                pb.setProgress(10)
-                extract_result = self.logic.extract(
-                    self.inputSelector.currentNode(),
-                    self.poresSelector.currentNode(),
-                    self.outputPrefix.text,
-                    self.paramsWidget.methodSelector.currentText,
-                )
-                if extract_result:
-                    pore_table, throat_table = extract_result
-                else:
-                    self.setWarning("No connected network was identified. Possible cause: unsegmented pore space.")
-                    return
-
-                pb.setMessage("Generating visualization")
-                pb.setProgress(80)
-                self.logic.visualize(pore_table, throat_table, self.inputSelector.currentNode())
-                pb.setMessage("Done")
-                pb.setProgress(100)
-                time.sleep(0.5)
-        except FileNotFoundError:
-            self.setWarning("PNExtract failed with input volume.")
-        except PoreNetworkExtractorError as e:
-            self.setWarning(str(e))
+        self.logic.extract(
+            self.inputSelector.currentNode(),
+            self.poresSelector.currentNode(),
+            self.outputPrefix.text,
+            self.paramsWidget.methodSelector.currentText,
+            self.extractButton.setEnabled,
+        )
 
     def setWarning(self, message):
         self.warningsLabel.setText(message)
@@ -220,76 +208,134 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
 # PoreNetworkExtractorLogic
 #
 class PoreNetworkExtractorLogic(LTracePluginLogic):
+    def __init__(self, progressBar):
+        LTracePluginLogic.__init__(self)
+        self.cliNode = None
+        self.progressBar = progressBar
+        self.prefix = None
+        self.rootDir = None
+        self.results = {}
+
     def extract(
         self,
         inputVolumeNode: slicer.vtkMRMLScalarVolumeNode,
         inputLabelMap: slicer.vtkMRMLLabelMapVolumeNode,
         prefix: str,
         method: str,
+        callback,
     ) -> Union[Tuple[slicer.vtkMRMLTableNode, slicer.vtkMRMLTableNode], bool]:
+        params = {"prefix": prefix, "method": method}
+
+        if inputVolumeNode:
+            self.inputNodeID = inputVolumeNode.GetID()
+
         if inputVolumeNode.IsA("vtkMRMLLabelMapVolumeNode") and inputLabelMap is None:
-            extract_result = pn.general_pn_extract(
-                None,
-                inputVolumeNode,
-                prefix,
-                method,
-            )
+            params["is_multiscale"] = False
         elif inputVolumeNode:
-            extract_result = self.multiscale_extraction(
-                inputVolumeNode,
-                inputLabelMap,
-                prefix,
-                method,
-            )
+            params["is_multiscale"] = True
         else:
             logging.warning("Not a valid input.")
             return
 
-        return extract_result
+        self.params = params
+        self.cwd = Path(slicer.util.tempDirectory())
+        self.callback = callback
+        self.prefix = prefix
 
-    def multiscale_extraction(
-        self,
-        inputPorosityNode: slicer.vtkMRMLScalarVolumeNode,
-        inputWatershed: slicer.vtkMRMLLabelMapVolumeNode,
-        prefix: str,
-        method: str,
-    ):
-        porosity_array = slicer.util.arrayFromVolume(inputPorosityNode)
-        if np.issubdtype(porosity_array.dtype, np.floating):
-            if porosity_array.max() == 1:
-                porosity_array = (100 * porosity_array).astype(np.uint8)
-            else:
-                porosity_array = porosity_array.astype(np.uint8)
+        cliParams = {
+            "xargs": json.dumps(params),
+            "cwd": str(self.cwd),
+        }
 
-        resolved_array = (porosity_array == 100).astype(np.uint8)
-        unresolved_array = np.logical_and(porosity_array > 0, porosity_array < 100).astype(np.uint8)
-        multiphase_array = resolved_array + (2 * unresolved_array)
+        if inputVolumeNode:
+            cliParams["volume"] = inputVolumeNode.GetID()
 
-        volumesLogic = slicer.modules.volumes.logic()
-        multiphaseNode = volumesLogic.CloneVolume(slicer.mrmlScene, inputPorosityNode, "multiphase volume")
-        slicer.util.updateVolumeFromArray(multiphaseNode, multiphase_array)
+        if inputLabelMap:
+            cliParams["label"] = inputLabelMap.GetID()
 
+        self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
+        self.progressBar.setCommandLineModuleNode(self.cliNode)
+        self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
+
+    def cancel(self):
+        if self.cliNode is None:
+            return
+        self.cliNode.Cancel()
+
+    def extractCLICallback(self, caller, event):
+        if caller is None:
+            self.cliNode = None
+            return
+        if self.cliNode is None:
+            return
+
+        status = caller.GetStatusString()
+        if status in ["Completed", "Cancelled", "Completed with errors"]:
+            logging.info(status)
+            del self.cliNode
+            self.cliNode = None
+            if status == "Completed":
+                self.onFinish()
+                shutil.rmtree(self.cwd)
+
+            self.callback(True)
+
+    def _create_table(self, table_type):
+        table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
+        table.AddNodeReferenceID("PoresLabelMap", self.inputNodeID)
+        table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_{table_type}_table"))
+        table.SetAttribute("table_type", f"{table_type}_table")
+        table.SetAttribute("is_multiscale", "false")
+        slicer.mrmlScene.AddNode(table)
+        return table
+
+    def _create_tables(self, algorithm_name):
+        poreOutputTable = self._create_table("pore")
+        throatOutputTable = self._create_table("throat")
+        poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
+        edge_throats = "none" if (algorithm_name == "porespy") else "x"
+        poreOutputTable.SetAttribute("edge_throats", edge_throats)
+        return throatOutputTable, poreOutputTable
+
+    def onFinish(self):
+        inputNode = slicer.mrmlScene.GetNodeByID(self.inputNodeID)
+
+        df_pores = pd.read_pickle(f"{self.cwd}/pores.pd")
+        df_throats = pd.read_pickle(f"{self.cwd}/throats.pd")
+
+        throatOutputTable, poreOutputTable = self._create_tables("porespy")
+
+        self.results["pore_table"] = poreOutputTable
+        self.results["throat_table"] = throatOutputTable
+
+        dataFrameToTableNode(df_pores, poreOutputTable)
+        dataFrameToTableNode(df_throats, throatOutputTable)
+
+        ### Include size infomation ###
+        bounds = [0, 0, 0, 0, 0, 0]
+        inputNode.GetBounds(bounds)  # In millimeters
+        poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
+        poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
+        poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
+        poreOutputTable.SetAttribute("origin", f"{bounds[0]};{bounds[2]};{bounds[4]}")
+
+        ### Move table nodes to hierarchy nodes ###
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        itemTreeId = folderTree.GetItemByDataNode(inputPorosityNode)
+        itemTreeId = folderTree.GetItemByDataNode(inputNode)
         parentItemId = folderTree.GetItemParent(itemTreeId)
-        folderTree.CreateItem(parentItemId, multiphaseNode)
+        currentDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Pore_Network")
 
-        extract_result = pn.general_pn_extract(
-            multiphaseNode,
-            inputWatershed,
-            prefix=prefix + "_Multiscale",
-            method=method,
-            porosity_map=porosity_array,
-        )
+        folderTree.CreateItem(currentDir, poreOutputTable)
+        folderTree.CreateItem(currentDir, throatOutputTable)
 
-        return extract_result
+        self.results["model_nodes"] = self.visualize(poreOutputTable, throatOutputTable, inputNode)
 
     def visualize(
         self,
         poreOutputTable: slicer.vtkMRMLTableNode,
         throatOutputTable: slicer.vtkMRMLTableNode,
         inputVolume: slicer.vtkMRMLLabelMapVolumeNode,
-    ) -> None:
+    ):
         return pn.visualize(
             poreOutputTable,
             throatOutputTable,
@@ -495,8 +541,8 @@ VxlPro {{redirect: z }}
                         pn_properties[diameter][pore] = radius / MIN_THROAT_RATIO
 
         finally:
-            e = traceback.extract_stack().format()
-            logging.info(e)
+            if traceback.print_exc():
+                traceback.print_exc()
             if not slicer_is_in_developer_mode():
                 output_files.extend(("input_array.mhd", "input_array.raw"))
                 for file in output_files:

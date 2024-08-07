@@ -7,4 +7,3 @@ packaging==21.3
 mkdocs==1.3.0
 mkdocs-localsearch==0.9.1
 mkdocs-material==8.2.16
-pathvalidate==2.5.0

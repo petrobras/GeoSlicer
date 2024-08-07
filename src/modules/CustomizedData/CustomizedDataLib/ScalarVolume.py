@@ -6,11 +6,45 @@ from ltrace.slicer.widget.labels_table_widget import LabelsTableWidget
 from ltrace.slicer.helpers import (
     setVolumeVisibilityIn3D,
     getVolumeVisibilityIn3D,
-    setSlicesVisibilityIn3D,
     getScalarTypesAsString,
+    BlockSignals,
 )
 from ltrace.slicer.node_attributes import ColorMapSelectable
 from ltrace.slicer.helpers import tryGetNode
+
+
+def setSlicesVisibilityIn3D(volume, visible):
+    if visible:
+        if volume.IsA("vtkMRMLLabelMapVolumeNode"):
+            slicer.util.setSliceViewerLayers(label=volume, fit=True)
+        else:
+            slicer.util.setSliceViewerLayers(background=volume, fit=True)
+    for sliceViewLabel in ["Red", "Yellow", "Green"]:
+        sliceView = slicer.app.layoutManager().sliceWidget(sliceViewLabel).sliceView()
+        sliceView.mrmlSliceNode().SetSliceVisible(visible)
+
+
+def getSlicesVisibilityIn3D(volume):
+    volumeVisibilities = []
+    sliceVisibilities = []
+    for sliceViewLabel in ["Red", "Yellow", "Green"]:
+        sliceWidget = slicer.app.layoutManager().sliceWidget(sliceViewLabel)
+        sliceView = sliceWidget.sliceView()
+        sliceVisibilities.append(sliceView.mrmlSliceNode().GetSliceVisible())
+
+        compositeNode = sliceWidget.mrmlSliceCompositeNode()
+
+        if volume.IsA("vtkMRMLLabelMapVolumeNode"):
+            sliceVolumeID = compositeNode.GetLabelVolumeID()
+        else:
+            sliceVolumeID = compositeNode.GetBackgroundVolumeID()
+
+        volumeVisibilities.append(sliceVolumeID == volume.GetID())
+
+    volumeIsVisible = all(volumeVisibilities)
+    slicesAreVisible = all(sliceVisibilities)
+
+    return volumeIsVisible and slicesAreVisible
 
 
 class ScalarVolumeWidget(qt.QWidget):
@@ -26,14 +60,16 @@ class ScalarVolumeWidget(qt.QWidget):
         contentsFrameLayout.setLabelAlignment(qt.Qt.AlignRight)
         contentsFrameLayout.setContentsMargins(0, 0, 0, 0)
 
-        volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
+        self.volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
         self.sequenceModule = slicer.modules.sequences.createNewWidgetRepresentation()
 
-        volumeDisplayWidget = volumesWidget.findChild(
+        volumeDisplayWidget = self.volumesWidget.findChild(
             slicer.qSlicerScalarVolumeDisplayWidget, "qSlicerScalarVolumeDisplayWidget"
         )
 
-        self.activeVolumeNodeSelector = volumesWidget.findChild(slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector")
+        self.activeVolumeNodeSelector = self.volumesWidget.findChild(
+            slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector"
+        )
 
         imageDimensionsHBoxLayout = qt.QHBoxLayout()
         self.imageDimensions1LineEdit = qt.QLineEdit()
@@ -82,8 +118,9 @@ class ScalarVolumeWidget(qt.QWidget):
         )
 
         self.slicesIn3DCheckBox = qt.QCheckBox("Slices in 3D")
-        self.slicesIn3DCheckBox.setChecked(True)
-        self.slicesIn3DCheckBox.stateChanged.connect(lambda state: setSlicesVisibilityIn3D(state == qt.Qt.Checked))
+        self.slicesIn3DCheckBox.stateChanged.connect(
+            lambda state: setSlicesVisibilityIn3D(self.node, state == qt.Qt.Checked) if self.node else None
+        )
 
         checkBoxLayout.addWidget(self.renderIn3DCheckBox, 1)
         checkBoxLayout.addWidget(self.slicesIn3DCheckBox, 1)
@@ -160,6 +197,8 @@ class ScalarVolumeWidget(qt.QWidget):
         self.node = node
         self.activeVolumeNodeSelector.setCurrentNode(node)
         self.renderIn3DCheckBox.setChecked(getVolumeVisibilityIn3D(node))
+        with BlockSignals(self.slicesIn3DCheckBox):
+            self.slicesIn3DCheckBox.setChecked(getSlicesVisibilityIn3D(node))
 
         browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node)
         if browser_node:
@@ -206,3 +245,6 @@ class ScalarVolumeWidget(qt.QWidget):
             self.sequenceModule.setActiveBrowserNode(None)
             self.sequenceBrowserContainerWidget.hide()
             self.sequenceLabel.hide()
+
+    def cleanup(self):
+        self.volumesWidget.delete()

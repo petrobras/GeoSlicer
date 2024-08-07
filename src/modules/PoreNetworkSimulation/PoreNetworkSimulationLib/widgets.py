@@ -1,3 +1,4 @@
+import logging
 import qt
 import numpy as np
 
@@ -278,7 +279,10 @@ class ComboboxWidget(qt.QBoxLayout):
         return self.string_values[self.combo_box.currentIndex]
 
     def set_value(self, value):
-        self.combo_box.currentText = value
+        try:
+            self.combo_box.currentIndex = self.string_values.index(value)
+        except ValueError:
+            logging.error(f'Wrong value "{value}" for parameter {self.parameter_name}')
 
     def onTextChanged(self):
         self.currentTextChanged.emit(self.parameter_name, self.combo_box.currentText)

@@ -92,5 +92,11 @@ class HierarchyVolumeInput(slicer.qMRMLSubjectHierarchyComboBox):
             self.setProperty("defaultText", self.customDefaultText)
 
     def __onEndCloseScene(self, *args):
+        try:
+            self.children()
+        except ValueError:
+            # Widget was destroyed
+            slicer.mrmlScene.RemoveObserver(self.end_close_scene_observer_handler)
+            return
         if self.customDefaultText:
             self.setProperty("defaultText", self.customDefaultText)

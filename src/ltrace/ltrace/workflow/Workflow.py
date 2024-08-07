@@ -31,6 +31,10 @@ WORKSTEPS = {
         PoreNetworkExtractor,
         PoreNetworkSimOnePhase,
         PoreNetworkSimTwoPhase,
+        PoreNetworkSimMercury,
+        ThinSectionPores,
+        ExportLAS,
+        InspectorIslands,
     )
 }
 WORKSTEPS = collections.OrderedDict(sorted(WORKSTEPS.items()))  # Sorting by name
@@ -488,6 +492,7 @@ class WorkflowWidget(qt.QDialog):
         addCloneDeleteWorkstepsButtonsLayout = qt.QHBoxLayout()
         addCloneDeleteWorkstepsButtonsLayout.addWidget(qt.QWidget())
         addWorkstepButton = qt.QPushButton("Add workstep")
+        addWorkstepButton.setObjectName("addWorkstepButton")
         addWorkstepButton.setAutoDefault(False)
         addWorkstepButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
         addCloneDeleteWorkstepsButtonsLayout.addWidget(addWorkstepButton)
@@ -564,6 +569,7 @@ class WorkflowWidget(qt.QDialog):
             buttonsLayout = qt.QHBoxLayout()
             buttonsLayout.addStretch(1)
             okButton = qt.QPushButton("OK")
+            okButton.setObjectName("addWorkstepOkButton")
             okButton.setMinimumWidth(120)
             buttonsLayout.addWidget(okButton)
             cancelButton = qt.QPushButton("Cancel")

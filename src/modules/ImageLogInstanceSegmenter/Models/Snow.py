@@ -15,6 +15,7 @@ from ltrace.slicer.helpers import (
     makeNodeTemporary,
     triggerNodeModified,
     highlight_error,
+    remove_highlight,
     labels_to_color_node,
     reset_style_on_valid_text,
     themeIsDark,
@@ -58,7 +59,8 @@ class SnowWidget(qt.QWidget):
 
     def setup(self):
         self.progressBar = LocalProgressBar()
-        self.logic = SnowLogic(self.progressBar)
+        self.logic = SnowLogic(self, self.progressBar)
+        self.logic.processFinished.connect(lambda: self.updateButtonsEnablement(False))
 
         formLayout = qt.QFormLayout(self)
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -79,7 +81,7 @@ class SnowWidget(qt.QWidget):
             mainName="Binary segmentation image",
             objectNamePrefix="Snow",
         )
-        self.segmentationNodeComboBox.onMainSelected = self.onSegmentationNodeChanged
+        self.segmentationNodeComboBox.onMainSelectedSignal.connect(self.onSegmentationNodeChanged)
         self.segmentationNodeComboBox.setToolTip("Select the binary segmentation image.")
         inputFormLayout.addRow(self.segmentationNodeComboBox)
         inputFormLayout.addRow(" ", None)
@@ -155,6 +157,7 @@ class SnowWidget(qt.QWidget):
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.objectName = "Snow Cancel Button"
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
@@ -164,6 +167,7 @@ class SnowWidget(qt.QWidget):
         formLayout.addRow(buttonsHBoxLayout)
 
         formLayout.addRow(self.progressBar)
+        self.updateButtonsEnablement(running=False)
 
     def _onMinDistanceFilterChanged(self, value, labelWidget):
         node = self.segmentationNodeComboBox.mainInput.currentNode()
@@ -195,6 +199,9 @@ class SnowWidget(qt.QWidget):
             if self.outputPrefixLineEdit.text.strip() == "":
                 highlight_error(self.outputPrefixLineEdit)
                 return
+
+            remove_highlight(self.segmentationNodeComboBox)
+            remove_highlight(self.outputPrefixLineEdit)
 
             node = self.segmentationNodeComboBox.mainInput.currentNode()
             is_labelmap = isinstance(node, slicer.vtkMRMLLabelMapVolumeNode)
@@ -236,6 +243,7 @@ class SnowWidget(qt.QWidget):
                 sizeMinThreshold=float(self.sizeMinThreshold.value),
                 outputPrefix=self.outputPrefixLineEdit.text,
             )
+            self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
         except SnowInfo as e:
             slicer.util.infoDisplay(str(e))
@@ -248,9 +256,16 @@ class SnowWidget(qt.QWidget):
     def onCancelButtonClicked(self):
         self.logic.cancel()
 
+    def updateButtonsEnablement(self, running: bool) -> None:
+        self.applyButton.setEnabled(not running)
+        self.cancelButton.setEnabled(running)
 
-class SnowLogic:
-    def __init__(self, progressBar):
+
+class SnowLogic(qt.QObject):
+    processFinished = qt.Signal()
+
+    def __init__(self, parent, progressBar) -> None:
+        super().__init__(parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.outputLabelMapNode = None
@@ -325,6 +340,7 @@ class SnowLogic:
         errors = caller.GetParameterAsString("errors")
         status = caller.GetStatusString()
         if "Completed" in status or status == "Cancelled":
+            self.processFinished.emit()
             logging.info(status)
             self.cliNode = None
             if errors:

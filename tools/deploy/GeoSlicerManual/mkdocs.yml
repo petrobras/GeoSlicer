@@ -25,9 +25,9 @@ nav:
   - Thin Section:
     - Usabilidade: "Thin Section/Usabilidade/usabilidade.md"
   - Segmentação:
-    - Semi-automática: "Segmenter/Semiauto/semiauto.md"
-    - Automática (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
-    - Automática (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
+    - Treinamento de Modelo: "Segmenter/Semiauto/semiauto.md"
+    - Modelos Pré-treinados (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
+    - Modelos Pré-treinados (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
     - Inspector:
       - Estudos de porosidade: "Inspector/Watershed/estudos_de_porosidade.md"
 extra:

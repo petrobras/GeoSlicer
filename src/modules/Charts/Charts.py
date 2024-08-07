@@ -4,14 +4,23 @@ import vtk, qt, ctk, slicer
 import logging
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import *
+from pathlib import Path
 from Plots.Crossplot.CrossplotWidget import CrossplotWidget
 from Plots.BarPlot.BarPlotBuilder import BarPlotBuilder
 from Plots.Windrose.WindrosePlotBuilder import WindrosePlotBuilder
 from Plots.Crossplot.CrossplotPlotBuilder import CrossplotBuilder
 from Plots.HistogramInDepthPlot.HistogramInDepthPlotBuilder import HistogramInDepthPlotBuilder
 from Plots.HistogramPlot.HistogramPlotBuilder import HistogramPlotBuilder
+from DLISImportLib.DLISImportLogic import WELL_NAME_TAG
+import numpy as np
+from ltrace.slicer.helpers import createTemporaryNode, removeTemporaryNodes
+from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
 
-from pathlib import Path
+try:
+    from Test.CrossplotWidgetTest import CrossplotWidgetTest
+except ImportError:
+    CrossplotWidgetTest = None
+
 
 INCOMPATIBLE_MESSAGE = (
     "The input table cannot be plotted because its format is not compatible with the chosen chart type."
@@ -53,16 +62,19 @@ class Charts(LTracePlugin):
 
 class ChartsWidget(LTracePluginWidget):
     CREATE_NEW_PLOT_LABEL = "Create new plot"
-    PLOT_TYPES = [
-        CrossplotBuilder(),
-        WindrosePlotBuilder(),
-        BarPlotBuilder(),
-        HistogramInDepthPlotBuilder(),
-        HistogramPlotBuilder(),
-    ]
     RESOURCES_PATH = Path(__file__).absolute().with_name("Resources")
     WINDOWN_ICON = RESOURCES_PATH / "Icons" / "Charts.png"
-    __plotWidgets = dict()
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self.__plotWidgetBuilders = [
+            CrossplotBuilder(),
+            WindrosePlotBuilder(),
+            BarPlotBuilder(),
+            HistogramInDepthPlotBuilder(),
+            HistogramPlotBuilder(),
+        ]
+        self.__plotWidgets = dict()
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -74,11 +86,12 @@ class ChartsWidget(LTracePluginWidget):
         # Table node list widget (Subject Hierarchy Tree View)
         self.nodeSelector = self._create_node_selector()
         parametersFormLayout.addRow(self.nodeSelector)
+        self.current_items_ids = vtk.vtkIdList()
 
         # Plot type combo box
         self.plotTypeComboBox = qt.QComboBox()
 
-        plot_type_labels = [plotWidgetBuilder.TYPE for plotWidgetBuilder in self.PLOT_TYPES]
+        plot_type_labels = [plotWidgetBuilder.TYPE for plotWidgetBuilder in self.__plotWidgetBuilders]
         self.plotTypeComboBox.addItems(plot_type_labels)
         parametersFormLayout.addRow("Plot type: ", self.plotTypeComboBox)
 
@@ -92,7 +105,7 @@ class ChartsWidget(LTracePluginWidget):
 
         # Add Stacked widget to add the selected plot configuration widgets
         self.plotConfigurationWidget = qt.QStackedWidget()
-        for plotWidgetBuilder in self.PLOT_TYPES:
+        for plotWidgetBuilder in self.__plotWidgetBuilders:
             widget = plotWidgetBuilder.configurationWidget()
             self.plotConfigurationWidget.addWidget(widget)
 
@@ -116,7 +129,7 @@ class ChartsWidget(LTracePluginWidget):
         super().enter()
 
     def exit(self):
-        pass
+        removeTemporaryNodes()
 
     def _create_node_selector(self):
         """Handles node selector widget creation.
@@ -214,7 +227,7 @@ class ChartsWidget(LTracePluginWidget):
             plotType (str): the plot type string
             plotLabel (str): the plot label
         """
-        for plotWidgetBuilder in self.PLOT_TYPES:
+        for plotWidgetBuilder in self.__plotWidgetBuilders:
             if plotType == plotWidgetBuilder.TYPE:
                 plotWidget = plotWidgetBuilder.build(plotLabel=plotLabel, parent=None)
 
@@ -271,7 +284,13 @@ class ChartsWidget(LTracePluginWidget):
         """Handle the click event at the plot button."""
         currentNodes = self._get_selected_nodes()
 
-        failures = [node.GetName() for node in currentNodes if isVarDescriptor(node)]
+        nodes = ChartsWidget.getNodesMergedByWell(currentNodes)
+
+        self.plot(nodes)
+
+    def plot(self, nodes):
+
+        failures = [node.GetName() for node in nodes if isVarDescriptor(node)]
 
         if failures:
             message = (
@@ -298,7 +317,7 @@ class ChartsWidget(LTracePluginWidget):
             if selectPlotWidget is None:
                 return
 
-        for currentNode in currentNodes:
+        for currentNode in nodes:
             try:
                 selectPlotWidget.appendData(currentNode)
             except (ValueError, RuntimeError) as error:
@@ -320,7 +339,7 @@ class ChartsWidget(LTracePluginWidget):
         self.__updateConfigurationWidget(text)
 
     def __updateConfigurationWidget(self, plotTypeLabel):
-        for plotWidgetBuilder in self.PLOT_TYPES:
+        for plotWidgetBuilder in self.__plotWidgetBuilders:
             if plotWidgetBuilder.TYPE != plotTypeLabel:
                 continue
 
@@ -349,6 +368,48 @@ class ChartsWidget(LTracePluginWidget):
 
     def _on_node_selector_item_changed(self, item_id):
         pass
+
+    def getNodesMergedByWell(nodes):
+        outNodes = []
+        wellsIndexesNodes = []  # tables from wells need to be merged into a multi-colun table per well
+        wells = []
+        for node in nodes:
+            wellName = node.GetAttribute(WELL_NAME_TAG)
+            wellsIndexesNodes.append(
+                {
+                    "WellName": wellName,
+                    "node": node,
+                }
+            )
+            if wellName is None or wellName == "":
+                outNodes.append(node)
+            elif wellName not in wells:
+                wells.append(wellName)
+
+        #
+        #  If there are tables originated from wells, we merge them into a multi-column table per well
+
+        nodesToMerge = []
+        for w in wells:
+            if w is not None:
+                nodesToMerge.append([d["node"] for d in wellsIndexesNodes if d["WellName"] == w])
+
+        mergedTableNode = None
+        if len(nodesToMerge) > 0:
+            for w in range(len(nodesToMerge)):
+                df = dataframeFromTable(
+                    nodesToMerge[w][0]
+                )  # table node to which the other ones of the same well will be appended
+                for i, node in enumerate(nodesToMerge[w][1:], start=1):
+                    dfToAdd = dataframeFromTable(node)
+                    columnToAdd = dfToAdd.values[0:, 1]
+                    df.insert(df.values.shape[1], dfToAdd.columns[1], columnToAdd)
+
+                mergedTableNode = createTemporaryNode(slicer.vtkMRMLTableNode, wells[w])
+                dataFrameToTableNode(df, mergedTableNode)
+                outNodes.append(mergedTableNode)
+
+        return outNodes
 
 
 class ChartsLogic(LTracePluginLogic):

@@ -85,9 +85,6 @@ class ModuleInstallerWidget(LTracePluginWidget):
 
         self.apply_button.clicked.connect(self.onApplyButton)
 
-    def cleanup(self):
-        pass
-
     def onSelect(self):
         pass
 

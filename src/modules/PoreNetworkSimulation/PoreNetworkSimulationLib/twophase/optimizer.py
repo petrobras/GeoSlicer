@@ -20,10 +20,6 @@ class OutputFile:
     def __init__(self, name):
         self.file = open(name, "w")
 
-    def __del__(self):
-        if self.file is not None:
-            self.file.close()
-
     def add(self, swi, kro, values):
         self.file.write("{},{},{},{}\n".format(swi, kro, *values))
 

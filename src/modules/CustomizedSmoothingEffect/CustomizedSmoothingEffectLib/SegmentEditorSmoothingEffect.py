@@ -1,21 +1,21 @@
 # SegmentEditorSmoothingEffect.py
 # Copied and modified from 3D Slicer
 
-import logging
-import os
 
 import ctk
 import qt
 import vtk
-
 import slicer
+import logging
 import numpy as np
-from scipy import ndimage
-from vtk.util import numpy_support
+import os
+import traceback
 
-from pathlib import Path
-from SegmentEditorEffects import *
 from ltrace.slicer.helpers import getSourceVolume
+from pathlib import Path
+from scipy import ndimage
+from SegmentEditorEffects import *
+from vtk.util import numpy_support
 
 
 class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
@@ -253,7 +253,9 @@ If segments overlap, segment higher in the segments table will have priority. <b
             # This can be a long operation - indicate it to the user
             qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
             self.scriptedEffect.saveStateForUndo()
-
+            if self.scriptedEffect.parameterSetNode() is None:
+                slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+                return
             if smoothingMethod == JOINT_TAUBIN:
                 self.smoothMultipleSegments(maskImage, maskExtent)
             elif applyToAllVisibleSegments:
@@ -527,11 +529,15 @@ If segments overlap, segment higher in the segments table will have priority. <b
                         smoothingFilter.GetOutput(), selectedSegmentLabelmap, modifierLabelmap, maskImage, maskExtent
                     )
 
-        except IndexError:
-            logging.error("apply: Failed to apply smoothing")
+        except Exception as error:
+            logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
     def smoothMultipleSegments(self, maskImage=None, maskExtent=None):
         import vtkSegmentationCorePython as vtkSegmentationCore
+
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply smoothing. The selected node is not valid.")
+            return
 
         self.showStatusMessage(f"Joint smoothing ...")
         # Generate merged labelmap of all visible segments

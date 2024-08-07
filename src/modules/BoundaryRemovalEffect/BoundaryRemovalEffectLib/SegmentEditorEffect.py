@@ -9,13 +9,13 @@ import sitkUtils
 import slicer
 import vtk
 import qSlicerSegmentationsEditorEffectsPythonQt as effects
+import traceback
 
 from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
+from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
 from SegmentEditorEffects import *
 from typing import Union
-
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 FILTER_GRADIENT_MAGNITUDE = "GRADIENT_MAGNITUDE"
@@ -42,6 +42,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.previewStep = 1
         self.previewSteps = 20
         self.timer.connect("timeout()", self.preview)
+        self.timer.setParent(self.scriptedEffect.optionsFrame())
 
         self.isInitialized = False
 
@@ -99,8 +100,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         if not self.keepFilterResultCheckBox.isChecked():
             try:
                 slicer.mrmlScene.RemoveNode(self.filterOutputVolume)
-            except:
-                pass
+            except Exception as error:
+                logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
         try:
             segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -115,8 +116,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             segmentation.GetSegmentIDs(segmentIDs)
             for index in range(segmentIDs.GetNumberOfValues()):
                 segmentationNode.GetDisplayNode().SetSegmentVisibility(segmentIDs.GetValue(index), True)
-        except:
-            pass
+        except Exception as error:
+            logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
     def setCurrentSegmentTransparent(self):
         """Save current segment opacity and set it to zero
@@ -126,6 +127,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         Call restorePreviewedSegmentTransparency() to restore original
         opacity.
         """
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             return
@@ -153,6 +158,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     def restorePreviewedSegmentTransparency(self):
         """Restore previewed segment's opacity that was temporarily
         made transparen by calling setCurrentSegmentTransparent()."""
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             return
@@ -264,7 +273,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         addSegmentButton = editorWidget.findChild(qt.QPushButton, "AddSegmentButton")
         addSegmentButton.setEnabled(enabled)
 
-        hasSelectedSegment = bool(self.scriptedEffect.parameterSetNode().GetSelectedSegmentID())
+        hasSelectedSegment = (
+            bool(self.scriptedEffect.parameterSetNode().GetSelectedSegmentID())
+            if self.scriptedEffect.parameterSetNode() is not None
+            else False
+        )
 
         removeSegmentButton = editorWidget.findChild(qt.QPushButton, "RemoveSegmentButton")
         removeSegmentButton.setEnabled(enabled and hasSelectedSegment)
@@ -321,8 +334,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     # Effect specific methods (the above ones are the API methods to override)
     #
     def initialize(self):
-        self.scriptedEffect.saveStateForUndo()
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to initialize the effect. The selected node is not valid.")
+            return
 
+        self.scriptedEffect.saveStateForUndo()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         segmentIDs = vtk.vtkStringArray()
         segmentation = segmentationNode.GetSegmentation()
@@ -379,7 +395,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             #     maxValue += step
             # array[array > maxValue] = maxValue
             # slicer.util.updateVolumeFromArray(self.filterOutputVolume, array)
-
+        self.selectedSegment = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
         self.invisibleSegments = self.removeSegmentationVisibleSegments()
 
         for index in range(segmentIDs.GetNumberOfValues()):
@@ -433,6 +449,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     # Returns a list of tuples containing the necessary parameters to add the segments back
     def removeSegmentationVisibleSegments(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return None
+
         removedSegments = list()
 
         # Always affects the current scriptedEffect's segmentation node directly, as
@@ -458,6 +478,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         return removedSegments
 
     def onApplyAll(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+            return
+
         def getLazySegmentation(parentName: str) -> Union[None, slicer.vtkMRMLNode]:
             segmentationNode = None
             lazyNodes = slicer.util.getNodesByClass("vtkMRMLTextNode")
@@ -515,8 +539,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             thresh.Update()
             modifierLabelmap.DeepCopy(thresh.GetOutput())
         except IndexError:
-            logging.error("apply: Failed!")
-            pass
+            logging.error(f"Error: {error}")
+        except Exception as error:
+            logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
+            slicer.util.errorDisplay(f"Failed to apply the effect.\nError: {error}")
+            return
 
         # Apply changes
         self.scriptedEffect.modifySelectedSegmentByLabelmap(
@@ -573,7 +600,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
                 slicer.mrmlScene.RemoveNode(self.filterOutputVolume)
             except:
                 pass
-
+        # restore segment selection enableling effects
+        if self.selectedSegment:
+            self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(self.selectedSegment)
         self.applyFinishedCallback()
 
     def clearPreviewDisplay(self):
@@ -647,7 +676,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
                 self.previewStep = -1
             if self.previewState <= 0:
                 self.previewStep = 1
-        except:
+        except Exception as error:
+            logging.debug(f"Error {error}. Traceback:\n{traceback.format_exc()}")
             # When an undo action is performed, it causes and exception due the to the removed Edges segment. We deactivate to start fresh all over again
             self.deactivate()
 

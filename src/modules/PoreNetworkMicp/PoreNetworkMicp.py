@@ -45,6 +45,46 @@ class PoreNetworkMicp(LTracePlugin):
         return str(cls.MODULE_DIR / "README.md")
 
 
+class PoreNetworkMicpParamsWidget(ctk.ctkCollapsibleButton):
+    def __init__(self):
+        super().__init__()
+
+        widget = {}
+        widget["Extraction Section"] = self
+        widget["Extraction Section"].text = "Multiscale Network Extraction"
+        widget["Extraction Section"].collapsed = True
+        widget["Extraction Section"].setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
+        self.extractFormLayout = qt.QFormLayout(widget["Extraction Section"])
+
+        widget["Local Porosity Selector"] = hierarchyVolumeInput(nodeTypes=["vtkMRMLScalarVolumeNode"])
+        widget["Local Porosity Selector"].showEmptyHierarchyItems = False
+        self.extractFormLayout.addRow("Local porosity volume:", widget["Local Porosity Selector"])
+
+        self.extractFormLayout.addRow(qt.QLabel("Optional inputs:"))
+
+        widget["Phases Volume Selector"] = hierarchyVolumeInput(nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True)
+        widget["Phases Volume Selector"].showEmptyHierarchyItems = False
+        self.extractFormLayout.addRow("Phases labelmap selector:", widget["Phases Volume Selector"])
+
+        widget["Pore Volume Selector"] = hierarchyVolumeInput(nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True)
+        widget["Pore Volume Selector"].showEmptyHierarchyItems = False
+        self.extractFormLayout.addRow("Pore labelmap selector:", widget["Pore Volume Selector"])
+
+        widget["Micropore Volume Selector"] = hierarchyVolumeInput(
+            nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True
+        )
+        widget["Micropore Volume Selector"].showEmptyHierarchyItems = False
+        self.extractFormLayout.addRow("Micropore labelmap selector:", widget["Micropore Volume Selector"])
+
+        widget["Watershed Volume Selector"] = hierarchyVolumeInput(
+            nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True
+        )
+        widget["Watershed Volume Selector"].showEmptyHierarchyItems = False
+        self.extractFormLayout.addRow("Watershed selector:", widget["Watershed Volume Selector"])
+
+        self.widget = widget
+
+
 class PoreNetworkMicpWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
@@ -120,11 +160,9 @@ class PoreNetworkMicpWidget(LTracePluginWidget):
         widget["Micropore Volume Selector"].showEmptyHierarchyItems = False
         extractFormLayout.addRow("Micropore labelmap selector:", widget["Micropore Volume Selector"])
 
-        widget["Watershed Volume Selector"] = hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True
-        )
-        widget["Watershed Volume Selector"].showEmptyHierarchyItems = False
-        extractFormLayout.addRow("Watershed selector:", widget["Watershed Volume Selector"])
+        widget["Density Volume Selector"] = hierarchyVolumeInput(nodeTypes=["vtkMRMLScalarVolumeNode"], hasNone=True)
+        widget["Density Volume Selector"].showEmptyHierarchyItems = False
+        extractFormLayout.addRow("Density scalar selector:", widget["Density Volume Selector"])
 
         widget["Extract Button"] = ui.ApplyButton(
             onClick=self.start_extract, tooltip="Extract multiscale network", text="Multiscale extract"

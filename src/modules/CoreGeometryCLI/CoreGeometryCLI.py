@@ -11,10 +11,8 @@ import mrml
 import numpy as np
 import slicer
 import slicer.util
-from ltrace.wrappers import sanitize_file_path
 from ltrace.transforms import transformPoints, getRoundedInteger
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from pathvalidate.argparse import sanitize_filepath_arg
 from skimage.feature import canny
 from skimage.transform import hough_circle, hough_circle_peaks
 
@@ -41,7 +39,7 @@ def calculateCoreGeometry(volume, coreRadius):
 
     manager = Manager()
     slicesCoreGeometryInIJKCoordinates = manager.list()
-    pool = Pool(max(cpu_count() - 2, 1))
+    pool = Pool(min(max(cpu_count() - 2, 1), 4))
     parameters = []
     for i in np.linspace(startSlice, endSlice, num=numSliceSamples, dtype=int):
         parameters.append((i, normalizedVolumeArray[i], searchRadius, slicesCoreGeometryInIJKCoordinates))
@@ -77,7 +75,7 @@ def calculateSliceCoreGeometry(parameters):
 
 
 def findSmallestCircle(edges, startRadius, endRadius, totalNumPeaks):
-    houghRadii = np.arange(startRadius, endRadius, 1)
+    houghRadii = np.arange(startRadius, endRadius, 2)
     houghRes = hough_circle(edges, houghRadii)
     # Select the most prominent circles
     _, cx, cy, radii = hough_circle_peaks(houghRes, houghRadii, num_peaks=1, total_num_peaks=totalNumPeaks)
@@ -115,7 +113,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("volume", type=str)
     parser.add_argument("coreRadius", type=float)
-    parser.add_argument("coreGeometryDataFile", type=str, type=sanitize_filepath_arg)
+    parser.add_argument("coreGeometryDataFile", type=str)
     args = parser.parse_args()
 
     # Loading the volume nrrd file from disk
@@ -126,8 +124,7 @@ if __name__ == "__main__":
 
     # Calculating the core geometry (core centers and radii)
     coreGeometryData = calculateCoreGeometry(volume, args.coreRadius)
-    coreGeometryDataFile = sanitize_file_path(args.coreGeometryDataFile)
 
     # Saving result on disk
-    with open(coreGeometryDataFile.as_posix(), "wb") as f:
+    with open(Path(args.coreGeometryDataFile).absolute(), "wb") as f:
         f.write(pickle.dumps(coreGeometryData))

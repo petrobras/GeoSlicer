@@ -253,7 +253,7 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
             row = model.getRowByLabel(rowData["label"])
             self.tableWidget.tableView.setCurrentIndex(model.index(row, 0))
         else:
-            if "sidewall_sample" in self.logic.getInstanceType():
+            if "side" in self.logic.getInstanceType():
                 del rowData["n depth (m)"]
                 del rowData["desc"]
                 del rowData["cond"]
@@ -338,7 +338,7 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
                 self.tableWidget.deleteLater()
 
             instanceType = self.logic.getInstanceType()
-            if "sidewall_sample" in instanceType:
+            if "side" in instanceType:
                 self.tableWidget = SidewallSampleTableWidget(self.logic)
             elif ImageLogInstanceSegmenter.MODEL_IMAGE_LOG_STOPS in instanceType:
                 self.tableWidget = StopsTableWidget(self.logic)
@@ -477,7 +477,7 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
 
         instanceType = self.getInstanceType()
 
-        if "sidewall_sample" in instanceType:
+        if "side" in instanceType:
             properties = sidewall_sample_instance_properties(mask, self.labelMapNode.GetSpacing())
             rowData = properties
             rowData["label"] = self.editedLabelValue

@@ -1,14 +1,16 @@
 import qt
 import slicer
+import time
 
 from PoreNetworkExtractor import PoreNetworkExtractorLogic, PoreNetworkExtractorParamsWidget, PoreNetworkExtractorError
 from ltrace.workflow.workstep import Workstep, WorkstepWidget
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 
 
 class PoreNetworkExtractor(Workstep):
     NAME = "Simulation: Pore Network Extraction"
 
-    INPUT_TYPES = (slicer.vtkMRMLLabelMapVolumeNode,)
+    INPUT_TYPES = (slicer.vtkMRMLScalarVolumeNode,)
     OUTPUT_TYPE = slicer.vtkMRMLTableNode
 
     def __init__(self):
@@ -18,18 +20,28 @@ class PoreNetworkExtractor(Workstep):
         self.method = "PoreSpy"
         self.delete_inputs = True
 
-    def run(self, label_map_nodes):
-        logic = PoreNetworkExtractorLogic()
+    def run(self, nodes):
+        progressBar = LocalProgressBar()
+        logic = PoreNetworkExtractorLogic(progressBar)
 
-        for label_map_node in label_map_nodes:
+        for node in nodes:
+            self.finished = False
             try:
-                extract_result = logic.extract(label_map_node, label_map_node.GetName(), self.method)
+                logic.extract(node, None, node.GetName(), self.method, self.onFinish)
             except PoreNetworkExtractorError:
                 continue
-            finally:
-                self.discard_input(label_map_node)
-            pore_table, throat_table = extract_result
+
+            while self.finished is False:
+                time.sleep(0.2)
+                slicer.app.processEvents()
+
+            self.discard_input(node)
+
+            pore_table, throat_table = logic.results["pore_table"], logic.results["throat_table"]
             yield pore_table
+
+    def onFinish(self, state):
+        self.finished = state
 
     def widget(self):
         return PoreNetworkExtractorWidget(self)

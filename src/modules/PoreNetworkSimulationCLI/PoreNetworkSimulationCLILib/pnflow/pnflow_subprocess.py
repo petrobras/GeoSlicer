@@ -1,6 +1,7 @@
 import ctypes
-import logging
 import os
+import queue
+import threading
 from multiprocessing import Process, Manager
 from string import Template
 import time
@@ -57,17 +58,6 @@ OUTPUT T $enable_vtu_output;
 )
 
 
-def _write_data(file: str, data: str) -> None:
-    try:
-        file = open(file, "w")
-        file.write(data)
-    except Exception as error:
-        logging.debug(f"Error: {error}")
-    finally:
-        if file:
-            file.close()
-
-
 class PnFlowSubprocess:
     def __init__(
         self,
@@ -82,7 +72,7 @@ class PnFlowSubprocess:
         write_debug_files: bool,
     ):
         self.manager = manager
-        self.params = params
+        self.params = self._process_parameters(params)
         self.cwd = cwd
         self.link1 = link1
         self.link2 = link2
@@ -93,7 +83,7 @@ class PnFlowSubprocess:
         self.write_debug_files = write_debug_files
 
         self.input_string = PNFLOW_INPUT.substitute(
-            output_name="Output", enable_vtu_output=params["create_sequence"], **params
+            output_name="Output", enable_vtu_output=self.params["create_sequence"], **self.params
         )
         self.start_time = 0
         self.run_count = 0
@@ -121,12 +111,42 @@ class PnFlowSubprocess:
     def pnflow_caller(result, cwd, input_string, link1, link2, node1, node2, write_debug_files=False):
         os.chdir(cwd)
         if write_debug_files:
-            _write_data("input.txt", input_string)
-            _write_data("Image_link1.dat", link1)
-            _write_data("Image_link2.dat", link2)
-            _write_data("Image_node1.dat", node1)
-            _write_data("Image_node2.dat", node2)
-        result.value = pnflow(input_string, link1, link2, node1, node2)
+            input_file = open("input.txt", "w")
+            link1_file = open("Image_link1.dat", "w")
+            link2_file = open("Image_link2.dat", "w")
+            node1_file = open("Image_node1.dat", "w")
+            node2_file = open("Image_node2.dat", "w")
+            input_file.write(input_string)
+            link1_file.write(link1)
+            link2_file.write(link2)
+            node1_file.write(node1)
+            node2_file.write(node2)
+            input_file.close()
+            link1_file.close()
+            link2_file.close()
+            node1_file.close()
+            node2_file.close()
+
+        # Creating a thread to set a larger stack size and avoid pnflow stack overflow
+        threading.stack_size(0x800000)
+        result_queue = queue.Queue()
+        thread = threading.Thread(
+            target=PnFlowSubprocess.pnflow_thread, args=(input_string, link1, link2, node1, node2, result_queue)
+        )
+        thread.start()
+        result.value = result_queue.get()
+
+    @staticmethod
+    def pnflow_thread(input_string, link1, link2, node1, node2, result_queue):
+        result = pnflow(input_string, link1, link2, node1, node2)
+        result_queue.put(result)
+
+    def _process_parameters(self, params):
+        params_copy = params.copy()
+        params_copy["interfacial_tension"] = params_copy["interfacial_tension"] / 1000
+        params_copy["water_viscosity"] = params_copy["water_viscosity"] / 1000
+        params_copy["oil_viscosity"] = params_copy["oil_viscosity"] / 1000
+        return params_copy
 
     def terminate(self):
         self.process.terminate()

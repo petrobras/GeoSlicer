@@ -16,6 +16,7 @@ from numba import njit, prange
 import porespy
 from porespy.networks import regions_to_network, snow2
 import pandas as pd
+import logging
 
 from ltrace.slicer_utils import tableNodeToDict, slicer_is_in_developer_mode, dataFrameToTableNode
 from ltrace.image import optimized_transforms
@@ -179,6 +180,7 @@ def set_subresolution_conductance(sub_network, subresolution_function):
     pore_conductivity_resolved = sub_network["pore.manual_valvatne_conductivity"]
     pore_phi = sub_network["pore.subresolution_porosity"]
     pore_pressure = np.array([subresolution_function(p) for p in pore_phi])
+    pore_pressure[pore_phi == 1] = np.array([pressure2radius(r) for r in sub_network["pore.diameter"] / 2])[pore_phi == 1]
     
     pore_capilar_radius = np.array([pressure2radius(Pc) for Pc in pore_pressure])
     sub_network["pore.capilar_radius"] = pore_capilar_radius
@@ -191,33 +193,18 @@ def set_subresolution_conductance(sub_network, subresolution_function):
     pore_conductivity = (1/8) * np.pi * pore_capilar_radius**4
     pore_conductivity *= pore_number_of_capilaries
 
-    # Throat conductivity
-    throat_phi = np.ones_like(sub_network["throat.all"], dtype=np.float64)
-    for throat_index, (left_index, right_index) in enumerate(
-        sub_network["throat.conns"],
-    ):
-        left_unresolved = sub_network["throat.phases"][throat_index][0] == 2
-        right_unresolved = sub_network["throat.phases"][throat_index][1] == 2
-
-        if left_unresolved and not right_unresolved:
-            throat_phi[throat_index] = pore_phi[left_index]
-
-        elif right_unresolved and not left_unresolved:
-            throat_phi[throat_index] = pore_phi[right_index]
-
-        elif right_unresolved and left_unresolved:
-            throat_phi[throat_index] = (
-                pore_phi[left_index] 
-                * sub_network["throat.conns_0_length"][throat_index]
-                + pore_phi[right_index] 
-                * sub_network["throat.conns_1_length"][throat_index]
-            ) / (
-                sub_network["throat.conns_0_length"][throat_index]
-                + sub_network["throat.conns_1_length"][throat_index]
-            )
-
+    throat_phi = sub_network["throat.subresolution_porosity"]
     throat_pressure = np.array([subresolution_function(p) for p in throat_phi])
+    throat_pressure[throat_phi == 1] = np.array([pressure2radius(r) for r in sub_network["throat.diameter"] / 2])[throat_phi == 1]
     throat_capilar_radius = np.array([pressure2radius(Pc) for Pc in throat_pressure])
+
+    # Throat diameter debug fix
+    throat_diameter_temp = np.array(sub_network["throat.diameter"])
+    non_zero_throat_diameters = throat_diameter_temp[throat_diameter_temp != 0]
+    min_throat_diameter = np.min(non_zero_throat_diameters)
+    throat_diameter_temp[throat_diameter_temp == 0.0] = min_throat_diameter
+    sub_network["throat.diameter"] = throat_diameter_temp
+
     throat_number_of_capilaries = (
         (area_function(sub_network["throat.diameter"]/2) * throat_phi)
         / area_function(throat_capilar_radius)
@@ -297,6 +284,11 @@ def set_subresolution_conductance(sub_network, subresolution_function):
     sub_network['throat.manual_valvatne_conductance'] = throat_conductance
     sub_network['throat.number_of_capilaries'] = throat_number_of_capilaries
     sub_network['pore.number_of_capilaries'] = pore_number_of_capilaries
+
+    sub_network["throat.cross_sectional_area"] = np.pi * sub_network["throat.cap_radius"] ** 2
+    sub_network["throat.volume"] = sub_network["throat.total_length"] * sub_network["throat.cross_sectional_area"]
+    sub_network["pore.volume"] *= sub_network["pore.subresolution_porosity"]
+
     print(os.getcwd())
     for element in ("pore.", "throat."):
         pore_keys = [key for key in sub_network.keys() if key.startswith(element)]
@@ -347,6 +339,9 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
         volume_multiplier = 1
 
     connected_pores, connected_throats = get_connected_geo_network(pore_dict, throat_dict, f"{axis}min", f"{axis}max")
+    if not any(connected_pores) or not any(connected_throats):
+        logging.warning("The network is invalid. Does not percolate.")
+        return None
     pore_dict, throat_dict = get_sub_geo(pore_dict, throat_dict, connected_pores, connected_throats)
 
     pores_with_edge_throats = set()
@@ -904,7 +899,7 @@ def porespy_extract(multiphase, watershed, scale, porosity_map=None):
     
     if watershed is None:
         input_array = multiphase
-        snow_results = snow2(multiphase, porosity_map=porosity_map, voxel_size=scale)
+        snow_results = snow2(multiphase, porosity_map=porosity_map, voxel_size=scale, parallelization=None)
         pn_properties = snow_results.network
         watershed_image = snow_results.regions
     else:
@@ -1048,10 +1043,32 @@ def porespy_extract(multiphase, watershed, scale, porosity_map=None):
     #rng = np.random.default_rng()
     #pore_subresolution_porosity = rng.random((pn_properties["pore.all"]).size)
 
-    pn_properties["throat.subresolution_porosity"] = (
-        pore_subresolution_porosity[pn_properties["throat.conns_0"]]
-        + pore_subresolution_porosity[pn_properties["throat.conns_1"]]
-    ) / 2
+    throat_phi = np.ones_like(pn_properties["throat.all"], dtype=np.float64)
+    for throat_index in range(len(pn_properties["throat.all"])):
+        left_index = pn_properties["throat.conns_0"][throat_index]
+        right_index = pn_properties["throat.conns_1"][throat_index]
+
+        left_unresolved = pn_properties["throat.phases_0"][throat_index] == 2
+        right_unresolved = pn_properties["throat.phases_1"][throat_index] == 2
+
+        if right_unresolved and left_unresolved:
+            throat_phi[throat_index] = (
+                pore_subresolution_porosity[left_index]
+                * pn_properties["throat.conns_0_length"][throat_index]
+                + pore_subresolution_porosity[right_index]
+                * pn_properties["throat.conns_1_length"][throat_index]
+            ) / (
+                pn_properties["throat.conns_0_length"][throat_index]
+                + pn_properties["throat.conns_1_length"][throat_index]
+            )
+
+        elif left_unresolved and not right_unresolved:
+            throat_phi[throat_index] = pore_subresolution_porosity[left_index]
+
+        elif right_unresolved and not left_unresolved:
+            throat_phi[throat_index] = pore_subresolution_porosity[right_index]
+
+    pn_properties["throat.subresolution_porosity"] = throat_phi
 
     return pn_properties
 
@@ -1358,15 +1375,18 @@ def visualize(
             _ = elementIdList.InsertNextId(j)
             _ = elements.InsertNextCell(elementIdList)
 
-        radius = vtk.vtkFloatArray()
-        for i, j in diameters_list_by_phase[phase]:
-            radius.InsertTuple1(i, j)
+        radius = vtk.vtkDoubleArray()
+        radius.SetNumberOfTuples(len(diameters_list_by_phase[phase]))
+        radius.SetName("TubeRadius")
+        for i, dia in diameters_list_by_phase[phase]:
+            radius.SetTuple1(i, dia)
 
         ### Setup VTK filters ###
         polydata = vtk.vtkPolyData()
         polydata.SetPoints(coordinates)
         polydata.SetLines(elements)
-        polydata.GetPointData().SetScalars(radius)
+        polydata.GetPointData().AddArray(radius)
+        polydata.GetPointData().SetActiveScalars("TubeRadius")
 
         min_radius = min_diameter_by_phase[phase] / (2 * (phase+1))
         # VTK tubes filter uses max_radius as a multiple of minimum radius
@@ -1412,6 +1432,8 @@ def visualize(
         model_node.SetAndObserveTransformNodeID(transformNode.GetID())
         model_node.HardenTransform()
     slicer.mrmlScene.RemoveNode(transformNode)
+
+    return {"pores_nodes": pores_model_nodes, "throats_nodes": throats_model_nodes}
 
 class PoreNetworkExtractorError(RuntimeError):
     pass

@@ -5,10 +5,14 @@ import vtk
 
 from pandas.api.types import is_numeric_dtype
 from ltrace.slicer.node_attributes import TableDataOrientation
-from ltrace.algorithms.measurements import CLASS_LABEL_SUFFIX, get_pore_size_class_label_field, PORE_SIZE_CATEGORIES
+from ltrace.algorithms.measurements import (
+    CLASS_LABEL_SUFFIX,
+    get_pore_size_class_label_field,
+    PORE_SIZE_CATEGORIES,
+)
 from ltrace.slicer.helpers import tryGetNode
 from pyqtgraph import QtCore
-from slicer.util import dataframeFromTable
+from ltrace.slicer import data_utils as dutils
 
 TEXT_SYMBOLS = {
     "● Circle": "o",
@@ -50,7 +54,15 @@ class GraphStyle(QtCore.QObject):
     signalStyleChanged = QtCore.Signal()
 
     def __init__(
-        self, plot_type=None, color=None, symbol=None, size=None, line_style=None, line_size=None, *args, **kwargs
+        self,
+        plot_type=None,
+        color=None,
+        symbol=None,
+        size=None,
+        line_style=None,
+        line_size=None,
+        *args,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         default_color = 211, 47, 47
@@ -187,7 +199,16 @@ class GraphData(QtCore.QObject):
     signalRemoved = QtCore.Signal()
     signalStyleChanged = QtCore.Signal()
 
-    def __init__(self, parent, plot_type=None, color=None, symbol=None, size=None, *args, **kwargs):
+    def __init__(
+        self,
+        parent,
+        plot_type=None,
+        color=None,
+        symbol=None,
+        size=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(parent)
         self._data = None
         self._name = ""
@@ -260,9 +281,10 @@ class GraphData(QtCore.QObject):
         """
         if "pore_size_class" in df.columns:
             # This is a inspector result - TODO make a attribute inside the node
-            labelColumnName, newLabelColumnData = GraphData.handleLegacyPoreSizeClassVersions(
-                df.columns.to_list(), df["pore_size_class"]
-            )
+            (
+                labelColumnName,
+                newLabelColumnData,
+            ) = GraphData.handleLegacyPoreSizeClassVersions(df.columns.to_list(), df["pore_size_class"])
             if newLabelColumnData is not None:
                 df[labelColumnName] = newLabelColumnData
 
@@ -280,7 +302,9 @@ class GraphData(QtCore.QObject):
         except ValueError:
             labelColumnName = f"pore_size_class[label]"
             newLabelColumnData = columnData.replace(
-                PORE_SIZE_CATEGORIES, np.arange(0, len(PORE_SIZE_CATEGORIES), 1), inplace=False
+                PORE_SIZE_CATEGORIES,
+                np.arange(0, len(PORE_SIZE_CATEGORIES), 1),
+                inplace=False,
             )
 
             return labelColumnName, newLabelColumnData
@@ -294,7 +318,15 @@ class NodeGraphData(GraphData):
     """
 
     def __init__(
-        self, parent, dataNode: slicer.vtkMRMLNode, plot_type=None, color=None, symbol=None, size=None, *args, **kwargs
+        self,
+        parent,
+        dataNode: slicer.vtkMRMLNode,
+        plot_type=None,
+        color=None,
+        symbol=None,
+        size=None,
+        *args,
+        **kwargs,
     ):
         super().__init__(parent, plot_type, color, symbol, size, *args, **kwargs)
         self.__nodeId = None
@@ -361,7 +393,7 @@ class NodeGraphData(GraphData):
         if orientation is None:
             orientation = str(TableDataOrientation.COLUMN.value)
 
-        df = dataframeFromTable(dataNode)
+        df = dutils.tableNodeToDataFrame(dataNode)
         if orientation == str(TableDataOrientation.ROW.value):
             df = self.transposeDataframe(df)
 
@@ -417,6 +449,16 @@ class NodeGraphData(GraphData):
 
 
 class DataFrameGraphData(GraphData):
-    def __init__(self, parent, dataFrame, plot_type=None, color=None, symbol=None, size=None, *args, **kwargs):
+    def __init__(
+        self,
+        parent,
+        dataFrame,
+        plot_type=None,
+        color=None,
+        symbol=None,
+        size=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(parent, plot_type, color, symbol, size, *args, **kwargs)
         self._data = dataFrame

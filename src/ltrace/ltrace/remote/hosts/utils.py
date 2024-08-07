@@ -41,7 +41,7 @@ def get_module_from_path(path: Path) -> Union["module", None]:
 def get_modules() -> List[Path]:
     modules = []
     for file in HOSTS_DIR.rglob("*.py"):
-        if file.stem == "__init__":
+        if Path(file).stem == "__init__":
             continue
         module = get_module_from_path(file)
         if module:

@@ -8,8 +8,9 @@ import pyqtgraph as pg
 import qt
 import slicer
 
-from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import PoreNetworkSimulationLogic
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
+from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
 from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
 from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulationWidget
 from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE, ONE_ANGLE, MULTI_ANGLE
@@ -52,7 +53,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
-        self.logic = PoreNetworkSimulationLogic(self.progressBar)
+        self.logic = None
 
         #
         # Input Area: inputFormLayout
@@ -145,7 +146,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def onReload(self):
         importlib.reload(sys.modules["PoreNetworkSimulationLib.widgets"])
         importlib.reload(sys.modules["PoreNetworkSimulationLib.TwoPhaseSimulationWidget"])
-        importlib.reload(sys.modules["PoreNetworkSimulationLib.PoreNetworkSimulationWidget"])
+        importlib.reload(sys.modules["PoreNetworkSimulationLib.OnePhaseSimulationWidget"])
         importlib.reload(sys.modules["MercurySimulationLib.MercurySimulationWidget"])
         importlib.reload(sys.modules["MercurySimulationLib.SubscaleModelWidget"])
         importlib.reload(sys.modules["ltrace.pore_networks.pnflow_parameter_defs"])
@@ -153,22 +154,26 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
 
     def onCancelButtonClicked(self):
         simulation = self.simulationSelector.currentText
-        if simulation == TWO_PHASE:  # TODO implement cancel to other simulations too
-            self.logic.cancel_2phase()
-            self.applyButtonEnabled(True)
+        self.logic.cancel()
+        self.applyButtonEnabled(True)
 
     def applyButtonEnabled(self, enabled):
         self.applyButton.setEnabled(enabled)
         self.cancelButton.setEnabled(not enabled)
 
-    def onSelect(self):  # unused
-        self.applyButton.enabled = self.inputSelector.currentNode() and self.outputSelector.currentNode()
-
     def onChangeModel(self):
         simulation = self.simulationSelector.currentText
+
         self.onePhaseSimWidget.setVisible(simulation == ONE_PHASE)
         self.twoPhaseSimWidget.setVisible(simulation == TWO_PHASE)
         self.mercurySimWidget.setVisible(simulation == MICP)
+
+        if simulation == ONE_PHASE:
+            self.logic = OnePhaseSimulationLogic(self.progressBar)
+        elif simulation == TWO_PHASE:
+            self.logic = TwoPhaseSimulationLogic(self.progressBar)
+        elif simulation == MICP:
+            self.logic = MercurySimulationLogic(self.progressBar)
 
     def onInputSelectorChange(self):
         input_node = self.inputSelector.currentNode()
@@ -177,43 +182,50 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.outputPrefix.setText(output_prefix)
 
     def onApplyButtonClicked(self):
-        with ProgressBarProc() as pb:
-            pore_node = self.inputSelector.currentNode()
-            if pore_node is None:
-                pb.setMessage("No valid node selected")
-                return
-
-            simulation = self.simulationSelector.currentText
-
-            if simulation == ONE_PHASE:
-                self.runOnePhaseSimulation(pb, pore_node)
-            elif simulation == TWO_PHASE:
-                self.runTwoPhaseSimulation(pb, pore_node)
-            elif simulation == MICP:
-                self.mercurySimWidget.runMICPSimulation(pb, pore_node, self.outputPrefix.text)
-
-    def runOnePhaseSimulation(self, pb, pore_node):
-        pb.setMessage("Beginning simulation")
-        pb.setProgress(0)
-        pb.setMessage("Running one phase simulation")
-        pb.setProgress(10)
         pore_node = self.inputSelector.currentNode()
+        if pore_node is None:
+            slicer.util.warningDisplay("No valid node selected")
+            return
+
+        simulation = self.simulationSelector.currentText
+
+        if simulation == ONE_PHASE:
+            self.runOnePhaseSimulation(pore_node)
+        elif simulation == TWO_PHASE:
+            self.runTwoPhaseSimulation(pore_node)
+        elif simulation == MICP:
+            self.runMICPSimulation(pore_node)
+
+    def runOnePhaseSimulation(self, pore_node):
+        self.applyButtonEnabled(False)
+        slicer.app.processEvents()
         params = self.onePhaseSimWidget.getParams()
         params["subresolution function"] = params["subresolution function call"](pore_node)
-        if params["simulation type"] == ONE_ANGLE:
-            self.logic.run_1phase_one_angle(pore_node, params, prefix=self.outputPrefix.text)
-        elif params["simulation type"] == MULTI_ANGLE:
-            self.logic.run_1phase_multi_angle(pore_node, params, prefix=self.outputPrefix.text)
-        pb.setMessage("Done")
-        pb.setProgress(100)
+        self.logic.run_1phase(
+            pore_node,
+            params,
+            prefix=self.outputPrefix.text,
+            callback=self.applyButtonEnabled,
+        )
 
-    def runTwoPhaseSimulation(self, pb, pore_node):
+    def runTwoPhaseSimulation(self, pore_node):
         self.applyButtonEnabled(False)
         slicer.app.processEvents()
         params = self.twoPhaseSimWidget.getParams()
-        pore_node = self.inputSelector.currentNode()
         params["subresolution function"] = params["subresolution function call"](pore_node)
         self.logic.run_2phase(
+            pore_node,
+            params,
+            prefix=self.outputPrefix.text,
+            callback=self.applyButtonEnabled,
+        )
+
+    def runMICPSimulation(self, pore_node):
+        self.applyButtonEnabled(False)
+        slicer.app.processEvents()
+        params = self.mercurySimWidget.getParams()
+        params["subresolution function"] = params["subresolution function call"](pore_node)
+        self.logic.run_mercury(
             pore_node,
             params,
             prefix=self.outputPrefix.text,

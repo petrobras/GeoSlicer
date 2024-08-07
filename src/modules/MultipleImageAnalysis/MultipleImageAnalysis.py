@@ -147,9 +147,6 @@ class MultipleImageAnalysisWidget(LTracePluginWidget):
 
         return model
 
-    def cleanup(self):
-        pass
-
     def on_generate_button_clicked(self):
         """Handles click event on the 'Generate' button."""
         selected_analysis_type = self.analysis_type_combo_box.currentText

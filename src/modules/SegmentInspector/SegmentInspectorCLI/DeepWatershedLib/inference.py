@@ -1,11 +1,10 @@
-import logging
-import monai
-import numpy as np
 import torch
-
-from ltrace.assets_utils import get_asset
 from monai.inferers import sliding_window_inference
+from ltrace.assets_utils import get_asset
+import torch
+import monai
 from monai.networks.blocks.convolutions import Convolution
+import numpy as np
 
 
 class Deep_watershed_model(torch.nn.Module):
@@ -72,15 +71,10 @@ class DWinference:
     def __init__(self, mode):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print("Device: ", self.device)
-        self.mode = mode
-        if self.mode == "3D":
-            self.model_name = "deep_watershed_3D_binary_input_fragmentation.pth"
-            self.basedir = get_asset("trained_models/MicroCTEnv")
-            self.model_path = self.basedir / self.model_name
-        elif self.mode == "2D":
-            self.model_name = "deep_watershed_2D_binary_input_fragmentation.pth"
-            self.basedir = get_asset("trained_models/ThinSectionEnv")
-            self.model_path = self.basedir / self.model_name
+        if mode == "3D":
+            self.model_path = get_asset("MicroCTEnv/deep_ws_3d/model.pth")
+        elif mode == "2D":
+            self.model_path = get_asset("ThinSectionEnv/deep_ws_2d/model.pth")
 
     def _prepare_sample(self, img):
         sample = {}
@@ -127,7 +121,8 @@ class DWinference:
                     batched_inference = batched_output[output_name]
                 break
             except RuntimeError as e:
-                logging.error(f"PyTorch is not able to use GPU: falling back to CPU.\nError: {repr(e)}")
+                print(e)
+                print("PyTorch is not able to use GPU: falling back to CPU.")
                 self.device = "cpu"
 
         # remove batch and channel dimensions

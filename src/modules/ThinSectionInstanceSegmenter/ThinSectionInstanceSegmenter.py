@@ -5,7 +5,7 @@ import qt
 import slicer
 import logging
 
-from ltrace.assets_utils import get_trained_models_with_metadata, get_metadata, get_pth
+from ltrace.assets_utils import get_trained_models_with_metadata, get_metadata
 from ltrace.remote.connections import JobExecutor
 from ltrace.remote.jobs import JobManager
 from ltrace.slicer import ui, helpers, widgets
@@ -208,6 +208,8 @@ class ThinSectionInstanceSegmenter(LTracePlugin):
         self.parent.categories = ["LTrace Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ThinSectionInstanceSegmenter.help()
+        self.parent.dependencies = []
+        self.parent.acknowledgementText = ""
 
     @classmethod
     def readme_path(cls):
@@ -286,7 +288,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             checkable=False,
             setDefaultMargins=False,
         )
-        self.inputsSelector.onReferenceSelected = self._onReferenceSelected
+        self.inputsSelector.setParent(widget)
+        self.inputsSelector.onReferenceSelectedSignal.connect(self._onReferenceSelected)
         self.inputsSelector.segmentationLabel.visible = False
         self.inputsSelector.mainInput.visible = False
         self.inputsSelector.segmentsContainerWidget.visible = False
@@ -783,12 +786,13 @@ class ThinSectionInstanceSegmenterLogic(LTracePluginLogic):
             clearPattern(tmpPrefix)
             self.progressUpdate(1.0)
             self.onFinish()
+            cliNode.RemoveObserver(self.observerTag)
 
         ehandler = CLIEventHandler()
         ehandler.onSuccessEvent = onSuccess
         ehandler.onFinish = onFinish
 
-        cliNode.AddObserver("ModifiedEvent", ehandler)
+        self.observerTag = cliNode.AddObserver("ModifiedEvent", ehandler)
 
         return cliNode
 

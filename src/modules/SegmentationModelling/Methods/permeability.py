@@ -128,6 +128,7 @@ class Permeability(widgets.BaseSettingsWidget):
         if outputDir == 0:
             outputDir = folderTree.CreateFolderItem(parentItemId, helpers.generateName(folderTree, "Modelling Results"))
         common_params = {
+            "parent": self,
             "output_prefix": outputPrefix,
             "output_dir": outputDir,
         }
@@ -198,8 +199,10 @@ class Permeability(widgets.BaseSettingsWidget):
 class PermeabilityLogic(qt.QObject):
     signalProcessEnded = qt.Signal()
 
-    def __init__(self, inputNodeId, labelMapNodeId, segmentEquationDict, output_prefix, output_dir, soiNodeId=None):
-        super().__init__()
+    def __init__(
+        self, parent, inputNodeId, labelMapNodeId, segmentEquationDict, output_prefix, output_dir, soiNodeId=None
+    ):
+        super().__init__(parent)
 
         self.__inputNodeId = inputNodeId
         self.__labelMapNodeId = labelMapNodeId

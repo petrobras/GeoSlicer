@@ -185,6 +185,13 @@ class ImageLogDataWidget(CustomizedDataWidget):
     def exit(self):
         self.logic.exit()
 
+    def cleanup(self):
+        super().cleanup()
+        self.logic.layoutViewOpened.disconnect()
+        self.logic.layoutViewClosed.disconnect()
+        self.logic.viewsRefreshed.disconnect()
+        self.logic.addViewClicked.disconnect()
+
 
 class ViewDataEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -1133,7 +1140,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if not hasattr(self, "imageLogSegmenterWidget"):
             return
 
-        segmentEditorWidget = self.imageLogSegmenterWidget.self().segmentEditorWidget
+        try:
+            segmentEditorWidget = self.imageLogSegmenterWidget.self().segmentEditorWidget
+        except ValueError:
+            # imageLogSegmenterWidget was deleted
+            return
         activeEffect = segmentEditorWidget.activeEffect()
         segmentEditorWidget.setActiveEffectByName("None")
         segmentEditorWidget.setActiveEffect(activeEffect)
@@ -1309,26 +1320,69 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Preparing basic views when initializing a segmentation, if no views are present
         prepareBasicViews = False
-        if len(self.imageLogViewList) == 0 and segmentationNode is not None and sourceVolumeNode is not None:
+        if segmentationNode is None or sourceVolumeNode is None:
+            return
+
+        if len(self.imageLogViewList) == 0:
             prepareBasicViews = True
-            for i in range(3):
-                self.imageLogViewList.append(ImageLogView(sourceVolumeNode, segmentationNode))
+
+        if not prepareBasicViews:
+            msg_box = qt.QMessageBox(slicer.util.mainWindow())
+            msg_box.setIcon(qt.QMessageBox.Question)
+            msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+            msg_box.setDefaultButton(qt.QMessageBox.Yes)
+
+            print(segmentationNode.GetName(), sourceVolumeNode.GetName())
+            msg_box.text = (
+                "Would you like to edit the segmentation in a 3-view layout? This will reset any current views."
+            )
+            msg_box.setWindowTitle("Reset layout")
+            result = msg_box.exec()
+            prepareBasicViews = result == qt.QMessageBox.Yes
 
         # Three basic views, one with primary node and segmentation, one with segmentation only and one with segmentation proportions
         if prepareBasicViews:
+            self.imageLogViewList.clear()
+            for i in range(3):
+                self.imageLogViewList.append(ImageLogView(sourceVolumeNode, segmentationNode))
             self.__refreshViews("segmentationNodeOrSourceVolumeNodeChanged")
+            slicer.app.processEvents(1000)
             identifier = 1
             viewControllerWidget = self.viewControllerWidgets[identifier]
             showHidePrimaryNodeButton = viewControllerWidget.findChild(
                 qt.QPushButton, "showHidePrimaryNodeButton" + str(identifier)
             )
             showHidePrimaryNodeButton.click()
+            slicer.app.processEvents(1000)
             identifier = 2
-            viewControllerWidget = self.viewControllerWidgets[identifier]
-            showHideProportionsNodeButton = viewControllerWidget.findChild(
-                qt.QPushButton, "showHideProportionsNodeButton" + str(identifier)
-            )
-            showHideProportionsNodeButton.click()
+            # Hack - click 3 times
+            for i in range(3):
+                viewControllerWidget = self.viewControllerWidgets[identifier]
+                showHideProportionsNodeButton = viewControllerWidget.findChild(
+                    qt.QPushButton, "showHideProportionsNodeButton" + str(identifier)
+                )
+                showHideProportionsNodeButton.click()
+                slicer.app.processEvents(1000)
+
+    def addInpaintView(self, segmentationNode1=None, segmentationNode2=None, sourceVolumeNode=None):
+        self.configureSliceViewsAllowedSegmentationNodes()
+
+        if len(self.imageLogViewList) != 2:
+            for id in range(len(self.imageLogViewList) - 1, -1, -1):
+                self.removeView(id)
+
+            self.imageLogViewList.append(ImageLogView(sourceVolumeNode, segmentationNode1))
+            self.imageLogViewList.append(ImageLogView(sourceVolumeNode, segmentationNode2))
+        else:
+            self.imageLogViewList[0] = ImageLogView(sourceVolumeNode, segmentationNode1)
+            self.imageLogViewList[1] = ImageLogView(sourceVolumeNode, segmentationNode2)
+
+        self.__refreshViews("addInpaintView")
+
+        viewControllerWidget = self.viewControllerWidgets[1]
+
+        showHidePrimaryNodeButton = viewControllerWidget.findChild(qt.QPushButton, "showHidePrimaryNodeButton" + str(1))
+        showHidePrimaryNodeButton.click()
 
     def getViewName(self, identifier):
         return self.imageLogViewList[identifier].viewData.VIEW_NAME_PREFIX + str(identifier)
@@ -1605,7 +1659,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             except AttributeError as e:  # In case other controllers haven't been initialized yet
                 logging.debug(e)
                 pass
-        if segmentationNode != None:
+        if segmentationNode:
             if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                 segmentationDisplayNode = segmentationNode.GetDisplayNode()
                 segmentationDisplayNode.SetOpacity(value)
@@ -1683,7 +1737,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         """
         refresh = False
         self.nodeAboutToBeRemoved = True
-        if len(self.imageLogViewList) > 0:
+        if len(self.imageLogViewList) > 0 and identifier < len(self.imageLogViewList):
             viewData = self.imageLogViewList[identifier].viewData
             if node is self.getNodeById(viewData.primaryNodeId):
                 self.imageLogViewList[identifier] = ImageLogView(None)

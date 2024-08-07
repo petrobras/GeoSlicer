@@ -1,20 +1,16 @@
-import os
 import json
-import logging
 from pathlib import Path
+from typing import Union
 
 import markdown2 as markdown
 import numpy as np
-import qt
-import slicer
-import vtk
-from slicer import ScriptedLoadableModule
+import pandas as pd
 from SegmentEditorEffects import *
+from slicer import ScriptedLoadableModule
 
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
 from ltrace.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
-from typing import Union, Callable
 
 __all__ = [
     "LTracePlugin",
@@ -33,8 +29,8 @@ class LTraceSegmentEditorEffectMixin:
         try:
             parameterSetNode = self.scriptedEffect.parameterSetNode()
             parameterSetNode.SourceVolumeIntensityMaskOff()
-        except Exception as e:
-            pass
+        except Exception as error:
+            logging.debug(f"Error {error}. Traceback:\n{traceback.format_exc()}")
 
 
 class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
@@ -99,6 +95,16 @@ class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
     def enter(self) -> None:
         ApplicationObservables().moduleWidgetEnter.emit(self)
 
+    def cleanup(self):
+        super().cleanup()
+        slicer.app.moduleManager().moduleAboutToBeUnloaded.disconnect(self._onModuleAboutToBeUnloaded)
+        if slicer_is_in_developer_mode():
+            self.testAction.triggered.disconnect()
+            self.reloadTestAction.triggered.disconnect()
+
+        for pluginWidget in self.parent.findChildren("qSlicerScriptedLoadableModuleWidget"):
+            pluginWidget.setParent(None)
+
 
 class LTracePluginLogicMeta(type(qt.QObject), type(ScriptedLoadableModule.ScriptedLoadableModuleLogic)):
     pass
@@ -110,7 +116,7 @@ class LTracePluginLogic(
     metaclass=LTracePluginLogicMeta,
 ):
     def __init__(self, parent=None):
-        super(qt.QObject, self).__init__()
+        super(qt.QObject, self).__init__(parent)
         super(ScriptedLoadableModule.ScriptedLoadableModuleLogic, self).__init__()
 
 
@@ -123,6 +129,12 @@ def is_tensorflow_gpu_enabled():
 
 
 def dataFrameToTableNode(dataFrame, tableNode=None):
+    """ "
+    =================================================================================================
+    DEPRECATED use dataFrameToTableNode from data_utils instead
+    =================================================================================================
+    """
+
     def is_float(value):
         return value.dtype in [np.dtype("float32")]
 
@@ -261,21 +273,11 @@ def addNodeToSubjectHierarchy(node, dirPaths: list = None):
     subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(node), parentDirID)
 
 
-def print_debug(text, channel: Callable = logging.debug):
+def print_debug(text):
     if not slicer_is_in_developer_mode():
         return
 
-    channel(text)
-
-
-def print_stack():
-    if not slicer_is_in_developer_mode():
-        return
-
-    import traceback
-
-    text = traceback.format_exc()
-    logging.debug(text)
+    print(text)
 
 
 def base_version():
@@ -302,6 +304,12 @@ def hide_nodes_of_type(mrml_node_type):
 
 
 def dataframeFromTable(tableNode):
+    """
+    =================================================================================================
+    DEPRECATED use tableNodeToDataFrame from data_utils instead
+    =================================================================================================
+    """
+
     """Optimized version from slicer.util.dataframeFromTable
 
     Convert table node content to pandas dataframe.
@@ -370,7 +378,6 @@ def imageToHtml(image: Union[qt.QImage, qt.QPixmap], imageFormat=None, quality=-
     except TypeError as e:
         raise e
 
-    buffer.close()
     html = f'<img src="data:image/png;base64,{bufferedImage}"/>'
     return html
 
@@ -404,3 +411,39 @@ def loadImage(
 
     obj = imageReader.read() if cls == qt.QImage else qt.QPixmap.fromImageReader(imageReader)
     return obj
+
+
+def tableWidgetToDataFrame(tableWidget: qt.QTableWidget) -> pd.DataFrame:
+    """Convert a QTableWidget to a pandas dataframe.
+
+    Args:
+        tableWidget (qt.QTableWidget): The QTableWidget to convert.
+
+    Returns:
+        pd.DataFrame: The pandas dataframe.
+    """
+    columnHeaders = [
+        tableWidget.horizontalHeaderItem(column).text()
+        for column in range(tableWidget.columnCount)
+        if tableWidget.horizontalHeaderItem(column) is not None
+    ]
+    if not columnHeaders:
+        columnHeaders = None
+    indexHeaders = [
+        tableWidget.verticalHeaderItem(row).text()
+        for row in range(tableWidget.rowCount)
+        if tableWidget.verticalHeaderItem(row) is not None
+    ]
+    if not indexHeaders:
+        indexHeaders = None
+
+    data = []
+    for row in range(tableWidget.rowCount):
+        columnData = []
+        for column in range(tableWidget.columnCount):
+            columnData.append(tableWidget.item(row, column).text())
+
+        data.append(columnData)
+
+    df = pd.DataFrame(data, columns=columnHeaders, index=indexHeaders)
+    return df

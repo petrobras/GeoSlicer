@@ -111,6 +111,10 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
     Call restorePreviewedSegmentTransparency() to restore original
     opacity.
     """
+    if self.scriptedEffect.parameterSetNode() is None:
+        logging.debug("The segment editor node is not available.")
+        return
+
     segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
     if not segmentationNode:
       return
@@ -138,6 +142,10 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
   def restorePreviewedSegmentTransparency(self):
     """Restore previewed segment's opacity that was temporarily
     made transparen by calling setCurrentSegmentTransparent()."""
+    if self.scriptedEffect.parameterSetNode() is None:
+        logging.debug("The segment editor node is not available.")
+        return
+
     segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
     if not segmentationNode:
       return
@@ -527,6 +535,10 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
 
   def onUseForPaint(self):
     parameterSetNode = self.scriptedEffect.parameterSetNode()
+    if parameterSetNode is None:
+        slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+        return
+
     parameterSetNode.SourceVolumeIntensityMaskOn()
     parameterSetNode.SetSourceVolumeIntensityMaskRange(self.thresholdSlider.minimumValue, self.thresholdSlider.maximumValue)
     # Switch to paint effect
@@ -638,6 +650,9 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
 
     # De-select effect
     self.scriptedEffect.selectEffect("")
+    if self.scriptedEffect.parameterSetNode() is None:
+        slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+        return
     segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
     segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
     if not segmentationNode:
@@ -695,6 +710,10 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
       opacity = 1.0
     min = self.scriptedEffect.doubleParameter("MinimumThreshold")
     max = self.scriptedEffect.doubleParameter("MaximumThreshold")
+
+    if self.scriptedEffect.parameterSetNode() is None:
+        logging.debug("Segment editor node is not available.")
+        return
 
     # Get color of edited segment
     segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()

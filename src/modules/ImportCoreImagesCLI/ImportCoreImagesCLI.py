@@ -7,11 +7,11 @@ import numpy as np
 import itertools
 import pickle
 import cv2
-from ltrace.assets import get_trained_model
-from ltrace.cli_progress import ProgressBarClient, StoppedError
-from ltrace.image.segmentation import TF_RGBImageArrayBinarySegmenter
+from pathlib import Path
 from ltrace.units import global_unit_registry as ureg
-from ltrace.wrappers import sanitize_file_path
+from ltrace.image.segmentation import TF_RGBImageArrayBinarySegmenter
+from ltrace.assets import get_asset
+from ltrace.cli_progress import ProgressBarClient, StoppedError
 
 
 def find_plug_holes(images_folder, progress_bar):
@@ -31,7 +31,7 @@ def find_plug_holes(images_folder, progress_bar):
     if progress_bar.should_stop:
         raise StoppedError()
 
-    model = TF_RGBImageArrayBinarySegmenter(get_trained_model("unet-binary-segop.h5"))
+    model = TF_RGBImageArrayBinarySegmenter(get_asset("unet-binary-segop.h5"))
     for image in all_images:
         results.append([image, _find_plug_holes_in_file(image, model, progress_bar)])
 
@@ -211,8 +211,8 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    images_folder = sanitize_file_path(sys.argv[1])
-    output_file = sanitize_file_path(sys.argv[2])
+    images_folder = Path(sys.argv[1]).absolute()
+    output_file = Path(sys.argv[2]).absolute()
     zmq_port = int(sys.argv[3])
 
     with ProgressBarClient(zmq_port) as progress_bar:
@@ -221,5 +221,5 @@ if __name__ == "__main__":
 
         result = find_plug_holes(images_folder, progress_bar)
 
-        with open(output_file.as_posix(), "wb") as f:
+        with open(output_file, "wb") as f:
             f.write(pickle.dumps(result))

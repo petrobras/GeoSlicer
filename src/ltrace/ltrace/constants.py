@@ -17,3 +17,14 @@ class ImageLogConst:
 
     # The default layout ID value for the ImageLogData module.
     DEFAULT_LAYOUT_ID_START_VALUE = 15000
+
+
+class ImageLogInpaintConst:
+    """
+    Constants for ImageLogInpaint module
+    """
+
+    SEGMENT_ID = "Segment_1"
+    TEMP_SEGMENTATION_NAME = "Inpaint_Segmentation_ImageLog"
+    TEMP_LABEL_MAP_NAME = "Inpaint_Mask_ImageLog"
+    TEMP_VOLUME_NAME = "Inpaint_Volume_ImageLog"

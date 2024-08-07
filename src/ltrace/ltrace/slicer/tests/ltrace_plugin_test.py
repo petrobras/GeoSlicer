@@ -3,8 +3,13 @@ import slicer
 import random
 import traceback
 import qt
+import weakref
+import pprint
+import sys
+from ltrace.slicer import helpers
+from humanize import naturalsize
 from types import MappingProxyType
-
+from typing import List
 from ltrace.slicer.tests.constants import TestState
 from ltrace.slicer.tests.test_case import TestCase
 from ltrace.slicer.tests.utils import (
@@ -16,6 +21,7 @@ from ltrace.slicer.tests.utils import (
 from ltrace.slicer.tests.widgets_identification import guess_widget_by_name, widgetsIdentificationModule
 from ltrace.utils.string_comparison import StringComparison
 from slicer import ScriptedLoadableModule
+from stopit import ThreadingTimeout
 
 
 class LTracePluginTestMeta(type(qt.QObject), type(ScriptedLoadableModule.ScriptedLoadableModuleTest)):
@@ -27,6 +33,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
 
     test_case_finished = qt.Signal(str, object)
     tests_cancelled = qt.Signal()
+    GLOBAL_TIMEOUT_MS = 5 * (60 * 1000)  # 5 minutes
 
     def __init__(
         self,
@@ -53,15 +60,16 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         self.__after_clear = after_clear
 
         test_case_method_list = self.get_test_case_methods()
-        self.__test_cases = self.__get_methods(test_case_method_list, test_case_filter)
+        self.__test_cases: List[TestCase] = self.__get_methods(test_case_method_list, test_case_filter)
 
         generate_method_list = self.get_generate_methods()
-        self.__generate_methods = self.__get_methods(generate_method_list, test_case_filter)
+        self.__generate_methods: List[TestCase] = self.__get_methods(generate_method_list, test_case_filter)
 
         self.__test_state = TestState.NOT_INITIALIZED
         self.__show_overview = show_overview
         self.__warnings = []
         self.__widgets = {}
+        self.__timeout_timer = None
 
     @property
     def widgets(self):
@@ -105,28 +113,36 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         """Wrapper for widget reload"""
         self._module_widget.onReload()
 
-    def setUp(self):
-        """ScriptedLoadableModuleTest method overload, called before starting the testing case."""
+    def setUp(self, test_case: TestCase) -> None:
+        """Set up the test suite, called before starting the testing case.
+
+        Args:
+            test_case (TestCase): the current TestCase object.
+        """
         self.__close_project()
 
         try:
-            self._pre_setup()
+            self._pre_setup(test_case)
         except Exception as error:
             self.warnings.append(error)
 
+        old_widget = getattr(slicer.modules, self._module_name + "Widget", None)
         self._module_widget = slicer.util.getNewModuleWidget(self._module_name)
+        setattr(slicer.modules, self._module_name + "Widget", old_widget)
+
         self._module_widget.parent.setWindowModality(qt.Qt.ApplicationModal)
         self._module_widget.parent.show()
         self._module_widget.enter()
         process_events()
 
         try:
-            self._post_setup()
+            self._post_setup(test_case)
         except Exception as error:
             self.warnings.append(error)
 
     def tearDown(self):
         try:
+            self.__uninstall_timeout_timer()
             self.tear_down()
         except Exception as error:
             message = "Test suite tear down failed! Please review the 'tear_down' method from the test class!"
@@ -134,14 +150,42 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             self.warnings.append(message)
 
         if self._module_widget is not None:
+            # Disconnect signals that keep the widget's method alive
             self._module_widget.cleanup()
-            self._module_widget.parent.close()
-            del self._module_widget
+
+            # Delete the module widget immediately after processing events.
+            # deleteLater() only deletes after the tests are finished.
+            slicer.app.processEvents(1000)
+            self._module_widget.parent.delete()
+            slicer.app.processEvents(1000)
+
+            weak_widget = weakref.ref(self._module_widget)
             self._module_widget = None
+            self.__widgets = {}
+
+            try:
+                del sys.last_value
+                del sys.last_traceback
+            except AttributeError:
+                pass
+
+            gc.collect()
+            if weak_widget() is not None:
+                refs = gc.get_referrers(weak_widget())
+                refs_str = pprint.pformat(refs)
+                message = f"The module widget {weak_widget()} was not deleted properly!\n\nReferrers:\n{refs_str}"
+                self.warnings.append(message)
+                """
+                Run pip_install("objgraph") and run the following code to generate a graph of the references:
+                import objgraph
+
+                objgraph.show_backrefs(
+                    [weak_widget()], max_depth=10, too_many=10, filename="objgraph.dot", shortnames=False
+                )
+                """
 
         if self.__after_clear:
             self.__close_project()
-        gc.collect()
 
     def cancel(self):
         if not self.__test_state == TestState.RUNNING:
@@ -158,6 +202,9 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             show_window=False,
         )
 
+        # Revert layout to conventional
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalView)
+
         test_cases = self.test_cases + self.generate_methods
         if self.__shuffle:
             random.shuffle(test_cases)
@@ -167,24 +214,29 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             if self.__test_state == TestState.CANCELLED and idx != len(test_cases) - 1:
                 break
 
-            self.setUp()
+            self.setUp(test)
 
             log(
                 " " * 4 + f"Running test case: {test.name}... ",
                 end="",
                 show_window=False,
             )
-            test()
+            timeout_sec = (test.timeout_ms or self.GLOBAL_TIMEOUT_MS) // 1000
+            with ThreadingTimeout(seconds=timeout_sec) as timeout_ctx:
+                test()
+
             self.tearDown()
             if test.status == TestState.SUCCEED:
                 valid_test_count += 1
-                log(f"OK! [{test.elapsed_time_sec:.6f} sec]")
+                log(f"OK! [{test.elapsed_time_sec:.6f} sec]", end="")
                 self.test_case_finished.emit(test.function.__name__, TestState.SUCCEED)
             else:
-                log(f"FAILED! [{test.elapsed_time_sec:.6f} sec]")
+                log(f"FAILED! [{test.elapsed_time_sec:.6f} sec]", end="")
                 self.test_case_finished.emit(test.function.__name__, TestState.FAILED)
                 if self.__break_on_failure:
                     break
+            mem_usage = helpers.get_memory_usage()
+            log(f" - Memory usage: {naturalsize(mem_usage)}")
 
         if self.__test_state == TestState.CANCELLED and idx != len(test_cases) - 1:
             self.__on_test_cancelled()
@@ -222,9 +274,12 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         """
         pass
 
-    def _pre_setup(self):
+    def _pre_setup(self, test_case: TestCase) -> None:
         """
         Method responsible to handle setup before module initialization
+
+        Args:
+            test_case (TestCase): the current TestCase object.
         """
         try:
             self.pre_setup()
@@ -233,9 +288,15 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             message += f"\nError: {error}\n{traceback.format_exc()}"
             raise Exception(message)
 
-    def _post_setup(self):
-        """
-        Method responsible to handle setup after module initialization
+    def _post_setup(self, test_case: TestCase) -> None:
+        """Method responsible to handle setup after module initialization
+
+        Args:
+            test_case (TestCase): the current TestCase object.
+
+        Raises:
+            Exception: When failing to automatically recognize widgets names from the module.
+            Exception: When the overloaded 'post_setup' (from the LTracePluginTest derived class) method fails.
         """
         try:
             self.__widgets = widgetsIdentificationModule(self._module_widget).widgets
@@ -250,6 +311,8 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
 
         try:
             self.post_setup()
+            timeout_ms = test_case.timeout_ms or self.GLOBAL_TIMEOUT_MS
+            self.__install_timeout_timer(interval_ms=timeout_ms + 1500)  # To trigger after ThreadingTimeout
         except Exception as error:
             message = "Test suite post-setup failed! Please review the 'post_setup' class method!"
             message += f"\nError: {error}\n{traceback.format_exc()}"
@@ -270,8 +333,9 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         self,
         name: str,
         obj=None,
-        type="QWidget",
+        _type="QWidget",
         comparison_type=StringComparison.EXACTLY,
+        only_visible=False,
     ):
         """Search for the QWidget that contains the desired object's name attribute.
 
@@ -290,11 +354,11 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
 
             obj = self._module_widget.parent
 
-        return find_widget_by_object_name(obj, name, type, comparison_type) or guess_widget_by_name(
+        return find_widget_by_object_name(obj, name, _type, comparison_type, only_visible) or guess_widget_by_name(
             self.__widgets, name
         )
 
-    def __get_methods(self, methods_list: list, methods_filter: list):
+    def __get_methods(self, methods_list: list, methods_filter: list) -> List[TestCase]:
         """Retrieve test or generate methods from the LTracePluginTest object.
 
         Args:
@@ -350,3 +414,51 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         text += "\n" + "=" * 66 + "\n"
 
         return text
+
+    def __install_timeout_timer(self, interval_ms: int = 1000) -> None:
+        """Install a timer that limits the test case duration.
+
+        Args:
+            interval_ms (int, optional): The maximum duration in milliseconds. Defaults to 1000 ms.
+        """
+        self.__timeout_timer = qt.QTimer()
+        self.__timeout_timer.setSingleShot(True)
+        self.__timeout_timer.timeout.connect(self.__on_timeout)
+        self.__timeout_timer.setInterval(interval_ms)
+        self.__timeout_timer.start()
+
+    def __uninstall_timeout_timer(self) -> None:
+        """Uninstall the timer that limits the test case duration."""
+        if self.__timeout_timer is None:
+            return
+
+        self.__timeout_timer.stop()
+        self.__timeout_timer = None
+
+    def __on_timeout(self) -> None:
+        """Method that handles the event that is triggered when the test case timeout is reached.
+
+        Raises:
+            TimeoutError: When the test case timeout is reached.
+        """
+        if self.__timeout_timer is None or self.__test_state != TestState.RUNNING:
+            return
+
+        # Clear possible message boxes freezing the operation
+        message_boxes = slicer.util.mainWindow().findChildren(qt.QMessageBox)
+        message_from_boxes = []
+        for message_box in message_boxes:
+            if not message_box.visible:
+                message_box.close()
+                continue
+
+            message_from_boxes.append(message_box.text)
+            message_box.close()
+
+        if message_from_boxes:
+            messages_formated = "\n".join(message_from_boxes)
+            message = "Test case timeout reached! Please check the test case logic.\n"
+            message += f"Messages from message boxes: {messages_formated}"
+            raise TimeoutError(message)
+
+        raise TimeoutError("Test case timeout reached! Please check the test case logic.")

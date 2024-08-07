@@ -1,5 +1,5 @@
 from collections import namedtuple
-from ltrace.assets_utils import get_trained_model
+from ltrace.assets_utils import get_asset
 from ltrace.image.core_box.core_box import CoreBox
 from ltrace.slicer.helpers import concatenateImageArrayVertically, resizeRgbArray
 from ltrace.units import safe_atof
@@ -306,7 +306,7 @@ class CoreBoxesImageFile:
             from ltrace.image.segmentation import TF_RGBImageArrayBinarySegmenter
 
             CoreBoxesImageFile.BinarySegmenterModel = TF_RGBImageArrayBinarySegmenter(
-                get_trained_model("unet-binary-segop.h5"), gpuEnabled=self.__gpuEnabled
+                get_asset("unet-binary-segop.h5"), gpuEnabled=self.__gpuEnabled
             )
 
         for core_cut in self.__split_cores(img, number_of_cores):

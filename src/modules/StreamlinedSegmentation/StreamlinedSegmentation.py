@@ -53,7 +53,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor = None
         self.__tag = None
         self.__updateEffectRegisteredTimer = qt.QTimer()
-        self.__updateEffectRegisteredTimer.setSingleShot(True)
+        self.__updateEffectRegisteredTimer.setParent(self.parent)
         self.__updateEffectRegisteredTimer.timeout.connect(lambda: self.__handleUpdatePlot())
         self.__updateEffectRegisteredTimer.setInterval(1000)
 
@@ -178,6 +178,9 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.__applicationObservables.applicationLoadFinished.connect(self.__onApplicationLoadFinished)
 
         self.logic = StreamlinedSegmentationLogic()
+        self.multiFinishedTimer = qt.QTimer()
+        self.multiFinishedTimer.setSingleShot(True)
+        self.multiFinishedTimer.setInterval(100)
 
         self.enter()
 
@@ -201,7 +204,8 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.visible = False
 
-        qt.QTimer.singleShot(100, afterWait)
+        self.multiFinishedTimer.timeout.connect(afterWait)
+        self.multiFinishedTimer.start()
 
     def onBoundaryRemovalFinished(self):
         self.logic.boundaryThresholds = self.boundaryRemovalEffect.appliedMinMax
@@ -369,8 +373,14 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
             self.editor.updateWidgetFromMRML()
 
     def cleanup(self):
+        super().cleanup()
         self.removeObservers()
-        self.deactivateEditorRegisteredCallback()
+        self.__applicationObservables.applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
+        self.multipleThresholdEffect.applyFinishedCallback = lambda: None
+        self.boundaryRemovalEffect.applyFinishedCallback = lambda: None
+        self.expandSegmentsEffect.applyFinishedCallback = lambda: None
+        self.multiFinishedTimer.stop()
+        self.multiFinishedTimer.timeout.disconnect()
 
 
 class StreamlinedSegmentationLogic(LTracePluginLogic):

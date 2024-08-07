@@ -50,13 +50,6 @@ SegmentLabel = recordtype("SegmentLabel", ["name", "color", "id", "value", ("pro
 
 TAB_COLORS = [name for name in mcolors.TABLEAU_COLORS]
 
-# TODO(PL-1747): Update path to the manual when it's ready
-MANUAL_PATH = Customizer.RESOURCES_PATH / "manual" / "Segmenter" / "Semiauto" / "semiauto.html"
-REFER_TO_MANUAL = f"You can find more information in the [GeoSlicer manual]({(MANUAL_PATH).resolve().as_posix()})."
-
-# TODO(PL-1747): Remove this when the manual is ready
-REFER_TO_MANUAL = ""
-
 
 def getVolumeMinSpacing(volumeNode):
     return min(volumeNode.GetSpacing())
@@ -176,8 +169,6 @@ class Segmenter(LTracePlugin):
 
 
 class SegmenterWidget(LTracePluginWidget):
-    USER_CLASSIFIER = "User trained classifier"
-
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
 
@@ -219,7 +210,7 @@ class SegmenterWidget(LTracePluginWidget):
 
         textNodeType = "vtkMRMLTextNode"
         self.userClassifierInput = slicer.qMRMLNodeComboBox()
-        self.userClassifierInput.setToolTip("Select pre-trained classifier for segmentation")
+        self.userClassifierInput.setToolTip("Select user-trained model for segmentation")
         self.userClassifierInput.nodeTypes = (textNodeType,)
         self.userClassifierInput.addAttribute(textNodeType, "Type", "Classifier")
         self.userClassifierInput.setMRMLScene(slicer.mrmlScene)
@@ -228,9 +219,6 @@ class SegmenterWidget(LTracePluginWidget):
         self.userClassifierInput.noneEnabled = False
         self.userClassifierInput.setNodeTypeLabel("Classifier", textNodeType)
         self.userClassifierInput.currentNodeChanged.connect(self._onChangedUserClassifier)
-        self.userClassifierInput.nodeAdded.connect(self._onUserClassifierAdded)
-        self.userClassifierInput.nodeAboutToBeRemoved.connect(self._onUserClassifierRemoved)
-        self.hideWhenCreatingClassifier.append(self.userClassifierInput)
 
         self.classifierInput = qt.QComboBox()
 
@@ -240,8 +228,6 @@ class SegmenterWidget(LTracePluginWidget):
         self.classifierInput.activated.connect(self._onChangedClassifier)
         self.classifierInput.setToolTip("Select pre-trained model for segmentation")
         self.classifierInput.currentIndexChanged.connect(lambda _: self.classifierInput.setStyleSheet(""))
-        self.hideWhenCreatingClassifier.append(self.classifierInput)
-        self.hideWhenCreatingClassifier.append(self.userClassifierInput)
 
         self.classifierInfo = qt.QLabel()
         self.classifierInfo.setTextFormat(qt.Qt.RichText)
@@ -254,27 +240,26 @@ class SegmenterWidget(LTracePluginWidget):
         self.classifierInfoGroupBox.collapsed = True
         self.hideWhenCreatingClassifier.append(self.classifierInfoGroupBox)
 
-        self.createClassifierRadio = qt.QRadioButton("Semi-automatic (Train a new classifier)")
+        self.createClassifierRadio = qt.QRadioButton("Model Training")
         self.createClassifierRadio.toggled.connect(self._onCreateClassifierToggled)
         self.createClassifierRadio.objectName = "Create Classifier Radio"
         scripted_modules_path = helpers.get_scripted_modules_path()
         createClassifierHelpButton = HelpButton(
-            f"### Semi-Automatic Segmentation\n\nWith this option checked, a network is trained from scratch based on the annotations passed by the user. This could result in results that are more flexible to the changes in parameters, filters or the annotation itself.\n\n-----\n More information available at [Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
+            f"### Model Training\n\nTrain a model from scratch using a partially annotated image as input. The model is then used to fully segment the image. This method is more flexible, as you can choose parameters, filters and annotation for a custom use case.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
         )
-        self.loadClassifierRadio = qt.QRadioButton("Automatic (Use a previously trained classifier)")
-        self.loadClassifierRadio.toggled.connect(self._checkRequirementsForApply)
+        self.loadClassifierRadio = qt.QRadioButton("Pre-trained Models")
+        self.loadClassifierRadio.toggled.connect(self._onLoadClassifierRadioToggled)
         self.loadClassifierRadio.objectName = "Load Classifier Radio"
         self.loadClassifierHelpButton = HelpButton(
-            f"### Automatic Segmentation\n\nWith this option checked, some previously trained models for specific applications are shown. These models are extensive trained and just need as input the nodes to do the segmentation.\n\n-----\n More information about the models could be found just below the selection. For more technical or detailed informations consult [Geoslicer Manual]({scripted_modules_path}/qt-scripted-modules/Resources/manual/Segmenter/Automatic/automatic_[ENV].html)"
+            f"### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained for a specific use case and only requires an image as input. Select a model to view its information.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/qt-scripted-modules/Resources/manual/Segmenter/Automatic/automatic_[ENV].html)"
         )
 
-        # This completely removes the option to use pre-trained classifiers
-        # if there are none available.
-        load_classifier_visible = self.classifierInput.count or self.userClassifierInput.nodeCount()
-        self.updateLoadClassifierVisibility(load_classifier_visible)
-
-        if self.userClassifierInput.nodeCount():
-            self.classifierInput.addItem(self.USER_CLASSIFIER, None)
+        self.userClassifierRadio = qt.QRadioButton("User Custom Pre-trained Models")
+        self.userClassifierRadio.objectName = "User Classifier Radio"
+        self.userClassifierRadio.toggled.connect(self._onUserClassifierRadioToggled)
+        self.userClassifierHelpButton = HelpButton(
+            f"### User Custom Pre-trained Models\n\nUse a model that was previously trained using the 'Model Training' option. Input image must have the same number of channels that was used in training.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
+        )
 
         hbox = qt.QHBoxLayout(widget)
         hbox.addWidget(self.createClassifierRadio)
@@ -287,9 +272,12 @@ class SegmenterWidget(LTracePluginWidget):
         layout.addLayout(hbox)
 
         hbox = qt.QHBoxLayout(widget)
-        hbox.addWidget(self.classifierInput, 1)
-        hbox.addWidget(self.userClassifierInput, 2)
+        hbox.addWidget(self.userClassifierRadio)
+        hbox.addWidget(self.userClassifierHelpButton)
         layout.addLayout(hbox)
+
+        layout.addWidget(self.classifierInput)
+        layout.addWidget(self.userClassifierInput)
         layout.addWidget(self.classifierInfoGroupBox)
 
         return widget
@@ -302,8 +290,8 @@ class SegmenterWidget(LTracePluginWidget):
         self.inputsSelector = widgets.SingleShotInputWidget(
             rowTitles={"main": "Annotations"}, checkable=False, setDefaultMargins=False
         )
-        self.inputsSelector.onMainSelected = self._onInputSelected
-        self.inputsSelector.onReferenceSelected = self._onReferenceSelected
+        self.inputsSelector.onMainSelectedSignal.connect(self._onInputSelected)
+        self.inputsSelector.onReferenceSelectedSignal.connect(self._onReferenceSelected)
 
         self.inputsSelector.objectName = "SingleShot Input"
         self.hideWhenLoadingClassifier += [
@@ -422,6 +410,15 @@ class SegmenterWidget(LTracePluginWidget):
 
         return widget
 
+    def _onLoadClassifierRadioToggled(self):
+        self._onChangedClassifier()
+        self._updateWidgetsVisibility()
+
+    def _onUserClassifierRadioToggled(self):
+        self._onChangedUserClassifier(self.userClassifierInput.currentNode())
+        self._updateWidgetsVisibility()
+        self._restoreInputBoxes()
+
     def _validateSourceVolume(self, annotationNode, soiNode, imageNode):
         if not imageNode:
             return True
@@ -460,6 +457,10 @@ class SegmenterWidget(LTracePluginWidget):
 
         # Add pretrained models
         self._addPretrainedModelsIfAvailable()
+        if self.classifierInput.count == 0:
+            self.loadClassifierRadio.hide()
+            self.loadClassifierHelpButton.hide()
+        self._updateWidgetsVisibility()
 
     def _addPretrainedModelsIfAvailable(self):
         env = slicer.util.selectedModule()
@@ -468,121 +469,105 @@ class SegmenterWidget(LTracePluginWidget):
         if env not in envs:
             return
 
-        if self.classifierInput.count == 0 or (
-            self.classifierInput.count == 1 and self.userClassifierInput.nodeCount() != 0
-        ):
+        model_dirs = get_trained_models_with_metadata(env)
+        for model_dir in model_dirs:
             try:
-                model_dirs = get_trained_models_with_metadata(env)
-                for model_dir in model_dirs:
-                    metadata = get_metadata(model_dir)
-                    if metadata["is_segmentation_model"]:
-                        self.classifierInput.addItem(metadata["title"], model_dir.as_posix())
-
-                if self.classifierInput.count != 0 and self.userClassifierInput.nodeCount() == 0:
-                    self._onUserClassifierAdded(True)
-                    self._updateWidgetsVisibility()
-                    self.loadClassifierRadio.setChecked(True)
-                    self.createClassifierRadio.setChecked(True)
+                metadata = get_metadata(model_dir)
+                if metadata["is_segmentation_model"]:
+                    self.classifierInput.addItem(metadata["title"], model_dir.as_posix())
             except RuntimeError as error:
                 logging.error(error)
 
     def _onChangedClassifier(self, selected=None):
-        if self.classifierInput.currentText == self.USER_CLASSIFIER:
-            self.userClassifierInput.visible = True
-            self._onChangedUserClassifier(self.userClassifierInput.currentNode())
-        else:
-            if self.classifierInput.currentData is None:
-                return
+        if self.classifierInput.currentData is None:
+            return
 
-            self.userClassifierInput.visible = False
+        metadata = get_metadata(self.classifierInput.currentData)
+        model_inputs = metadata["inputs"]
+        model_outputs = metadata["outputs"]
+        model_input_names = list(model_inputs.keys())
+        model_output_names = list(model_outputs.keys())
+        # temporary limitationonly taking one output
+        model_output = model_outputs[model_output_names[0]]
+        model_classes = model_output["class_names"]
 
-            metadata = get_metadata(self.classifierInput.currentData)
-            model_inputs = metadata["inputs"]
-            model_outputs = metadata["outputs"]
-            model_input_names = list(model_inputs.keys())
-            model_output_names = list(model_outputs.keys())
-            # temporary limitationonly taking one output
-            model_output = model_outputs[model_output_names[0]]
-            model_classes = model_output["class_names"]
+        for i in range(len(self.inputComboboxes)):
+            label = self.inputLabels[i]
+            combobox = self.inputComboboxes[i]
 
-            for i in range(len(self.inputComboboxes)):
-                label = self.inputLabels[i]
-                combobox = self.inputComboboxes[i]
+            if i < len(model_input_names):
+                label.visible = True
+                combobox.visible = True
 
-                if i < len(model_input_names):
-                    label.visible = True
-                    combobox.visible = True
-
-                    input_name = model_input_names[i]
-                    input_name = input_name[0].upper() + input_name[1:]
-                    label.setText(f"{input_name}: ")
-                else:
-                    label.visible = False
-                    combobox.visible = False
-
-            space = 2 * " "
-
-            if "description" in metadata:
-                model_description = "\n".join([f"**Description:**", "\n", metadata["description"], "\n"])
+                input_name = model_input_names[i]
+                input_name = input_name[0].upper() + input_name[1:]
+                label.setText(f"{input_name}: ")
             else:
-                model_description = ""
+                label.visible = False
+                combobox.visible = False
 
-            model_inputs_description = [f"**Inputs ({len(model_inputs)}):**", "\n"]
-            for name, description in model_inputs.items():
-                model_inputs_description += [f"{space}- {name}:"]
-                spatial_dims = description.get("spatial_dims")
-                if spatial_dims is not None:
-                    model_inputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+        space = 2 * " "
 
+        if "description" in metadata:
+            model_description = "\n".join([f"**Description:**", "\n", metadata["description"], "\n"])
+        else:
+            model_description = ""
+
+        model_inputs_description = [f"**Inputs ({len(model_inputs)}):**", "\n"]
+        for name, description in model_inputs.items():
+            model_inputs_description += [f"{space}- {name}:"]
+            spatial_dims = description.get("spatial_dims")
+            if spatial_dims is not None:
+                model_inputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+
+            n_channels = description.get("n_channels", 1)
+            if n_channels is not None:
+                model_inputs_description += [f"{2*space}- Channels: {n_channels}"]
+        model_inputs_description = "\n".join(model_inputs_description)
+
+        model_outputs_description = [f"**Outputs ({len(model_outputs)}):**", "\n"]
+        for name, description in model_outputs.items():
+            is_segmentation = description.get("is_segmentation", True)
+            if is_segmentation and len(model_outputs) == 1:
+                name = "Segmentation"
+            model_outputs_description += [
+                f"{space}- {name}:",
+            ]
+            spatial_dims = description.get("spatial_dims")
+            if spatial_dims is not None:
+                model_outputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+
+            if is_segmentation:
+                models_classes = description.get("model_classes", 1)
+                if models_classes is not None:
+                    model_outputs_description += [f"{2*space}- Classes:"]
+                    for model_class in model_classes:
+                        model_outputs_description += [f"{4*space}- {model_class}"]
+            else:
                 n_channels = description.get("n_channels", 1)
                 if n_channels is not None:
-                    model_inputs_description += [f"{2*space}- Channels: {n_channels}"]
-            model_inputs_description = "\n".join(model_inputs_description)
+                    model_outputs_description += [f"{2*space}- Channels: {n_channels}"]
+        model_outputs_description = "\n".join(model_outputs_description)
 
-            model_outputs_description = [f"**Outputs ({len(model_outputs)}):**", "\n"]
-            for name, description in model_outputs.items():
-                is_segmentation = description.get("is_segmentation", True)
-                if is_segmentation and len(model_outputs) == 1:
-                    name = "Segmentation"
-                model_outputs_description += [
-                    f"{space}- {name}:",
-                ]
-                spatial_dims = description.get("spatial_dims")
-                if spatial_dims is not None:
-                    model_outputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+        msg = "\n\n".join(
+            [
+                model_description,
+                model_inputs_description,
+                model_outputs_description,
+            ]
+        )
 
-                if is_segmentation:
-                    models_classes = description.get("model_classes", 1)
-                    if models_classes is not None:
-                        model_outputs_description += [f"{2*space}- Classes:"]
-                        for model_class in model_classes:
-                            model_outputs_description += [f"{4*space}- {model_class}"]
-                else:
-                    n_channels = description.get("n_channels", 1)
-                    if n_channels is not None:
-                        model_outputs_description += [f"{2*space}- Channels: {n_channels}"]
-            model_outputs_description = "\n".join(model_outputs_description)
+        html = markdown.markdown(msg)
+        self.classifierInfo.setText(html)
+        self.classifierInfo.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
+        summary = f"Model info: {len(model_classes)} segments"
+        self.classifierInfoGroupBox.setTitle(summary)
 
-            msg = "\n\n".join(
-                [
-                    model_description,
-                    model_inputs_description,
-                    model_outputs_description,
-                    REFER_TO_MANUAL,
-                ]
-            )
+        for i, combobox in enumerate(self.inputComboboxes):
+            if i >= len(model_inputs):
+                combobox.setCurrentNode(None)
 
-            html = markdown.markdown(msg)
-            self.classifierInfo.setText(html)
-            self.classifierInfo.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-            summary = f"Model info: {len(model_classes)} segments"
-            self.classifierInfoGroupBox.setTitle(summary)
-
-            for i, combobox in enumerate(self.inputComboboxes):
-                if i >= len(model_inputs):
-                    combobox.setCurrentNode(None)
-
-            self.inputsSelector.mainInput.setCurrentNode(None)
+        self.inputsSelector.mainInput.setCurrentNode(None)
 
     def _onChangedUserClassifier(self, selected):
         isNodeTypeValid = selected and selected.IsA("vtkMRMLTextNode")
@@ -597,8 +582,6 @@ class SegmenterWidget(LTracePluginWidget):
     * {model_classes}
 * **Number of input images:** {content['props']['Number of Extra images']+1}
 * **Color channels:** {content['props']['Total color channels']}
-
-{REFER_TO_MANUAL}
 """
             html = markdown.markdown(msg)
             self.classifierInfo.setText(html)
@@ -607,43 +590,27 @@ class SegmenterWidget(LTracePluginWidget):
             )
         else:
             self.classifierInfo.setText(
-                'There are no user classifiers available. You can create one using the "Train a new classifier from scratch" option, or pick a built-in classifier instead.'
+                'There are no user classifiers available. You can create one using the "Model Training" option.'
             )
             self.classifierInfoGroupBox.setTitle("Model info: No user classifier selected")
 
-    def _onUserClassifierAdded(self, added):
-        # self.loadClassifierRadio.setVisible(True)
-        self.updateLoadClassifierVisibility(True)
-        if self.userClassifierInput.nodeCount() == 1:
-            self.classifierInput.addItem(self.USER_CLASSIFIER, None)
+    def _restoreInputBoxes(self):
+        for i in range(len(self.inputLabels)):
+            label = self.inputLabels[i]
+            combobox = self.inputComboboxes[i]
 
-    def _onUserClassifierRemoved(self, removed):
-        last_node = self.userClassifierInput.nodeCount() <= 1
-        load_classifier_visible = self.classifierInput.count > 1 or not last_node
-        # self.loadClassifierRadio.setVisible(load_classifier_visible)
-        self.updateLoadClassifierVisibility(load_classifier_visible)
-        if not load_classifier_visible:
-            self.createClassifierRadio.setChecked(True)
-            self._onCreateClassifierToggled(True)
-        elif last_node:
-            item_id = self.classifierInput.findText(self.USER_CLASSIFIER)
-            self.classifierInput.removeItem(item_id)
-            self._onChangedClassifier(False)
+            label.setText(f"Input volume #{i+1}: ")
+
+            if i > 0:
+                # only extra (i>0) volume comboboxes are hidden
+                label.visible = True
+                combobox.visible = True
 
     def _onCreateClassifierToggled(self, checked):
         self._updateWidgetsVisibility()
 
         if checked:
-            for i in range(len(self.inputLabels)):
-                label = self.inputLabels[i]
-                combobox = self.inputComboboxes[i]
-
-                label.setText(f"Input volume #{i+1}: ")
-
-                if i > 0:
-                    # only extra (i>0) volume comboboxes are hidden
-                    label.visible = True
-                    combobox.visible = True
+            self._restoreInputBoxes()
         else:
             self.inputsSelector.mainInput.setCurrentNode(None)
             self.inputsSelector.soiInput.enabled = True
@@ -671,7 +638,7 @@ class SegmenterWidget(LTracePluginWidget):
         self.bayes_widget.setImageInput(node)
 
     def _checkHaveFilters(self):
-        if not self.loadClassifierRadio.isChecked() and self.methodSelector.currentWidget().METHOD == "random_forest":
+        if self.createClassifierRadio.isChecked() and self.methodSelector.currentWidget().METHOD == "random_forest":
             valid = len(self.methodSelector.currentWidget().customFilters) and (self.refNodeId != None)
             return valid
         return True
@@ -709,9 +676,7 @@ class SegmenterWidget(LTracePluginWidget):
     def _onApplyClicked(self):
         if not self._checkHaveFilters():
             # Can only be random forest
-            self.methodSelector.currentWidget().tableFilters.setStyleSheet(
-                "border: 2px solid #600000; background: solid #600000"
-            )
+            highlight_error(self.methodSelector.currentWidget().tableFilters)
             return
 
         segmentationNode = self.inputsSelector.mainInput.currentNode()
@@ -747,7 +712,7 @@ class SegmenterWidget(LTracePluginWidget):
             if self._currentMethod() == "bayesian-inference":
                 inputModelDir = None
                 params = self.methodSelector.currentWidget().getValuesAsDict()
-                logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI)
+                logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
                 self.cliNode = logic.run(
                     inputModelDir,
                     segmentationNode,
@@ -760,7 +725,7 @@ class SegmenterWidget(LTracePluginWidget):
             elif self.createClassifierRadio.checked:
                 inputModelDir = None
                 params = self.methodSelector.currentWidget().getValuesAsDict()
-                logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI)
+                logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
                 self.cliNode = logic.run(
                     inputModelDir,
                     segmentationNode,
@@ -771,13 +736,13 @@ class SegmenterWidget(LTracePluginWidget):
                     params,
                     self.keepFeaturesCheckbox.checked,
                 )
-            elif self.classifierInput.currentText == self.USER_CLASSIFIER:
+            elif self.userClassifierRadio.checked:
                 inputModelDir = self.userClassifierInput.currentNode()
                 if not inputModelDir:
-                    highlight_error(self.classifierInput)
-                    raise ValueError("Please select a valid classifier.")
+                    highlight_error(self.userClassifierInput)
+                    raise ValueError("Please select a valid model.")
                 params = None
-                logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI)
+                logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
                 self.cliNode = logic.run(
                     inputModelDir,
                     segmentationNode,
@@ -793,7 +758,7 @@ class SegmenterWidget(LTracePluginWidget):
                 modelKind = get_metadata(inputModelComboBox.currentData)["kind"]
 
                 if modelKind == "torch":
-                    logic = MonaiModelsLogic(self.imageLogMode, onFinish=self.resetUI)
+                    logic = MonaiModelsLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
                     self.cliNode = logic.run(
                         inputModelComboBox,
                         referenceVolumeNode,
@@ -804,7 +769,7 @@ class SegmenterWidget(LTracePluginWidget):
                     )
                 elif modelKind == "bayesian":
                     params = None
-                    logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI)
+                    logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
                     self.cliNode = logic.run(
                         inputModelComboBox.currentData,
                         segmentationNode,
@@ -832,11 +797,14 @@ class SegmenterWidget(LTracePluginWidget):
     def _updateWidgetsVisibility(self):
         self._checkRequirementsForApply()
 
-        checked = self.createClassifierRadio.isChecked()
+        isCreating = self.createClassifierRadio.isChecked()
         for widget in self.hideWhenLoadingClassifier:
-            widget.visible = checked
+            widget.visible = isCreating
         for widget in self.hideWhenCreatingClassifier:
-            widget.visible = not checked
+            widget.visible = not isCreating
+
+        self.classifierInput.visible = self.loadClassifierRadio.isChecked()
+        self.userClassifierInput.visible = self.userClassifierRadio.isChecked()
 
         method = self._currentMethod()
         if method and method != "random_forest":
@@ -844,10 +812,6 @@ class SegmenterWidget(LTracePluginWidget):
 
     def _initWidgetsStates(self):
         self.createClassifierRadio.toggle()
-
-    def updateLoadClassifierVisibility(self, mode: bool) -> None:
-        self.loadClassifierRadio.setVisible(mode)
-        self.loadClassifierHelpButton.setVisible(mode)
 
 
 def getNumberOfDecimals(value):
@@ -1599,6 +1563,7 @@ class CLIEventHandler:
         if not cliNode.IsBusy():
             self.onFinish(cliNode)
             self.shouldProcess = False
+            cliNode.RemoveObservers("ModifiedEvent")
 
 
 class RandomForestSettingsWidget(BaseSettingsWidget):

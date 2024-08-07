@@ -6,3 +6,5 @@ from ltrace.workflow.workstep.segmentation.Smooth import *
 from ltrace.workflow.workstep.segmentation.Threshold import *
 from ltrace.workflow.workstep.segmentation.Watershed import *
 from ltrace.workflow.workstep.segmentation.InspectorWatershed import *
+from ltrace.workflow.workstep.segmentation.ThinSectionPores import *
+from ltrace.workflow.workstep.segmentation.InspectorIslands import *

@@ -4,23 +4,27 @@
 from __future__ import print_function
 
 import json
+import math
+import os
 import sys
+from pathlib import Path
+
 import vtk
 import slicer
 import slicer.util
 import mrml
+
 import itertools
 import numpy as np
-
-from ltrace import transforms
-from ltrace.wrappers import sanitize_file_path
 from numpy.lib.stride_tricks import sliding_window_view
-from pathvalidate.argparse import sanitize_filepath_arg
-from PIL import Image
 from scipy.ndimage import zoom
 from scipy.signal import fftconvolve
 from sklearn.preprocessing import QuantileTransformer
+
+from ltrace import transforms
+
 from torch import load as torch_load
+from PIL import Image
 
 
 def progressUpdate(value):
@@ -331,7 +335,7 @@ def runcli(args):
         labels = labelsArray[:, -1]
         annotations = locations, labels
 
-        params = args.xargs
+        params = json.loads(args.xargs)
         kernel_size = params["kernel"]
         stride = params["stride"]
         stencil = params["kernel_type"]
@@ -413,30 +417,16 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
+    parser.add_argument("--master", type=str, dest="inputVolume", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra1", type=str, dest="inputVolume1", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra2", type=str, dest="inputVolume2", default=None, help="Intensity Input Values")
+    parser.add_argument("--labels", type=str, dest="labelVolume", default=None, help="Labels Input (3d) Values")
     parser.add_argument(
-        "--master", type=sanitize_filepath_arg, dest="inputVolume", default=None, help="Intensity Input Values"
+        "--outputvolume", type=str, dest="outputVolume", default=None, help="Output labelmap (3d) Values"
     )
-    parser.add_argument(
-        "--extra1", type=sanitize_filepath_arg, dest="inputVolume1", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--extra2", type=sanitize_filepath_arg, dest="inputVolume2", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--labels", type=sanitize_filepath_arg, dest="labelVolume", default=None, help="Labels Input (3d) Values"
-    )
-    parser.add_argument(
-        "--outputvolume",
-        type=sanitize_filepath_arg,
-        dest="outputVolume",
-        default=None,
-        help="Output labelmap (3d) Values",
-    )
-    parser.add_argument("--xargs", type=json.loads, default={}, help="Model configuration string")
+    parser.add_argument("--xargs", type=str, default="", help="Model configuration string")
     parser.add_argument("--ctypes", type=str, default="", help="Input Color Types")
-    parser.add_argument(
-        "--returnparameterfile", type=sanitize_filepath_arg, help="File destination to store an execution outputs"
-    )
+    parser.add_argument("--returnparameterfile", type=str, help="File destination to store an execution outputs")
     parser.add_argument(
         "--inputmodel",
         type=argparse.FileType("rb"),
@@ -446,26 +436,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    if args.inputVolume is None:
-        raise ValueError("The input volume input is required")
-
-    if args.outputVolume is None:
-        raise ValueError("The output volume input is required")
-
-    if args.xargs is not None and not isinstance(args.xargs, dict):
-        raise ValueError("Invalid input for extra arguments.")
-
-    args.inputVolume = sanitize_file_path(args.inputVolume)
-    args.outputVolume = sanitize_file_path(args.outputVolume)
-
-    args.inputVolume1 = sanitize_file_path(args.inputVolume1) if args.inputVolume1 is not None else None
-    args.inputVolume2 = sanitize_file_path(args.inputVolume2) if args.inputVolume2 is not None else None
-    args.labelVolume = sanitize_file_path(args.labelVolume) if args.labelVolume is not None else None
-    args.returnparameterfile = (
-        sanitize_file_path(args.returnparameterfile) if args.returnparameterfile is not None else None
-    )
-
     runcli(args)
 
     print("Done")

@@ -35,8 +35,8 @@ class SegmentationModelling(LTracePlugin):
 
 
 class SegmentationModellingWidget(LTracePluginWidget):
-    def __init__(self, *args, **kwargs):
-        LTracePluginWidget.__init__(self, *args, **kwargs)
+    def __init__(self, parent) -> None:
+        LTracePluginWidget.__init__(self, parent)
         self.logic = None
 
     def setup(self):
@@ -76,9 +76,9 @@ class SegmentationModellingWidget(LTracePluginWidget):
             method_widget = self.method_selector.content.widget(index)
             inputWidget = method_widget.inputWidget
             self.stacked_input_widgets.addWidget(inputWidget)
-            inputWidget.onMainSelected = self.__on_input_selected
-            inputWidget.onSoiSelected = self.__on_soi_selected
-            inputWidget.onReferenceSelected = self.__on_reference_selected
+            inputWidget.onMainSelectedSignal.connect(self.__on_input_selected)
+            inputWidget.onSoiSelectedSignal.connect(self.__on_soi_selected)
+            inputWidget.onReferenceSelectedSignal.connect(self.__on_reference_selected)
             inputWidget.segmentsOff()
 
         self.inputWidget = self.method_selector.currentWidget().inputWidget
@@ -120,6 +120,10 @@ class SegmentationModellingWidget(LTracePluginWidget):
         # Scene closed signal
         self.sceneObserver = slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.EndCloseEvent, self.__on_scene_closed)
 
+    def cleanup(self):
+        super().cleanup()
+        slicer.mrmlScene.RemoveObserver(self.sceneObserver)
+
     def __draw_widget_content(self):
         next_input = self.method_selector.currentWidget().inputWidget
         next_inputs_are_valid = next_input.hasValidInputs()
@@ -135,6 +139,9 @@ class SegmentationModellingWidget(LTracePluginWidget):
         self.__handle_reset_output()
 
     def __on_input_selected(self, node):
+        if not (node and node.IsA("vtkMRMLSegmentationNode")):
+            return
+
         self.method_selector.currentWidget().onSegmentationChanged(node)
         self.__update_apply_button_state()
         self.__draw_widget_content()
@@ -172,9 +179,6 @@ class SegmentationModellingWidget(LTracePluginWidget):
             return
         self.__update_output_info([])
         method_logic.signalProcessEnded.connect(self.__on_process_ended)
-
-        if self.logic:
-            del self.logic
 
         self.logic = SegmentationModellingLogic(method_logic)
         self.logic.apply(progress_bar=self.progress_bar)

@@ -1156,15 +1156,9 @@ def run_generic_psd(
         + sim_type
         + '.sh | egrep -o -e "\\b[0-9]+$"` > job_id;sleep 0.2'
     )
-    try:
-        job_id_file = open("job_id", "r")
-        job_id = int(job_id_file.readline())
-    except ValueError:
-        job_id = -1
-    finally:
-        if job_id_file:
-            job_id_file.close()
-
+    job_id_file = open("job_id", "r")
+    job_id = int(job_id_file.readline())
+    job_id_file.close()
     print("job_id = " + str(job_id))
     print("work_dir = " + output_path.replace(".", "") + "/" + cluster + "_" + str(job_id))
     print("final_results = " + output_path.replace(".", "") + "/" + cluster + "_" + str(job_id) + ".nc")

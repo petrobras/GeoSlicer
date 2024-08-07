@@ -10,6 +10,7 @@ from ImageLogDataLib.viewdata.ViewData import SliceViewData
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import tableNodeToDict
 from ltrace.utils.CorrelatedLabelMapVolume import ProportionLabelMapVolume
+from ltrace.slicer.helpers import triggerNodeModified
 import vtk
 
 
@@ -20,29 +21,23 @@ class ProportionNodesLoader:
     def getProportionsLabelMapNode(self, segmentationNode):
         if segmentationNode is None:
             return None
-        proportionsNode = None
-        # Try to get from subjectHierarchyNode
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        parentId = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(segmentationNode))
-        vtk_list = vtk.vtkIdList()
-        subjectHierarchyNode.GetItemChildren(parentId, vtk_list)
-        for i in range(vtk_list.GetNumberOfIds()):
-            childItemID = vtk_list.GetId(i)
-            childName = subjectHierarchyNode.GetItemName(childItemID)
-            if "_Proportions" in childName:
-                proportionsNode = subjectHierarchyNode.GetItemDataNode(childItemID)
-                break
+        # Try to get from the dictionary
+        proportionsNode = self.getNodeById(self.proportionsNodesIds.get(segmentationNode.GetID(), None))
         # Build a new node if it is not found
         if proportionsNode is None:
             proportionLabelMapVolumeName = segmentationNode.GetName() + "_Proportions"
             plmv = ProportionLabelMapVolume(segmentationNode, proportionLabelMapVolumeName)
             proportionsNode = plmv.labelMapVolumeNode
-            proportionsNode.HideFromEditorsOn()
-            proportionsNode.SetAttribute("ShowInFilteredNodeComboBox", "False")
-            subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(segmentationNode))
-            subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(proportionsNode), itemParent)
-            self.proportionsNodesIds[segmentationNode.GetID()] = proportionsNode.GetID()
+            if proportionsNode is not None:
+                proportionsNode.HideFromEditorsOn()
+                proportionsNode.SetAttribute("ShowInFilteredNodeComboBox", "False")
+                triggerNodeModified(proportionsNode)  # Trigger node modification to apply the hide from editors
+                subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                itemParent = subjectHierarchyNode.GetItemParent(
+                    subjectHierarchyNode.GetItemByDataNode(segmentationNode)
+                )
+                subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(proportionsNode), itemParent)
+                self.proportionsNodesIds[segmentationNode.GetID()] = proportionsNode.GetID()
         return proportionsNode
 
     def getNodeById(self, nodeId):
@@ -87,14 +82,12 @@ class ImageLogView:
             self.viewData.segmentationNodeId = segmentationNode.GetID()
             if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                 if segmentationNode.GetSegmentation().GetNumberOfSegments() <= 10:
-                    self.viewData.proportionsNodeId = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(
-                        segmentationNode
-                    ).GetID()
+                    proportionNode = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(segmentationNode)
+                    self.viewData.proportionsNodeId = proportionNode.GetID() if proportionNode is not None else None
             elif type(segmentationNode) is slicer.vtkMRMLLabelMapVolumeNode:
                 if segmentationNode.GetImageData().GetScalarRange()[1] <= 10:
-                    self.viewData.proportionsNodeId = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(
-                        segmentationNode
-                    ).GetID()
+                    proportionNode = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(segmentationNode)
+                    self.viewData.proportionsNodeId = proportionNode.GetID() if proportionNode is not None else None
         else:
             self.viewData.segmentationNodeId = None
             self.viewData.proportionsNodeId = None
@@ -157,9 +150,8 @@ class ImageLogView:
         sliceViewData = SliceViewData()
         sliceViewData.primaryNodeId = sourceVolumeNode.GetID()
         sliceViewData.segmentationNodeId = segmentationNode.GetID()
-        sliceViewData.proportionsNodeId = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(
-            segmentationNode
-        ).GetID()
+        proportionNode = self.PROPORTION_NODES_LOADER.getProportionsLabelMapNode(segmentationNode)
+        sliceViewData.proportionsNodeId = proportionNode.GetID() if proportionNode is not None else None
         return sliceViewData, None
 
     def __getParametersForGraphicViewData(self, node):

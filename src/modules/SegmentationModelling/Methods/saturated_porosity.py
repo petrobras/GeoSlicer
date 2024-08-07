@@ -92,7 +92,6 @@ class SaturatedPorosity(widgets.BaseSettingsWidget):
         dryMaskNode = processVolume(dryNode, soiNode)
         saturatedMaskNode = processVolume(satNode, soiNode)
 
-        dryNode = helpers.tryGetNode(self.dryNodeId)
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         itemTreeId = folderTree.GetItemByDataNode(dryNode)
         parentItemId = folderTree.GetItemParent(itemTreeId)
@@ -108,6 +107,7 @@ class SaturatedPorosity(widgets.BaseSettingsWidget):
 
         # Define parameters
         common_params = {
+            "parent": self,
             "dryNodeId": dryMaskNode.GetID(),
             "saturatedNodeId": saturatedMaskNode.GetID(),
             "outputPrefix": outputPrefix,
@@ -409,13 +409,14 @@ class SaturatedPorosityLogic(qt.QObject):
 
     def __init__(
         self,
+        parent,
         dryNodeId,
         saturatedNodeId,
         outputPrefix,
         params,
         currentDir,
     ):
-        super().__init__()
+        super().__init__(parent)
 
         self.__dryNodeId = dryNodeId
         self.__saturatedNodeId = saturatedNodeId

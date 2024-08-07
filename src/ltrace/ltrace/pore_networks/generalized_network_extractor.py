@@ -43,7 +43,7 @@ def generate_pore_distance_map(pore_label_map):
     if pore_label_map.shape[0] == 1:
         pore_distance_map = distance_transform_edt(pore_label_map)
     else:
-        pore_distance_map = np.sqrt(pyedt.edt(pore_label_map))
+        pore_distance_map = pyedt.edt(pore_label_map)
     return pore_distance_map
 
 

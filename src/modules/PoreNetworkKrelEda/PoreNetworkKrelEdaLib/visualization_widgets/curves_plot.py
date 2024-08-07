@@ -52,7 +52,6 @@ class CurvesPlot(PlotBase):
         simulationFilterCollapsible = ctk.ctkCollapsibleGroupBox()
         simulationFilterCollapsible.setTitle("Simulation filters")
         simulationFilterCollapsible.flat = True
-        simulationFilterCollapsible.show()
         simulationFilterCollapsible.collapsed = True
         simulationFilterCollapsible.setLayout(qt.QVBoxLayout())
         simulationFilterCollapsible.layout().addWidget(self.filterListWidget)

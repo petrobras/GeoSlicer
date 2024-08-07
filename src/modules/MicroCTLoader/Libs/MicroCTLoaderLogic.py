@@ -59,7 +59,8 @@ class MicroCTLoaderLogic(LTracePluginLogic):
         return nodes
 
     def loadImage(self, file, p, baseName, singleFile=False):
-        node = slicer.util.loadVolume(str(file), properties={"singleFile": singleFile})
+        loadAsLabelmap = p.loadAsLabelmap and singleFile
+        node = slicer.util.loadVolume(str(file), properties={"singleFile": singleFile, "labelmap": loadAsLabelmap})
 
         spacing = [
             p.imageSpacing1.m_as(SLICER_LENGTH_UNIT),

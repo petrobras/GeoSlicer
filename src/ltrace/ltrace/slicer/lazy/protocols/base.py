@@ -24,4 +24,4 @@ class BaseProtocol(ABC):
 
     @staticmethod
     def host(*args, **kwargs) -> Host:
-        return Host()
+        return Host("", "")

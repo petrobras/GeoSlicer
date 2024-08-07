@@ -78,7 +78,8 @@ def add_color_map(cmap):
     ## not working for every colormap on matplotlib
     ## only for the ones with 256 colors.
     c = cmapToColormap(cmap, 256)
-    n = slicer.vtkMRMLColorTableNode()
+    n = slicer.mrmlScene.CreateNodeByClass(slicer.vtkMRMLColorTableNode.__name__)
+    n.UnRegister(None)
     n.SaveWithSceneOff()
     n.SetName(cmap.name)
     lut = vtk.vtkLookupTable()

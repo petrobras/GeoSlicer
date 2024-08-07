@@ -57,6 +57,10 @@ class PoreNetworkCompareWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
         slicer.app.layoutManager().layoutChanged.connect(self.onLayoutChange)
 
+    def cleanup(self):
+        super().cleanup()
+        slicer.app.layoutManager().layoutChanged.disconnect(self.onLayoutChange)
+
     def onLayoutChange(self, layout):
         if self.visualizationWidget:
             self.visualizationWidget.setVisible(False)

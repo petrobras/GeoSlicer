@@ -8,7 +8,6 @@ import vtk
 import pandas as pd
 import mrml
 import json
-import logging
 import pytesseract
 import sys
 import traceback
@@ -61,7 +60,8 @@ def main(args):
 
         exit_code = 0
     except Exception as error:
-        logging.error(f"{repr(error)}\n{traceback.print_exc()}")
+        print(traceback.format_exc())
+        print(str(error), file=sys.stderr)
         exit_code = 1
 
     return exit_code

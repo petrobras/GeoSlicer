@@ -1,6 +1,3 @@
-[submodule "src/submodules/pyedt"]
-	path = src/submodules/pyedt
-	url = git@github.com:ltracegeo/pyedt.git
 [submodule "src/submodules/porespy"]
 	path = src/submodules/porespy
 	url = git@github.com:ltracegeo/porespy.git

@@ -4,29 +4,38 @@
 from __future__ import print_function
 
 import json
+import math
+import os
+import sys
+from pathlib import Path
+
 import vtk
 import vtk.util.numpy_support
 import slicer
 import slicer.util
-import math
 import mrml
+
 import monai
+from monai.networks.nets import UNet
+from monai.networks.layers import Norm
+from monai.inferers import sliding_window_inference
+from monai.utils import set_determinism
 import numpy as np
-import os
+from numpy.random import RandomState
 import pickle
-import sys
+from PIL import Image
 import torch
+from monai.transforms import MapLabelValued
+
+from ltrace import transforms
+
+DEFAULT_SETTINGS = "settings.json"
+
 
 from copy import deepcopy
-from ltrace import transforms
-from ltrace.wrappers import sanitize_file_path
-from ltrace.slicer.cli_utils import readFrom
-from monai.inferers import sliding_window_inference
-from monai.networks.layers import Norm
-from monai.networks.nets import UNet
-from monai.transforms import MapLabelValued
-from monai.utils import set_determinism
+
 from MonaiModelsCLILib.models.unet import UNetAct, UNetActWithBoundarySupervision
+
 from MonaiModelsCLILib.transforms import (
     ComposedTransform,
     IdentityTransform,
@@ -51,11 +60,6 @@ from MonaiModelsCLILib.transforms import (
     load_from_str,
     TakeChannelsTransform,
 )
-from numpy.random import RandomState
-from pathvalidate.argparse import sanitize_filepath_arg
-from PIL import Image
-
-DEFAULT_SETTINGS = "settings.json"
 
 
 def make_get_object_by_name(*objects):
@@ -103,6 +107,14 @@ get_transform = make_get_object_by_name(
 def progressUpdate(value):
     print(f"<filter-progress>{value}</filter-progress>")
     sys.stdout.flush()
+
+
+def readFrom(volumeFile, builder):
+    sn = slicer.vtkMRMLNRRDStorageNode()
+    sn.SetFileName(volumeFile)
+    nodeIn = builder()
+    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
+    return nodeIn
 
 
 def writeDataInto(volumeFile, dataVoxelArray, builder, reference=None, cropping_ras_bounds=None, kij=False):
@@ -181,7 +193,7 @@ def run_inference(saved_model: dict):
     config = saved_model["config"]
     meta = config["meta"]
 
-    params = args.xargs
+    params = json.loads(args.xargs)
     if params["deterministic"]:
         set_determinism(seed=12345)
         np.random.seed(12345)
@@ -366,60 +378,23 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
+    parser.add_argument("--master", type=str, dest="inputVolume", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra1", type=str, dest="inputVolume1", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra2", type=str, dest="inputVolume2", default=None, help="Intensity Input Values")
+    parser.add_argument("--labels", type=str, dest="labelVolume", default=None, help="Labels Input (3d) Values")
     parser.add_argument(
-        "--master", type=sanitize_filepath_arg, dest="inputVolume", default=None, help="Intensity Input Values"
+        "--outputvolume", type=str, dest="outputVolume", default=None, help="Output labelmap (3d) Values"
     )
-    parser.add_argument(
-        "--extra1", type=sanitize_filepath_arg, dest="inputVolume1", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--extra2", type=sanitize_filepath_arg, dest="inputVolume2", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--labels", type=sanitize_filepath_arg, dest="labelVolume", default=None, help="Labels Input (3d) Values"
-    )
-    parser.add_argument(
-        "--outputvolume",
-        type=sanitize_filepath_arg,
-        dest="outputVolume",
-        default=None,
-        help="Output labelmap (3d) Values",
-    )
-    parser.add_argument("--xargs", type=json.loads, default={}, help="Model configuration string")
+    parser.add_argument("--xargs", type=str, default="", help="Model configuration string")
     parser.add_argument("--ctypes", type=str, default="", help="Input Color Types")
-    parser.add_argument(
-        "--returnparameterfile", type=sanitize_filepath_arg, help="File destination to store an execution outputs"
-    )
+    parser.add_argument("--returnparameterfile", type=str, help="File destination to store an execution outputs")
     parser.add_argument(
         "--inputmodel",
-        type=sanitize_filepath_arg,
+        type=str,
         help="Input model text file",
     )
 
     args = parser.parse_args()
-
-    if args.inputVolume is None:
-        raise ValueError("The input volume input is required")
-
-    if args.outputVolume is None:
-        raise ValueError("The output volume input is required")
-
-    if args.xargs is not None and not isinstance(args.xargs, dict):
-        raise ValueError("Invalid input for extra arguments.")
-
-    if args.inputmodel is None:
-        raise ValueError("The input model input is required")
-
-    args.inputVolume = sanitize_file_path(args.inputVolume)
-    args.outputVolume = sanitize_file_path(args.outputVolume)
-    args.inputmodel = sanitize_file_path(args.inputmodel).as_posix()
-
-    args.inputVolume1 = sanitize_file_path(args.inputVolume1) if args.inputVolume1 is not None else None
-    args.inputVolume2 = sanitize_file_path(args.inputVolume2) if args.inputVolume2 is not None else None
-    args.labelVolume = sanitize_file_path(args.labelVolume) if args.labelVolume is not None else None
-    args.returnparameterfile = (
-        sanitize_file_path(args.returnparameterfile) if args.returnparameterfile is not None else None
-    )
 
     runcli(args)
 

@@ -16,7 +16,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install linux environment requirements
 RUN yum -y update && \
-    yum -y install libxkbcommon-x11-0 xorg-x11-server-Xvfb xorg-x11-utils libxcb libxcb-devel libdbus-devel make automake gcc gcc-c++ subversion git openssl-devel libcurl-devel gcc7 cmake ninja-build epel-release && \
+    yum -y install libxkbcommon-x11-0 xorg-x11-server-Xvfb xorg-x11-utils libxcb libxcb-devel libdbus-devel make automake gcc gcc-c++ subversion git git-lfs openssl-devel libcurl-devel gcc7 cmake ninja-build epel-release && \
     rm -rf /var/cache/yum/*
 
 RUN yum -y install tesseract-ocr tesseract-ocr-devel fuse-libs
@@ -26,12 +26,10 @@ RUN git config --global --add safe.directory /slicerltrace
 
 # Install python 3.9
 RUN yum -y update && \
-    yum -y install python39 python39-devel python3-pip && \
-    alternatives --install /usr/bin/python python /usr/bin/python3.9 10 && \
-    alternatives --install /usr/bin/pip pip /usr/bin/pip3 10
+    yum -y install python39 python39-devel python3-pip
 
 # Update pip
-RUN python -m pip install --upgrade pip==22.3
+RUN python3 -m pip install --upgrade pip==22.3
 
 # Install 7z
 RUN wget https://www.mirrorservice.org/sites/dl.fedoraproject.org/pub/epel/7/x86_64/Packages/p/p7zip-16.02-20.el7.x86_64.rpm && \

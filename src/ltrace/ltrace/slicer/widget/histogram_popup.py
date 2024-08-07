@@ -23,7 +23,7 @@ class HistogramPopupWidget(qt.QDialog):
         self.mainInput = ui.volumeInput(hasNone=True, onChange=self.setNode, onActivation=self.setNode)
         contentsFrameLayout.addRow("Node:", self.mainInput)
 
-        volumesWidget = slicer.modules.volumes.widgetRepresentation()
+        volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
 
         self.activeVolumeNodeSelector = volumesWidget.findChild(slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector")
 

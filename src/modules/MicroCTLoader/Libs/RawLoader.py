@@ -239,7 +239,7 @@ class RawLoaderWidget(qt.QFrame):
                 # Fitting to the output segmentation and labelmap
                 fit = self.fitToViewsCheckBox.checked
                 referenceVolumeNodeId = selectedVolumeNode.GetAttribute("ReferenceVolumeNode")
-                node = slicer.util.getNode(referenceVolumeNodeId)
+                node = helpers.tryGetNode(referenceVolumeNodeId)
                 if node is not None:
                     slicer.util.setSliceViewerLayers(label=node, fit=fit)
 
@@ -463,7 +463,9 @@ class RawLoaderLogic:
         transformAdded = node.AddCenteringTransform()
         if transformAdded:
             node.HardenTransform()
-            slicer.mrmlScene.RemoveNode(slicer.util.getNode(node.GetName() + " centering transform"))
+            centeringTransform = slicer.mrmlScene.GetFirstNodeByName(node.GetName() + " centering transform")
+            if centeringTransform is not None:
+                slicer.mrmlScene.RemoveNode(centeringTransform)
 
     def __updateLabelMapVolumeNodeImage(
         self,
@@ -570,7 +572,7 @@ class RawLoaderLogic:
         referenceVolumeNodeId = outputVolumeNode.GetAttribute("ReferenceVolumeNode")
         if referenceVolumeNodeId is not None:
             outputVolumeNode.RemoveAttribute("ReferenceVolumeNode")
-            node = slicer.util.getNode(referenceVolumeNodeId)
+            node = helpers.tryGetNode(referenceVolumeNodeId)
             slicer.mrmlScene.RemoveNode(node)
             del node
 

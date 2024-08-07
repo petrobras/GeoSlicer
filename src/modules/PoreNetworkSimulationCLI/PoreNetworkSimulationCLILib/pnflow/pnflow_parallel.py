@@ -24,7 +24,7 @@ class PnFlow:
 
     def run_pnflow(self, max_subprocesses=8):
         LOOP_REFRESH_RATE_S = 0.01
-        SUBPROCESS_TIMEOUT_S = 900  # 15min
+        SUBPROCESS_TIMEOUT_S = 1800  # 30min
         SUBPROCESS_RETRY_LIMIT = 0
 
         params_iterator = self.get_params_iterator(self.params_dict)
@@ -139,9 +139,7 @@ class PnFlow:
     def create_statoil_file_strings(statoil_dict):
         output = {}
         for name in ("link1", "link2", "node1", "node2"):
-            output[name] = ""
-            for line in statoil_dict[name]:
-                output[name] += line + "\n"
+            output[name] = "\n".join(statoil_dict[name]) + "\n"
         return output
 
     @staticmethod

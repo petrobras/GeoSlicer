@@ -1,4 +1,5 @@
 import csv
+import re
 import numpy as np
 import pandas as pd
 import slicer
@@ -92,7 +93,10 @@ def exportCSV(node: slicer.vtkMRMLNode, directory: Path, isTechlog: bool = False
     if values.ndim == 1:
         values = values[:, np.newaxis]
 
-    filename = directory / f"{node.GetName()}.csv"
+    fileName = node.GetName()
+    fileName = re.sub(r"[\\/*.<>ç?:]", "_", fileName)  # avoiding characters not suitable for file name
+
+    filename = directory / f"{fileName}.csv"
 
     with open(filename, mode="w", newline="") as csvFile:
         writer = csv.writer(csvFile)

@@ -1,5 +1,4 @@
 import io
-import logging
 import os
 import re
 
@@ -12,21 +11,12 @@ THIS_FOLDER = Path(__file__).absolute().parent
 def read(filename):
     filename = os.path.join(os.path.dirname(__file__), filename)
     text_type = type("")
-    text = ""
     with io.open(filename, mode="r", encoding="utf-8") as fd:
-        try:
-            text = re.sub(text_type(r":[a-z]+:`~?(.*?)`"), text_type(r"``\1``"), fd.read())
-        except Exception as error:
-            logging.debug(f"Error: {error}")
-
-    return text
+        return re.sub(text_type(r":[a-z]+:`~?(.*?)`"), text_type(r"``\1``"), fd.read())
 
 
-try:
-    with open(THIS_FOLDER / "requirements.txt") as f:
-        requirements = f.readlines()
-except Exception as error:
-    raise RuntimeError(f"Invalid requirements file. Error: {error}")
+with open(THIS_FOLDER / "requirements.txt") as f:
+    requirements = f.readlines()
 
 
 setup(

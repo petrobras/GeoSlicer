@@ -2,14 +2,14 @@ import cv2
 import numpy as np
 import slicer
 import slicer.util
-from ltrace.assets_utils import get_trained_model
+from ltrace.assets_utils import get_asset
 from ltrace.lmath.filtering import DistributionFilter
 from scipy.ndimage import zoom
 
 
 class Model:
     def getModelPath(self, model):
-        return get_trained_model("ImageLogEnv/" + model + ".h5")
+        return get_asset("ImageLogEnv/" + model + ".h5")
 
     def segment(self, parameters):
         raise NotImplementedError

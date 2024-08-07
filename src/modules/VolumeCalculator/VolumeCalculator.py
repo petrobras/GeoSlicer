@@ -312,14 +312,6 @@ class VolumeCalculatorLogic(LTracePluginLogic):
         else:
             raise CalculateError("No volumes were detected in the formula.")
 
-    def resample(self, volume, resampledVolume, referenceVolume):
-        parameters = {
-            "inputVolume": volume.GetID(),
-            "outputVolume": resampledVolume.GetID(),
-            "referenceVolume": referenceVolume.GetID(),
-        }
-        slicer.cli.runSync(slicer.modules.resamplescalarvectordwivolume, None, parameters)
-
     def clipArray(self, array, minimumArrayShape):
         clippedArray = array[: minimumArrayShape[0], : minimumArrayShape[1], : minimumArrayShape[2]]
         return clippedArray

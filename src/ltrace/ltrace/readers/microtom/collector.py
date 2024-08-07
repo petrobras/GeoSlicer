@@ -7,7 +7,6 @@ import xarray as xr
 import re
 
 import slicer
-import traceback
 
 from ltrace.slicer import helpers, data_utils as du
 
@@ -104,12 +103,17 @@ class PorosimetryCompiler(BaseResultCompiler):
 
         except TypeError:
             self.missing_results.append((sim_output_filepath, "Invalid file format"))
-            logging.error(f"{repr(e)}\n{traceback.print_exc()}")
+            import traceback
+
+            traceback.print_exc()
         except FileNotFoundError as e:
             self.missing_results.append((sim_output_filepath, "File not found"))
         except Exception as e:
             self.missing_results.append((sim_output_filepath, repr(e)))
-            logging.error(f"{repr(e)}\n{traceback.print_exc()}")
+            logging.error(repr(e))
+            import traceback
+
+            traceback.print_exc()
 
         return nodes, ref_node, project_name
 
@@ -189,7 +193,7 @@ class StokesKabsCompiler(BaseResultCompiler):
                 self.missing_results.append((sim_output_filepath, "File not found"))
                 continue
             except Exception as e:
-                logging.error(f"{repr(e)}\n{traceback.print_exc()}")
+                logging.error(e)
                 continue
 
         name = "_".join([v.upper() for v in (prefix, simulator, direction) if v]) + "_Variables"
@@ -275,12 +279,17 @@ class KrelCompiler(BaseResultCompiler):
 
             except TypeError:
                 self.missing_results.append((sim_output_filepath, "Invalid file format"))
-                logging.error(f"Invalid file format.\n{traceback.print_exc()}")
+                import traceback
+
+                traceback.print_exc()
             except FileNotFoundError as e:
                 self.missing_results.append((sim_output_filepath, "File not found"))
             except Exception as e:
                 self.missing_results.append((sim_output_filepath, repr(e)))
-                logging.error(f"{repr(e)}\n{traceback.print_exc()}")
+                print("--------------------------------------------------------------------------------------------")
+                import traceback
+
+                traceback.print_exc()
 
         return nodes, ref_node, project_name
 

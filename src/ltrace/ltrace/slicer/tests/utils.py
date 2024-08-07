@@ -9,6 +9,7 @@ from ltrace.utils.string_comparison import StringComparison
 from ltrace.slicer.project_manager import ProjectManager
 from ltrace.slicer.helpers import make_directory_writable, WatchSignal
 from pathlib import Path
+from stopit import TimeoutException
 from typing import Union
 
 TEST_LOG_FILE_PATH = Path(slicer.app.temporaryPath) / "tests.log"
@@ -49,26 +50,39 @@ def wait(seconds: float) -> None:
     """
     start = time.perf_counter()
 
-    while True:
-        time.sleep(0.1)
-        process_events()
+    try:
+        while True:
+            time.sleep(0.1)
+            process_events()
 
-        if time.perf_counter() - start >= seconds:
-            break
+            if time.perf_counter() - start >= seconds:
+                break
+    except TimeoutException:
+        raise TimeoutError("Test timeout reached!")
 
 
-def wait_cli_to_finish(cli_node):
+def wait_cli_to_finish(cli_node, timeout_sec: int = 3600) -> None:
     """Lock thread until respective CLI node is not busy anymore.
 
     Args:
-        cli_node (vtkMRMLCommandLineModuleNode ): the CLI node object,
+        cli_node (vtkMRMLCommandLineModuleNode): the CLI node object,
+        timeout_sec (int, optional): the timeout in seconds. Defaults to 3600 seconds.
     """
     if cli_node is None:
         return
 
-    while cli_node.IsBusy():
-        time.sleep(0.200)
-        process_events()
+    start = time.perf_counter()
+    try:
+        while cli_node.IsBusy():
+            time.sleep(0.200)
+            process_events()
+
+            if time.perf_counter() - start >= timeout_sec:
+                cli_node.Cancel()
+                raise TimeoutError("CLI timeout reached!")
+    except TimeoutException:
+        cli_node.Cancel()
+        raise TimeoutError("Test timeout reached!")
 
 
 def log(message, show_window=False, end="\n"):
@@ -84,7 +98,9 @@ def log(message, show_window=False, end="\n"):
         slicer.util.delayDisplay(message, autoCloseMsec=2000)
 
 
-def find_widget_by_object_name(obj, name: str, _type="QWidget", comparison_type=StringComparison.EXACTLY):
+def find_widget_by_object_name(
+    obj, name: str, _type="QWidget", comparison_type=StringComparison.EXACTLY, only_visible=False
+):
     """Finds widgets inside qt objects. Please write a test when using this function"""
     if not obj:
         return None
@@ -95,6 +111,9 @@ def find_widget_by_object_name(obj, name: str, _type="QWidget", comparison_type=
         return None
 
     for widget in widgets:
+        if only_visible and not widget.visible:
+            continue
+
         if widget and widget.objectName == name:
             return widget
 

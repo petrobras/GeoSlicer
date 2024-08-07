@@ -60,6 +60,45 @@ class HierarchyVisibilityManager:
                 self.__last_visibility = caller.GetVisibility()
 
 
+def BUGFIX_handle_copy_suffix_on_cloned_nodes(storage_node) -> str:
+    """Handle the extra copy at the end of the file name.
+    This is a bug fix for the method AddDefaultStorageNode, that probably generate the wrong name internally
+    (TODO check this).
+
+    Args:
+        filename (str): the file name to be fixed.
+
+    Returns:
+        str: the fixed file name.
+    """
+    filename = storage_node.GetFileName()
+    if not filename:
+        return ""
+
+    patters = [r" Copy", r".nrrd Copy.nrrd"]
+    func = lambda fn: max([len(p) if fn.endswith(p) else 0 for p in patters])
+
+    found = func(filename)
+
+    if found > 0:
+        filepath = Path(filename[:-found])
+        filename = str(filepath.with_name(f"{filepath.stem} Copy{filepath.suffix}"))
+        storage_node.SetFileName(filename)
+
+    return filename
+
+
+def generate_unique_node_name(name: str, dirpath: Path):
+    count = 0
+    for file in dirpath.iterdir():
+        if file.is_file() and file.name.startswith(name):
+            count += 1
+
+    unique_name = f"{name} ({count})" if count > 0 else name
+
+    return unique_name
+
+
 @singleton
 class ProjectManager(qt.QObject):
     """Class to handle the 'project concept' from  Geoslicer.
@@ -154,8 +193,11 @@ class ProjectManager(qt.QObject):
 
         return status
 
-    def load(self, project_file_path, internal_call=False):
+    def load(self, project_file_path, internal_call=False) -> None:
         """Handle custom load scene operation."""
+        if isinstance(project_file_path, Path):
+            project_file_path = project_file_path.as_posix()
+
         if project_file_path == slicer.mrmlScene.GetURL():
             return
 
@@ -164,10 +206,14 @@ class ProjectManager(qt.QObject):
 
         self.__clear_node_observers()
         # Close scene before load a new one
-        slicer.mrmlScene.Clear(0)
+        self.close()
         slicer.util.loadScene(project_file_path)
 
         self.__set_project_modified(False)
+
+    def close(self) -> None:
+        """Wrapper method to close the project."""
+        slicer.mrmlScene.Clear(0)
 
     def setup(self):
         """Initialize project's event handlers"""
@@ -215,13 +261,18 @@ class ProjectManager(qt.QObject):
         viewNode.SetAxisLabelsVisible(False)
 
         # Without this the Image Log segmenter doesn't correctly restore the selected segmentation node
-        image_log_data_logic = slicer.modules.imagelogdata.widgetRepresentation().self().logic
-        image_log_data_logic.imageLogSegmenterWidget.self().initializeSavedNodes()
+        try:
+            image_log_data_logic = slicer.modules.imagelogdata.widgetRepresentation().self().logic
+            image_log_data_logic.imageLogSegmenterWidget.self().initializeSavedNodes()
 
-        # Image Log number of views restoration
-        if slicer.app.layoutManager().layout >= 15000:
-            image_log_data_logic.configurationsNode = None
-            image_log_data_logic.loadConfiguration()
+            # Image Log number of views restoration
+            if slicer.app.layoutManager().layout >= 15000:
+                image_log_data_logic.configurationsNode = None
+                image_log_data_logic.loadConfiguration()
+
+        except ValueError:
+            # Widget has been deleted after test
+            pass
 
         self.__clear_mask_settings_on_all_segment_editors()
 
@@ -232,6 +283,18 @@ class ProjectManager(qt.QObject):
     @vtk.calldata_type(vtk.VTK_OBJECT)
     def __on_node_added(self, caller, eventId, callData):
         """Handle slicer' node added to scene event."""
+        if issubclass(
+            type(callData),
+            (
+                slicer.vtkMRMLModelNode,
+                slicer.vtkMRMLColorTableNode,
+                slicer.vtkMRMLSubjectHierarchyNode,
+                slicer.vtkMRMLTransformNode,
+                slicer.vtkMRMLSliceDisplayNode,
+            ),
+        ):
+            return
+
         observer = NodeObserver(node=callData, parent=self)
         observer.modifiedSignal.connect(self.__on_scene_modified)
         observer.removedSignal.connect(self.__on_observed_node_removed)
@@ -244,8 +307,15 @@ class ProjectManager(qt.QObject):
                 if node is None:
                     return
 
-                # Wait for the volume to load
-                qt.QTimer.singleShot(0, lambda: self.__on_volume_modified(node))
+                timer = qt.QTimer()
+
+                def onTimeout():
+                    self.__on_volume_modified(node)
+                    timer.timeout.disconnect(onTimeout)
+
+                timer.setSingleShot(True)
+                timer.timeout.connect(onTimeout)
+                timer.start(0)
 
             observer.modifiedSignal.connect(onVolumeModified)
         elif isinstance(callData, slicer.vtkMRMLVolumeRenderingDisplayNode):
@@ -262,11 +332,13 @@ class ProjectManager(qt.QObject):
             return
 
         self.__node_observers.remove(node_observer)
+        del node_observer
 
     def __clear_node_observers(self):
         """Clear the node observer's list and remove the observer handlers from each one."""
-        for node_observer in self.__node_observers:
+        for node_observer in self.__node_observers[:]:
             node_observer.clear()
+            del node_observer
 
         self.__node_observers.clear()
 
@@ -451,6 +523,21 @@ class ProjectManager(qt.QObject):
 
         return status
 
+    def __get_localized_storage_node(self, node, local_storage_dir):
+        storage_node = node.GetStorageNode()
+
+        # All files should be stored in the Data directory.
+        # If the node's file name is in another directory, create a new default storage node.
+        if storage_node and storage_node.GetFileName():
+            file_path = Path(storage_node.GetFileName()).resolve()
+            if file_path.parent != local_storage_dir:
+                slicer.mrmlScene.RemoveNode(storage_node)
+                node.AddDefaultStorageNode()
+        else:
+            node.AddDefaultStorageNode()
+
+        return node.GetStorageNode()
+
     def __handle_storable_node(self, node, *args, **kwargs):
         """Function that checks if storable node has a valid storage node or if it could be created.
             In case of creating a new storage node, it will define its filename.
@@ -464,43 +551,21 @@ class ProjectManager(qt.QObject):
         Returns:
             bool: True if node has a valid storage node, otherwise returns False.
         """
-        data_folder = Path(slicer.mrmlScene.GetRootDirectory()) / "Data"
-
         if not hasattr(node, "GetStorageNode"):
             return False
 
-        storage_node = node.GetStorageNode()
+        data_folder = Path(slicer.mrmlScene.GetRootDirectory()) / "Data"
 
-        # All files should be stored in the Data directory.
-        # If the node's file name is in another directory, create a new default storage node.
-        if storage_node and storage_node.GetFileName():
-            file_path = Path(storage_node.GetFileName()).resolve()
-            if file_path.parent != data_folder:
-                slicer.mrmlScene.RemoveNode(storage_node)
-
-        storage_node = node.GetStorageNode()
-        if storage_node is None:
-            if not node.AddDefaultStorageNode():
-                # If storable node doesn't have a storage node and isn't possible to create one,
-                # it means that scene will handle its saving.
-                # ref: https://github.com/Slicer/Slicer/blob/78f426ec6abc5ec6b0513542556b2016c1f54852/Base/QTGUI/qSlicerSaveDataDialog.cxx#L528
-                return False
-
-        # Retrieve storage node again,
-        # in case of method 'AddDefaultStorageNode' call happened
-        storage_node = node.GetStorageNode()
-        if storage_node is None:
+        storage_node = self.__get_localized_storage_node(node, data_folder)
+        if not storage_node:
             return False
 
-        file_path = storage_node.GetFileName()
-        if file_path == "" or file_path is None or is_valid_filename(os.path.basename(file_path)) is False:
-            # Define node's filepath
+        filepath = Path(BUGFIX_handle_copy_suffix_on_cloned_nodes(storage_node))
 
-            file_path = self.__create_node_file_name(str(data_folder), node)
-            if file_path is None:
-                return False
-
-            storage_node.SetFileName(file_path)
+        if not (filepath and is_valid_filename(filepath.name)):
+            filename = generate_unique_node_name(node.GetName(), data_folder)
+            ext = storage_node.GetDefaultWriteFileExtension()
+            storage_node.SetFileName(str(data_folder / filename) + f".{ext}")
 
         # Define compression mode
         properties = DEFAULT_PROPERTIES.copy()
@@ -512,43 +577,6 @@ class ProjectManager(qt.QObject):
         storage_node.SetUseCompression(use_compression)
 
         return True
-
-    def __create_node_file_name(self, file_folder, node):
-        """Handles node's filename creation.
-
-        Args:
-            file_folder (str): the folder where file will be created.
-            node (vtk.vtkMRMLStorableNode): the node object.
-
-        Returns:
-            str/None: the node's filename. None if node's doesn't have a storage node.
-        """
-        storage_node = node.GetStorageNode()
-        if storage_node is None:
-            return None
-
-        file_extension = storage_node.GetDefaultWriteFileExtension()
-        index = 0
-        while True:
-            if index == 0:
-                file_name = f"{node.GetName()}.{file_extension}"
-            else:
-                file_name = f"{node.GetName()} ({index}).{file_extension}"
-
-            file_path = os.path.join(file_folder, file_name)
-            file_path = sanitize_filepath(file_path=file_path, platform="auto")
-
-            if os.path.exists(file_path) is False:
-                break
-
-            index += 1
-            if index >= 1000:
-                logging.error(
-                    "A problem has occured during node's filename creation. Stopping process to avoid infinite loop."
-                )
-                break
-
-        return file_path
 
     def __save_scene(self, project_url, *args, **kwargs):
         """Handle the nodes saving process.

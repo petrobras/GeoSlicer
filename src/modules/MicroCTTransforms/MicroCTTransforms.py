@@ -8,6 +8,7 @@ import slicer
 import vtk
 from Customizer import Customizer
 from ltrace.slicer_utils import *
+from ltrace.slicer.helpers import BlockSignals
 
 
 def normalize_angle(angle):
@@ -91,6 +92,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         self.rotationSliders.layout().replaceWidget(rotationBox, rotationDials)
         rotationBox.hide()
 
+        self.dials = []
         self.lastRotationValues = [0, 0, 0]
         self.sliderCumulativeDelta = [0, 0, 0]
         for i, sliderName in enumerate(["LRSlider", "PASlider", "ISSlider"]):
@@ -106,6 +108,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             dial.notchesVisible = True
             dial.setToolTip(f"Click and drag to rotate dial")
             gridLayout.addWidget(dial, 1, i)
+            self.dials.append(dial)
 
             incrementLayout = qt.QHBoxLayout()
             incrementSpinBox = ctk.ctkDoubleSpinBox()
@@ -155,8 +158,10 @@ class MicroCTTransformsWidget(LTracePluginWidget):
 
         vBoxLayout = qt.QVBoxLayout()
         self.transformToolButton = transformWidget.findChild(qt.QObject, "TransformToolButton")
+        self.transformToolButton.clicked.connect(self.onTransformedVolumeChanged)
         vBoxLayout.addWidget(self.transformToolButton)
         self.untransformToolButton = transformWidget.findChild(qt.QObject, "UntransformToolButton")
+        self.untransformToolButton.clicked.connect(self.onTransformedVolumeChanged)
         vBoxLayout.addWidget(self.untransformToolButton)
         hBoxLayout.addLayout(vBoxLayout)
 
@@ -167,11 +172,11 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         vBoxLayout.addWidget(self.transformedTreeView)
         hBoxLayout.addLayout(vBoxLayout)
 
-        displayEditCollapsibleWidget = transformWidget.findChild(
+        self.displayEditCollapsibleWidget = transformWidget.findChild(
             ctk.ctkCollapsibleButton, "DisplayEditCollapsibleWidget"
         )
-        displayEditCollapsibleWidget.setText("Parameters")
-        formLayout.addRow(displayEditCollapsibleWidget)
+        self.displayEditCollapsibleWidget.setText("Parameters")
+        formLayout.addRow(self.displayEditCollapsibleWidget)
 
         self.reflectLRButton = qt.QPushButton("Reflect X")
         self.reflectLRButton.clicked.connect(self.onReflectLRButton)
@@ -185,9 +190,28 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         reflectButtonsHBoxLayout.addWidget(self.reflectLRButton)
         reflectButtonsHBoxLayout.addWidget(self.reflectPAButton)
         reflectButtonsHBoxLayout.addWidget(self.reflectISButton)
-        displayEditCollapsibleWidget.layout().addWidget(frame)
+        self.displayEditCollapsibleWidget.layout().addWidget(frame)
+
+        transposeGroup = qt.QGroupBox()
+        transposeGroup.setTitle("Transpose axes")
+        transposeLayout = qt.QHBoxLayout(transposeGroup)
+        transposeLayout.addStretch(0.1)
+        transposeLayout.addWidget(qt.QLabel("X Y Z \u2192"))
+
+        self.transposeComboBox = qt.QComboBox()
+        self.transposeComboBox.addItems(["X Z Y", "Y X Z", "Y Z X", "Z X Y", "Z Y X"])
+        transposeLayout.addWidget(self.transposeComboBox)
+
+        transposeButton = qt.QPushButton("Transpose")
+        transposeButton.clicked.connect(lambda: self.onTranspose(self.transposeComboBox.currentText))
+        transposeLayout.addWidget(transposeButton)
+        transposeLayout.addStretch(1)
+        self.displayEditCollapsibleWidget.layout().addWidget(transposeGroup)
 
         formLayout.addRow(" ", None)
+
+        self.buttonsWidget = qt.QFrame()
+        buttonsLayout = qt.QFormLayout(self.buttonsWidget)
 
         self.undoButton = qt.QPushButton("Undo")
         self.undoButton.setIcon(qt.QIcon(str(Customizer.UNDO_ICON_PATH)))
@@ -206,7 +230,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         buttonsHBoxLayout = qt.QHBoxLayout()
         buttonsHBoxLayout.addWidget(self.undoButton)
         buttonsHBoxLayout.addWidget(self.redoButton)
-        formLayout.addRow(buttonsHBoxLayout)
+        buttonsLayout.addRow(buttonsHBoxLayout)
 
         self.applyButton = qt.QPushButton("Apply")
         self.applyButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
@@ -223,9 +247,20 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         applyResetButtonsHBoxLayout = qt.QHBoxLayout()
         applyResetButtonsHBoxLayout.addWidget(self.applyButton)
         applyResetButtonsHBoxLayout.addWidget(self.resetButton)
-        formLayout.addRow(applyResetButtonsHBoxLayout)
+        buttonsLayout.addRow(applyResetButtonsHBoxLayout)
+
+        formLayout.addRow(self.buttonsWidget)
 
         self.layout.addStretch(1)
+        self.onTransformedVolumeChanged()
+
+    def onTransformedVolumeChanged(self):
+        slicer.app.processEvents(1000)
+        self.transformedTreeView.selectAll()
+        visible = len(self.transformedTreeView.selectedIndexes()) > 0
+        self.transformedTreeView.clearSelection()
+        self.buttonsWidget.visible = visible
+        self.displayEditCollapsibleWidget.visible = visible
 
     def updateSlider(self, sliderIndex, slider, value):
         # Value from dial is integer, but we want to have 1 decimal place precision
@@ -273,19 +308,38 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         self.configureButtonsState()
 
     def onResetButtonClicked(self):
+        for dial in self.dials:
+            with BlockSignals(dial):
+                dial.setValue(0)
+        self.setRotationSlidersValues([0, 0, 0])
+        self.sliderCumulativeDelta = [0, 0, 0]
+
         self.transformedTreeView.selectAll()
         self.untransformToolButton.click()
         self.renewHiddenTransformNode()
         self.configureButtonsState()
 
+    def reflect(self, plane):
+        transformNode = self.transformNodeSelector.currentNode()
+        slicer.mrmlScene.SaveStateForUndo(transformNode)
+        self.logic.reflect(transformNode, plane)
+        self.configureButtonsState()
+
     def onReflectLRButton(self):
-        self.logic.reflect(self.transformNodeSelector.currentNode(), "LR")
+        self.reflect("LR")
 
     def onReflectPAButton(self):
-        self.logic.reflect(self.transformNodeSelector.currentNode(), "PA")
+        self.reflect("PA")
 
     def onReflectISButton(self):
-        self.logic.reflect(self.transformNodeSelector.currentNode(), "IS")
+        self.reflect("IS")
+
+    def onTranspose(self, order):
+        transformNode = self.transformNodeSelector.currentNode()
+        slicer.mrmlScene.SaveStateForUndo(transformNode)
+        order = order.replace(" ", "")
+        self.logic.transpose(transformNode, order)
+        self.configureButtonsState()
 
     def renewHiddenTransformNode(self):
         self.setRotationSlidersValues([0, 0, 0])
@@ -302,11 +356,8 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         )
 
     def onTransformNodeModified(self, *args):
-        self.applyButton.enabled = False
-        self.resetButton.enabled = False
-        self.undoButton.enabled = False
-        self.redoButton.enabled = False
-
+        self.applyButton.enabled = True
+        self.resetButton.enabled = True
         self.transformInProgress = True
 
     def enter(self):
@@ -320,6 +371,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             slicer.mrmlScene.SetUndoOff()
             self.transformNodeSelector.currentNode().RemoveObserver(slicer.vtkMRMLTransformNode.TransformModifiedEvent)
             slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())
+            self.onTransformedVolumeChanged()
 
     def configureButtonsState(self):
         numberOfUndoLevels = slicer.mrmlScene.GetNumberOfUndoLevels()
@@ -358,14 +410,28 @@ class MicroCTTransformsLogic(LTracePluginLogic):
         matrixArray = slicer.util.arrayFromVTKMatrix(vtkMatrix)
         if plane == "LR":
             if np.isclose(abs(matrixArray[0, 0]), 1):
-                matrixArray[0, 0] *= -1
+                matrixArray[:, 0] *= -1
         elif plane == "PA":
             if np.isclose(abs(matrixArray[1, 1]), 1):
-                matrixArray[1, 1] *= -1
+                matrixArray[:, 1] *= -1
         elif plane == "IS":
             if np.isclose(abs(matrixArray[2, 2]), 1):
-                matrixArray[2, 2] *= -1
+                matrixArray[:, 2] *= -1
 
+        vtkTransformationMatrix = vtk.vtkMatrix4x4()
+        vtkTransformationMatrix.DeepCopy(list(np.array(matrixArray).flat))
+        transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
+
+    def transpose(self, transformNode, order):
+        vtkMatrix = transformNode.GetMatrixTransformToParent()
+        matrixArray = slicer.util.arrayFromVTKMatrix(vtkMatrix)
+        columns = matrixArray.T
+        reordered = columns.copy()
+        map = {"X": 0, "Y": 1, "Z": 2}
+        for i, axis in enumerate(order):
+            reordered[i] = columns[map[axis]]
+
+        matrixArray = reordered.T
         vtkTransformationMatrix = vtk.vtkMatrix4x4()
         vtkTransformationMatrix.DeepCopy(list(np.array(matrixArray).flat))
         transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)

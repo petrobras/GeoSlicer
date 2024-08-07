@@ -85,6 +85,7 @@ class HistogramInDepthAnalysisWidget(AnalysisWidgetBase):
         formLayout.addRow(optional_collapsible_button)
 
         self.setLayout(formLayout)
+        self.__on_normalized_checkbox_changed(qt.Qt.Checked)
 
     def __on_parameter_label_combo_box_changed(self, text):
         enable_bins_option = text != "pore_size_class"
@@ -113,9 +114,9 @@ class HistogramInDepthAnalysisWidget(AnalysisWidgetBase):
             self.normalization_label_combo_box.addItems(parameters)
             self.normalization_label_combo_box.setCurrentText(current_selected_normalization_parameter)
 
-    def __on_normalized_checkbox_changed(self, state):
-        self.normalization_label_combo_box.enabled = state != 0
-        self.histogram_height_spin_box.enabled = state == 0
+    def __on_normalized_checkbox_changed(self, state: qt.Qt.CheckState) -> None:
+        self.normalization_label_combo_box.enabled = state != qt.Qt.Unchecked
+        self.histogram_height_spin_box.enabled = state == qt.Qt.Unchecked
 
 
 class HistogramInDepthAnalysis(AnalysisBase):

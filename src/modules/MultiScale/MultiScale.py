@@ -85,7 +85,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 0)
         self.trainingImageWidget.mainInput.currentItemChanged.connect(self.setTrainingImageListChecked)
-        self.trainingImageWidget.onReferenceSelected = self.updateFinalImageWidgets
+        self.trainingImageWidget.onReferenceSelectedSignal.connect(self.updateFinalImageWidgets)
         self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(lambda: self.listItemChange())
         self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.setTrainingImageListChecked)
 
@@ -248,7 +248,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.maskWidget.formLayout.setContentsMargins(0, 0, 0, 0)
 
         self.maskWidget.mainInput.currentItemChanged.connect(self.onMaskChange)
-        self.maskWidget.onReferenceSelected = self.updateFinalImageWidgets
+        self.maskWidget.onReferenceSelectedSignal.connect(self.updateFinalImageWidgets)
         self.maskWidget.segmentListGroup[1].itemChanged.connect(lambda: self.listItemChange())
 
         inputFormLayout = qt.QFormLayout(inputSection)

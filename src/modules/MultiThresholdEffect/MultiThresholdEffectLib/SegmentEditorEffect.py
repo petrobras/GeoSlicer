@@ -51,6 +51,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.previewSteps = 7
         self.timer = qt.QTimer()
         self.timer.connect("timeout()", self.preview)
+        self.timer.setParent(self.scriptedEffect.optionsFrame())
         self.previewPipelines = {}
         self.setupPreviewDisplay()
         self.renderedLayout = None
@@ -84,6 +85,10 @@ the number of clusters equal to the number of segments added to the segmentation
 <p></html>"""
 
     def activate(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         self.SetSourceVolumeIntensityMaskOff()
         hide_masking_widget(self)
         self.sourceVolumeNodeChanged()
@@ -127,6 +132,10 @@ the number of clusters equal to the number of segments added to the segmentation
         self.svalues = None
         self.clearPreviewDisplay()
         self.timer.stop()
+
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
 
         # Show current segmentation
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -253,6 +262,10 @@ the number of clusters equal to the number of segments added to the segmentation
         return slicer.util.mainWindow().cursor
 
     def getParentLazyNode(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         node = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
         parentLazyNodeId = node.GetAttribute("ParentLazyNode")
         if parentLazyNodeId:
@@ -262,6 +275,10 @@ the number of clusters equal to the number of segments added to the segmentation
         return None
 
     def sourceVolumeNodeChanged(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         self.applyFullButton.visible = False
 
         if self.scriptedEffect.parameterSetNode().GetActiveEffectName() != self.scriptedEffect.name:
@@ -307,6 +324,10 @@ the number of clusters equal to the number of segments added to the segmentation
         self.applyKmeans()
 
     def getColors(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return []
+
         self.colorsBySegment = dict()
         segmentIDs = vtk.vtkStringArray()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -384,6 +405,10 @@ the number of clusters equal to the number of segments added to the segmentation
         self.drawTable()
 
     def drawTable(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         self.table.blockSignals(True)
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         segmentation = segmentationNode.GetSegmentation()
@@ -458,6 +483,10 @@ the number of clusters equal to the number of segments added to the segmentation
         self.redrawHistogram(onlyBars=True)
 
     def onApply(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+            return
+
         self.timer.stop()
         self.clearPreviewDisplay()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -514,6 +543,10 @@ the number of clusters equal to the number of segments added to the segmentation
             self.applyFinishedCallback()
 
     def onApplyFull(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+            return
+
         slicer.util.selectModule("MultipleThresholdBigImage")
         virtualSegWidget = slicer.modules.MultipleThresholdBigImageWidget
 
@@ -572,6 +605,10 @@ the number of clusters equal to the number of segments added to the segmentation
         )
 
     def updateGUIFromMRML(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if self.segmentationNode != segmentationNode:
             self.segmentationNode = segmentationNode
@@ -588,6 +625,10 @@ the number of clusters equal to the number of segments added to the segmentation
             self._max = _max
 
     def applyKmeans(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply. The selected node is invalid.")
+            return
+
         from scipy.cluster.vq import kmeans2
 
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()

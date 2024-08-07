@@ -322,7 +322,7 @@ class PatchMatch:
         debug_score = 0.0
         debug_changed = 0
         debug_propagated = 0
-        n_offsets = len(offsets_to_visit)
+        n_offsets = max(len(offsets_to_visit), self.callback_every)
 
         if reverse:
             offsets_to_visit = reversed(offsets_to_visit)
@@ -401,14 +401,15 @@ class PatchMatch:
 
         self.progress.end_step()
 
-        print(
-            debug_score / (n_offsets * self.patch_size**3),
-            debug_propagated,
-            "/",
-            debug_changed,
-            "/",
-            n_offsets,
-        )
+        # TODO: Only print this in debug mode
+        # print(
+        #     debug_score / (n_offsets * self.patch_size**3),
+        #     debug_propagated,
+        #     "/",
+        #     debug_changed,
+        #     "/",
+        #     n_offsets,
+        # )
 
         return image
 

@@ -36,6 +36,7 @@ class LoadParameters:
     imageSpacing3: float = 1.0 * ureg.micrometer
     centerVolume: bool = True
     invertDirections: list[bool] = field(default_factory=lambda: [True, True, False])
+    loadAsLabelmap: bool = False
 
 
 class MicroCTLoaderBaseWidget(LTracePluginWidget):
@@ -46,8 +47,8 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
     IMAGE_SPACING_3 = "MicroCTLoader/imageSpacing3"
     CENTER_VOLUME = "MicroCTLoader/centerVolume"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.moduleName = "MicroCTLoader"
 
     def exit(self):
@@ -98,6 +99,10 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         self.centerVolumeCheckbox = qt.QCheckBox("Center volume")
         self.centerVolumeCheckbox.setChecked(self.getCenterVolume() == "True")
+        self.loadAsLabelmapCheckBox = qt.QCheckBox("Load as Labelmap")
+        self.loadAsLabelmapCheckBox.setToolTip(
+            "If selected, a labelmap volume will be created instead of scalar volume."
+        )
 
         self.widthDirectionCheckbox = qt.QCheckBox("Width (x)")
         self.widthDirectionCheckbox.setChecked(True)
@@ -128,6 +133,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.invertLabel.setVisible(False)
 
         outputLayout.addRow("", self.centerVolumeCheckbox)
+        outputLayout.addRow("", self.loadAsLabelmapCheckBox)
         outputLayout.addRow(self.invertLabel, self.optionsWidgets)
         outputLayout.addRow(" ", None)
 
@@ -319,6 +325,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
                     self.lengthDirectionCheckbox.isChecked(),
                     self.heightDirectionCheckbox.isChecked(),
                 ],
+                self.loadAsLabelmapCheckBox.isChecked(),
             )
             callback.on_update("Loading...", 10)
             node, *_ = self.logic.load(path, loadParameters)
@@ -330,6 +337,9 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
     def _setInvertWidgetVisibility(self, isVisible):
         self.centerVolumeCheckbox.setVisible(isVisible)
+        self.loadAsLabelmapCheckBox.setVisible(isVisible)
+        if not isVisible:
+            self.loadAsLabelmapCheckBox.setChecked(qt.Qt.Unchecked)
         self.optionsWidgets.setVisible(isVisible)
         self.invertLabel.setVisible(isVisible)
 

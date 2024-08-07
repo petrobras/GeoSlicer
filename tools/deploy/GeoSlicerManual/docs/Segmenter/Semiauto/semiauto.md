@@ -1,12 +1,12 @@
-# Segmentação Semi-automática
+# Treinamento de modelo
 
-Os métodos incluídos no módulo de segmentação semi-automática do GeoSlicer realizam uma segmentação de toda a amostra, baseando-se em uma anotação inicial simples, que pode ser feita no módulo de segmentação manual. A partir dessa anotação inicial, os diferentes métodos realizam um treinamento do modelo e inferem o resultado no dado completo ou em uma região especificada pelo *Segmentation of interest* (SOI).
+A opção *Model Training* do módulo Smart-Seg do GeoSlicer realiza uma segmentação de toda a amostra, baseando-se em uma anotação inicial simples, que pode ser feita no módulo de segmentação manual. A partir dessa anotação inicial, os diferentes métodos realizam um treinamento do modelo e inferem o resultado no dado completo ou em uma região especificada pelo *Segmentation of interest* (SOI).
 
-Alguns modelos pré-treinados também são disponibilizados para usos específicos, ao selecionar a caixa "*Use a previously trained classifier*", uma caixa de seleção com alguns desses modelos é habilitada para escolha. Nesse caso, o método utilizado será aquele do modelo que foi selecionado.
+O modelo treinado pode ser reutilizado em outras imagens ao selecionar a opção *User Custom Pre-trained Model*.
 
 ## Método Random-Forest
 
-Um dos métodos incluídos no módulo de segmentação semi-automática do GeoSlicer é o Random-Forest. Esse algoritmo, classificado como um método de *ensemble* (conjunto), funciona a partir da construção de uma diversidade de árvores de decisões durante o treinamento. Essa classe de métodos, possui como característica principal a combinação de diferentes modelos para obtenção de um único resultado, dessa forma, esses algoritmos tendem a ter resultados que são geralmente muito mais robustos e complexos.
+Um dos métodos de treinamento de modelo é o Random-Forest. Esse algoritmo, classificado como um método de *ensemble* (conjunto), funciona a partir da construção de uma diversidade de árvores de decisões durante o treinamento. Essa classe de métodos, possui como característica principal a combinação de diferentes modelos para obtenção de um único resultado, dessa forma, esses algoritmos tendem a ter resultados que são geralmente muito mais robustos e complexos.
 
 O conceito principal por trás do funcionamento do método de Random-Forest é o das árvores de decisão. Essas árvores podem ser representadas como uma estrutura de fluxograma, com nós em que uma dada condição é verificada. Dessa forma, os diferentes modelos são criados de acordo com a organização dos nós de decisão em cada árvore. 
 

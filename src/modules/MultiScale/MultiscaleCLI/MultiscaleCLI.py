@@ -16,9 +16,7 @@ import sys
 from multiprocessing import cpu_count
 
 from pathlib import Path
-from ltrace.constants import MAX_LOOP_ITERATIONS
 from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
-from ltrace.wrappers import sanitize_file_path
 
 import mpslib as mps
 from tifffile import tifffile
@@ -40,26 +38,21 @@ def saveRealizationFiles(image, grid_cell_size, filePath):
 
 
 def MPS(args):
-    temporaryPath = sanitize_file_path(args.temporaryPath)
-    if not isinstance(args.nreal, int) or args.nreal < 1:
-        raise ValueError("Invalid value for number of realizations.")
-
-    args.nreal = min(args.nreal, MAX_LOOP_ITERATIONS)
-
+    temporaryPath = args.temporaryPath
     params = json.loads(args.params) if args.params is not None else {}
 
     mpslib = mps.mpslib(method="mps_genesim")
-    mpslib.parameter_filename = (temporaryPath / "mps.txt").as_posix()
-    mpslib.par["ti_fnam"] = (temporaryPath / "ti.dat").as_posix()
-    mpslib.par["out_folder"] = temporaryPath.as_posix()
+    mpslib.parameter_filename = os.path.join(temporaryPath, "mps.txt")
+    mpslib.par["ti_fnam"] = os.path.join(temporaryPath, "ti.dat")
+    mpslib.par["out_folder"] = temporaryPath
     mpslib.par["simulation_grid_size"] = np.array(params["finalImageSize"])
     mpslib.par["grid_cell_size"] = np.array(params["finalImageResolution"])
     mpslib.par["n_cond"] = args.ncond
     mpslib.par["n_real"] = args.nreal
     mpslib.par["n_max_ite"] = args.iterations
     mpslib.par["rseed"] = args.rseed
-    mpslib.par["hard_data_fnam"] = "hard.dat"
-    mpslib.par["mask_fnam"] = (temporaryPath / "mask.dat").as_posix()
+    mpslib.par["hard_data_fnam"] = os.path.join("hard.dat")
+    mpslib.par["mask_fnam"] = os.path.join(temporaryPath, "mask.dat")
     mpslib.par["colocate_dimension"] = args.colocateDimensions
     mpslib.par["max_search_radius"] = args.maxSearchRadius
     mpslib.par["distance_max"] = args.distanceMax
@@ -68,8 +61,7 @@ def MPS(args):
     mpslib.run_parallel()
 
     for realization in range(args.nreal):
-        simDataFile = temporaryPath / f"sim_data_{realization}.npy"
-        np.save(simDataFile.as_posix(), mpslib.sim[realization])
+        np.save(os.path.join(temporaryPath, f"sim_data_{realization}.npy"), mpslib.sim[realization])
 
 
 if __name__ == "__main__":

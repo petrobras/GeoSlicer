@@ -29,7 +29,7 @@ def get_ijk_from_ras_bounds(node, rasbounds):
     node.GetRASToIJKMatrix(volumeRASToIJKMatrix)
     # reshape bounds for a matrix of 3 collums and 2 rows
     rasbounds = np.array([[rasbounds[0], rasbounds[2], rasbounds[4]], [rasbounds[1], rasbounds[3], rasbounds[5]]])
-    boundsijk = np.ceil(transforms.transformPoints(volumeRASToIJKMatrix, rasbounds, returnInt=False)).astype(int)
+    boundsijk = np.ceil(transforms.transformPoints(volumeRASToIJKMatrix, rasbounds, returnInt=False)).astype(np.float32)
     return boundsijk
 
 
@@ -111,8 +111,6 @@ def runcli(args):
     corrected_data = volumeArray.astype(float) - background
     corrected_data = corrected_data - np.mean(corrected_data[maskArray == 1]) + np.mean(volumeArray[maskArray == 1])
 
-    # Converting to uint16
-    corrected_data = clip_to(corrected_data, "uint16")
     input_null_value = getVolumeNullValue(inputVolumeNode)
     output_null_value = input_null_value if input_null_value != None else 0
     corrected_data[maskArray == 0] = output_null_value

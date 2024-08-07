@@ -1,14 +1,15 @@
-import json
-import logging
-import traceback
-
 from collections import OrderedDict
-from ltrace.remote import errors
-from ltrace.remote.connections import ConnectionManager, JobExecutor
-from pathlib import Path
+import logging
 from queue import Queue
+
+import json
+from pathlib import Path
+
 from typing import Callable, Dict, List
 from threading import Lock, Thread
+
+from ltrace.remote import errors
+from ltrace.remote.connections import ConnectionManager, JobExecutor
 
 
 class JobManager:
@@ -36,8 +37,6 @@ class JobManager:
 
     @classmethod
     def register(cls, key: str, compiler: Callable):
-        if key in cls.compilers:
-            raise ValueError(f"Compiler {key} already registered")
         cls.compilers[key] = compiler
 
     @classmethod
@@ -70,10 +69,10 @@ class JobManager:
                 if job and (job.status not in cls.endstates):
                     cls.send(uid, event, **kwargs)
             except errors.SSHException as e:
-                logging.info(f"communicate function failed ON CONNECTION: {repr(e)}")
+                print("communicate function failed ON CONNECTION: ", repr(e))
                 cls.agenda.put((uid, event))
             except Exception as e:
-                logging.info(f"communicate function failed: {repr(e)}")
+                print("communicate function failed: ", repr(e))
             finally:
                 pass
 
@@ -124,9 +123,16 @@ class JobManager:
             for observer in cls.observers:
                 observer(job, "JOB_MODIFIED")
         except AttributeError:
-            logging.info(f"Job not existing anymore, skipping set_state.\nTraceback:\n{traceback.print_exc()}")
+            logging.info("Job not existing anymore, skipping set_state")
+            import traceback
+
+            traceback.print_exc()
+            logging.info("---------------")
         except Exception as e:
-            logging.error(f"Traceback:\n{traceback.print_exc()}\nOn jobs.JobManager.set_state = {repr(e)}.")
+            import traceback
+
+            traceback.print_exc()
+            logging.error(f"on jobs.JobManager.set_state = {repr(e)}")
         finally:
             pass
 
@@ -205,6 +211,7 @@ class JobManager:
             return False
         except Exception as e:
             # TODO return for accounts instead of login
+            import traceback
 
             cls.set_state(job.uid, status="IDLE", traceback={"[ERROR] Unable to connect": traceback.format_exc()})
 
@@ -232,6 +239,8 @@ class JobManager:
                 f"Error loading previous jobs. Current file has a invalid JSON format.\nDetails: {repr(e)}. File: {jobfile}"
             )
         except Exception as e:
+            import traceback
+
             logging.error(traceback.format_exc())
 
     @classmethod

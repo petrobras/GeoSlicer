@@ -178,23 +178,26 @@ class CrossplotWidget(BasePlotWidget):
 
     def __init__(self, plotLabel="", *args, **kwargs):
         super().__init__(plotType=self.TYPE, plotLabel=plotLabel, *args, **kwargs)
+        self.dataPlotWidget = None
         self.__graphDataList = list()
+        self.__tableWidget = None
         self.__zMinValueRange = 0
         self.__zMaxValueRange = 0
         self.__createPlotUpdateTimer()
-        self.__fit_data_list = []
-        self.__valid_fitted_curve_selected = False
+        self.__fitDataList = []
+        self.__validFittedCurveSelected = False
 
-        self.__fit_equations = [Line(), TimurCoates()]
+        self.__fitEquations = [Line(), TimurCoates()]
 
     def setupUi(self):
         """Initialize widgets"""
+        self.setObjectName("Crossplot Widget")
         self.setMinimumSize(780, 600)
         layout = QtGui.QHBoxLayout()
 
-        parameters_widget = QtGui.QFrame()
-        parameters_layout = QtGui.QVBoxLayout()
-        parameters_widget.setLayout(parameters_layout)
+        parametersWidget = QtGui.QFrame()
+        parametersLayout = QtGui.QVBoxLayout()
+        parametersWidget.setLayout(parametersLayout)
         plot_layout = QtGui.QVBoxLayout()
 
         # Data table widget
@@ -203,11 +206,12 @@ class CrossplotWidget(BasePlotWidget):
         self.__tableWidget.signal_data_removed.connect(self.__removeDataFromTableByName)
         self.__tableWidget.signal_all_style_changed.connect(self.__updateAllDataStyles)
         self.__tableWidget.signal_all_visible_changed.connect(self.__updateAllDataVisibility)
-        parameters_layout.addWidget(self.__tableWidget)
+        parametersLayout.addWidget(self.__tableWidget)
 
         # Plot widget
-        self.data_plot_widget = DataPlotWidget()
-        plot_layout.addWidget(self.data_plot_widget.widget)
+        self.dataPlotWidget = DataPlotWidget()
+        self.dataPlotWidget.toggleLegendSignal.connect(self.__toggleLegend)
+        plot_layout.addWidget(self.dataPlotWidget.widget)
 
         plot_layout.addStretch()
 
@@ -238,6 +242,7 @@ class CrossplotWidget(BasePlotWidget):
 
         # Parameter combobox
         self.__xAxisComboBox = QtGui.QComboBox()
+        self.__xAxisComboBox.objectName = "X Axis Combo Box"
         xAxisParameterLayout = QtGui.QFormLayout()
         xAxisParameterLayout.addRow("Parameter", self.__xAxisComboBox)
         xAxisParameterLayout.setHorizontalSpacing(8)
@@ -261,7 +266,7 @@ class CrossplotWidget(BasePlotWidget):
         self.__xAxisGroupBox = QtGui.QGroupBox("X axis")
         self.__xAxisGroupBox.setLayout(self.__xAxisGridLayout)
 
-        parameters_layout.addWidget(self.__xAxisGroupBox)
+        parametersLayout.addWidget(self.__xAxisGroupBox)
 
         # Y axis
         # Histogram options
@@ -290,6 +295,7 @@ class CrossplotWidget(BasePlotWidget):
 
         # Parameter combobox
         self.__yAxisComboBox = QtGui.QComboBox()
+        self.__yAxisComboBox.objectName = "Y Axis Combo Box"
         yAxisParameterLayout = QtGui.QFormLayout()
         yAxisParameterLayout.addRow("Parameter", self.__yAxisComboBox)
         yAxisParameterLayout.setHorizontalSpacing(8)
@@ -313,7 +319,7 @@ class CrossplotWidget(BasePlotWidget):
         self.__yAxisGroupBox = QtGui.QGroupBox("Y axis")
         self.__yAxisGroupBox.setLayout(self.__yAxisGridLayout)
 
-        parameters_layout.addWidget(self.__yAxisGroupBox)
+        parametersLayout.addWidget(self.__yAxisGroupBox)
 
         # Z axis
         self.__zAxisComboBox = QtGui.QComboBox()
@@ -358,46 +364,55 @@ class CrossplotWidget(BasePlotWidget):
         zStyleGroupBox = QtGui.QGroupBox("Z axis")
         zStyleGroupBox.setLayout(formLayout)
 
-        parameters_layout.addWidget(zStyleGroupBox)
+        parametersLayout.addWidget(zStyleGroupBox)
 
-        # Theme
-        self.__themeGroupBox = QtGui.QGroupBox("Theme settings")
+        # Settings
+        self.__settingsGroupBox = QtGui.QGroupBox("Settings")
+
         self.__themeComboBox = QtGui.QComboBox()
-        themeParameterLayout = QtGui.QFormLayout()
-        themeParameterLayout.setHorizontalSpacing(8)
-        themeParameterLayout.addRow("Theme", self.__themeComboBox)
-        for themeName in self.data_plot_widget.themes:
+        for themeName in self.dataPlotWidget.themes:
             self.__themeComboBox.addItem(themeName)
-        self.__themeGroupBox.setLayout(themeParameterLayout)
-        parameters_layout.addWidget(self.__themeGroupBox)
 
-        self.__themeComboBox.setCurrentText(self.data_plot_widget.themes[0])
+        self.__embeddedLegendVisibilityCheckBox = QtGui.QCheckBox()
+        self.__embeddedLegendVisibilityCheckBox.setChecked(self.dataPlotWidget.embeddedLegendVisibility)
+        self.__embeddedLegendVisibilityCheckBox.stateChanged.connect(self.__onEmbeddedLegendVisibilityChange)
+
+        settingsFormLayout = QtGui.QFormLayout()
+        settingsFormLayout.setHorizontalSpacing(8)
+
+        settingsFormLayout.addRow("Theme", self.__themeComboBox)
+        settingsFormLayout.addRow("Show legend", self.__embeddedLegendVisibilityCheckBox)
+        self.__settingsGroupBox.setLayout(settingsFormLayout)
+
+        parametersLayout.addWidget(self.__settingsGroupBox)
+
+        self.__themeComboBox.setCurrentText(self.dataPlotWidget.themes[0])
 
         # Stretch
-        parameters_layout.addStretch()
+        parametersLayout.addStretch()
 
         # Tabs
-        tab_widget = QtGui.QTabWidget()
-        tab_widget.addTab(parameters_widget, "Data")
-        fit_frame_qt = self.__create_fit_tab()
-        fit_frame_qtgui = shiboken2.wrapInstance(hash(fit_frame_qt), QtGui.QFrame)
-        tab_widget.addTab(fit_frame_qtgui, "Curve fitting")
-        self.equations_tab = EquationsTabWidget(self.__fit_data_list)
-        self.equations_tab.signal_new_function_curve_data.connect(self.__on_fit_data_created)
-        self.equations_tab.signal_import_function_curve.connect(self.__on_import_clicked)
-        self.equations_tab.signal_export_function_curve.connect(self.__on_export_clicked)
-        self.equations_tab.signal_function_curve_edited.connect(self.__on_function_curve_edited)
-        self.equations_tab.signal_save_data.connect(self.__on_function_curve_save_button_clicked)
-        equations_tab_qtgui = shiboken2.wrapInstance(hash(self.equations_tab), QtGui.QFrame)
-        tab_widget.addTab(equations_tab_qtgui, "Curves")
+        tabWidget = QtGui.QTabWidget()
+        tabWidget.addTab(parametersWidget, "Data")
+        fitFrameQt = self.__createFitTab()
+        fitFrameQtGui = shiboken2.wrapInstance(hash(fitFrameQt), QtGui.QFrame)
+        tabWidget.addTab(fitFrameQtGui, "Curve fitting")
+        self.equationsTab = EquationsTabWidget(self.__fitDataList)
+        self.equationsTab.signalNewFunctionCurveData.connect(self.__onFitDataCreated)
+        self.equationsTab.signalImportFunctionCurve.connect(self.__onImportClicked)
+        self.equationsTab.signalExportFunctionCurve.connect(self.__onExportClicked)
+        self.equationsTab.signalFunctionCurveEdited.connect(self.__onFunctionCurveEdited)
+        self.equationsTab.signalSaveData.connect(self.__on_function_curve_save_button_clicked)
+        equationsTabQtGui = shiboken2.wrapInstance(hash(self.equationsTab), QtGui.QFrame)
+        tabWidget.addTab(equationsTabQtGui, "Curves")
 
-        shortest_width = min(parameters_widget.sizeHint().width(), fit_frame_qtgui.sizeHint().width())
-        parameters_widget.setMaximumWidth(shortest_width)
-        fit_frame_qtgui.setMaximumWidth(shortest_width)
-        tab_widget.setMaximumWidth(shortest_width)
+        shortest_width = min(parametersWidget.sizeHint().width(), fitFrameQtGui.sizeHint().width())
+        parametersWidget.setMaximumWidth(shortest_width)
+        fitFrameQtGui.setMaximumWidth(shortest_width)
+        tabWidget.setMaximumWidth(shortest_width)
 
         # Layout
-        layout.addWidget(tab_widget)
+        layout.addWidget(tabWidget)
         layout.addLayout(plot_layout)
         layout.setSpacing(10)
         self.setLayout(layout)
@@ -421,221 +436,227 @@ class CrossplotWidget(BasePlotWidget):
 
         # Apply default values
         self.__autoRangeCheckBox.setChecked(True)
-        self.data_plot_widget.set_theme(self.__themeComboBox.currentText())
+        self.dataPlotWidget.set_theme(self.__themeComboBox.currentText())
         self.__updatePlotsLayout()
-        self.__on_fitted_curve_selected("")
+        self.__onFittedCurveSelected("")
 
-    def __create_fit_tab(self):
+    @property
+    def graphDataList(self):
+        return list(self.__graphDataList)
+
+    def __createFitTab(self):
         ## New fit widget
-        self.__fit_data_input_combo_box = qt.QComboBox()
+        self.__fitDataInputComboBox = qt.QComboBox()
 
-        self.__fit_equation_combo_box = qt.QComboBox()
-        for fit_equation in self.__fit_equations:
-            self.__fit_equation_combo_box.addItem(fit_equation.widget.DISPLAY_NAME)
-        self.__fit_equation_combo_box.currentTextChanged.connect(self.__select_fit_equation)
+        self.__fitEquationComboBox = qt.QComboBox()
+        for fitEquation in self.__fitEquations:
+            self.__fitEquationComboBox.addItem(fitEquation.widget.DISPLAY_NAME)
+        self.__fitEquationComboBox.currentTextChanged.connect(self.__selectFitEquation)
 
-        fit_button = qt.QPushButton("New fit")
-        fit_button.setFocusPolicy(qt.Qt.NoFocus)
-        fit_button.clicked.connect(self.__on_fit_clicked)
+        fitButton = qt.QPushButton("New fit")
+        fitButton.setFocusPolicy(qt.Qt.NoFocus)
+        fitButton.clicked.connect(self.__onFitClicked)
 
-        fit_buttons_layout = qt.QHBoxLayout()
-        fit_buttons_layout.addWidget(fit_button)
+        fitButtonsLayout = qt.QHBoxLayout()
+        fitButtonsLayout.addWidget(fitButton)
 
-        fit_input_layout = qt.QFormLayout()
-        fit_input_layout.addRow("Data: ", self.__fit_data_input_combo_box)
-        fit_input_layout.addRow("Equation: ", self.__fit_equation_combo_box)
-        fit_input_layout.addRow("", fit_buttons_layout)
+        fitInputLayout = qt.QFormLayout()
+        fitInputLayout.addRow("Data: ", self.__fitDataInputComboBox)
+        fitInputLayout.addRow("Equation: ", self.__fitEquationComboBox)
+        fitInputLayout.addRow("", fitButtonsLayout)
 
-        fit_input_frame = qt.QFrame()
-        fit_input_frame.setLayout(fit_input_layout)
+        fitInputFrame = qt.QFrame()
+        fitInputFrame.setLayout(fitInputLayout)
 
         ## Input layout
-        input_layout = qt.QVBoxLayout()
-        input_layout.addWidget(fit_input_frame)
+        inputLayout = qt.QVBoxLayout()
+        inputLayout.addWidget(fitInputFrame)
 
-        self.input_collapsible = ctk.ctkCollapsibleButton()
-        self.input_collapsible.text = "Input"
-        self.input_collapsible.setLayout(input_layout)
+        self.inputCollapsible = ctk.ctkCollapsibleButton()
+        self.inputCollapsible.text = "Input"
+        self.inputCollapsible.setLayout(inputLayout)
 
         # Parameters
 
         ## Parameters stack
-        self.fitted_curves_combobox = qt.QComboBox()
-        self.fitted_curves_combobox.addItem("")
-        self.fitted_curves_combobox.currentTextChanged.connect(self.__on_fitted_curve_selected)
+        self.fittedCurvesComboBox = qt.QComboBox()
+        self.fittedCurvesComboBox.addItem("")
+        self.fittedCurvesComboBox.currentTextChanged.connect(self.__onFittedCurveSelected)
 
-        self.parameters_stack = qt.QStackedWidget()
-        for fit_equation in self.__fit_equations:
-            equation_widget = fit_equation.widget.get_widget()
-            self.parameters_stack.addWidget(equation_widget)
-            equation_widget.signal_parameter_changed.connect(self.__on_equation_changed)
-            equation_widget.refit_button_pressed.connect(self.__on_refit_button_clicked)
+        self.parametersStack = qt.QStackedWidget()
+        for fitEquation in self.__fitEquations:
+            equationWidget = fitEquation.widget.get_widget()
+            self.parametersStack.addWidget(equationWidget)
+            equationWidget.signal_parameter_changed.connect(self.__onEquationChanged)
+            equationWidget.refit_button_pressed.connect(self.__on_refit_button_clicked)
 
-        parameters_layout = qt.QFormLayout()
-        parameters_layout.addRow("Fitted curve: ", self.fitted_curves_combobox)
-        parameters_layout.addRow(self.parameters_stack)
+        parametersLayout = qt.QFormLayout()
+        parametersLayout.addRow("Fitted curve: ", self.fittedCurvesComboBox)
+        parametersLayout.addRow(self.parametersStack)
 
-        self.parameters_collapsible = ctk.ctkCollapsibleButton()
-        self.parameters_collapsible.text = "Parameters"
-        self.parameters_collapsible.setLayout(parameters_layout)
+        self.parametersCollapsible = ctk.ctkCollapsibleButton()
+        self.parametersCollapsible.text = "Parameters"
+        self.parametersCollapsible.setLayout(parametersLayout)
 
-        self.__select_fit_equation(self.__fit_equations[0].widget.DISPLAY_NAME)
+        self.__selectFitEquation(self.__fitEquations[0].widget.DISPLAY_NAME)
 
         # Output
-        self.__save_button = qt.QPushButton("Save to project")
-        self.__save_button.setFocusPolicy(qt.Qt.NoFocus)
-        self.__save_button.clicked.connect(self.__on_fit_save_button_clicked)
+        self.__saveButton = qt.QPushButton("Save to project")
+        self.__saveButton.setFocusPolicy(qt.Qt.NoFocus)
+        self.__saveButton.clicked.connect(self.__onFitSaveButtonClicked)
 
-        output_layout = qt.QFormLayout()
-        output_layout.addRow("", self.__save_button)
+        outputLayout = qt.QFormLayout()
+        outputLayout.addRow("", self.__saveButton)
 
-        output_collapsible = ctk.ctkCollapsibleButton()
-        output_collapsible.text = "Output: "
-        output_collapsible.setLayout(output_layout)
+        outputCollapsible = ctk.ctkCollapsibleButton()
+        outputCollapsible.text = "Output: "
+        outputCollapsible.setLayout(outputLayout)
 
         # Layout
-        fit_tab_layout = qt.QVBoxLayout()
-        fit_tab_layout.addWidget(self.input_collapsible)
-        fit_tab_layout.addWidget(self.parameters_collapsible)
-        fit_tab_layout.addWidget(output_collapsible)
-        fit_tab_layout.addStretch()
+        fitTabLayout = qt.QVBoxLayout()
+        fitTabLayout.addWidget(self.inputCollapsible)
+        fitTabLayout.addWidget(self.parametersCollapsible)
+        fitTabLayout.addWidget(outputCollapsible)
+        fitTabLayout.addStretch()
 
-        self.__fit_tab_widget = qt.QFrame()
-        self.__fit_tab_widget.setLayout(fit_tab_layout)
-        return self.__fit_tab_widget
+        self.__fitTabWidget = qt.QFrame()
+        self.__fitTabWidget.setLayout(fitTabLayout)
+        return self.__fitTabWidget
 
-    def __select_fit_equation(self, selected_equation):
-        self.fitted_curves_combobox.setCurrentText("")
+    def __selectFitEquation(self, selected_equation):
+        self.fittedCurvesComboBox.setCurrentText("")
 
-        for index, fit_equation in enumerate(self.__fit_equations):
-            if fit_equation.widget.DISPLAY_NAME == selected_equation:
-                self.__set_current_parameters_stack(index)
+        for index, fitEquation in enumerate(self.__fitEquations):
+            if fitEquation.widget.DISPLAY_NAME == selected_equation:
+                self.__setCurrentParametersStack(index)
                 break
 
-    def __set_current_parameters_stack(self, index):
-        self.parameters_stack.setCurrentIndex(index)
-        self.parameters_collapsible.setMaximumHeight(125 + 50 * len(self.__fit_equations[index].widget.PARAMETERS))
+    def __setCurrentParametersStack(self, index):
+        self.parametersStack.setCurrentIndex(index)
+        self.parametersCollapsible.setMaximumHeight(125 + 50 * len(self.__fitEquations[index].widget.PARAMETERS))
 
-    def __on_fitted_curve_selected(self, fitted_curve):
-        self.__valid_fitted_curve_selected = False
-        if not fitted_curve:
-            self.__set_current_fitted_curve(None)
-        for fit_data in self.__fit_data_list:
-            if fit_data.name == fitted_curve:
-                self.__set_current_fitted_curve(fit_data)
-                self.__valid_fitted_curve_selected = True
+    def __onFittedCurveSelected(self, fittedCurve):
+        self.__validFittedCurveSelected = False
+        if not fittedCurve:
+            self.__setCurrentFittedCurve(None)
+        for fitData in self.__fitDataList:
+            if fitData.name == fittedCurve:
+                self.__setCurrentFittedCurve(fitData)
+                self.__validFittedCurveSelected = True
                 break
-        self.__update_refit_button_state()
-        self.__update_output_button_state()
+        self.__updateRefitButtonState()
+        self.__updateOutputButtonState()
 
-    def __on_fit_clicked(self):
-        input_data = self.__get_current_input_data()
-        if input_data is None:
+    def __onFitClicked(self):
+        inputData = self.__getCurrentInputData()
+        if inputData is None:
             return
 
-        for fit_equation in self.__fit_equations:
-            if self.__fit_equation_combo_box.currentText == fit_equation.widget.DISPLAY_NAME:
-                fit_data = fit_equation.equation.fit("temp_curve", input_data["x"], input_data["y"])
+        for fitEquation in self.__fitEquations:
+            if self.__fitEquationComboBox.currentText == fitEquation.widget.DISPLAY_NAME:
+                fitData = fitEquation.equation.fit(
+                    self.__fitDataInputComboBox.currentText, inputData["x"], inputData["y"]
+                )
                 break
-        fit_data.style.color = input_data["color"]
-        self.__add_fit_data(fit_data)
+        fitData.style.color = inputData["color"]
+        self.__addFitData(fitData)
 
-    def __on_import_clicked(self):
-        file_dialog = qt.QFileDialog(self.__fit_tab_widget, "Select function")
-        file_dialog.setNameFilters(["Table file (*.tsv)"])
-        if file_dialog.exec():
-            paths = file_dialog.selectedFiles()
-            imported_volume = slicer.util.loadTable(paths[0])
-            if imported_volume.GetColumnName(0) != "Fitting equation":
-                slicer.mrmlScene.RemoveNode(imported_volume)
-                slicer.util.errorDisplay("Couldn't import the file as a fitted function", parent=self.__fit_tab_widget)
+    def __onImportClicked(self):
+        fileDialog = qt.QFileDialog(self.__fitTabWidget, "Select function")
+        fileDialog.setNameFilters(["Table file (*.tsv)"])
+        if fileDialog.exec():
+            paths = fileDialog.selectedFiles()
+            importedVolume = slicer.util.loadTable(paths[0])
+            if importedVolume.GetColumnName(0) != "Fitting equation":
+                slicer.mrmlScene.RemoveNode(importedVolume)
+                slicer.util.errorDisplay("Couldn't import the file as a fitted function", parent=self.__fitTabWidget)
             else:
-                imported_volume.SetAttribute("table_type", "equation")
-                self.appendData(imported_volume)
+                importedVolume.SetAttribute("table_type", "equation")
+                self.appendData(importedVolume)
 
-    def __on_export_clicked(self, function_curve_name):
-        fit_data = self.__get_fit_data(function_curve_name)
+    def __onExportClicked(self, functionCurveName):
+        fitData = self.__getFitData(functionCurveName)
         path = qt.QFileDialog.getSaveFileName(
-            None, "Save file", f"{function_curve_name}.tsv", "Tab-separated values (*.tsv)"
+            None, "Save file", f"{functionCurveName}.tsv", "Tab-separated values (*.tsv)"
         )
         if path:
-            for fit_equation in self.__fit_equations:
-                if fit_data.type == fit_equation.equation.NAME:
-                    df = fit_equation.equation.to_df(fit_data)
+            for fitEquation in self.__fitEquations:
+                if fitData.type == fitEquation.equation.NAME:
+                    df = fitEquation.equation.to_df(fitData)
                     df.to_csv(path, sep="\t", index=False)
                     break
 
-    def __on_equation_changed(self, parameter_name: str, new_value: float, is_fixed: bool):
-        fit_data = self.__get_current_fit_data()
-        if not fit_data:
+    def __onEquationChanged(self, parameterName: str, newValue: float, isFixed: bool):
+        fitData = self.__getCurrentFitData()
+        if not fitData:
             return
 
-        if is_fixed:
-            fixed_parameters = fit_data.fixed_parameters
-            if parameter_name not in fixed_parameters:
-                fixed_parameters.append(parameter_name)
-                fit_data.fixed_parameters = fixed_parameters
-        self.__update_function_curve(fit_data, parameter_name, new_value)
-        self.__set_current_function_curve_data(fit_data)
+        if isFixed:
+            fixed_parameters = fitData.fixed_parameters
+            if parameterName not in fixed_parameters:
+                fixed_parameters.append(parameterName)
+                fitData.fixed_parameters = fixed_parameters
+        self.__updateFunctionCurve(fitData, parameterName, newValue)
+        self.__setCurrentFunctionCurveData(fitData)
 
-    def __on_function_curve_edited(self, function_curve: str, parameter_name: str, new_value: float):
-        fit_data = self.__get_fit_data(function_curve)
-        if not fit_data:
+    def __onFunctionCurveEdited(self, function_curve: str, parameterName: str, newValue: float):
+        fitData = self.__getFitData(function_curve)
+        if not fitData:
             return
-        self.__update_function_curve(fit_data, parameter_name, new_value)
-        self.__set_current_function_curve_data(fit_data)
+        self.__updateFunctionCurve(fitData, parameterName, newValue)
+        self.__setCurrentFunctionCurveData(fitData)
 
-    def __update_function_curve(self, fit_data: FitData, parameter_name: str, new_value: float):
-        fit_data.set_parameter(parameter_name, new_value)
-        for fit_equation in self.__fit_equations:
-            if fit_data.type == fit_equation.equation.NAME:
-                fit_data.y = fit_equation.equation.equation(fit_data.x, fit_data.parameters)
+    def __updateFunctionCurve(self, fitData: FitData, parameterName: str, newValue: float):
+        fitData.set_parameter(parameterName, newValue)
+        for fitEquation in self.__fitEquations:
+            if fitData.type == fitEquation.equation.NAME:
+                fitData.y = fitEquation.equation.equation(fitData.x, fitData.parameters)
                 break
         self.__updatePlot()
 
-    def __set_current_fitted_curve(self, fit_data):
-        if fit_data is None:
-            for fit_equation in self.__fit_equations:
-                fit_equation.widget.clear()
+    def __setCurrentFittedCurve(self, fitData):
+        if fitData is None:
+            for fitEquation in self.__fitEquations:
+                fitEquation.widget.clear()
             return
 
-        for index, fit_equation in enumerate(self.__fit_equations):
-            if fit_equation.equation.NAME == fit_data.type:
-                fit_equation.widget.update(fit_data)
-                self.__set_current_parameters_stack(index)
+        for index, fitEquation in enumerate(self.__fitEquations):
+            if fitEquation.equation.NAME == fitData.type:
+                fitEquation.widget.update(fitData)
+                self.__setCurrentParametersStack(index)
                 return
 
-    def __set_current_function_curve_data(self, fit_data: FitData):
-        self.__set_current_fitted_curve(fit_data)
-        self.equations_tab.set_current_function_curve_data(fit_data)
+    def __setCurrentFunctionCurveData(self, fitData: FitData):
+        self.__setCurrentFittedCurve(fitData)
+        self.equationsTab.setCurrentFunctionCurveData(fitData)
 
     def __on_refit_button_clicked(self):
-        fit_data = self.__get_current_fit_data()
-        input_data = self.__get_current_input_data()
-        for fit_equation in self.__fit_equations:
-            if fit_equation.equation.NAME == fit_data.type:
-                fixed_values = fit_equation.widget.get_fixed_values()
-                custom_bounds = fit_equation.widget.get_custom_bounds()
-                if None not in fixed_values:
+        fitData = self.__getCurrentFitData()
+        inputData = self.__getCurrentInputData()
+        for fitEquation in self.__fitEquations:
+            if fitEquation.equation.NAME == fitData.type:
+                fixedValues = fitEquation.widget.get_fixed_values()
+                customBounds = fitEquation.widget.get_custom_bounds()
+                if None not in fixedValues:
                     slicer.util.errorDisplay(
-                        "All values are fixed. There's no refit to be made.", parent=self.__fit_tab_widget
+                        "All values are fixed. There's no refit to be made.", parent=self.__fitTabWidget
                     )
                     return
-                new_fit_data = fit_equation.equation.fit(
-                    fit_data.name, input_data["x"], input_data["y"], fixed_values, custom_bounds
+                newFitData = fitEquation.equation.fit(
+                    fitData.name, inputData["x"], inputData["y"], fixedValues, customBounds
                 )
-        new_fit_data.style.color = input_data["color"]
-        new_fit_data.style.size = 1
-        self.__add_fit_data(new_fit_data)
+        newFitData.style.color = inputData["color"]
+        newFitData.style.size = 1
+        self.__addFitData(newFitData)
 
     def __update_fitted_curves_plot(self):
-        for fit_data in self.__fit_data_list:
-            if fit_data.visible:
-                self.data_plot_widget.add_curve_plot(fit_data)
+        for fitData in self.__fitDataList:
+            if fitData.visible:
+                self.dataPlotWidget.add_curve_plot(fitData)
 
     def appendData(self, dataNode: slicer.vtkMRMLNode):
         if dataNode.GetAttribute("table_type") == "equation":
-            self.__add_equation_data_from_table(dataNode)
+            self.__addEquationDataFromTable(dataNode)
         else:
             self.appendDataNode(dataNode)
 
@@ -700,23 +721,23 @@ class CrossplotWidget(BasePlotWidget):
         self.__zAxisComboBox.setCurrentText(currentZAxis)
 
     def __updateCurveFittingComboBoxes(self):
-        current_data_input = self.__fit_data_input_combo_box.currentText
-        self.__fit_data_input_combo_box.clear()
-        self.fitted_curves_combobox.clear()
+        current_data_input = self.__fitDataInputComboBox.currentText
+        self.__fitDataInputComboBox.clear()
+        self.fittedCurvesComboBox.clear()
 
-        self.fitted_curves_combobox.addItem("")
+        self.fittedCurvesComboBox.addItem("")
 
         for graph_data in self.__graphDataList:
-            self.__fit_data_input_combo_box.addItem(graph_data.name)
+            self.__fitDataInputComboBox.addItem(graph_data.name)
 
-        function_curve_names = []
-        for fit_data in self.__fit_data_list:
-            function_curve_names.append(fit_data.name)
-        self.fitted_curves_combobox.addItems(function_curve_names)
-        self.equations_tab.set_functions_curves(function_curve_names)
+        functionCurveNames = []
+        for fitData in self.__fitDataList:
+            functionCurveNames.append(fitData.name)
+        self.fittedCurvesComboBox.addItems(functionCurveNames)
+        self.equationsTab.setFunctionsCurves(functionCurveNames)
 
         if current_data_input:
-            self.__fit_data_input_combo_box.setCurrentText(current_data_input)
+            self.__fitDataInputComboBox.setCurrentText(current_data_input)
 
     def __createPlotUpdateTimer(self):
         """Initialize timer object that process data to plot"""
@@ -738,7 +759,7 @@ class CrossplotWidget(BasePlotWidget):
 
     def __handleUpdatePlot(self):
         """Wrapper for updating the plots related to the user's input (2D or 3D plot)"""
-        self.data_plot_widget.clear_plot()
+        self.dataPlotWidget.clear_plot()
 
         if (
             self.__xAxisComboBox.currentText() != AXIS_NONE_PARAMETER
@@ -762,7 +783,7 @@ class CrossplotWidget(BasePlotWidget):
 
         self.__updatePlotsLayout()
         self.__update_fitted_curves_plot()
-        self.data_plot_widget.auto_range()
+        self.dataPlotWidget.auto_range()
 
     def __update2dPlot(self, xAxisParameter, yAxisParameter, graph_data_list):
         """Handles 2D plot updates"""
@@ -789,7 +810,7 @@ class CrossplotWidget(BasePlotWidget):
                 yData = self.__yUnitConversion.convert(yData)
                 yAxisName = yAxisName.split()[0] + f" ({self.__yUnitConversion.currentUnits()[1]})"
 
-            self.data_plot_widget.add2dPlot(graphData, xData, yData, xAxisName, yAxisName)
+            self.dataPlotWidget.add2dPlot(graphData, xData, yData, xAxisName, yAxisName)
 
     def __update3dPlot(self, xAxisParameter, yAxisParameter, zAxisParameter, graph_data_list):
         """Handles 3D plot updates"""
@@ -838,6 +859,7 @@ class CrossplotWidget(BasePlotWidget):
             self.__ZMaxValueRangeDoubleSpinBox.setValue(zMax or 0)
 
         # Plot
+        zAxisName = ""
         for graphData in enabled_graph_data_list:
             xData = graphData.data.get(xAxisParameter, None)
             yData = graphData.data.get(yAxisParameter, None)
@@ -857,9 +879,9 @@ class CrossplotWidget(BasePlotWidget):
                 zData = self.__zUnitConversion.convert(zData)
                 zAxisName = zAxisName.split()[0] + f" ({self.__zUnitConversion.currentUnits()[1]})"
 
-            self.data_plot_widget.add3dPlot(graphData, xData, yData, zData, xAxisName, yAxisName, zAxisName, zMin, zMax)
+            self.dataPlotWidget.add3dPlot(graphData, xData, yData, zData, xAxisName, yAxisName, zAxisName, zMin, zMax)
 
-        self.data_plot_widget.update_legend_item(zAxisName)
+        self.dataPlotWidget.update_legend_item(zAxisName)
 
     def __updateGraphDataTable(self):
         """Handles table widget data update"""
@@ -868,8 +890,8 @@ class CrossplotWidget(BasePlotWidget):
         for graphData in self.__graphDataList:
             self.__tableWidget.add_data(graphData, DataTableWidget.INPUT_DATA_TYPE)
 
-        for fit_data in self.__fit_data_list:
-            self.__tableWidget.add_data(fit_data, DataTableWidget.FIT_DATA_TYPE)
+        for fitData in self.__fitDataList:
+            self.__tableWidget.add_data(fitData, DataTableWidget.FIT_DATA_TYPE)
 
     def __removeGraphDataFromTable(self, graphData: NodeGraphData):
         """Remove data and objects related to the GraphData object."""
@@ -882,12 +904,12 @@ class CrossplotWidget(BasePlotWidget):
         self.__updateCurveFittingComboBoxes()
         self.__updatePlot()
 
-    def __removeFitDataFromTable(self, fit_data: FitData):
+    def __removeFitDataFromTable(self, fitData: FitData):
         """Remove data and objects related to the FitData object."""
-        if not fit_data in self.__fit_data_list:
+        if not fitData in self.__fitDataList:
             return
 
-        self.__fit_data_list.remove(fit_data)
+        self.__fitDataList.remove(fitData)
         self.__updateGraphDataTable()
         self.__updatePlot()
 
@@ -897,9 +919,9 @@ class CrossplotWidget(BasePlotWidget):
                 self.__removeGraphDataFromTable(graph_data)
                 return
 
-        for fit_data in self.__fit_data_list:
-            if fit_data.name == name:
-                self.__removeFitDataFromTable(fit_data)
+        for fitData in self.__fitDataList:
+            if fitData.name == name:
+                self.__removeFitDataFromTable(fitData)
                 return
 
     def __populateColorMapComboBox(self):
@@ -908,7 +930,7 @@ class CrossplotWidget(BasePlotWidget):
             self.__colorMapComboBox.addItem(QtGui.QIcon(colorMapInfo.reference_image), colorMapInfo.label)
 
         self.__colorMapComboBox.setCurrentText("Gist Rainbow")
-        self.data_plot_widget.set_colormap(matplotlibcm.gist_rainbow.name)
+        self.dataPlotWidget.set_colormap(matplotlibcm.gist_rainbow.name)
 
     def __onColorMapComboBoxChanged(self, text):
         """Handles color map combo box options change event."""
@@ -916,7 +938,7 @@ class CrossplotWidget(BasePlotWidget):
             if text != colorMapInfo.label:
                 continue
 
-            self.data_plot_widget.set_colormap(colorMapInfo.object.name)
+            self.dataPlotWidget.set_colormap(colorMapInfo.object.name)
             self.__updatePlot()
             break
 
@@ -960,8 +982,8 @@ class CrossplotWidget(BasePlotWidget):
         )
 
     def __plotHistograms(self):
-        self.data_plot_widget.clear_histogram_x()
-        self.data_plot_widget.clear_histogram_y()
+        self.dataPlotWidget.clear_histogram_x()
+        self.dataPlotWidget.clear_histogram_y()
 
         if (
             self.__xAxisHistogramEnableCheckBox.isChecked() is False
@@ -997,7 +1019,7 @@ class CrossplotWidget(BasePlotWidget):
                     graphData, xAxisParameter, self.__xHistogramBinSpinBox.value()
                 )
                 if xHistogram is not None and yHistogram is not None:
-                    self.data_plot_widget.add_histogram_plot_x(graphData, xHistogram, yHistogram)
+                    self.dataPlotWidget.add_histogram_plot_x(graphData, xHistogram, yHistogram)
 
         if self.__yAxisHistogramEnableCheckBox.isChecked() is True:
             for graphData in self.__graphDataList:
@@ -1005,14 +1027,14 @@ class CrossplotWidget(BasePlotWidget):
                     graphData, yAxisParameter, self.__yHistogramBinSpinBox.value()
                 )
                 if xHistogram is not None and yHistogram is not None:
-                    self.data_plot_widget.add_histogram_plot_y(graphData, xHistogram, yHistogram)
+                    self.dataPlotWidget.add_histogram_plot_y(graphData, xHistogram, yHistogram)
 
     def __onHistogramCheckBoxChange(self, state):
         if self.__xAxisHistogramEnableCheckBox.isChecked() is False:
-            self.data_plot_widget.clear_histogram_x()
+            self.dataPlotWidget.clear_histogram_x()
 
         if self.__yAxisHistogramEnableCheckBox.isChecked() is False:
-            self.data_plot_widget.clear_histogram_y()
+            self.dataPlotWidget.clear_histogram_y()
 
         self.__updatePlot()
 
@@ -1023,124 +1045,124 @@ class CrossplotWidget(BasePlotWidget):
         self.__updatePlot()
 
     def __updateLogMode(self):
-        self.data_plot_widget.set_log_mode(x=self.__xLogCheckBox.isChecked(), y=self.__yLogCheckBox.isChecked())
+        self.dataPlotWidget.set_log_mode(x=self.__xLogCheckBox.isChecked(), y=self.__yLogCheckBox.isChecked())
 
     def __updatePlotsLayout(self):
-        self.data_plot_widget.set_theme(self.__themeComboBox.currentText())
-        self.data_plot_widget._updatePlotsLayout(
+        self.dataPlotWidget.set_theme(self.__themeComboBox.currentText())
+        self.dataPlotWidget._updatePlotsLayout(
             self.__xAxisHistogramEnableCheckBox.isChecked(),
             self.__yAxisHistogramEnableCheckBox.isChecked(),
             self.__zAxisComboBox.currentText(),
         )
 
-    def __update_refit_button_state(self):
-        for fit_equation in self.__fit_equations:
-            fit_equation.widget.update_refit_button_state(self.__valid_fitted_curve_selected)
+    def __updateRefitButtonState(self):
+        for fitEquation in self.__fitEquations:
+            fitEquation.widget.update_refit_button_state(self.__validFittedCurveSelected)
 
-    def __update_output_button_state(self):
-        self.__save_button.enabled = self.__valid_fitted_curve_selected
+    def __updateOutputButtonState(self):
+        self.__saveButton.enabled = self.__validFittedCurveSelected
 
-    def __on_fit_save_button_clicked(self):
-        fit_data = self.__get_current_fit_data()
-        if fit_data is None:
+    def __onFitSaveButtonClicked(self):
+        fitData = self.__getCurrentFitData()
+        if fitData is None:
             return
 
-        self.__save_data_to_node(fit_data, fit_data.name)
+        self.__saveDataToNode(fitData, fitData.name)
 
-    def __on_function_curve_save_button_clicked(self, function_curve_name):
-        fit_data = self.__get_fit_data(function_curve_name)
-        self.__save_data_to_node(fit_data, function_curve_name)
+    def __on_function_curve_save_button_clicked(self, functionCurveName):
+        fitData = self.__getFitData(functionCurveName)
+        self.__saveDataToNode(fitData, functionCurveName)
 
-    def __save_data_to_node(self, fit_data, new_name):
-        table_node = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__)
-        table_node.SetName(slicer.mrmlScene.GenerateUniqueName(new_name))
+    def __saveDataToNode(self, fitData, new_name):
+        tableNode = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__)
+        tableNode.SetName(slicer.mrmlScene.GenerateUniqueName(new_name))
 
-        table_modification = table_node.StartModify()
+        table_modification = tableNode.StartModify()
 
-        column_fitting_equation = vtk.vtkStringArray()
-        column_fitting_equation.SetName("Fitting equation")
-        column_fitting_equation.InsertNextValue(fit_data.type)
-        table_node.AddColumn(column_fitting_equation)
+        columnFittingEquation = vtk.vtkStringArray()
+        columnFittingEquation.SetName("Fitting equation")
+        columnFittingEquation.InsertNextValue(fitData.type)
+        tableNode.AddColumn(columnFittingEquation)
 
-        for fit_equation in self.__fit_equations:
-            if fit_equation.equation.NAME == fit_data.type:
-                fit_equation.equation.append_to_node(fit_data, table_node)
+        for fitEquation in self.__fitEquations:
+            if fitEquation.equation.NAME == fitData.type:
+                fitEquation.equation.append_to_node(fitData, tableNode)
                 break
 
-        table_node.SetAttribute("table_type", "equation")
-        table_node.Modified()
-        table_node.EndModify(table_modification)
+        tableNode.SetAttribute("table_type", "equation")
+        tableNode.Modified()
+        tableNode.EndModify(table_modification)
 
-        OUTPUT_DIR_NAME = "Math functions"
-        subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        app_folder_id = subject_hierarchy.GetSceneItemID()
-        output_dir = subject_hierarchy.GetItemChildWithName(app_folder_id, OUTPUT_DIR_NAME)
-        if output_dir == 0:
-            output_dir = subject_hierarchy.CreateFolderItem(
-                app_folder_id, helpers.generateName(subject_hierarchy, OUTPUT_DIR_NAME)
+        outputDirName = "Math functions"
+        subjectHierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        appFolderId = subjectHierarchy.GetSceneItemID()
+        outputDir = subjectHierarchy.GetItemChildWithName(appFolderId, outputDirName)
+        if outputDir == 0:
+            outputDir = subjectHierarchy.CreateFolderItem(
+                appFolderId, helpers.generateName(subjectHierarchy, outputDirName)
             )
-        subject_hierarchy.CreateItem(output_dir, table_node)
+        subjectHierarchy.CreateItem(outputDir, tableNode)
 
-        fit_data.name = new_name
+        fitData.name = new_name
         self.__updateCurveFittingComboBoxes()
         self.__updateGraphDataTable()
 
-    def __add_equation_data_from_table(self, table_node):
-        vtk_table = table_node.GetTable()
-        equation_type = vtk_table.GetValueByName(0, "Fitting equation")
-        for fit_equation in self.__fit_equations:
-            if fit_equation.equation.NAME == equation_type:
-                fit_data = fit_equation.equation.from_table(table_node.GetName(), vtk_table)
+    def __addEquationDataFromTable(self, tableNode):
+        vtkTable = tableNode.GetTable()
+        equation_type = vtkTable.GetValueByName(0, "Fitting equation")
+        for fitEquation in self.__fitEquations:
+            if fitEquation.equation.NAME == equation_type:
+                fitData = fitEquation.equation.from_table(tableNode.GetName(), vtkTable)
                 break
-        self.__add_fit_data(fit_data)
+        self.__addFitData(fitData)
 
-    def __on_fit_data_created(self, fit_data):
-        self.__add_fit_data(fit_data)
-        self.__set_current_function_curve_data(fit_data)
+    def __onFitDataCreated(self, fitData):
+        self.__addFitData(fitData)
+        self.__setCurrentFunctionCurveData(fitData)
 
-    def __add_fit_data(self, new_fit_data: FitData):
-        for fit_data in self.__fit_data_list:
-            if fit_data.name == new_fit_data.name:
-                self.__fit_data_list.remove(fit_data)
+    def __addFitData(self, newFitData: FitData):
+        for fitData in self.__fitDataList:
+            if fitData.name == newFitData.name:
+                self.__fitDataList.remove(fitData)
                 break
 
-        new_fit_data.style.size = 1
-        self.__fit_data_list.append(new_fit_data)
-        new_fit_data.signalVisibleChanged.connect(self.__updatePlot)
+        newFitData.style.size = 1
+        self.__fitDataList.append(newFitData)
+        newFitData.signalVisibleChanged.connect(self.__updatePlot)
 
         self.__updatePlot()
         self.__updateGraphDataTable()
         self.__updateCurveFittingComboBoxes()
-        self.fitted_curves_combobox.setCurrentText(new_fit_data.name)
+        self.fittedCurvesComboBox.setCurrentText(newFitData.name)
 
-    def __get_current_fit_data(self):
-        return self.__get_fit_data(self.fitted_curves_combobox.currentText)
+    def __getCurrentFitData(self):
+        return self.__getFitData(self.fittedCurvesComboBox.currentText)
 
-    def __get_fit_data(self, name):
-        for fit_data in self.__fit_data_list:
-            if fit_data.name == name:
-                return fit_data
+    def __getFitData(self, name):
+        for fitData in self.__fitDataList:
+            if fitData.name == name:
+                return fitData
         return None
 
-    def __get_current_input_data(self):
+    def __getCurrentInputData(self):
         try:
-            input_data = self.data_plot_widget.get_plotted_data(self.__fit_data_input_combo_box.currentText)
+            inputData = self.dataPlotWidget.get_plotted_data(self.__fitDataInputComboBox.currentText)
         except KeyError:
             slicer.util.errorDisplay(
                 "Nothing related to this data is plotted. "
                 "Please assign parameters from this input data in the Data tab or select another one.",
-                parent=self.__fit_tab_widget,
+                parent=self.__fitTabWidget,
             )
             return None
 
-        if input_data["x"] is None or input_data["y"] is None:
+        if inputData["x"] is None or inputData["y"] is None:
             slicer.util.errorDisplay(
                 "Missing 2D data. You must select data for X and Y axes before fitting to the equation.",
-                parent=self.__fit_tab_widget,
+                parent=self.__fitTabWidget,
             )
             return None
 
-        return input_data
+        return inputData
 
     def __updateAllDataStyles(self, symbol, symbol_size, line_style, line_size):
         for graphData in self.__graphDataList:
@@ -1162,98 +1184,107 @@ class CrossplotWidget(BasePlotWidget):
 
         self.__updateGraphDataTable()
 
+    def __onEmbeddedLegendVisibilityChange(self, state):
+        if not self.dataPlotWidget:
+            return
+
+        self.dataPlotWidget.embeddedLegendVisibility = state == qt.Qt.Checked
+
+    def __toggleLegend(self):
+        self.__embeddedLegendVisibilityCheckBox.setChecked(self.dataPlotWidget.embeddedLegendVisibility)
+
 
 class EquationParametersWidget(qt.QFrame):
-    signal_function_curve_selected = qt.Signal(str)
-    signal_function_curve_edited = qt.Signal(str, str, float, bool)
+    signalFunctionCurveSelected = qt.Signal(str)
+    signalFunctionCurveEdited = qt.Signal(str, str, float, bool)
 
     def __init__(self):
         super().__init__()
 
-        self.__fit_equations = [Line(False), TimurCoates(False)]
+        self.__fitEquations = [Line(False), TimurCoates(False)]
 
-        self.function_curves_combobox = qt.QComboBox()
-        self.function_curves_combobox.addItem("")
-        self.function_curves_combobox.currentTextChanged.connect(self.__on_function_curve_selected)
+        self.functionCurvesComboBox = qt.QComboBox()
+        self.functionCurvesComboBox.addItem("")
+        self.functionCurvesComboBox.currentTextChanged.connect(self.__onFunctionCurveSelected)
 
-        self.parameters_stack = ShrinkableStackedWidget()
-        for fit_equation in self.__fit_equations:
-            equation_widget = fit_equation.widget.get_widget()
-            self.parameters_stack.addWidget(equation_widget)
-            equation_widget.signal_parameter_changed.connect(self.__on_equation_changed)
-        self.parameters_stack.setCurrentIndex(0)
+        self.parametersStack = ShrinkableStackedWidget()
+        for fitEquation in self.__fitEquations:
+            equationWidget = fitEquation.widget.get_widget()
+            self.parametersStack.addWidget(equationWidget)
+            equationWidget.signal_parameter_changed.connect(self.__onEquationChanged)
+        self.parametersStack.setCurrentIndex(0)
 
-        edit_layout = qt.QFormLayout()
-        edit_layout.setContentsMargins(0, 0, 0, 0)
-        edit_layout.addRow("Function:", self.function_curves_combobox)
-        edit_layout.addRow(self.parameters_stack)
+        editLayout = qt.QFormLayout()
+        editLayout.setContentsMargins(0, 0, 0, 0)
+        editLayout.addRow("Function:", self.functionCurvesComboBox)
+        editLayout.addRow(self.parametersStack)
 
-        self.parameters_collapsible = ctk.ctkCollapsibleButton(self)
-        self.parameters_collapsible.text = "Parameters"
-        self.parameters_collapsible.setLayout(edit_layout)
+        self.parametersCollapsible = ctk.ctkCollapsibleButton(self)
+        self.parametersCollapsible.text = "Parameters"
+        self.parametersCollapsible.setLayout(editLayout)
 
         layout = qt.QVBoxLayout()
-        layout.addWidget(self.parameters_collapsible)
+        layout.addWidget(self.parametersCollapsible)
         self.setLayout(layout)
 
-    def set_functions_curves(self, function_curve_list: list):
-        self.function_curves_combobox.clear()
-        self.function_curves_combobox.addItem("")
-        self.function_curves_combobox.addItems(function_curve_list)
+    def setFunctionsCurves(self, function_curve_list: list):
+        self.functionCurvesComboBox.clear()
+        self.functionCurvesComboBox.addItem("")
+        self.functionCurvesComboBox.addItems(function_curve_list)
 
-    def set_current_function_curve_data(self, curve_data):
+    def setCurrentFunctionCurveData(self, curve_data):
         if curve_data is None:
-            for fit_equation in self.__fit_equations:
-                fit_equation.widget.clear()
+            for fitEquation in self.__fitEquations:
+                fitEquation.widget.clear()
             return
 
-        for index, fit_equation in enumerate(self.__fit_equations):
-            if fit_equation.equation.NAME == curve_data.type:
-                fit_equation.widget.update(curve_data)
-                self.__set_current_parameters_stack(index)
-                self.function_curves_combobox.setCurrentText(curve_data.name)
+        for index, fitEquation in enumerate(self.__fitEquations):
+            if fitEquation.equation.NAME == curve_data.type:
+                fitEquation.widget.update(curve_data)
+                self.__setCurrentParametersStack(index)
+                self.functionCurvesComboBox.setCurrentText(curve_data.name)
                 break
 
-    def get_current_function_curve_name(self):
-        return self.function_curves_combobox.currentText
+    def getCurrentFunctionCurveName(self):
+        return self.functionCurvesComboBox.currentText
 
-    def __on_function_curve_selected(self, function_curve):
-        self.signal_function_curve_selected.emit(function_curve)
+    def __onFunctionCurveSelected(self, function_curve):
+        self.signalFunctionCurveSelected.emit(function_curve)
 
-    def __set_current_parameters_stack(self, index):
-        self.parameters_stack.setCurrentIndex(index)
+    def __setCurrentParametersStack(self, index):
+        self.parametersStack.setCurrentIndex(index)
 
-    def __on_equation_changed(self, parameter_name, new_value, is_fixed):
-        function_curve = self.function_curves_combobox.currentText
-        self.signal_function_curve_edited.emit(function_curve, parameter_name, new_value, is_fixed)
+    def __onEquationChanged(self, parameterName, newValue, isFixed):
+        function_curve = self.functionCurvesComboBox.currentText
+        self.signalFunctionCurveEdited.emit(function_curve, parameterName, newValue, isFixed)
 
 
 class EquationsTabWidget(qt.QFrame):
-    signal_new_function_curve_data = qt.Signal(FitData)
-    signal_import_function_curve = qt.Signal()
-    signal_export_function_curve = qt.Signal(str)
-    signal_function_curve_edited = qt.Signal(str, str, float)
-    signal_save_data = qt.Signal(str)
+    signalNewFunctionCurveData = qt.Signal(FitData)
+    signalImportFunctionCurve = qt.Signal()
+    signalExportFunctionCurve = qt.Signal(str)
+    signalFunctionCurveEdited = qt.Signal(str, str, float)
+    signalSaveData = qt.Signal(str)
 
     def __init__(self, fit_data_list):
         super().__init__()
 
-        self.__fit_data_list = fit_data_list
+        self.__fitDataList = fit_data_list
 
         # Input layout
         self.__functionCurveNameLineEdit = qt.QLineEdit()
 
-        self.__fit_equation_combo_box = qt.QComboBox()
-        self.__fit_equations = [Line(False), TimurCoates(False)]
-        for fit_equation in self.__fit_equations:
-            self.__fit_equation_combo_box.addItem(fit_equation.widget.DISPLAY_NAME)
+        self.__fitEquationComboBox = qt.QComboBox()
+        self.__fitEquations = [Line(False), TimurCoates(False)]
+        for fitEquation in self.__fitEquations:
+            self.__fitEquationComboBox.addItem(fitEquation.widget.DISPLAY_NAME)
 
         createButton = qt.QPushButton("Create")
         createButton.setFocusPolicy(qt.Qt.NoFocus)
-        createButton.clicked.connect(self.__on_create_clicked)
+        createButton.clicked.connect(self.__onCreateClicked)
         importButton = qt.QPushButton("Import")
         importButton.setFocusPolicy(qt.Qt.NoFocus)
-        importButton.clicked.connect(self.__on_import_clicked)
+        importButton.clicked.connect(self.__onImportClicked)
 
         inputButtonLayout = qt.QHBoxLayout()
         inputButtonLayout.addWidget(createButton)
@@ -1261,7 +1292,7 @@ class EquationsTabWidget(qt.QFrame):
 
         inputLayout = qt.QFormLayout()
         inputLayout.addRow("Name:", self.__functionCurveNameLineEdit)
-        inputLayout.addRow("Equation:", self.__fit_equation_combo_box)
+        inputLayout.addRow("Equation:", self.__fitEquationComboBox)
         inputLayout.addRow("", inputButtonLayout)
 
         inputCollapsible = ctk.ctkCollapsibleButton()
@@ -1269,86 +1300,86 @@ class EquationsTabWidget(qt.QFrame):
         inputCollapsible.setLayout(inputLayout)
 
         # Edit layout
-        self.edit_collapsible = EquationParametersWidget()
-        self.edit_collapsible.signal_function_curve_selected.connect(self.__on_function_curve_selected)
-        self.edit_collapsible.signal_function_curve_edited.connect(self.__on_function_curve_edited)
+        self.editCollapsible = EquationParametersWidget()
+        self.editCollapsible.signalFunctionCurveSelected.connect(self.__onFunctionCurveSelected)
+        self.editCollapsible.signalFunctionCurveEdited.connect(self.__onFunctionCurveEdited)
 
         # Output layout
 
-        self.__save_button = qt.QPushButton("Save to project")
-        self.__save_button.setFocusPolicy(qt.Qt.NoFocus)
-        self.__save_button.clicked.connect(self.__on_save_button_clicked)
+        self.__saveButton = qt.QPushButton("Save to project")
+        self.__saveButton.setFocusPolicy(qt.Qt.NoFocus)
+        self.__saveButton.clicked.connect(self.__on_save_button_clicked)
         self.__exportButton = qt.QPushButton("Export to file")
         self.__exportButton.setFocusPolicy(qt.Qt.NoFocus)
-        self.__exportButton.clicked.connect(self.__on_export_clicked)
+        self.__exportButton.clicked.connect(self.__onExportClicked)
 
-        output_layout = qt.QHBoxLayout()
-        output_layout.addWidget(self.__save_button)
-        output_layout.addWidget(self.__exportButton)
+        outputLayout = qt.QHBoxLayout()
+        outputLayout.addWidget(self.__saveButton)
+        outputLayout.addWidget(self.__exportButton)
 
-        output_collapsible = ctk.ctkCollapsibleButton()
-        output_collapsible.text = "Output"
-        output_collapsible.setLayout(output_layout)
+        outputCollapsible = ctk.ctkCollapsibleButton()
+        outputCollapsible.text = "Output"
+        outputCollapsible.setLayout(outputLayout)
 
         # Equations tab
         equations_tab_layout = qt.QVBoxLayout()
         equations_tab_layout.addWidget(inputCollapsible)
-        equations_tab_layout.addWidget(self.edit_collapsible)
-        equations_tab_layout.addWidget(output_collapsible)
+        equations_tab_layout.addWidget(self.editCollapsible)
+        equations_tab_layout.addWidget(outputCollapsible)
         equations_tab_layout.addStretch()
 
         self.setLayout(equations_tab_layout)
 
-        self.__on_function_curve_selected("")
+        self.__onFunctionCurveSelected("")
 
-    def set_functions_curves(self, function_curve_list: list):
-        self.edit_collapsible.set_functions_curves(function_curve_list)
+    def setFunctionsCurves(self, function_curve_list: list):
+        self.editCollapsible.setFunctionsCurves(function_curve_list)
 
-    def set_current_function_curve_data(self, curve_data):
-        self.edit_collapsible.set_current_function_curve_data(curve_data)
+    def setCurrentFunctionCurveData(self, curve_data):
+        self.editCollapsible.setCurrentFunctionCurveData(curve_data)
 
-    def __on_function_curve_selected(self, function_curve):
-        self.edit_collapsible.set_current_function_curve_data(None)
-        for fit_data in self.__fit_data_list:
-            if fit_data.name == function_curve:
-                self.edit_collapsible.set_current_function_curve_data(fit_data)
+    def __onFunctionCurveSelected(self, function_curve):
+        self.editCollapsible.setCurrentFunctionCurveData(None)
+        for fitData in self.__fitDataList:
+            if fitData.name == function_curve:
+                self.editCollapsible.setCurrentFunctionCurveData(fitData)
                 break
-        self.__update_output_button_state()
+        self.__updateOutputButtonState()
 
-    def __on_create_clicked(self):
-        function_curve_name = self.__functionCurveNameLineEdit.text
-        if function_curve_name == "":
+    def __onCreateClicked(self):
+        functionCurveName = self.__functionCurveNameLineEdit.text
+        if functionCurveName == "":
             return
-        for fit_equation in self.__fit_equations:
-            if fit_equation.widget.DISPLAY_NAME == self.__fit_equation_combo_box.currentText:
-                fit_data = fit_equation.equation.create_default(function_curve_name)
-                self.signal_new_function_curve_data.emit(fit_data)
+        for fitEquation in self.__fitEquations:
+            if fitEquation.widget.DISPLAY_NAME == self.__fitEquationComboBox.currentText:
+                fitData = fitEquation.equation.create_default(functionCurveName)
+                self.signalNewFunctionCurveData.emit(fitData)
                 break
 
-    def __on_import_clicked(self):
-        self.signal_import_function_curve.emit()
+    def __onImportClicked(self):
+        self.signalImportFunctionCurve.emit()
 
-    def __on_export_clicked(self):
-        function_curve_name = self.edit_collapsible.get_current_function_curve_name()
-        self.signal_export_function_curve.emit(function_curve_name)
+    def __onExportClicked(self):
+        functionCurveName = self.editCollapsible.getCurrentFunctionCurveName()
+        self.signalExportFunctionCurve.emit(functionCurveName)
 
-    def __on_function_curve_edited(self, function_curve, parameter_name, new_value, is_fixed):
-        self.signal_function_curve_edited.emit(function_curve, parameter_name, new_value)
+    def __onFunctionCurveEdited(self, function_curve, parameterName, newValue, isFixed):
+        self.signalFunctionCurveEdited.emit(function_curve, parameterName, newValue)
 
     def __on_save_button_clicked(self):
-        function_curve_name = self.edit_collapsible.get_current_function_curve_name()
-        self.signal_save_data.emit(function_curve_name)
+        functionCurveName = self.editCollapsible.getCurrentFunctionCurveName()
+        self.signalSaveData.emit(functionCurveName)
 
-    def __update_output_button_state(self):
-        valid_function_curve = False
-        function_curve_name = self.edit_collapsible.get_current_function_curve_name()
-        if function_curve_name:
-            for fit_data in self.__fit_data_list:
-                if fit_data.name == function_curve_name:
-                    valid_function_curve = True
+    def __updateOutputButtonState(self):
+        validFunctionCurve = False
+        functionCurveName = self.editCollapsible.getCurrentFunctionCurveName()
+        if functionCurveName:
+            for fitData in self.__fitDataList:
+                if fitData.name == functionCurveName:
+                    validFunctionCurve = True
                     break
-        self.__save_button.enabled = valid_function_curve
-        self.__exportButton.enabled = valid_function_curve
+        self.__saveButton.enabled = validFunctionCurve
+        self.__exportButton.enabled = validFunctionCurve
 
 
 class ShrinkableStackedWidget(qt.QFrame):
@@ -1357,9 +1388,9 @@ class ShrinkableStackedWidget(qt.QFrame):
     def __init__(self):
         super().__init__()
         self.widgetList = []
-        self.main_layout = qt.QVBoxLayout()
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(self.main_layout)
+        self.mainLayout = qt.QVBoxLayout()
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.mainLayout)
 
     def setCurrentIndex(self, index):
         for i, widget in enumerate(self.widgetList):
@@ -1370,4 +1401,4 @@ class ShrinkableStackedWidget(qt.QFrame):
 
     def addWidget(self, widget):
         self.widgetList.append(widget)
-        self.main_layout.addWidget(widget)
+        self.mainLayout.addWidget(widget)

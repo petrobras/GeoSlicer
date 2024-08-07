@@ -19,6 +19,8 @@ class VectorVolumeWidget(qt.QWidget):
         contentsFrameLayout.setContentsMargins(0, 0, 0, 0)
 
         volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
+        volumesWidget.setParent(self)
+        volumesWidget.hide()
 
         volumeDisplayWidget = volumesWidget.findChild(
             slicer.qSlicerScalarVolumeDisplayWidget, "qSlicerScalarVolumeDisplayWidget"
@@ -107,7 +109,7 @@ class VectorVolumeWidget(qt.QWidget):
         self.windowLevelWidget.setAutoWindowLevel(previousAutoWindowLevel)
         self.update()
 
-    def update(self):
+    def update(self, *args, **kwargs):
         if self.node is not None:
             spacing = [f"{spacing:.10g}" for spacing in self.node.GetSpacing()]
             imageDimensions = self.node.GetImageData().GetDimensions()

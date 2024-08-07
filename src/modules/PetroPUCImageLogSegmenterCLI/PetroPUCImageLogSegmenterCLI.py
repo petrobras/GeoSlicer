@@ -8,11 +8,12 @@ from __future__ import print_function
 import vtk
 import mrml
 import slicer
+
 import numpy as np
-import re
-from source import predict
 
 from ltrace.slicer.cli_utils import writeDataInto, progressUpdate, readFrom
+
+from source import predict
 
 
 def run(inputImage, segmentClass, depthInterval):
@@ -37,8 +38,7 @@ if __name__ == "__main__":
     inputImage = readFrom(args.inputImage, mrml.vtkMRMLScalarVolumeNode)
 
     segmentClass = args.segmentClass
-    depthInterval = re.sub("[^0-9,.]", "", args.depthInterval)
-    depthInterval = [int(i) for i in depthInterval.split(",")]
+    depthInterval = [int(i) for i in args.depthInterval.split(",")]
 
     labelArray = run(inputImage, segmentClass, depthInterval)
 

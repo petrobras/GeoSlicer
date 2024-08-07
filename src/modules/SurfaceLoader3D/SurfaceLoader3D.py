@@ -164,9 +164,6 @@ class SurfaceLoader3DWidget(LTracePluginWidget):
         self.onSelect()
         self.onMultiTextureSelect()
 
-    def cleanup(self):
-        pass
-
     def onSelect(self):
         self.applyButton.enabled = self.inputTextureSelector.currentNode() and self.inputModelSelector.currentNode()
 

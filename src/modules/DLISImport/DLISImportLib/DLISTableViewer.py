@@ -1,6 +1,7 @@
 import qt
 
 from .DLISImportLogic import ChannelMetadata
+from .DLISImportLogic import checkMnemonicChanged
 from ltrace.slicer import ui
 
 
@@ -26,7 +27,10 @@ class DLISTableViewer(qt.QWidget):
 
         self.selected_rows = 0
 
-        self.columns = ["Load", "Id", "Name", "Unit", "Frame", "Logical file", "LabelMap", "As Table"]
+        self.columns = ["Load", "Id", "Name", "Unit", "Frame", "Logical file", "LabelMap", "As Table", "Stack"]
+
+        self.stacked_rows_visibility = []  # Boolean for row visibility according to Stack criteria
+
         self.ID_COLUMN = self.columns.index("Id")
         self.NAME_COLUMN = self.columns.index("Name")
 
@@ -52,6 +56,7 @@ class DLISTableViewer(qt.QWidget):
         self.tableWidget.verticalHeader().setVisible(False)
         self.tableWidget.setColumnCount(len(self.columns))
         self.tableWidget.setHorizontalHeaderLabels(self.columns)
+        self.tableWidget.setColumnHidden(self.columns.index("Stack"), True)
         self.tableWidget.horizontalHeader().setStyleSheet(
             "QHeaderView::section {padding-left: 10px; padding-right: 10px;}"
         )
@@ -85,20 +90,81 @@ class DLISTableViewer(qt.QWidget):
     def clearFilter(self):
         self.filterLineEdit.text = ""
 
-    def set_database(self, db):
+    def updateStackedVisibility(self):
+        self.stacked_rows_visibility.clear()
+        stacking = False
+        stacked_count = 0
+        last_curve_mnemonic = ""
+        count = 0
+
+        db_to_columns_offset = 1  # because self.columns has "Load" as the first column, absent in self.db
+
+        for i in range(len(self.db)):
+            entry = self.db[i]
+
+            # Just the first of a group of rows marked as stacked is shown in the table,
+            # as such rows will be merged into volumes (see LASLoader class)
+            last_curve_mnemonic, is_same_mnemonic = checkMnemonicChanged(
+                entry[self.ID_COLUMN - db_to_columns_offset], last_curve_mnemonic
+            )
+
+            stacked = entry[self.columns.index("Stack") - db_to_columns_offset]
+
+            self.stacked_rows_visibility.append(True)
+            self.tableWidget.setRowHidden(i, False)
+            visibility = True
+            if not is_same_mnemonic:
+                stacked_count = int(stacked)
+            else:
+                if stacked:
+                    stacked_count += 1
+                    if stacked_count > 1:
+                        self.tableWidget.setRowHidden(i, True)
+                        visibility = False
+                else:
+                    stacked_count = 0
+
+            self.stacked_rows_visibility[i] = visibility
+
+    def setDatabase(self, db):
+        def manage_checkboxes(i):
+            if len(checkBoxes_load) == i:
+                checkBoxes_load.append(buildCheckBoxCell(False))
+                self.tableWidget.setCellWidget(i, 0, checkBoxes_load[i])
+            if len(checkBoxes_islabelmap) == i:
+                checkBoxes_islabelmap.append(buildCheckBoxCell(False))
+                self.tableWidget.setCellWidget(i, self.columns.index("LabelMap"), checkBoxes_islabelmap[i])
+            if len(checkBoxes_stack) == i:
+                checkBoxes_stack.append(buildCheckBoxCell(False))
+                self.tableWidget.setCellWidget(i, self.columns.index("Stack"), checkBoxes_stack[i])
+            return checkBoxes_load[i], checkBoxes_islabelmap[i], checkBoxes_stack[i]
+
+        checkBoxes_load = []
+        checkBoxes_islabelmap = []
+        checkBoxes_stack = []
+
         self.db = db
         current_filter = self.filterLineEdit.text
         self.filterLineEdit.text = ""
         self.tableWidget.clearContents()
         self.tableWidget.setRowCount(len(self.db))
 
+        db_to_columns_offset = 1  # because self.columns has "Load" as the first column, absent in self.db
+
         for i in range(len(self.db)):
-            loadItem = buildCheckBoxCell(False)
+            loadItem, checkbox_islabelmap, checkbox_stack = manage_checkboxes(i)
             loadItem.findChild(qt.QCheckBox).stateChanged.connect(self._on_loaded_checkbox_changed)
+
             self.tableWidget.setCellWidget(i, 0, loadItem)
             entry = self.db[i]
+
+            # Even though this column is hidden, its checkbox state will be used
+            col_stack = self.columns.index("Stack")
+            widget = self.tableWidget.cellWidget(i, col_stack)
+            widget.layout().itemAt(0).widget().setChecked(entry[col_stack - db_to_columns_offset])
+
             for j in range(1, len(self.columns)):
-                if isinstance(entry[j - 1], bool):  # j - 1 because entry is 1 shorter than self.columns
+                if isinstance(entry[j - db_to_columns_offset], bool):
                     item = buildCheckBoxCell(entry[j - 1])
                     if j == self.columns.index("LabelMap"):
                         item.findChild(qt.QCheckBox).stateChanged.connect(self._on_checkbox_label_clicked)
@@ -106,11 +172,13 @@ class DLISTableViewer(qt.QWidget):
                         item.findChild(qt.QCheckBox).stateChanged.connect(self._on_checkbox_table_clicked)
                     self.tableWidget.setCellWidget(i, j, item)
                 else:
-                    item = qt.QTableWidgetItem(entry[j - 1])
+                    item = qt.QTableWidgetItem(entry[j - db_to_columns_offset])
                     flags = ~qt.Qt.ItemIsEditable
                     original_flags = item.flags()
                     item.setFlags(qt.Qt.ItemFlag(original_flags and flags))
                     self.tableWidget.setItem(i, j, item)
+
+        self.updateStackedVisibility()
 
         self.tableWidget.sortByColumn(0, qt.Qt.AscendingOrder)
         self.tableWidget.resizeColumnsToContents()
@@ -128,7 +196,9 @@ class DLISTableViewer(qt.QWidget):
             )
             entry = entry.casefold()
 
-            should_hide = not (any(word in entry for word in current_text) or current_text == [])
+            should_hide = (
+                not (any(word in entry for word in current_text) or current_text == [])
+            ) or self.stacked_rows_visibility[i] == False
             self.tableWidget.setRowHidden(i, should_hide)
 
     def _on_header_clicked(self, column_clicked):
@@ -239,7 +309,7 @@ class DLISTableViewer(qt.QWidget):
             widget = self.tableWidget.cellWidget(i, load_column)
             try:
                 item = widget.layout().itemAt(0).widget()
-                if item.isChecked():
+                if item.isChecked() and not self.tableWidget.isRowHidden(i):
                     rows.append(i)
             except AttributeError:  # no "Labelmap"
                 pass
@@ -260,6 +330,8 @@ class DLISTableViewer(qt.QWidget):
                     if self.columns[i] == "LabelMap":
                         row_args.append(item.isChecked())
                     if self.columns[i] == "As Table":
+                        row_args.append(item.isChecked())
+                    if self.columns[i] == "Stack":
                         row_args.append(item.isChecked())
 
             channel = ChannelMetadata(*row_args)

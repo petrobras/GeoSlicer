@@ -15,6 +15,7 @@ from ltrace.slicer.helpers import (
     makeNodeTemporary,
     triggerNodeModified,
     highlight_error,
+    remove_highlight,
     labels_to_color_node,
     reset_style_on_valid_text,
     tryGetNode,
@@ -49,7 +50,8 @@ class IslandsWidget(qt.QWidget):
 
     def setup(self):
         self.progressBar = LocalProgressBar()
-        self.logic = IslandsLogic(self.progressBar)
+        self.logic = IslandsLogic(self, self.progressBar)
+        self.logic.processFinished.connect(lambda: self.updateButtonsEnablement(False))
 
         formLayout = qt.QFormLayout(self)
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -63,7 +65,6 @@ class IslandsWidget(qt.QWidget):
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        SingleShotInputWidget
         self.segmentationNodeComboBox = SingleShotInputWidget(
             hideImage=True,
             hideSoi=True,
@@ -71,7 +72,7 @@ class IslandsWidget(qt.QWidget):
             mainName="Binary segmentation image",
             objectNamePrefix="Islands",
         )
-        self.segmentationNodeComboBox.onMainSelected = self.onSegmentationNodeChanged
+        self.segmentationNodeComboBox.onMainSelectedSignal.connect(self.onSegmentationNodeChanged)
         self.segmentationNodeComboBox.setToolTip("Select the binary segmentation image.")
         inputFormLayout.addRow(self.segmentationNodeComboBox)
         inputFormLayout.addRow(" ", None)
@@ -117,6 +118,7 @@ class IslandsWidget(qt.QWidget):
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.objectName = "Islands Cancel Button"
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
@@ -126,6 +128,7 @@ class IslandsWidget(qt.QWidget):
         formLayout.addRow(buttonsHBoxLayout)
 
         formLayout.addRow(self.progressBar)
+        self.updateButtonsEnablement(running=False)
 
     def onSegmentationNodeChanged(self, node):
         self.outputPrefixLineEdit.text = node.GetName() if node is not None else ""
@@ -138,6 +141,9 @@ class IslandsWidget(qt.QWidget):
             if self.outputPrefixLineEdit.text.strip() == "":
                 highlight_error(self.outputPrefixLineEdit)
                 return
+
+            remove_highlight(self.segmentationNodeComboBox)
+            remove_highlight(self.outputPrefixLineEdit)
 
             node = self.segmentationNodeComboBox.mainInput.currentNode()
             is_labelmap = isinstance(node, slicer.vtkMRMLLabelMapVolumeNode)
@@ -171,19 +177,28 @@ class IslandsWidget(qt.QWidget):
                 sizeMinThreshold=float(self.sizeMinThreshold.value),
                 outputPrefix=self.outputPrefixLineEdit.text,
             )
+            self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
         except IslandsInfo as e:
             slicer.util.infoDisplay(str(e))
             if labelMapNode:
                 slicer.mrmlScene.RemoveNode(labelMapNode)
+            self.updateButtonsEnablement(running=False)
             return
 
     def onCancelButtonClicked(self):
         self.logic.cancel()
 
+    def updateButtonsEnablement(self, running: bool) -> None:
+        self.applyButton.setEnabled(not running)
+        self.cancelButton.setEnabled(running)
 
-class IslandsLogic:
-    def __init__(self, progressBar):
+
+class IslandsLogic(qt.QObject):
+    processFinished = qt.Signal()
+
+    def __init__(self, parent, progressBar) -> None:
+        super().__init__(parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.outputLabelMapNodeId = None
@@ -254,6 +269,7 @@ class IslandsLogic:
             return
         status = caller.GetStatusString()
         if "Completed" in status or status == "Cancelled":
+            self.processFinished.emit()
             logging.info(status)
             del self.cliNode
             self.cliNode = None

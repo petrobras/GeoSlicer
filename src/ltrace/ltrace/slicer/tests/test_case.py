@@ -1,10 +1,11 @@
 import sys
 import traceback
 
+from inspect import signature
 from ltrace.slicer.helpers import ElapsedTime
 from ltrace.slicer.tests.constants import TestState
+from typing import Callable, Union
 from unittest.mock import patch
-from typing import Callable
 
 # Hack to catch exceptions triggered by Qt signals
 sys._excepthook = sys.excepthook
@@ -14,13 +15,26 @@ class TestCase:
     """Class to handle information about a single test case."""
 
     def __init__(self, function: Callable, cls: "LTracePluginTest") -> None:
+        assert function is not None, "Test case function is None!"
         self.name = self.__generate_name(function)
         self.function = function
         self.status: TestState = TestState.NOT_INITIALIZED
         self.reason = ""
         self.elapsed_time_sec = 0
         self.test_module_class = cls
+        self.timeout_ms = self.__get_timeout()
         self.__exception_hook_patch = patch("sys.excepthook", self.__exception_hook_handler)
+
+    def __get_timeout(self) -> Union[int, None]:
+        """Get timeout in milliseconds. It will get the 'timeout_ms' parameter from the test case method if it is available.
+           Otherwise, it will use the default value from 'TestCase.DEFAULT_TIMEOUT_MS'.
+
+        Returns:
+            int: the timeout in milliseconds.
+        """
+        func_signature = signature(self.function)
+        timeout_ms_param = func_signature.parameters.get("timeout_ms")
+        return timeout_ms_param.default if timeout_ms_param is not None else None
 
     def __generate_name(self, function: Callable) -> None:
         return function.__name__.replace("test_", "").replace("_", " ")

@@ -142,6 +142,7 @@ class CacheFiles:
         if self.is_file_cached(file_path):
 
             logging.info(f"File {file_path.as_posix()} is already cached!")
+            print(f"File {file_path.as_posix()} is already cached!")
             return False
 
         result = ""
@@ -149,6 +150,7 @@ class CacheFiles:
             result = shutil.move(file_path, self.__cache_dir / file_path.name)
         except Exception as error:
             logging.info(f"Failed to add file to cache directory: {error}")
+            print(f"Failed to add file to cache directory: {error}")
             return False
 
         return Path(result) == (self.__cache_dir / file_path.name)

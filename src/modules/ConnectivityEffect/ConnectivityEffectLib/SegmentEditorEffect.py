@@ -114,6 +114,9 @@ Simple instructions: Select the input segment by selecting it from the segment l
         return slicer.util.mainWindow().cursor
 
     def onHopsChanged(self, hops):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return
         sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
         voxelArray = np.squeeze(slicer.util.arrayFromVolume(sourceVolumeNode))
         if hops > voxelArray.ndim:
@@ -126,6 +129,10 @@ Simple instructions: Select the input segment by selecting it from the segment l
         self.updateMRMLFromGUI()
 
     def getSegmentData(self, segmentationNode, sourceVolumeNode):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return
+
         # Get color of edited segment
         if not segmentationNode:
             # scene was closed while preview was active
@@ -211,13 +218,9 @@ Simple instructions: Select the input segment by selecting it from the segment l
             slicer.vtkSlicerSegmentationsModuleLogic.ImportLabelmapToSegmentationNode(outputVolume, segmentationNode)
             segmentation = segmentationNode.GetSegmentation()
             segmentation.GetNthSegment(segmentation.GetNumberOfSegments() - 1).SetName(outputSegmentName)
-        except IndexError as ier:
+        except Exception as error:
             slicer.app.restoreOverrideCursor()
-            slicer.util.errorDisplay("Something went wrong.")
-            print(repr(ier))
-        except ValueError as ver:
-            slicer.app.restoreOverrideCursor()
-            slicer.util.errorDisplay(ver)
+            slicer.util.errorDisplay(f"Failed to apply the effect.\nError: {error}.")
         finally:
             helpers.removeTemporaryNodes()
 
@@ -239,18 +242,22 @@ Simple instructions: Select the input segment by selecting it from the segment l
             self.scriptedEffect.setParameter("ConnectivityEffect.direction", self.directionChoice.currentText)
 
     def _getColor(self):
+        color = [0.5, 0.5, 0.5]
         # Get color of edited segment
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return color
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             # scene was closed while preview was active
-            return
+            return color
         displayNode = segmentationNode.GetDisplayNode()
         if displayNode is None:
             logging.error("preview: Invalid segmentation display node!")
-            color = [0.5, 0.5, 0.5]
         segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
         if segmentID is None:
-            return
+            return color
 
         # Change color hue slightly to make it easier to distinguish filled regions from preview
         r, g, b = segmentationNode.GetSegmentation().GetSegment(segmentID).GetColor()

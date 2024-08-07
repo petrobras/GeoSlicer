@@ -29,10 +29,6 @@ from ltrace import transforms
 from Minkowsky.minkowsky import minkowsky_filter, minkowsky_filter_2d
 from ltrace.algorithms.CorrelationDistance.CorrelationDistance import CorrelationDistance, interpolate_spline
 from ltrace.algorithms.gabor import get_gabor_kernels
-from ltrace.slicer import cli_utils
-from ltrace.wrappers import sanitize_file_path
-from pathlib import Path
-from pathvalidate.argparse import sanitize_filepath_arg
 
 DEFAULT_SETTINGS = "settings.json"
 
@@ -45,11 +41,17 @@ def progressUpdate(value):
     sys.stdout.flush()
 
 
+def readFrom(volumeFile, builder):
+    sn = slicer.vtkMRMLNRRDStorageNode()
+    sn.SetFileName(volumeFile)
+    nodeIn = builder()
+    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
+    return nodeIn
+
+
 def writeDataInto(volumeFile, dataVoxelArray, builder, reference=None, cropping_ras_bounds=None, kij=False):
-    if not isinstance(volumeFile, Path):
-        volumeFile = Path(volumeFile)
     sn_out = slicer.vtkMRMLNRRDStorageNode()
-    sn_out.SetFileName(volumeFile.as_posix())
+    sn_out.SetFileName(volumeFile)
     nodeOut = builder()
 
     if reference:
@@ -594,7 +596,7 @@ def check_disk_usage(components, path):
 def runcli(args):
     """Read input volumes"""
     inputFiles = [file for file in (args.inputVolume, args.inputVolume1, args.inputVolume2) if file is not None]
-    volumeNodes = [cli_utils.readFrom(file, mrml.vtkMRMLScalarVolumeNode) for file in inputFiles]
+    volumeNodes = [readFrom(file, mrml.vtkMRMLScalarVolumeNode) for file in inputFiles]
 
     intersect_bounds = np.zeros(6)
     volumeNodes[0].GetRASBounds(intersect_bounds)
@@ -621,31 +623,30 @@ def runcli(args):
         else:
             channels[i] = channels[i][..., np.newaxis]
 
-    params = args.xargs
-
-    params["report"] = args.returnparameterfile.as_posix()
+    params = json.loads(args.xargs)
+    params["report"] = args.returnparameterfile
 
     spacing = ()
     for axis in valid_axis:
         spacing += (volumeNodes[0].GetSpacing()[axis],)
 
-    cli_data = pickle.load(args.inputClassifier) if args.inputClassifier is not None else {}
+    cli_data = pickle.load(args.inputClassifier) if args.inputClassifier else {}
     params["palette"] = cli_data.get("quantized_palette")
 
     target, components = prepare(channels, spacing, **params)
 
-    output_temp_dir: Path = args.tempDir / "segmenter_cli"
+    output_temp_dir = f"{args.tempDir}/segmenter_cli"
     shutil.rmtree(output_temp_dir, ignore_errors=True)
     if args.outputFeaturesResults:
-        if not output_temp_dir.exists():
-            output_temp_dir.mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(output_temp_dir):
+            os.makedirs(output_temp_dir)
 
         if check_disk_usage(components, output_temp_dir):
             for comp in components:
                 filtered_output = comp.image
                 if is_2d:
                     filtered_output = filtered_output.reshape(ref_shape)
-                np.save(output_temp_dir / f"img{comp.image_index}_{comp.filter_type}", filtered_output)
+                np.save(f"{output_temp_dir}/img{comp.image_index}_{comp.filter_type}", filtered_output)
         else:
             with open(args.returnparameterfile, "w") as returnFile:
                 returnFile.write(
@@ -658,7 +659,7 @@ def runcli(args):
     # If there is no model, train a new one
     if not model:
         """Read annotation labels"""
-        labelsNode = cli_utils.readFrom(args.labelVolume, mrml.vtkMRMLLabelMapVolumeNode)
+        labelsNode = readFrom(args.labelVolume, mrml.vtkMRMLLabelMapVolumeNode)
         labelsArray = np.squeeze(slicer.util.arrayFromVolume(labelsNode)).astype(np.int32)
 
         locations = labelsArray[:, valid_axis]
@@ -673,7 +674,7 @@ def runcli(args):
 
     writeDataInto(args.outputVolume, img, mrml.vtkMRMLLabelMapVolumeNode, reference=volumeNodes[0])
 
-    if args.outputClassifier is not None:
+    if args.outputClassifier:
         palette = None
         if isinstance(target, RGBImageTargets):
             palette = target.pil_quantized
@@ -690,24 +691,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
+    parser.add_argument("--master", type=str, dest="inputVolume", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra1", type=str, dest="inputVolume1", default=None, help="Intensity Input Values")
+    parser.add_argument("--extra2", type=str, dest="inputVolume2", default=None, help="Intensity Input Values")
+    parser.add_argument("--labels", type=str, dest="labelVolume", default=None, help="Labels Input (3d) Values")
     parser.add_argument(
-        "--master", type=sanitize_filepath_arg, dest="inputVolume", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--extra1", type=sanitize_filepath_arg, dest="inputVolume1", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--extra2", type=sanitize_filepath_arg, dest="inputVolume2", default=None, help="Intensity Input Values"
-    )
-    parser.add_argument(
-        "--labels", type=sanitize_filepath_arg, dest="labelVolume", default=None, help="Labels Input (3d) Values"
-    )
-    parser.add_argument(
-        "--outputvolume",
-        type=sanitize_filepath_arg,
-        dest="outputVolume",
-        default=None,
-        help="Output labelmap (3d) Values",
+        "--outputvolume", type=str, dest="outputVolume", default=None, help="Output labelmap (3d) Values"
     )
     parser.add_argument(
         "--output_features_results",
@@ -715,13 +704,10 @@ if __name__ == "__main__":
         dest="outputFeaturesResults",
         help="Output filtered volume nodes",
     )
-    parser.add_argument("--xargs", type=json.loads, default={}, help="Model configuration string")
+    parser.add_argument("--xargs", type=str, default="", help="Model configuration string")
     parser.add_argument("--ctypes", type=str, default="", help="Input Color Types")
     parser.add_argument(
-        "--returnparameterfile",
-        type=sanitize_filepath_arg,
-        default=None,
-        help="File destination to store an execution outputs",
+        "--returnparameterfile", type=str, default=None, help="File destination to store an execution outputs"
     )
     parser.add_argument(
         "--inputclassifier",
@@ -740,29 +726,6 @@ if __name__ == "__main__":
     parser.add_argument("--tempDir", type=str, help="Temporary directory")
 
     args = parser.parse_args()
-
-    if args.inputVolume is None:
-        raise ValueError("The input volume input is required")
-
-    if args.outputVolume is None:
-        raise ValueError("The output volume input is required")
-
-    if args.tempDir is None:
-        raise ValueError("The temporary directory input is required")
-
-    if args.xargs is not None and not isinstance(args.xargs, dict):
-        raise ValueError("Invalid input for extra arguments.")
-
-    args.inputVolume = sanitize_file_path(args.inputVolume)
-    args.outputVolume = sanitize_file_path(args.outputVolume)
-    args.tempDir = sanitize_file_path(args.tempDir)
-
-    args.inputVolume1 = sanitize_file_path(args.inputVolume1) if args.inputVolume1 is not None else None
-    args.inputVolume2 = sanitize_file_path(args.inputVolume2) if args.inputVolume2 is not None else None
-    args.labelVolume = sanitize_file_path(args.labelVolume) if args.labelVolume is not None else None
-    args.returnparameterfile = (
-        sanitize_file_path(args.returnparameterfile) if args.returnparameterfile is not None else None
-    )
 
     runcli(args)
 

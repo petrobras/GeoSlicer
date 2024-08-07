@@ -15,7 +15,6 @@ from ltrace.remote.targets import TargetManager, Host
 from ltrace.remote import errors
 
 from ltrace.slicer.widget.remote import login, accounts
-from ltrace.slicer_utils import print_stack
 
 
 class RemoteService(LTracePlugin):
@@ -161,8 +160,11 @@ class RemoteServiceLogic:
             JobManager.schedule(uid, "DEPLOY")
 
             return uid
-        except Exception:
-            print_stack()
+        except:
+            import traceback
+
+            traceback.print_exc()
+            # TODO informe o usuario
 
         return None
 
@@ -174,4 +176,7 @@ class RemoteServiceLogic:
             if not started:
                 slicer.util.errorDisplay("Failed to automatically resume job. Please try to reconnect manually.")
         except:
-            print_stack()
+            import traceback
+
+            traceback.print_exc()
+            # TODO informe the user

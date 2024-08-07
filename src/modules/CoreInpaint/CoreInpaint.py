@@ -9,6 +9,11 @@ from ltrace.slicer.helpers import createTemporaryVolumeNode, highlight_error
 from pathlib import Path
 from Libs.patchmatch import PatchMatch
 
+try:
+    from Test.CoreInpaintTest import CoreInpaintTest
+except ImportError:
+    CoreInpaintTest = None  # tests not deployed to final version or closed source
+
 
 class CoreInpaint(LTracePlugin):
     SETTING_KEY = "CoreInpaint"
@@ -38,7 +43,7 @@ class CoreInpaintWidget(LTracePluginWidget):
             hideSoi=True, hideCalcProp=True, allowedInputNodes=["vtkMRMLSegmentationNode"]
         )
 
-        self.inputWidget.onReferenceSelected = self.onReferenceSelected
+        self.inputWidget.onReferenceSelectedSignal.connect(self.onReferenceSelected)
 
         self.outputNameField = qt.QLineEdit()
         self.outputNameField.setToolTip("Name of the output volume")

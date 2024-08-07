@@ -31,11 +31,25 @@ WELL_PROFILE_TAG = "WellProfile"
 NULL_VALUE_TAG = "NullValue"
 LOGICAL_FILE_TAG = "LogicalFile"
 FRAME_TAG = "Frame"
+WELL_NAME_TAG = "WellName"
+UNITS_TAG = "Units"
 DEPTH_LABEL = "DEPTH"
 CURVES_NAME = ["T2_DIST", "T2DIST", "T1DIST"]
 ChannelMetadata = namedtuple(
-    "ChannelMetadata", ["mnemonic", "name", "unit", "frame_name", "logical_file", "is_labelmap", "is_table"]
+    "ChannelMetadata",
+    [
+        "mnemonic",
+        "name",
+        "unit",
+        "frame_name",
+        "logical_file",
+        "is_labelmap",
+        "is_table",
+        "stacked_curves",  # For LAS files that contain curves to be stacked into images
+    ],
 )
+
+LAS_DEPTH_TAGS = ["DEPT", "DEPTH"]
 
 
 class DLISLoader(object):
@@ -58,6 +72,8 @@ class DLISLoader(object):
         values_db = []
         well_name = ""
         for f in self.logical_files:
+            if len(f.origins) > 1:
+                logging.warning(f"File contains {len(f.origins)} origins")
             for o in f.origins:
                 well_name = o.well_name
             for channel in f.channels:
@@ -65,7 +81,7 @@ class DLISLoader(object):
                     continue
 
                 framename = channel.frame.name
-                is_table = self.check_as_table(channel.name)
+                is_table = check_as_table(channel.name)
                 values_db.append(
                     ChannelMetadata(
                         channel.name,
@@ -75,6 +91,7 @@ class DLISLoader(object):
                         f.fileheader.id,
                         False,
                         is_table,
+                        False,
                     )
                 )
 
@@ -100,7 +117,7 @@ class DLISLoader(object):
                         continue
 
                     framename = c.frame.name
-                    if framename != metadata.frame_name or c.units != metadata.unit:
+                    if framename != metadata.frame_name or (str(c.units) != str(metadata.unit)):
                         continue
 
                     image = c.curves()
@@ -137,28 +154,25 @@ class DLISLoader(object):
                         c.units,
                     )
 
-    def check_as_table(self, channel_name):
-        valid_channels = [name in channel_name for name in CURVES_NAME]
-        return any(valid_channels)
-
 
 class LASLoader(object):
     def __init__(self, filepath):
         self.filepath = filepath
         self.logical_files = lasio.read(str(self.filepath))
         self.null_value = set([self.logical_files.well.NULL.value])
+        self.stacked_curves_pattern = re.compile(r"(.+)[\[|(|{]([0-9]+)[\]|)|}]")
 
-    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm=None):
+    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm=None, well_name=None):
         if self.logical_files is None:
             return []
 
-        well_name = self.find_wellname()
-        return load_volumes_as_table(
+        return load_volumes(
             curves=curves,
             stepCallback=stepCallback,
             appFolder=appFolder,
             nullValue=nullValue,
-            name=well_name,
+            well_diameter_mm=well_diameter_mm,
+            well_name=well_name,
         )
 
     def clean(self):
@@ -174,7 +188,7 @@ class LASLoader(object):
             else:
                 well_name = Path(self.filepath).stem
         except Exception as e:
-            logging.error(f"An error occurred while obtaining the Well name: {repr(e)}")
+            print(f"An error occurred while obtaining the Well name: {e}")
 
         return well_name
 
@@ -185,7 +199,10 @@ class LASLoader(object):
         well_name = self.find_wellname()
 
         values_db = []
-        for curve in self.logical_files.curves:
+
+        last_curve_name = ""
+
+        for i, curve in enumerate(self.logical_files.curves):
             values_db.append(
                 ChannelMetadata(
                     curve.mnemonic,
@@ -194,58 +211,105 @@ class LASLoader(object):
                     "",
                     well_name,
                     "",
-                    "",
+                    is_table=check_as_table(curve.original_mnemonic),
+                    stacked_curves=False,
                 )
             )
+
+            # Removing any number enclosed by []'s
+
+            mnemo_search = self.stacked_curves_pattern.search(curve.mnemonic)
+
+            mnemonic = original_mnemonic = ""
+
+            if mnemo_search is None:
+                mnemonic = curve.mnemonic
+            else:
+                mnemonic = mnemo_search.group(
+                    len(mnemo_search.groups()) - 1
+                )  # Same as in check_image_data: find mnemonic with enclosed number, e.g. UBI_AMP[0] or UBI_AMP [dB][0]
+
+            if mnemonic == last_curve_name:
+                values_db[i - 1] = values_db[i - 1]._replace(stacked_curves=True)
+                values_db[i] = values_db[i]._replace(stacked_curves=True)
+                # As stacked curves create 2D images, exporting as labelmap should now be possible. So, we change "" for False (otherwise the checkbox is disabled in our UI's table):
+                values_db[i - 1] = values_db[i - 1]._replace(is_labelmap=False)
+                values_db[i] = values_db[i]._replace(is_labelmap=False)
+            else:
+                last_curve_name = mnemonic
+
         return well_name, values_db
 
     def load_data(self, file_path, mnemonic_and_files):
         if self.logical_files is None:
             raise ValueError("Missing LAS file.")
 
+        loaded_nodes_ids = []
+        item_id = None
+
         filename = slicer.mrmlScene.GetUniqueNameByString(Path(file_path).stem)
         well_name = self.find_wellname()
 
-        is_labelmap = False
-        is_table = False
-        for mf in mnemonic_and_files:
+        frame = ""
+
+        depth_mnemonic = ""
+
+        stacking = False
+        last_curve_mnemonic = ""
+        for i, mf in enumerate(mnemonic_and_files):
             curve = self.logical_files.curves[mf.mnemonic]
+
+            # the depth curve will be set as the domain of the other curves, not as a standalone curve
+            if curve.mnemonic in LAS_DEPTH_TAGS:
+                continue
 
             try:
                 domain = self.logical_files.depth_m
             except lasio.exceptions.LASUnknownUnitError:
+                logging.debug(
+                    "Exception while setting domain of curve " + str(curve.mnemonic) + ". Trying from keys..."
+                )
                 for key in ("DEPT", "DEPTH", 0):
                     try:
                         domain = self.logical_files[key]
+                        logging.debug("Domain set from key " + str(key))
                         break
                     except KeyError:
                         continue
 
             domain = domain * conversion_factor_to_millimeters("m")
+
             image = curve.data
+            name = curve.mnemonic
+            units = curve.unit
+
+            last_curve_mnemonic, is_same_mnemonic = checkMnemonicChanged(curve.mnemonic, last_curve_mnemonic)
+
+            if not is_same_mnemonic:
+                stacking = False
+            if mf.stacked_curves:
+                if stacking == False:
+                    image = self.logical_files.stack_curves(last_curve_mnemonic)
+                    name = last_curve_mnemonic
+                    stacking = True
+                else:
+                    continue
+            else:
+                stacking = False
+
+            name = f"{name}[{units}]"
+
             yield (
                 filename,
                 well_name,
-                curve.mnemonic,
+                name,  # curve.mnemonic,
                 "",
                 domain,
                 image,
                 False,
-                is_labelmap,
-                is_table,
-                curve.unit,
-            )
-            yield (
-                filename,
-                well_name,
-                DEPTH_LABEL,
-                "",
-                domain,
-                None,
-                True,
-                is_labelmap,
-                is_table,
-                "mm",
+                mf.is_labelmap,
+                mf.is_table,
+                units,
             )
 
 
@@ -280,6 +344,7 @@ class CSVLoader(object):
             appFolder=appFolder,
             nullValue=nullValue,
             name=self.filename,
+            well_name=well_name,
         )
 
     def clean(self):
@@ -346,7 +411,7 @@ class CSVLoader(object):
                 fake_mnemonic = f"Column {i+1}"
 
                 self.db[fake_mnemonic] = (
-                    ChannelMetadata(fake_mnemonic, column, unit, "", self.filename, "", ""),
+                    ChannelMetadata(fake_mnemonic, column, unit, "", self.filename, "", "", False),
                     data,
                 )
                 self.loaded_as_image = False
@@ -356,13 +421,7 @@ class CSVLoader(object):
             fake_mnemonic = f"Image"
             self.db[fake_mnemonic] = (
                 ChannelMetadata(
-                    fake_mnemonic,
-                    df.columns[1].replace("[0]", ""),
-                    "",
-                    "",
-                    self.filename,
-                    False,
-                    False,
+                    fake_mnemonic, df.columns[1].replace("[0]", ""), "", "", self.filename, "", False, False
                 ),
                 df.iloc[:, 1:].to_numpy(),
             )
@@ -434,6 +493,34 @@ class LoaderError(RuntimeError):
     pass
 
 
+def checkMnemonicChanged(curr_mnemonic, last_curve_mnemonic):
+    stacked_curves_pattern = re.compile(r"(.+)[\[|(|{]([0-9]+)[\]|)|}]")
+    mnemo_search = stacked_curves_pattern.search(curr_mnemonic)
+    mnemonic = ""
+    is_same_mnemonic = False
+
+    if mnemo_search is None:
+        mnemonic = curr_mnemonic
+    else:
+        mnemonic = mnemo_search.group(
+            len(mnemo_search.groups()) - 1
+        )  # Same as in check_image_data: find mnemonic with enclosed number, e.g. UBI_AMP[0] or UBI_AMP [dB][0]
+
+    if mnemonic == last_curve_mnemonic:
+        is_same_mnemonic = True
+    else:
+        last_curve_mnemonic = mnemonic
+
+    return last_curve_mnemonic, is_same_mnemonic
+
+
+def check_as_table(channel_name):
+    for name in CURVES_NAME:
+        if name in channel_name:
+            return True
+    return False
+
+
 def load_volumes_with_depth(curves, stepCallback, appFolder=None, nullValue=None, well_diameter_mm=310):
     loaded_nodes_ids = []
     loaded_nodes = []
@@ -457,7 +544,7 @@ def load_volumes_with_depth(curves, stepCallback, appFolder=None, nullValue=None
     return loaded_nodes_ids
 
 
-def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=None, name="curves"):
+def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=None, name="curves", well_name=""):
     """Load the selected curves' data as a table node
 
     Args:
@@ -477,14 +564,14 @@ def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=N
             root_folder = curve[0]
             folder = curve[1]
             frame = curve[3]
-            units.append(str(curve[8]))
+            units.append(str(curve[9]))
         curve_name = curve[2]
 
         if curve_name == DEPTH_LABEL:
             curve_data = curve[4]
         else:
             curve_data = curve[5]
-            units.append(str(curve[8]))
+            units.append(str(curve[9]))
 
         curves_data[curve_name] = curve_data
 
@@ -497,6 +584,7 @@ def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=N
         name=name,
         null_value=nullValue,
         units=units,
+        well_name=well_name,
     )
 
     return []
@@ -577,8 +665,9 @@ def add_volume(
                 app_folder=app_folder,
                 name=name,
                 null_value=null_value,
+                well_name=well_name,
             )
-        else:
+        else:  # 1D (whether is_table is True or False)
             table_node, table_item_id = create_depth_curves_table(
                 curves=curve_data,
                 root_folder=top_folder,
@@ -588,6 +677,7 @@ def add_volume(
                 app_folder=app_folder,
                 name=name,
                 null_value=null_value,
+                well_name=well_name,
             )
         return table_node, None
 
@@ -672,22 +762,27 @@ def add_volume_from_data(
         return None, None  # IF a TDEP exists into this frame, ignore a new one
 
     if is_labelmap:
-        volume_node = slicer.vtkMRMLLabelMapVolumeNode()
+        volume_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         data = helpers.numberArrayToLabelArray(data)
         for value in nullValue:
             data[np.where(data == value)] = 0
     else:
         if nullValue is not None:
             nullValue = handle_null_values(data, nullValue)
-        volume_node = slicer.vtkMRMLScalarVolumeNode()
-    volume_node.SetName(name)
+        volume_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+
+    name = name.strip()  # remove trailing spaces
+    volume_node.SetName(slicer.mrmlScene.GenerateUniqueName(name))
     volume_node.SetAttribute(SCALAR_VOLUME_TYPE, WELL_PROFILE_TAG)
     volume_node.SetAttribute(NULL_VALUE_TAG, str(nullValue))
+    volume_node.SetAttribute(WELL_NAME_TAG, well_name)
+
+    volume_units = units if units != "" else None
+    volume_node.SetAttribute(UNITS_TAG, units)
     volume_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
     codedUnit = slicer.vtkCodedEntry()
     codedUnit.SetCodeValue(units)
     volume_node.SetVoxelValueUnits(codedUnit)
-    slicer.mrmlScene.AddNode(volume_node)
 
     # updateVolumeFromArray does not support long long type
     if data.dtype == np.longlong:
@@ -759,6 +854,7 @@ def create_depth_curves_table(
     app_folder,
     name: str = "curves",
     null_value=None,
+    well_name="",
 ):
     """[summary]
 
@@ -804,9 +900,26 @@ def create_depth_curves_table(
         return None, None
     table_node = dataFrameToTableNode(dataFrame=df)
     table_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+    table_node.SetAttribute(WELL_NAME_TAG, well_name)
+
+    data_units = units if units != "" else None
+    # The first column should hold the depth (or time, if supported), and all others should have the same unit
+    if isinstance(units, (list, np.ndarray)):
+        data_units = units[1] if units[1] != "" else None
+    else:
+        data_units = units if units != "" else None
+    table_node.SetAttribute(UNITS_TAG, data_units)
+
     table_node.SetName(name)
-    for collumnTitle, unit in zip(df.columns, units):
-        table_node.SetColumnUnitLabel(collumnTitle, unit)
+
+    if isinstance(units, (list, np.ndarray)):
+        for collumnTitle, unit in zip(df.columns, units):
+            table_node.SetColumnUnitLabel(collumnTitle, unit)
+    else:  # if units is a single string, we have 2 columns: depth and the log data
+        table_node.SetColumnUnitLabel(
+            df.columns[0], "mm"
+        )  # NOTE - We expect that mm is enforced when loading the domain data
+        table_node.SetColumnUnitLabel(df.columns[1], units)
 
     subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     volume_item_id = subject_hierarchy.CreateItem(root_id, table_node)
@@ -819,14 +932,7 @@ def create_depth_curves_table(
 
 
 def create_depth_curves_table_from_image(
-    curves: dict,
-    root_folder,
-    folder,
-    frame,
-    units,
-    app_folder,
-    name: str = "curves",
-    null_value=None,
+    curves: dict, root_folder, folder, frame, units, app_folder, name: str = "curves", null_value=None, well_name=""
 ):
     """[summary]
 
@@ -865,6 +971,10 @@ def create_depth_curves_table_from_image(
         return None, None
     table_node = dataFrameToTableNode(dataFrame=df)
     table_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+    table_node.SetAttribute(WELL_NAME_TAG, well_name)
+
+    data_units = units if units != "" else None
+    table_node.SetAttribute(UNITS_TAG, data_units)
 
     table_node.SetAttribute(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
     table_node.SetAttribute(TableDataTypeAttribute.name(), TableDataTypeAttribute.IMAGE_2D.value)

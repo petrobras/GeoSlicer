@@ -44,8 +44,8 @@ class CoreImagesImport(LTracePlugin):
 
 
 class CoreImagesImportWidget(LTracePluginWidget):
-    def __init__(self, *args, **kwargs):
-        LTracePluginWidget.__init__(self, *args, **kwargs)
+    def __init__(self, parent) -> None:
+        LTracePluginWidget.__init__(self, parent)
 
         initial_depth_frame = qt.QWidget()
         initial_depth_frame.setLayout(qt.QFormLayout())
@@ -124,9 +124,6 @@ class CoreImagesImportWidget(LTracePluginWidget):
 
     def setup(self):
         LTracePluginWidget.setup(self)
-
-    def cleanup(self):
-        pass
 
     def _on_add_clicked(self):
         last_path = slicer.app.settings().value("CoreImagesImport/last-load-path")

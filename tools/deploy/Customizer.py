@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from __main__ import qt, slicer, ctk, vtk
 import shutil
-from ltrace.slicer.side_by_side_image_layout import SideBySideImageManager
+from ltrace.slicer.side_by_side_image_layout import SideBySideImageManager, setupViews
 import psutil
 import logging
 from types import MethodType
@@ -16,9 +16,10 @@ import slicer
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.helpers import themeIsDark, BlockSignals
 from ltrace.slicer.modules_help_menu import ModulesHelpMenu
-from ltrace.slicer.project_manager import ProjectManager
+from ltrace.slicer.project_manager import ProjectManager, BUGFIX_handle_copy_suffix_on_cloned_nodes
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
+from ltrace.slicer.custom_export_to_file import customize_export_to_file
 from ltrace.utils.custom_event_filter import CustomEventFilter
 from ltrace.slicer_utils import (
     slicer_is_in_developer_mode,
@@ -34,7 +35,12 @@ from ltrace.slicer.widget.global_progress_bar import GlobalProgressBar
 from ltrace.slicer.color_map_customizer import customize_color_maps
 from ltrace.screenshot.Screenshot import ScreenshotWidget
 from string import Template
-from ltrace.slicer.tracking.tracking_manager import TrackingManager
+
+try:
+    from ltrace.slicer.tracking.tracking_manager import TrackingManager
+except ModuleNotFoundError:
+    TrackingManager = None
+
 
 # This line solve some problems with Geoslicer Restart when mmengine in installed because of a dependence on opencv, instead of opencv-headless, currently used in geoslicer. The problem and some solutions are described in this post: https://forum.qt.io/post/617768
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
@@ -170,7 +176,7 @@ class Customizer(LTracePlugin):
         self.mainWindowCache = None
         self.originalMainWindow = slicer.util.mainWindow
         slicer.util.mainWindow = self.cachedMainWindow
-        self.__trackingManager = TrackingManager()
+        self.__trackingManager = TrackingManager() if TrackingManager is not None else None
 
     def cachedMainWindow(self):
         self.mainWindowCache = self.mainWindowCache or self.originalMainWindow()
@@ -201,7 +207,8 @@ class Customizer(LTracePlugin):
         slicer.app.setRenderPaused(False)
         slicer.app.startupCompleted.disconnect(self.on_load_finished)
         qt.QTimer.singleShot(500, lambda: ApplicationObservables().applicationLoadFinished.emit())
-        qt.QTimer.singleShot(550, lambda: self.__trackingManager.installTrackers())
+        if self.__trackingManager:
+            qt.QTimer.singleShot(550, lambda: self.__trackingManager.installTrackers())
 
     def configure_environment_first_start(self):
         self.set_paths()
@@ -293,6 +300,7 @@ class Customizer(LTracePlugin):
         customize_color_maps()
 
         self.customize_module_help()
+        customize_export_to_file()
 
     @staticmethod
     def migrate_settings():
@@ -326,6 +334,9 @@ class Customizer(LTracePlugin):
             display_node.SetOpacity2DOutline(0.00)
             display_node.SetOpacity3D(1.00)
         self.noInterpolate()
+
+        if callData and callData.IsA("vtkMRMLVolumeArchetypeStorageNode"):
+            BUGFIX_handle_copy_suffix_on_cloned_nodes(callData)
 
     # disable interpolation of the volumes by default
     def noInterpolate(self, *args):
@@ -656,7 +667,7 @@ class Customizer(LTracePlugin):
         reportPath.mkdir(parents=True, exist_ok=True)
 
         geoslicerLogFiles = list(slicer.app.recentLogFiles())
-        trackingLogFiles = self.__trackingManager.getRecentLogs()
+        trackingLogFiles = self.__trackingManager.getRecentLogs() if self.__trackingManager else []
 
         for file in geoslicerLogFiles + trackingLogFiles:
             try:
@@ -1148,6 +1159,7 @@ class Customizer(LTracePlugin):
             self.SIDE_BY_SIDE_IMAGE_LAYOUT_ICON,
         )
         self.sideBySideImageManager = None
+        self.sideBySideSegmentationSetupComplete = False
 
     def sideBySideSegmentationLayout(self):
         layoutXML = LAYOUT_TEMPLATE.substitute(
@@ -1186,6 +1198,10 @@ class Customizer(LTracePlugin):
                 Customizer._useSameBackgroundAs("Red", "SideBySideSegmentationSlice", opacity=0)
                 Customizer._useSameForegroundAs("Red", "SideBySideSegmentationSlice", opacity=0)
 
+                if not self.sideBySideSegmentationSetupComplete:
+                    setupViews("SideBySideImageSlice", "SideBySideSegmentationSlice")
+                    self.sideBySideSegmentationSetupComplete = True
+
                 # These are necessary despite also being called inside _useSameBackgroundAs and _useSameForegroundAs
                 layout.sliceWidget("SideBySideImageSlice").sliceLogic().FitSliceToAll()
                 layout.sliceWidget("SideBySideSegmentationSlice").sliceLogic().FitSliceToAll()
@@ -1199,6 +1215,7 @@ class Customizer(LTracePlugin):
 
                 if not self.sideBySideImageManager:
                     self.sideBySideImageManager = SideBySideImageManager()
+                    setupViews("SideBySideSlice1", "SideBySideSlice2")
                 self.sideBySideImageManager.enterLayout()
             elif self.sideBySideImageManager:
                 self.sideBySideImageManager.exitLayout()
@@ -1287,8 +1304,10 @@ class Customizer(LTracePlugin):
             # Image log has its own handling of segmentation visibility
             if not segNode.GetAttribute("ImageLogSegmentation"):
                 displayNode = segNode.GetDisplayNode()
-                displayNode.SetOpacity(0.5)
+                if displayNode is None:
+                    continue
 
+                displayNode.SetOpacity(0.5)
                 # Show segmentation on any view
                 displayNode.RemoveAllViewNodeIDs()
 
@@ -1562,9 +1581,6 @@ class Customizer(LTracePlugin):
 
 class CustomizerWidget(LTracePluginWidget):
     def setup(self):
-        pass
-
-    def cleanup(self):
         pass
 
 

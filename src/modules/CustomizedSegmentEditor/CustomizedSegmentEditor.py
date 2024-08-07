@@ -291,5 +291,8 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             self.editor.updateWidgetFromMRML()
 
     def cleanup(self):
+        super().cleanup()
         self.removeObservers()
         self.deactivateEditorRegisteredCallback()
+        self.__updateEffectRegisteredTimer.timeout.disconnect()
+        self.__applicationObservables.applicationLoadFinished.disconnect()

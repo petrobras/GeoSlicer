@@ -1,12 +1,18 @@
 import logging
 import vtk, qt, ctk, slicer
-
+import json
+import os
+import re
+from .output_name_dialog import OutputNameDialog
 from pathlib import Path
 from Export import ExportLogic, checkUniqueNames
 from ImageLogExportLib import ImageLogCSV
 from ltrace.slicer.helpers import getNodeDataPath
 from ltrace.slicer_utils import LTracePluginWidget
 from ltrace.utils.recursive_progress import RecursiveProgress
+import ltrace.image.las as imglas
+from ltrace.slicer.helpers import createTemporaryNode, getNodeDataPath, getSourceVolume, removeTemporaryNodes
+from ltrace.slicer.node_attributes import NodeEnvironment, TableType
 
 
 class ImageLogExportOpenSourceWidget(LTracePluginWidget):
@@ -15,6 +21,8 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
     FORMAT_MATRIX_CSV = "CSV (matrix format)"
     FORMAT_TECHLOG_CSV = "CSV (Techlog format)"
     FORMAT_CSV = "CSV"
+    FORMAT_LAS = "LAS"
+    FORMAT_LAS_GEOLOG = "LAS (for Geolog)"
 
     EXPORTABLE_TYPES = (
         slicer.vtkMRMLSegmentationNode,
@@ -23,8 +31,8 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         slicer.vtkMRMLLabelMapVolumeNode,
     )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.cancel = False
         self.cliCompleted = False
         self.auxNode = None
@@ -44,6 +52,8 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         self.logFormatBox = qt.QComboBox()
         self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV)
         self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV)
+        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_LAS)
+        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG)
 
         self.tableFormatBox = qt.QComboBox()
         self.tableFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_CSV)
@@ -153,8 +163,19 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
 
         # Separate nodes
         nodeToExportList = []
+        nodeToLASList = []
         for node in self.nodes:
-            nodeToExportList.append(node)
+            if (
+                type(node) is slicer.vtkMRMLTableNode
+                or self.logFormatBox.currentText == ImageLogExportClosedSourceWidget.FORMAT_MATRIX_CSV
+                or self.logFormatBox.currentText == ImageLogExportClosedSourceWidget.FORMAT_TECHLOG_CSV
+            ):
+                nodeToExportList.append(node)
+            elif (
+                self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
+                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+            ):
+                nodeToLASList.append(node)
 
         # Create progress management
         def progressCallback(progressValue):
@@ -162,8 +183,11 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
 
         baseProgress = RecursiveProgress(callback=progressCallback)
         progressList = []
+        lasProgress = None
         for node in nodeToExportList:
             progressList.append(baseProgress.create_sub_progress())
+        if len(nodeToLASList) > 0:
+            lasProgress = baseProgress.create_sub_progress(weight=len(nodeToLASList))
 
         # Export
         for node in nodeToExportList:
@@ -171,18 +195,124 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
             progress = progressList.pop()
 
             if type(node) is slicer.vtkMRMLTableNode:
-                if self.tableFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_CSV:
-                    ExportLogic().exportTable(node, outputDir, nodeDir, ExportLogic.TABLE_FORMAT_CSV)
-                    progress.set_progress(1)
+                if node.GetAttribute(TableType.name()) == TableType.HISTOGRAM_IN_DEPTH.value:
+                    if self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV:
+                        self.startLogToCsvExport(node, nodeDir, progress, isTechlog=False)
+                    else:
+                        if node in nodeToLASList:
+                            logging.warning(
+                                f"If you want {node.GetName()} to be exported in a separated CSV file, select {ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV} option in the Well log and export again."
+                            )
+                        else:
+                            logging.warning(
+                                f"{node.GetName()} not exported as CSV. Please select {ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV} option and try to export it again."
+                            )
+                else:
+                    if self.tableFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_CSV:
+                        ExportLogic().exportTable(node, outputDir, nodeDir, ExportLogic.TABLE_FORMAT_CSV)
+                        progress.set_progress(1)
             else:
                 if self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV:
                     self.startLogToCsvExport(node, nodeDir, progress, isTechlog=True)
                 elif self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV:
                     self.startLogToCsvExport(node, nodeDir, progress, isTechlog=False)
+                elif (
+                    self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
+                    or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+                ):
+                    raise RuntimeError("Node selection went wrong")
+
+        if (
+            self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
+            or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+        ) and nodeToLASList:
+            try:
+                self.startLasExport(nodeToLASList, outputDir, lasProgress)
+            except RuntimeError as e:
+                logging.error(e)
+                self._stopExport()
+                self.progressBar.setValue(0)
+                self.currentStatusLabel.text = "Export failed!"
+                return
 
         self._stopExport()
         self.progressBar.setValue(100)
         self.currentStatusLabel.text = "Export complete"
+
+    def preExport(self, node_list):
+        # Get file ID
+        nodePath = Path()
+        fileId = ""
+        if len(node_list) == 1:
+            fileId = node_list[0].GetName()
+            nodePath = self.__getNodeDirectoryPath(node_list[0])
+        elif len(node_list) > 0:
+            directoryName = self.__getNodeDirectoryName(node_list[0])
+            askForOutputName = False
+            for node in node_list:
+                newDirectoryName = self.__getNodeDirectoryName(node)
+                directoryPath = self.__getNodeDirectoryPath(node_list[0])
+                if directoryName != newDirectoryName:
+                    askForOutputName = True
+                    break
+            if askForOutputName:
+                outputNameDialog = OutputNameDialog(self.layout.parentWidget())
+                result = outputNameDialog.exec()
+                if bool(result):
+                    fileId = outputNameDialog.getOutputName()
+                else:
+                    return None, None
+            else:
+                nodePath = directoryPath
+                fileId = directoryName
+
+        fileId = re.sub(r"[\\/*.<>ç?:]", "_", fileId)  # avoiding characters not suitable for file name
+
+        return nodePath, fileId
+
+    def startLasExport(self, node_list, output_dir, progressOutput):
+        nodePath, fileId = self.preExport(node_list)
+        if not nodePath:
+            return False
+        outputDir = Path(output_dir)
+        tempDir = slicer.app.temporaryPath + "/imagelogexport/"
+        if not os.path.exists(tempDir):
+            os.makedirs(tempDir)
+
+        nodeList2 = []  # substitutes vtkMRMLSegmentationNodes by temporary LabelMaps
+        for i, node in enumerate(node_list):
+            if isinstance(node, slicer.vtkMRMLSegmentationNode):
+                auxNode = createTemporaryNode(slicer.vtkMRMLLabelMapVolumeNode, "__temp__")
+                referenceVolumeNode = getSourceVolume(node)
+                if not slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
+                    node, auxNode, referenceVolumeNode
+                ):
+                    errmsg = f"Export of segment failed for node {auxNode.GetName()}."
+                    raise RuntimeError(errmsg)
+                nodeList2.append(auxNode)
+            else:
+                nodeList2.append(node)
+
+        if not self.ignoreDirStructureCheckbox.checked:
+            outpuPath = outputDir / nodePath
+        else:
+            outpuPath = outputDir
+        outpuPath.mkdir(parents=True, exist_ok=True)
+
+        outputFilePath: Path = outpuPath / f"{fileId}.las"
+        outputFilePathStr: str = outputFilePath.as_posix()
+
+        # "FORMAT_LAS_GEOLOG" is in fact an initial support to LAS 3.0
+        version = 2 if self.logFormatBox.currentText != ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG else 3
+
+        try:
+            imglas.export_las(nodeList2, outputFilePathStr, version=version)
+        except RuntimeError as e:
+            raise RuntimeError(e)
+        finally:
+            removeTemporaryNodes(NodeEnvironment.IMAGE_LOG)
+
+        return True
 
     def onCancelClicked(self):
         self.cancel = True
@@ -202,3 +332,21 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
             self._stopExport()
             self.currentStatusLabel.text = "Export failed."
             raise exc
+
+    @staticmethod
+    def __getNodeDirectoryName(node):
+        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(node))
+        directoryName = subjectHierarchyNode.GetItemName(itemParent)
+        return directoryName
+
+    @staticmethod
+    def __getNodeDirectoryPath(node):
+        directoryPath = Path()
+        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        sceneItemId = subjectHierarchyNode.GetSceneItemID()
+        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(node))
+        while itemParent != 0 and itemParent != sceneItemId:
+            directoryPath = Path(subjectHierarchyNode.GetItemName(itemParent)) / directoryPath
+            itemParent = subjectHierarchyNode.GetItemParent(itemParent)
+        return directoryPath

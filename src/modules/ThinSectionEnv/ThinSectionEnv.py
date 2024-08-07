@@ -44,6 +44,7 @@ class ThinSectionEnv(LTracePlugin):
 class ThinSectionEnvWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+        self.previousLayout = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -76,13 +77,15 @@ class ThinSectionEnvWidget(LTracePluginWidget):
 
         self.dataTab.tabBarClicked.connect(self.onDataTabClicked)
         self.mainTab.tabBarClicked.connect(self.onMainTabClicked)
+        self.registrationTab.tabBarClicked.connect(self.onRegistrationTabClicked)
+
         self.layout.addWidget(self.mainTab)
 
         # Configure manual segment editor effects
         segEnv.self().segmentEditorWidget.self().selectParameterNodeByTag(ThinSectionEnv.SETTING_KEY)
         segEnv.self().segmentEditorWidget.self().configureEffectsForThinSectionEnvironment()
 
-    def onMainTabClicked(self, index):
+    def onMainTabClicked(self, index) -> None:
         if self.lastAccessedWidget != self.mainTab.widget(
             index
         ):  # To avoid calling exit by clicking over the active tab
@@ -92,9 +95,14 @@ class ThinSectionEnvWidget(LTracePluginWidget):
                 self.lastAccessedWidget = self.lastAccessedWidget.currentWidget()
             self.lastAccessedWidget.enter()
 
-    def onDataTabClicked(self, index):
+    def onDataTabClicked(self, index) -> None:
         self.lastAccessedWidget.exit()
         self.lastAccessedWidget = self.dataTab.widget(index)
+        self.lastAccessedWidget.enter()
+
+    def onRegistrationTabClicked(self, index) -> None:
+        self.lastAccessedWidget.exit()
+        self.lastAccessedWidget = self.registrationTab.widget(index)
         self.lastAccessedWidget.enter()
 
     def enter(self) -> None:
@@ -106,6 +114,9 @@ class ThinSectionEnvWidget(LTracePluginWidget):
 
     def exit(self):
         self.lastAccessedWidget.exit()
+
+        if not self.previousLayout:
+            return
 
         # If layout was not changed from red slice, restore to previous one
         if self.layoutNode.GetViewArrangement() == slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView:

@@ -39,8 +39,8 @@ class CoreEnv(LTracePlugin):
 
 
 class CoreEnvWidget(LTracePluginWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.lastAccessedWidget = None
 
     def setup(self):

@@ -292,7 +292,9 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
         return outputCollapsibleButton
 
     def cleanup(self):
-        pass
+        super().cleanup()
+        for node, tag in self.registered_callbacks:
+            node.RemoveObserver(tag)
 
     def __onNodeSelectionChanged(self):
         """Handles input/output node selection change event"""

@@ -13,6 +13,7 @@ from ltrace.slicer.helpers import (
     createTemporaryVolumeNode,
     setSourceVolume,
     create_color_table,
+    setVolumeNullValue,
 )
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.algorithms.segment_cups import segment_cups
@@ -248,7 +249,8 @@ class MicroCTCupsAnalysisWidget(LTracePluginWidget):
 
         with ProgressBarProc() as pb:
             cups_callback = lambda progress, message: pb.nextStep(progress * 0.2, message)
-            rock, refs, cylinder = full_detect(array, callback=cups_callback)
+            rock, null_value, refs, cylinder = full_detect(array, callback=cups_callback)
+            x, y, r, z_min, z_max = cylinder
             offset = get_origin_offset(cylinder)
 
             if refs is not None:
@@ -289,6 +291,7 @@ class MicroCTCupsAnalysisWidget(LTracePluginWidget):
                 )
                 rockNode.CreateDefaultDisplayNodes()
                 slicer.util.updateVolumeFromArray(rockNode, rock)
+                setVolumeNullValue(rockNode, null_value)
 
                 rockNode.CopyOrientation(volume)
                 origin = rockNode.GetOrigin()

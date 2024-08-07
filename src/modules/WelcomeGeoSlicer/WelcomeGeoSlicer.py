@@ -1,10 +1,22 @@
-from pathlib import Path
-
 import qt
 import slicer
 import logging
+import traceback
+
+from collections import OrderedDict
+from dataclasses import dataclass
 from ltrace.slicer_utils import *
 from ltrace.workflow import WorkflowWidget
+from pathlib import Path
+from typing import Callable, Tuple
+from typing import OrderedDict as OrderedDictType
+
+try:
+    from Test.WelcomeGeoslicerTest import WelcomeGeoslicerTest
+except ImportError as error:
+    WelcomeSlicerTest = None
+
+RESOURCES_PATH = Path(__file__).parent.absolute() / "Resources"
 
 
 class WelcomeGeoSlicer(LTracePlugin):
@@ -19,14 +31,135 @@ class WelcomeGeoSlicer(LTracePlugin):
         self.parent.helpText = ""
 
 
-class WelcomeGeoSlicerWidget(LTracePluginWidget):
-    RESOURCES_PATH = Path(__file__).parent.absolute() / "Resources"
-    CARBONATE_CT_ICON_PATH = RESOURCES_PATH / "Carbonate-CT.png"
-    SANDSTONE_CT_ICON_PATH = RESOURCES_PATH / "Sandstone-CT.png"
+def getFeatures() -> OrderedDictType:
+    return OrderedDict(
+        {
+            "Environments": [
+                Feature("Image Log", "ImageLogEnv.png", "ImageLogEnv"),
+                Feature("Core", "CoreEnv.png", "CoreEnv"),
+                Feature("Micro CT", "MicroCTEnv.png", "MicroCTEnv"),
+                Feature("Thin Section", "ThinSectionEnv.png", "ThinSectionEnv"),
+            ],
+            "Tools": [
+                Feature("2D Color Scales", "CustomizedData.png", "CustomizedData"),
+                Feature("3D Color Scales", "VolumeRendering.png", "VolumeRendering"),
+                Feature("Volume Calculator", "VolumeCalculator.png", "VolumeCalculator"),
+                Feature("Tables", "Tables.png", "CustomizedTables"),
+                Feature("Segmentation Tools", "Segmentation.png", "SegmentationEnv"),
+                Feature("Charts", "Charts.png", "Charts"),
+                Feature("Table Filter", "TableFilter.png", "TableFilter"),
+                Feature("NetCDF", "NetCDF.png", "NetCDF"),
+                Feature("Workflow (Beta)", "Workflow.png", None, customActionWorkflow),
+                Feature("BIAEP Browser", "BIAEPBrowser.png", "BIAEPBrowser"),
+                Feature("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData"),
+                Feature(
+                    "Multiple\nImage Analysis",
+                    "MultipleImageAnalysis.png",
+                    "ThinSectionEnv",
+                    customActionMultipleImageAnalysis,
+                ),
+                Feature("Representative\nVolume", "VariogramAnalysis.png", "VariogramAnalysis"),
+                Feature("Geolog integration", "icon_geolog.svg", "GeologEnv"),
+            ],
+        }
+    )
 
+
+def customActionMultipleImageAnalysis():
+    slicer.modules.ThinSectionEnvWidget.switchToMultipleImageAnalysis()
+
+
+def customActionWorkflow():
+    workflowWidget = WorkflowWidget(slicer.util.mainWindow())
+    workflowWidget.show()
+
+
+class FeatureToolButton(qt.QToolButton):
+    def __init__(
+        self,
+        text: str,
+        moduleName: str,
+        image: str,
+        parent: qt.QWidget = None,
+        gridPosition=None,
+        customAction: Callable[[None], None] = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.__updateStyleSheet()
+        self.__moduleName = moduleName
+        self.__customAction = customAction
+        formatedName = text.replace("\n", " ")
+        self.objectName = f"{formatedName} Tool Button"
+
+        icon = qt.QIcon((RESOURCES_PATH / image).as_posix())
+        self.setToolButtonStyle(qt.Qt.ToolButtonTextUnderIcon)
+        self.setIcon(icon)
+        self.setText(text)
+        self.setIconSize(qt.QSize(60, 60))
+        self.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+
+        if parent is not None:
+            if gridPosition is None:
+                parent.addWidget(self)
+            else:
+                parent.addWidget(self, *gridPosition)
+
+        self.clicked.connect(self._action)
+
+    def __updateStyleSheet(self) -> None:
+        self.setStyleSheet(
+            "QToolButton {\
+                background-color: transparent;\
+                border: none;\
+                padding-top: 8px;\
+                padding-bottom: 8px;\
+            }\
+            QToolButton:hover {\
+                background-color: gray;\
+                border-radius: 3px;\
+            }\
+            QToolButton:pressed {\
+                background-color: #6B6B6B;\
+            }"
+        )
+
+    def _action(self):
+        try:
+            if self.__moduleName is not None:
+                slicer.util.selectModule(self.__moduleName)
+
+            if self.__customAction is not None:
+                self.__customAction()
+        except Exception as error:
+            logging.debug(f"Error in {self.__moduleName} shortcut: {error}. Traceback:\n{traceback.print_exc()}")
+
+
+@dataclass
+class Feature:
+    text: str
+    image: str
+    moduleName: str
+    customAction: Callable[[None], None] = None
+
+    def createToolButton(self, parent: qt.QWidget = None, gridPosition: Tuple[int, int] = None) -> FeatureToolButton:
+        if self.moduleName is not None and slicer.app.moduleManager().module(self.moduleName) is None:
+            return None
+
+        return FeatureToolButton(
+            text=self.text,
+            moduleName=self.moduleName,
+            image=self.image,
+            customAction=self.customAction,
+            parent=parent,
+            gridPosition=gridPosition,
+        )
+
+
+class WelcomeGeoSlicerWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
-        self.workflowWidget = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -45,101 +178,34 @@ class WelcomeGeoSlicerWidget(LTracePluginWidget):
         )
         self.gridLayout.addWidget(generalInformationTextEdit)
 
-        for group_name in self._get_shortcut_grid():
-            groupBox, vBoxLayout = self.creatyEntryModuleFrame(group_name[0])
-            for label, image, callback, gridPosition in group_name[1]:
-                self.createEntryModuleButton(label, callback, vBoxLayout, image, gridPosition)
+        maxColumns = 4
+        for groupName, features in getFeatures().items():
+            groupBox, vBoxLayout = self.createFeaturesSectionFrame(groupName)
+            currentColumn = 0
+            currentRow = 0
+            for feature in features:
+                gridPosition = (currentRow, currentColumn)
+
+                button = feature.createToolButton(parent=vBoxLayout, gridPosition=gridPosition)
+                if button is None:
+                    continue
+
+                currentColumn += 1
+                if currentColumn >= maxColumns:
+                    currentColumn = 0
+                    currentRow += 1
+
             self.gridLayout.addWidget(groupBox)
+
         self.gridLayout.addStretch(1)
         self.__mainWindow = slicer.util.mainWindow()
 
-    def _get_shortcut_grid(self):
-        return [
-            (
-                "Environments",
-                [
-                    ("Image Log", "ImageLogEnv.png", "ImageLogEnv", [0, 0]),
-                    ("Core", "CoreEnv.png", "CoreEnv", [0, 1]),
-                    ("Micro CT", "MicroCTEnv.png", "MicroCTEnv", [0, 2]),
-                    ("Thin Section", "ThinSectionEnv.png", "ThinSectionEnv", [0, 3]),
-                ],
-            ),
-            (
-                "Tools",
-                [
-                    ("2D Color Scales", "CustomizedData.png", "CustomizedData", [0, 0]),
-                    ("3D Color Scales", "VolumeRendering.png", "VolumeRendering", [0, 1]),
-                    ("Volume Calculator", "VolumeCalculator.png", "VolumeCalculator", [0, 2]),
-                    ("Tables", "Tables.png", "CustomizedTables", [0, 3]),
-                    ("Segmentation Tools", "Segmentation.png", "SegmentationEnv", [1, 0]),
-                    ("Charts", "Charts.png", "Charts", [1, 1]),
-                    ("Table Filter", "TableFilter.png", "TableFilter", [1, 2]),
-                    ("NetCDF", "NetCDF.png", "NetCDF", [1, 3]),
-                    ("Workflow (Beta)", "Workflow.png", self.workflow, [2, 0]),  # Hiding workflow for now
-                    ("BIAEP Browser", "BIAEPBrowser.png", "BIAEPBrowser", [2, 1]),
-                    ("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData", [2, 2]),
-                    ("Multiple\nImage Analysis", "MultipleImageAnalysis.png", "MultipleImageAnalysis", [2, 3]),
-                    ("Representative\nVolume", "VariogramAnalysis.png", "VariogramAnalysis", [3, 0]),
-                ],
-            ),
-        ]
-
-    def workflow(self):
-        if self.workflowWidget is None:
-            self.workflowWidget = WorkflowWidget(slicer.util.mainWindow())
-        self.workflowWidget.show()
-
-    def creatyEntryModuleFrame(self, title):
+    def createFeaturesSectionFrame(self, title: str) -> Tuple[qt.QGroupBox, qt.QGridLayout]:
         hBoxLayout = qt.QGridLayout()
         groupBox = qt.QGroupBox(title)
         groupBox.setStyleSheet("QGroupBox {font-size: 20px;}")
         groupBox.setLayout(hBoxLayout)
         return groupBox, hBoxLayout
-
-    def createEntryModuleButton(self, text, action, parent, image, gridPosition):
-        pushButton = qt.QToolButton()
-        pushButton.setStyleSheet(
-            "QToolButton {\
-                background-color: transparent;\
-                border: none;\
-                padding-top: 8px;\
-                padding-bottom: 8px;\
-            }\
-            QToolButton:hover {\
-                background-color: gray;\
-                border-radius: 3px;\
-            }\
-            QToolButton:pressed {\
-                background-color: #6B6B6B;\
-            }"
-        )
-        icon = qt.QIcon(self.RESOURCES_PATH.joinpath(image))
-        pushButton.setToolButtonStyle(qt.Qt.ToolButtonTextUnderIcon)
-        pushButton.setIcon(icon)
-        pushButton.setText(text)
-        pushButton.setIconSize(qt.QSize(60, 60))
-        pushButton.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
-
-        if isinstance(action, str):
-            if action == "MultipleImageAnalysis":
-
-                def callback():
-                    slicer.util.selectModule("ThinSectionEnv")
-                    slicer.modules.ThinSectionEnvWidget.switchToMultipleImageAnalysis()
-
-                pushButton.clicked.connect(callback)
-            elif action.lower() in slicer.modules.__dict__:
-                pushButton.clicked.connect(lambda: self.__mainWindow.moduleSelector().selectModule(action))
-            else:
-                logging.info(action + " is not available in this version. Skipping shortcut creation")
-                return
-        else:
-            pushButton.clicked.connect(lambda: action())
-
-        if action is None:
-            pushButton.setEnabled(False)
-
-        parent.addWidget(pushButton, *gridPosition)
 
     def enter(self) -> None:
         super().enter()

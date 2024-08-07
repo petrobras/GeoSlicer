@@ -16,8 +16,8 @@ from MercurySimulationLib import MercurySimulationLogic
 
 
 class SubscaleModelWidget(qt.QWidget):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         layout = qt.QFormLayout(self)
 
         self.parameter_widgets = {}
@@ -47,6 +47,23 @@ class SubscaleModelWidget(qt.QWidget):
         for widget in self.parameter_widgets.values():
             widget.setVisible(False)
         self.parameter_widgets[new_text].setVisible(True)
+
+    def getParams(self):
+        subres_model_name = self.microscale_model_dropdown.currentText
+        subres_params = self.parameter_widgets[subres_model_name].get_params()
+
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
+            subres_params = {
+                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
+            }
+
+        return {
+            "subres_model_name": subres_model_name,
+            "subres_params": subres_params,
+        }
+
+    def setParams(self, params):
+        self.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
 
 
 class FixedRadiusWidget(qt.QWidget):
@@ -332,3 +349,12 @@ class LeverettNewWidget(LeverettWidgetBase):
             }
         )
         return params
+
+
+SubscaleLogicDict = {
+    FixedRadiusWidget.STR: MercurySimulationLogic.FixedRadiusLogic,
+    LeverettNewWidget.STR: MercurySimulationLogic.LeverettNewLogic,
+    LeverettOldWidget.STR: MercurySimulationLogic.LeverettOldLogic,
+    PressureCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
+    ThroatRadiusCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
+}

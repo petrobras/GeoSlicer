@@ -103,6 +103,10 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
         Call restorePreviewedSegmentTransparency() to restore original
         opacity.
         """
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             return
@@ -130,6 +134,10 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
     def restorePreviewedSegmentTransparency(self):
         """Restore previewed segment's opacity that was temporarily
         made transparen by calling setCurrentSegmentTransparent()."""
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             return
@@ -467,19 +475,22 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
             self.scriptedEffect.setParameter("ColorThresholdEffect.pulse", int(self.enablePulsingCheckbox.isChecked()))
 
     def _getColor(self):
+        color = [0.5, 0.5, 0.5]
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("The segment editor node is not available.")
+            return color
 
         # Get color of edited segment
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
             # scene was closed while preview was active
-            return
+            return color
         displayNode = segmentationNode.GetDisplayNode()
         if displayNode is None:
             logging.error("preview: Invalid segmentation display node!")
-            color = [0.5, 0.5, 0.5]
         segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
         if segmentID is None:
-            return
+            return color
 
         # Make sure we keep the currently selected segment hidden (the user may have changed selection)
         if segmentID != self.previewedSegmentID:

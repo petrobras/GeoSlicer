@@ -92,6 +92,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         return slicer.util.mainWindow().cursor
 
     def onApply(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+
         self.scriptedEffect.saveStateForUndo()
 
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -141,6 +144,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyFinishedCallback()
 
     def onApplyFull(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+            return
+
         def getLazySegmentation(parentName: str) -> Union[None, slicer.vtkMRMLNode]:
             segmentationNode = None
             lazyNodes = slicer.util.getNodesByClass("vtkMRMLTextNode")

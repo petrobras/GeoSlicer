@@ -72,7 +72,7 @@ class undoManager:
 
         if verify:
             saved_hash = saved_states[current_stage]["current_hash"]
-            current_hash = hashlib.sha256(origin_array).hexdigest()
+            current_hash = hashlib.sha1(origin_array).hexdigest()
             if current_hash != saved_hash:
                 print("Cannot undo, array has unsaved changes")
                 saved_states[:] = []
@@ -99,7 +99,7 @@ class undoManager:
         origin_array = util.arrayFromVolume(volumeNode)
 
         if verify:
-            current_hash = hashlib.sha256(origin_array).hexdigest()
+            current_hash = hashlib.sha1(origin_array).hexdigest()
             try:
                 saved_hash = saved_states[current_stage]["current_hash"]
                 if current_hash != saved_hash:
@@ -133,7 +133,7 @@ class undoManager:
         util.arrayFromVolumeModified(volumeNode)
 
         if save_hash:
-            current_hash = hashlib.sha256(origin_array).hexdigest()
+            current_hash = hashlib.sha1(origin_array).hexdigest()
         else:
             current_hash = None
 

@@ -119,8 +119,8 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         self.inputSelection.mainInput.resetStyleOnValidNode()
         self.inputSelection.referenceInput.resetStyleOnValidNode()
         self.inputSelection.soiInput.resetStyleOnValidNode()
-        self.inputSelection.onReferenceSelected = self._on_reference_node_selected
-        self.inputSelection.onSoiSelected = self._on_soi_node_selected
+        self.inputSelection.onReferenceSelectedSignal.connect(self._on_reference_node_selected)
+        self.inputSelection.onSoiSelectedSignal.connect(self._on_soi_node_selected)
         self.layout.addWidget(self.inputSelection)
 
         inputParametersForm.addRow(self.inputSelection)

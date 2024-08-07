@@ -50,10 +50,11 @@ class WellLogImportWidget(qt.QWidget):
         formLayout = qt.QFormLayout(ioFileInputFrame)
         self.ioFileInputLineEdit = ctk.ctkPathLineEdit()
         self.ioFileInputLineEdit.setObjectName("File Input")
-        self.ioFileInputLineEdit.filters = ctk.ctkPathLineEdit.Files
+        self.ioFileInputLineEdit.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Readable
         self.ioFileInputLineEdit.settingKey = "ioFileInputMicrotom"
         # Needs to be initialized blank to allow loading the file metadata
         self.ioFileInputLineEdit.setCurrentPath("")
+        self.ioFileInputLineEdit.findChild("QLineEdit").enabled = False
 
         self.nullValuesListText = qt.QLineEdit()
         self.nullValuesListText.text = str(DEFAULT_NULL_VALUE)[1:-1]
@@ -70,29 +71,35 @@ class WellLogImportWidget(qt.QWidget):
         formLayout.addRow(wellDiameterLabel, self.wellDiameter)
 
         def onPathChanged(filepath):
-            self.dataLoader = get_loader(filepath)
-            nullvalues = set(self.nullValuesListText.text.split(","))
-            nullvalues = set(map(float, nullvalues))
-            nullvalues.union(self.dataLoader.null_value)
-            self.nullValuesListText.text = str(nullvalues)[1:-1]
+            with ProgressBarProc() as progressBar:
+                progressBar.nextStep(5, "Starting to load metadata...")
+                self.dataLoader = get_loader(filepath)
+                progressBar.nextStep(80, "Setting context variables...")
+                nullvalues = set(self.nullValuesListText.text.split(","))
+                nullvalues = set(map(float, nullvalues))
+                nullvalues.union(self.dataLoader.null_value)
+                self.nullValuesListText.text = str(nullvalues)[1:-1]
 
-            try:
-                well_name, metadata = self.dataLoader.load_metadata()
-                self.wellNameInput.text = well_name
-                if well_name is None:
+                try:
+                    progressBar.nextStep(90, "Showing metadata...")
+                    well_name, metadata = self.dataLoader.load_metadata()
+                    self.wellNameInput.text = well_name
+                    if well_name is None:
+                        return
+                    self.tableView.setDatabase(metadata)
+                except LoaderError as e:
+                    slicer.util.infoDisplay(str(e))
+                    self.ioFileInputLineEdit.setCurrentPath("")
+                    progressBar.nextStep(100, "Error loading metadata.")
                     return
-                self.tableView.set_database(metadata)
-            except LoaderError as e:
-                slicer.util.infoDisplay(str(e))
-                self.ioFileInputLineEdit.setCurrentPath("")
-                return
+
+                progressBar.nextStep(100, "Finished loading metadata.")
 
             wellDiameterApplies = True
             try:
                 wellDiameterApplies = self.dataLoader.loaded_as_image
             except AttributeError:  # no loaded_as_image
                 pass
-            wellDiameterApplies &= not isinstance(self.dataLoader, LASLoader)
             self.wellDiameter.setVisible(wellDiameterApplies)
             wellDiameterLabel.setVisible(wellDiameterApplies)
             if not wellDiameterApplies:
@@ -122,6 +129,7 @@ class WellLogImportWidget(qt.QWidget):
 
             try:
                 curves = self.dataLoader.load_data(self.ioFileInputLineEdit.currentPath, mnemonic_and_files)
+
                 helpers.save_path(self.ioFileInputLineEdit)
 
                 nullvalues = set(self.nullValuesListText.text.split(","))
@@ -129,23 +137,15 @@ class WellLogImportWidget(qt.QWidget):
 
                 well_diameter = float(self.wellDiameter.text) * 25.4  # inches to mm
                 well_name = self.wellNameInput.text
-                if isinstance(self.dataLoader, (DLISLoader, CSVLoader)):
-                    itemIDs = self.dataLoader.load_volumes(
-                        curves,
-                        stepCallback=progressCallback,
-                        appFolder=self.appFolder,
-                        nullValue=nullvalues,
-                        well_diameter_mm=well_diameter,
-                        well_name=well_name,
-                    )
-                else:
-                    itemIDs = self.dataLoader.load_volumes(
-                        curves,
-                        stepCallback=progressCallback,
-                        appFolder=self.appFolder,
-                        nullValue=nullvalues,
-                        well_diameter_mm=well_diameter,
-                    )
+
+                itemIDs = self.dataLoader.load_volumes(
+                    curves,
+                    stepCallback=progressCallback,
+                    appFolder=self.appFolder,
+                    nullValue=nullvalues,
+                    well_diameter_mm=well_diameter,
+                    well_name=well_name,
+                )
 
                 self.loadClicked(itemIDs)
                 progressBar.nextStep(100, f"Finished Loading Files.")

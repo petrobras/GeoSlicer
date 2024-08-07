@@ -76,6 +76,7 @@ class SpiralFilterWidget(LTracePluginWidget):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
         self.logic = SpiralFilterLogic(self.progressBar)
+        self.logic.setParent(self.parent)
         self.logic.filterFinished.connect(lambda: self.updateApplyCancelButtonsEnablement(True))
 
         frame = qt.QFrame()

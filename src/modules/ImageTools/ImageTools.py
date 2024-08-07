@@ -236,7 +236,7 @@ class ImageToolsWidget(LTracePluginWidget):
             self.toolLabel.setVisible(node is not None)
             self.toolComboBox.setVisible(node is not None)
 
-            if node is not None:
+            if node is not None and node.GetImageData() is not None:
                 node.GetDisplayNode().SetAutoWindowLevel(0)  # To avoid brightness adjustments cancellation
                 self.imageArray = slicer.util.arrayFromVolume(node).copy()
                 self.showImageButton.enabled = True

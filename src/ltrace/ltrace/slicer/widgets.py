@@ -15,8 +15,6 @@ from ltrace.slicer.widget.dimensions_label_group import DimensionsLabelGroup, DE
 
 from typing import Union, List, Tuple
 
-from ltrace.slicer_utils import print_debug
-
 
 def findSOISegmentID(segmentation):
     n_segments = segmentation.GetNumberOfSegments()
@@ -113,6 +111,9 @@ class PixelLabel(qt.QLabel):
 class SingleShotInputWidget(qt.QWidget):
     segmentSelectionChanged = qt.Signal(list)
     segmentListUpdated = qt.Signal(tuple, dict)
+    onMainSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
+    onReferenceSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
+    onSoiSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
 
     MODE_NAME = "Single-Shot"
 
@@ -155,10 +156,6 @@ class SingleShotInputWidget(qt.QWidget):
             rowTitles = defaultRowTitles
 
         self.hasOverlappingLayers = False
-
-        self.onMainSelected = lambda volume: None
-        self.onReferenceSelected = lambda volume: None
-        self.onSoiSelected = lambda volume: None
 
         self.inputVoxelSize = 1
 
@@ -222,12 +219,16 @@ class SingleShotInputWidget(qt.QWidget):
         self.segmentationLabel = self.formLayout.labelForField(self.targetBox)
 
         self.soiLabel = qt.QLabel(f'{rowTitles["soi"]}: ')
-        if not hideSoi:
-            self.formLayout.addRow(self.soiLabel, self.soiInput)
+        self.formLayout.addRow(self.soiLabel, self.soiInput)
+        if hideSoi:
+            self.soiLabel.hide()
+            self.soiInput.hide()
 
         self.referenceLabel = qt.QLabel(f'{rowTitles["reference"]}: ')
-        if not hideImage:
-            self.formLayout.addRow(self.referenceLabel, self.referenceInput)
+        self.formLayout.addRow(self.referenceLabel, self.referenceInput)
+        if hideImage:
+            self.referenceLabel.hide()
+            self.referenceInput.hide()
         self.requireSourceVolume = requireSourceVolume
 
         self.segmentsContainerWidget = ctk.ctkCollapsibleButton()
@@ -259,10 +260,10 @@ class SingleShotInputWidget(qt.QWidget):
         autoPorosityCalcLayout.addWidget(self.autoPorosityCalcCb)
         autoPorosityCalcLayout.addWidget(self.progressInput)
         autoPorosityCalcLayout.addStretch(1)
-        self.autoPorosityCalcWidget.visible = not self.hideCalcProp
         ## end autoPorosityCalcWidget
 
         segmentsLayout.addRow(self.autoPorosityCalcWidget)
+        self.autoPorosityCalcWidget.visible = not self.hideCalcProp
 
         self.segmentListGroup[1].itemChanged.connect(self.checkSelection)
 
@@ -368,7 +369,7 @@ class SingleShotInputWidget(qt.QWidget):
         self.referenceInput.blockSignals(True)
         self.referenceInput.setCurrentNode(node)
         self.referenceInput.blockSignals(False)
-        self.referenceInput.setStyleSheet("{}")
+        self.referenceInput.setStyleSheet("")
         self._onReferenceSelected(node)
 
     def _onMainSelected(self, item):
@@ -380,7 +381,7 @@ class SingleShotInputWidget(qt.QWidget):
                 self.resetUI()
                 if self.autoReferenceFetch:
                     self.updateRefNode(None)
-                self.onMainSelected(None)
+                self.onMainSelectedSignal.emit(None)
                 self.autoPorosityCalcWidget.hide()
                 self.segmentsContainerWidget.collapsed = True
                 return
@@ -405,7 +406,7 @@ class SingleShotInputWidget(qt.QWidget):
 
             if self.autoReferenceFetch:
                 self.updateRefNode(referenceNode)
-            self.onMainSelected(node)
+            self.onMainSelectedSignal.emit(node)
 
             if isLabeledData(node):
                 self.updateSegmentList(
@@ -428,7 +429,7 @@ class SingleShotInputWidget(qt.QWidget):
         # If using pre-trained classifier
         if mainNode is None:
             self.autoPorosityCalcWidget.hide()
-            self.onSoiSelected(node)
+            self.onSoiSelectedSignal.emit(node)
             return
 
         referenceNode = helpers.getSourceVolume(mainNode)
@@ -448,7 +449,7 @@ class SingleShotInputWidget(qt.QWidget):
                             return_proportions=self.autoPorosityCalcCb.isChecked(),
                         )
                     )
-                self.onSoiSelected(None)
+                self.onSoiSelectedSignal.emit(None)
                 return
 
             if node.GetID() == mainNode.GetID():
@@ -456,7 +457,7 @@ class SingleShotInputWidget(qt.QWidget):
                     "The Segment of Interest (SOI) Node must be " "different from the Segmentation input."
                 )
                 self.soiInput.setCurrentNode(None)
-                self.onSoiSelected(None)
+                self.onSoiSelectedSignal.emit(None)
                 return
 
             soi = node.GetSegmentation()
@@ -470,7 +471,7 @@ class SingleShotInputWidget(qt.QWidget):
                 )
                 if not yesOrNo:
                     self.soiInput.setCurrentNode(None)
-                    self.onSoiSelected(None)
+                    self.onSoiSelectedSignal.emit(None)
                     return
 
             if isLabeledData(mainNode):
@@ -487,12 +488,12 @@ class SingleShotInputWidget(qt.QWidget):
                     )
                 )
 
-            self.onSoiSelected(node)
+            self.onSoiSelectedSignal.emit(node)
 
         except TypeError as ter:
             pass  # TODO check who escapes here?
         except Exception as rex:
-            print_debug(f"Failed to update SOI: {repr(rex)}", channel=logging.warning)
+            logging.error(repr(rex))
         finally:
             self.progressInput.setText("")
 
@@ -502,7 +503,7 @@ class SingleShotInputWidget(qt.QWidget):
             node = self.referenceInput.currentNode()
 
             if node is None and mainNode is None:
-                self.onReferenceSelected(None)
+                self.onReferenceSelectedSignal.emit(None)
                 return
 
             if node is None and mainNode and self.requireSourceVolume:
@@ -510,7 +511,7 @@ class SingleShotInputWidget(qt.QWidget):
                 [s.hide() for s in self.segmentListGroup]
                 self.dimensionsGroup.hide()
                 self.toggleDimensions(None)
-                self.onReferenceSelected(None)
+                self.onReferenceSelectedSignal.emit(None)
                 # NOTE: The timer is required to move the UI change to the main thread
                 self.referenceInput.blockSignals(True)
                 helpers.highlight_error(self.referenceInput, "QComboBox")
@@ -541,7 +542,7 @@ class SingleShotInputWidget(qt.QWidget):
                     )
                 )
             self.toggleDimensions(node)
-            self.onReferenceSelected(node)
+            self.onReferenceSelectedSignal.emit(node)
         except Exception as rex:
             logging.error(repr(rex))
         finally:
@@ -645,38 +646,44 @@ def ColoredIcon(r, g, b):
 class BatchInputWidget(qt.QWidget):
     MODE_NAME = "Batch"
 
-    def __init__(self, parent=None, settingKey="BatchInputWidget"):
+    def __init__(self, parent=None, settingKey="BatchInputWidget", objectNamePrefix=None):
         super().__init__(parent)
 
         formLayout = qt.QFormLayout(self)
 
         self.onDirSelected = lambda volume: None
 
+        self.ioFileInputLabel = qt.QLabel("Directory: ")
         self.ioFileInputLineEdit = ctk.ctkPathLineEdit()
         self.ioFileInputLineEdit.filters = ctk.ctkPathLineEdit.Dirs
         self.ioFileInputLineEdit.settingKey = settingKey
+        self.ioFileInputLineEdit.objectName = "Path Line Edit"
 
+        self.ioBatchROITagLabel = qt.QLabel("ROI Tag (.nrrd): ")
         self.ioBatchROITagPattern = qt.QLineEdit()
         self.ioBatchROITagPattern.text = "ROI"
 
+        self.ioBatchSegTagLabel = qt.QLabel("Segmentation Tag (.nrrd): ")
         self.ioBatchSegTagPattern = qt.QLineEdit()
         self.ioBatchSegTagPattern.text = "SEG"
 
+        self.ioBatchValTagLabel = qt.QLabel("Image Tag (.tif): ")
         self.ioBatchValTagPattern = qt.QLineEdit()
         self.ioBatchValTagPattern.text = ""
 
+        self.ioBatchLabelLabel = qt.QLabel("Target Segment Tag: ")
         self.ioBatchLabelPattern = qt.QLineEdit()
         self.ioBatchLabelPattern.text = "Poro"
 
-        formLayout.addRow("Directory: ", self.ioFileInputLineEdit)
+        formLayout.addRow(self.ioFileInputLabel, self.ioFileInputLineEdit)
         self.ioFileInputLineEdit.setToolTip("Select the directory where the input data/projects are saved.")
-        formLayout.addRow("Segmentation Tag (.nrrd): ", self.ioBatchSegTagPattern)
+        formLayout.addRow(self.ioBatchSegTagLabel, self.ioBatchSegTagPattern)
         self.ioBatchSegTagPattern.setToolTip("Type the Tag that identifies the Segmentation.")
-        formLayout.addRow("ROI Tag (.nrrd): ", self.ioBatchROITagPattern)
+        formLayout.addRow(self.ioBatchROITagLabel, self.ioBatchROITagPattern)
         self.ioBatchROITagPattern.setToolTip("Type the Tag that identifies the Region (SOI) Segment of Interest.")
-        formLayout.addRow("Image Tag (.tif): ", self.ioBatchValTagPattern)
+        formLayout.addRow(self.ioBatchValTagLabel, self.ioBatchValTagPattern)
         self.ioBatchValTagPattern.setToolTip("Type the Tag that identifies input Image.")
-        formLayout.addRow("Target Segment Tag: ", self.ioBatchLabelPattern)
+        formLayout.addRow(self.ioBatchLabelLabel, self.ioBatchLabelPattern)
         self.ioBatchLabelPattern.setToolTip(
             "Type the Tag that identifies the segment of the Segmentation to be inspected/partitioned."
         )
@@ -684,6 +691,9 @@ class BatchInputWidget(qt.QWidget):
 
         self.ioFileInputLineEdit.connect("currentPathChanged(QString)", self._onDirSelected)
         self.inputVoxelSize = 1  # maintain interface
+
+        if objectNamePrefix is not None:
+            self.ioFileInputLineEdit.objectName = f"{objectNamePrefix} {self.ioFileInputLineEdit.objectName}"
 
     def _onDirSelected(self, dirpath):
         self.onDirSelected(dirpath)

@@ -30,17 +30,26 @@ class InspectorWatershed(Workstep):
         logic = SegmentInspectorLogic(results_queue=queue)
 
         def run_watershed(node):
+            def get_label_index(node):
+                segmentation = node.GetSegmentation()
+
+                for i in range(segmentation.GetNumberOfSegments()):
+                    if segmentation.GetNthSegment(i).GetLabelValue() == 1:
+                        return i
+                raise ValueError("Could not find an appropriate segment to be used as input.")
+
             master_volume = getSourceVolume(node) if isinstance(node, slicer.vtkMRMLSegmentationNode) else node
             if master_volume is None:
                 raise RuntimeError(f"No master volume found for segmentation node {node.GetName()}")
 
             logic.runSelectedMethod(
                 node,
-                segments=None,
+                segments=[get_label_index(node)],
                 outputPrefix=node.GetName() + "_{type}",
                 referenceNode=master_volume,
                 soiNode=None,
                 params=self.params,
+                products=["all"],
                 wait=True,
             )
             slicer.app.processEvents()

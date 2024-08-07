@@ -303,6 +303,12 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
     def onCancelButtonClicked(self):
         self.logic.cancel()
 
+    def cleanup(self):
+        super().cleanup()
+        self.logic.filteringStarted.disconnect()
+        self.logic.filteringStopped.disconnect()
+        self.logic.filteringCompleted.disconnect()
+
 
 class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
     filteringStarted = qt.Signal()

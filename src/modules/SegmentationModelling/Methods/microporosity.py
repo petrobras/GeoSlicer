@@ -97,6 +97,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
 
         # Define parameters
         common_params = {
+            "parent": self,
             "referenceNodeId": procrRefNode.GetID(),
             "labelMapNodeId": procLabelsNode.GetID(),
             "outputPrefix": outputPrefix,
@@ -426,13 +427,14 @@ class MicroPorosityLogic(qt.QObject):
 
     def __init__(
         self,
+        parent,
         referenceNodeId,
         labelMapNodeId,
         outputPrefix,
         params,
         currentDir,
     ):
-        super().__init__()
+        super().__init__(parent)
 
         self.__referenceNodeId = referenceNodeId
         self.__labelMapNodeId = labelMapNodeId

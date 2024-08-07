@@ -82,8 +82,8 @@ class LabelMapEditor(LTracePlugin):
 # LabelMapEditorWidget
 #
 class LabelMapEditorWidget(LTracePluginWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.cliNode = None
         self.markup = None
         self.edition_labelmap = None
@@ -654,7 +654,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         array = slicer.util.arrayFromVolume(volume_node)
         bbox = ndimage.find_objects(array)[label - 1]
         label_array = array[bbox] == label
-        dt = np.sqrt(pyedt.edt(label_array[0, :, :], force_method="cpu", closed_border=True))
+        dt = pyedt.edt(label_array[0, :, :], force_method="cpu", closed_border=True)
         peaks = find_peaks(dt=dt)
         peaks = reduce_peaks(peaks)
         peaks = trim_saddle_points(peaks=peaks, dt=dt)
@@ -963,7 +963,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
 
                 if slicer_is_in_developer_mode() and self.__in_debug_mode:
                     cv2.imwrite(os.path.join(root, "dt_2.png"), dt.transpose())
-                dt = np.sqrt(pyedt.edt(dt, force_method="cpu", closed_border=True))
+                dt = pyedt.edt(dt, force_method="cpu", closed_border=True)
                 if slicer_is_in_developer_mode() and self.__in_debug_mode:
                     cv2.imwrite(os.path.join(root, "dt_3.png"), dt.transpose())
                 dt[0, point[1], point[0]] = 1

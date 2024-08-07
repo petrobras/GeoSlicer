@@ -104,7 +104,7 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
                 "reference": "Reference",
             },
         )
-        self.movingNodeInputWidget.onMainSelected = self.movingNodeChanged
+        self.movingNodeInputWidget.onMainSelectedSignal.connect(self.movingNodeChanged)
         inputFormLayout.addRow(self.movingNodeInputWidget)
         reset_style_on_valid_node(self.movingNodeInputWidget.mainInput)
         self.movingNodeInputWidget.segmentSelectionChanged.connect(

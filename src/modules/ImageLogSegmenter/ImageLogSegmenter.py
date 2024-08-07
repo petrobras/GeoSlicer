@@ -39,9 +39,9 @@ class ImageLogSegmenterWidget(LTracePluginWidget):
         formLayout = qt.QFormLayout(frame)
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        customizedSegmentEditorWidget = slicer.modules.customizedsegmenteditor.createNewWidgetRepresentation()
-        customizedSegmentEditorWidget.self().selectParameterNodeByTag(ImageLogSegmenter.SETTING_KEY)
-        self.segmentEditorWidget = customizedSegmentEditorWidget.self().editor
+        self.customizedSegmentEditorWidget = slicer.modules.customizedsegmenteditor.createNewWidgetRepresentation()
+        self.customizedSegmentEditorWidget.self().selectParameterNodeByTag(ImageLogSegmenter.SETTING_KEY)
+        self.segmentEditorWidget = self.customizedSegmentEditorWidget.self().editor
         self.configureEffects()
         self.segmentEditorWidget.unorderedEffectsVisible = False
         self.segmentEditorWidget.setAutoShowSourceVolumeNode(False)
@@ -53,13 +53,26 @@ class ImageLogSegmenterWidget(LTracePluginWidget):
 
         self.layout.addStretch()
 
+        self.lastSegUpdate = None
+
     def segmentationNodeOrSourceVolumeNodeChanged(self):
-        if slicer.util.selectedModule() == "ImageLogEnv":
-            segmentationNode = self.segmentEditorWidget.segmentationNode()
-            sourceVolumeNode = self.segmentEditorWidget.sourceVolumeNode()
-            if segmentationNode is not None:
-                segmentationNode.SetAttribute("ImageLogSegmentation", "True")
-            self.logic.imageLogDataLogic.segmentationNodeOrSourceVolumeNodeChanged(segmentationNode, sourceVolumeNode)
+        if not slicer.util.selectedModule() == "ImageLogEnv":
+            return
+
+        segmentationNode = self.segmentEditorWidget.segmentationNode()
+        sourceVolumeNode = self.segmentEditorWidget.sourceVolumeNode()
+
+        # Deduplicate calls to this method when both are updated at once
+        segId = segmentationNode.GetID() if segmentationNode is not None else None
+        sourceId = sourceVolumeNode.GetID() if sourceVolumeNode is not None else None
+        params = segId, sourceId
+        if params == self.lastSegUpdate:
+            return
+        self.lastSegUpdate = params
+
+        if segmentationNode is not None:
+            segmentationNode.SetAttribute("ImageLogSegmentation", "True")
+        self.logic.imageLogDataLogic.segmentationNodeOrSourceVolumeNodeChanged(segmentationNode, sourceVolumeNode)
 
     def onSourceVolumeNodeChanged(self, node):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
@@ -104,6 +117,10 @@ class ImageLogSegmenterWidget(LTracePluginWidget):
     def exit(self):
         # Leaving the module sets the active effect to "None"
         self.segmentEditorWidget.setActiveEffectByName("None")
+
+    def cleanup(self):
+        super().cleanup()
+        self.customizedSegmentEditorWidget.self().cleanup()
 
 
 class ImageLogSegmenterLogic(LTracePluginLogic):

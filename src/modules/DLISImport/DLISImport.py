@@ -149,8 +149,8 @@ class DLISImportLogic(LTracePluginLogic):
 
 
 class DLISImportWidget(LTracePluginWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.logic = DLISImportLogic()
 
     def setup(self):
@@ -173,9 +173,6 @@ class DLISImportWidget(LTracePluginWidget):
 
             self.reload_last_button.setEnabled(self._get_last_load_options() is not None)
             self.layout.addWidget(self.reload_last_button)
-
-    def cleanup(self):
-        pass
 
     def _on_load_clicked(self, mnemonic_and_files):
         well_diameter = float(self.dlis_widget.wellDiameter.text) * 25.4  # inches to mm

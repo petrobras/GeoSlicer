@@ -3,6 +3,7 @@ import os
 from collections import namedtuple
 from pathlib import Path
 from threading import Lock
+import re
 
 import ctk
 import cv2
@@ -642,8 +643,11 @@ class ExportLogic(LTracePluginLogic):
             csvRows.append(",".join(str(s) for s in csvRow))
 
         path = rootPath / nodePath
+        adequatedNodeName = re.sub(
+            r"[\\/*.<>ç?:]", "_", node.GetName()
+        )  # avoiding characters not suitable for file name
         path.mkdir(parents=True, exist_ok=True)
-        with open(str(path / Path(node.GetName() + ".csv")), mode="w", newline="") as csvFile:
+        with open(str(path / Path(adequatedNodeName + ".csv")), mode="w", newline="") as csvFile:
             writer = csv.writer(csvFile, delimiter="\n")
             writer.writerow(csvRows)
 

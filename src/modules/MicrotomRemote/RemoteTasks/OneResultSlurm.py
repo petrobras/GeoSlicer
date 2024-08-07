@@ -14,6 +14,17 @@ import microtom
 
 from ltrace.readers.microtom.utils import parse_command_stdout, node_to_mct_format
 
+import slicer
+
+
+def truncate_relative_path_on(dirname: str, path: Path):
+    relindex = 0
+    for i, part in enumerate(path.parts):
+        if part == dirname:
+            relindex = i + 1
+
+    return Path(*path.parts[relindex:])
+
 
 class OneResultSlurmHandler:
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
@@ -88,7 +99,7 @@ class OneResultSlurmHandler:
             f"job_id = {jobid}",
             f"final_results = {deploy_path}/atena_{jobid}/atena_{jobid}.nc",
         ]
-        print("output ->", output)
+
         return output
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
@@ -219,7 +230,7 @@ class OneResultSlurmHandler:
             except RuntimeError as e:
                 self.retries += 1
 
-                if self.retries > self.MAX_RETRIES:
+                if self.retries < self.MAX_RETRIES:
                     caller.set_state(
                         uid,
                         "PENDING",
@@ -229,6 +240,15 @@ class OneResultSlurmHandler:
                         traceback=repr(e),
                     )
                     caller.schedule(uid, "PROGRESS")
+                else:
+                    caller.set_state(
+                        uid,
+                        "FAILED",
+                        0,
+                        message="Failed to get job status. Check yout connection or account authorization.",
+                        end_time=tsnow,
+                        traceback=repr(e),
+                    )
 
                 return
 
@@ -263,14 +283,23 @@ class OneResultSlurmHandler:
 
                 # TODO change condition to subprocess is a spawner check
                 if self.simulator == "krel":
-                    self.subprocess_results(self.local_dir / uid / self.simulator)
+                    results = self.subprocess_results(self.local_dir / uid / self.simulator)
                 else:
                     job = caller.jobs[uid]
                     sim_info = job.details
+                    results = []
                     for result_location in sim_info["final_results"]:
                         remote_path = PurePosixPath(result_location)
-                        local_file: Path = self.local_dir / uid / remote_path.name
-                        self.results.append(local_file)
+                        target = truncate_relative_path_on(uid, remote_path)
+                        local_file: Path = self.local_dir / uid / target
+                        results.append(local_file)
+
+                self.results = []
+                seen = set([])
+                for r in results:
+                    if r not in seen:
+                        self.results.append(r)
+                        seen.add(r)
 
                 if self.confirm_results(strict=self.is_strict):
                     """job finished and got out of queue"""
@@ -346,10 +375,14 @@ class OneResultSlurmHandler:
             "results": self.results,
             **self.post_args,
         }
-
+        print(sim_info)
         self.collector(sim_info)
 
-        self.cleanup(caller, uid, client)
+        slicer.util.selectModule("MicroCTEnv")
+        slicer.modules.MicroCTEnvWidget.mainTab.setCurrentIndex(0)
+        slicer.modules.MicroCTEnvWidget.mainTab.widget(0).setCurrentIndex(0)
+
+        # self.cleanup(caller, uid, client)
 
     def confirm_results(self, strict=True):
         done = []
@@ -361,19 +394,22 @@ class OneResultSlurmHandler:
     def subprocess_results(self, workdir: Path):
         import os
 
+        results = []
         for sim_dir in workdir.iterdir():
             try:
                 k_table = sim_dir / "permeability.csv"
                 last_blue = sorted(sim_dir.glob("blue*.vtk"), key=os.path.getmtime, reverse=True)[0]
                 last_red = sorted(sim_dir.glob("red*.vtk"), key=os.path.getmtime, reverse=True)[0]
 
-                self.results.append(k_table)
-                self.results.append(last_blue)
-                self.results.append(last_red)
+                results.append(k_table)
+                results.append(last_blue)
+                results.append(last_red)
             except IndexError:
                 pass  # no files found
             except Exception as e:
                 logging.error(e)
+
+        return results
 
     def get_slurm_log(self, uid):
         content = {}

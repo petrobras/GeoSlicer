@@ -1,5 +1,4 @@
 import os
-import logging
 from pathlib import Path
 
 import PySide2 as pyside
@@ -482,8 +481,8 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                     krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim=simulation
                 )
             except Exception as e:
-                logging.info(f" Error while predicting production of {cycle2TableNode.GetName()} :")
-                logging.info(f"\t {e}")
+                print(f" Error while predicting production of {cycle2TableNode.GetName()} :")
+                print("\t", e)
                 return
 
             # Results tables
@@ -522,8 +521,8 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                         krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim=i
                     )
                 except Exception as e:
-                    logging.info(f" Error while predicting production of {cycle2TableNode.GetName()} :")
-                    logging.info(f"\t {e}")
+                    print(f" Error while predicting production of {cycle2TableNode.GetName()} :")
+                    print("\t", e)
                 else:
                     NpD_at_1_tD.append(details["NpD_at_1_tD"])
                     x_points, y_points = remove_overlapping_points(production["tD"], production["NpD"])
@@ -563,10 +562,30 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
 
         return production_table
 
+    def gaussian_filter1d_w_nans(self, U, smoothing):
+        """
+        Using this function instead of ndimage.gaussian_filter1d, to avoid nan values in the gaussian mean.
+
+        :param U: np.array with values.
+        :param smoothing: Smoothing range.
+
+        :return: np.array with smoothed values inside range.
+        """
+
+        V = U.copy()
+        V[np.isnan(U)] = 0
+        VV = ndimage.gaussian_filter1d(V, smoothing)
+
+        W = 0 * U.copy() + 1
+        W[np.isnan(U)] = 0
+        WW = ndimage.gaussian_filter1d(W, smoothing)
+
+        return VV / WW
+
     def calculate_production_preview(self, krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim):
         sim = "_" + str(sim)
-        krel_dict["Kro_blur" + sim] = ndimage.gaussian_filter1d(krel_dict["Kro" + sim], krel_smoothing)
-        krel_dict["Krw_blur" + sim] = ndimage.gaussian_filter1d(krel_dict["Krw" + sim], krel_smoothing)
+        krel_dict["Kro_blur" + sim] = self.gaussian_filter1d_w_nans(krel_dict["Kro" + sim], krel_smoothing)
+        krel_dict["Krw_blur" + sim] = self.gaussian_filter1d_w_nans(krel_dict["Krw" + sim], krel_smoothing)
         krel_dict["fw" + sim] = 1 / (
             1 + (water_viscosity * krel_dict["Kro_blur" + sim]) / (oil_viscosity * krel_dict["Krw_blur" + sim])
         )
@@ -616,7 +635,7 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         try:
             middle_logistic_curve = float(sym.solve(sym.Eq(second_derivative, 0), symbols["x"])[0].subs(vals))
         except TypeError as e:
-            logging.info(f"Error found while searching for middle of logistic curve: {e}")
+            print(f"Error found while searching for middle of logistic curve: ", e)
             middle_logistic_curve = krel_dict["Sw"].min()
 
         no_shock = False
@@ -625,7 +644,7 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                 lambda x: fitted_logistic_diff(x) - fw_delta(x), a=middle_logistic_curve * 0.99, b=sw_max
             )
         except ValueError as e:
-            logging.info(f"Found error while searching for shock: {e}")
+            print(f"Found error while searching for shock: ", e)
             gradient_at_swi = fitted_logistic_diff(swi)
             if gradient_at_swi >= 0.5:
                 sws_solution = swi
@@ -690,7 +709,7 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                     fill_value="extrapolate",
                 )
             except ValueError as e:
-                logging.info(f"found error while interpolating NtD: {e}")
+                print(f"found error while interpolating NtD: ", e)
                 NtD_function = lambda x: sw_max - swi
 
         details = {

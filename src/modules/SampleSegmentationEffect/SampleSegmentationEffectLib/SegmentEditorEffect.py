@@ -1,4 +1,7 @@
+import slicer
+import logging
 import numpy as np
+
 from SegmentEditorEffects import *
 from SegmentStatisticsPlugins import *
 from ltrace.slicer.helpers import hide_masking_widget
@@ -130,6 +133,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.scriptedEffect.addOptionsWidget(self.optionsFrame)
 
     def applySampleSegmentation(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply. The selected node is not valid.")
+            return
+
         self.thresholdSlider.blockSignals(True)
         self.thresholdSlider.setRange(0, 0)
         self.thresholdSlider.blockSignals(False)
@@ -151,6 +158,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         resample_segmentation(segmentationNode, source_node=sourceVolumeNode)
 
     def calculateVolume(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Failed to calculate the volume. The selected node is not valid.")
+            return
+
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
 
         visibleSegmentIds = vtk.vtkStringArray()
@@ -198,6 +209,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.segmentEditorWidget.setActiveEffectByName("None")
 
     def initialize(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to initialize the effect. The selected node is not valid.")
+            return
+
         self.scriptedEffect.saveStateForUndo()
 
         sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()

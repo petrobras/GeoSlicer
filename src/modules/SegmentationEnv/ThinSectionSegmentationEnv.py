@@ -10,6 +10,7 @@ class ThinSectionSegmentationEnv(SegmentationEnv):
 
 
 class ThinSectionSegmentationEnvWidget(SegmentationEnvWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.hasPetrography = True
+        self.isThinSection = True

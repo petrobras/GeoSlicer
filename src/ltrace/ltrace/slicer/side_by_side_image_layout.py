@@ -30,7 +30,7 @@ class SideBySideImageManager:
                 allowedInputNodes=["vtkMRMLSegmentationNode"],
             )
             customSegmentSelector.setObjectName("CustomSegmentSelector")
-            customSegmentSelector.onMainSelected = partial(self.onSegmentationChanged, i)
+            customSegmentSelector.onMainSelectedSignal.connect(partial(self.onSegmentationChanged, i))
 
             customSegmentSelector.segmentSelectionChanged.connect(
                 lambda segments, i=i: self.onSegmentSelectionChanged(i, segments)
@@ -141,3 +141,55 @@ class SideBySideImageManager:
         for segmentIndex in selectedSegments:
             segmentId = segmentation.GetNthSegmentID(segmentIndex)
             displayNode.SetSegmentVisibility(segmentId, True)
+
+
+POSITION_FLAG = slicer.vtkMRMLSliceNode.SliceToRASFlag
+ZOOM_FLAG = slicer.vtkMRMLSliceNode.FieldOfViewFlag
+FIT_VOLUME_FLAG = slicer.vtkMRMLSliceNode.ResetFieldOfViewFlag
+SLICE_OFFSET_FLAG = slicer.vtkMRMLSliceNode.XYZOriginFlag
+
+FLAG_LIST = [POSITION_FLAG, ZOOM_FLAG, FIT_VOLUME_FLAG, SLICE_OFFSET_FLAG]
+ALL_FLAGS = POSITION_FLAG | ZOOM_FLAG | SLICE_OFFSET_FLAG
+
+
+def _sync(sliceNode):
+    """Sync position, zoom, slice offset of other slice views with this slice view."""
+    sliceNode.SetInteracting(1)
+    sliceNode.SetInteractionFlags(ALL_FLAGS)
+    sliceNode.Modified()
+    sliceNode.SetInteractionFlags(0)
+    sliceNode.SetInteracting(0)
+
+
+def _onSliceNodeModified(caller, event):
+    interaction = caller.GetInteractionFlags()
+    if interaction in FLAG_LIST and caller.GetInteracting():
+        _sync(caller)
+
+
+def _onCompositeNodeModified(sliceNode, caller, event):
+    if caller.GetInteracting():
+        return
+    if caller.GetInteractionFlags():
+        return
+    if not caller.GetLinkedControl():
+        return
+    _sync(sliceNode)
+
+
+def setupViews(viewName1, viewName2):
+    sliceWidget1 = slicer.app.layoutManager().sliceWidget(viewName1)
+    sliceWidget2 = slicer.app.layoutManager().sliceWidget(viewName2)
+    sliceNode1 = sliceWidget1.sliceLogic().GetSliceNode()
+    sliceNode2 = sliceWidget2.sliceLogic().GetSliceNode()
+
+    sliceNode1.AddObserver("ModifiedEvent", _onSliceNodeModified)
+    sliceNode2.AddObserver("ModifiedEvent", _onSliceNodeModified)
+
+    composite1 = sliceWidget1.sliceLogic().GetSliceCompositeNode()
+    composite2 = sliceWidget2.sliceLogic().GetSliceCompositeNode()
+
+    composite1.SetInteractionFlagsModifier(0)
+    composite2.SetInteractionFlagsModifier(0)
+
+    composite1.AddObserver("ModifiedEvent", lambda caller, event: _onCompositeNodeModified(sliceNode1, caller, event))

@@ -131,14 +131,27 @@ class ProportionLabelMapVolume(CorrelatedLabelMapVolume):
         if referenceNode is None:
             return
 
+        labelMapVolumeNode = None
         if isinstance(referenceNode, slicer.vtkMRMLSegmentationNode):
             if self._labelMapVolumeNodeId is None:
                 labelMapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
                 self._labelMapVolumeNodeId = labelMapVolumeNode.GetID()
 
-            slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
-                referenceNode, self.labelMapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
-            )
+            seg = referenceNode.GetSegmentation()
+            empty = seg.GetNumberOfSegments() == 0
+
+            if not empty:
+                try:
+                    seg_id = seg.GetNthSegmentID(0)
+                    array = slicer.util.arrayFromSegmentInternalBinaryLabelmap(referenceNode, seg_id)
+                    empty = array.max() <= 0
+                except AttributeError:
+                    empty = True
+
+            if not empty:
+                slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                    referenceNode, self.labelMapVolumeNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+                )
         elif isinstance(referenceNode, slicer.vtkMRMLLabelMapVolumeNode):
             labelMapVolumeNode = slicer.mrmlScene.CopyNode(referenceNode)
             self._labelMapVolumeNodeId = labelMapVolumeNode.GetID()
@@ -151,10 +164,12 @@ class ProportionLabelMapVolume(CorrelatedLabelMapVolume):
         if self._name.replace(" ", ""):
             labelMapVolumeNode.SetName(self._name)
 
+        labelMapVolumeNode.Modified()
+
         try:
-            dataArray = np.array(slicer.util.arrayFromVolume(labelMapVolumeNode), copy=True, dtype=np.uint8)
+            array = slicer.util.arrayFromVolume(labelMapVolumeNode)
+            dataArray = np.array(array, copy=True, dtype=np.uint8)
             proportionDataArray = np.sort(dataArray, axis=2)
             slicer.util.updateVolumeFromArray(labelMapVolumeNode, proportionDataArray)
-        except:
-            # If there is not data yet to be pulled from the volume
+        except Exception:  # In case where the reference node data is empty:
             pass

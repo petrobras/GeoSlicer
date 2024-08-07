@@ -34,10 +34,8 @@ from ltrace.algorithms.measurements import (
 )
 from ltrace.pore_networks.generalized_network_extractor import generate_pore_network_label_map
 from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-from ltrace.wrappers import sanitize_file_path
 from ltrace.slicer.throat_analysis.throat_analysis import ThroatAnalysis
 from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
-from pathvalidate.argparse import sanitize_filepath_arg
 
 from DeepWatershedLib import deepwatershed
 
@@ -453,28 +451,18 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    parser.add_argument("--labels", type=sanitize_filepath_arg, dest="labelVolume", default=None)
+    parser.add_argument("--labels", type=str, dest="labelVolume", default=None)
     # parser.add_argument('--values', type=str, dest='valuesVolume', default=None)
-    parser.add_argument("--output", type=sanitize_filepath_arg, dest="outputVolume", default=None)
-    parser.add_argument("--report", type=sanitize_filepath_arg, dest="outputReport", default=None)
+    parser.add_argument("--output", type=str, dest="outputVolume", default=None)
+    parser.add_argument("--report", type=str, dest="outputReport", default=None)
     parser.add_argument("--params", type=str)
     parser.add_argument("--products", type=str, default="all")
-    parser.add_argument(
-        "--returnparameterfile", type=sanitize_filepath_arg, help="File destination to store an execution outputs"
-    )
+    parser.add_argument("--returnparameterfile", type=str, help="File destination to store an execution outputs")
     parser.add_argument("--throatOutput", type=str, dest="throatOutputVolume", default=None)
     try:
-        parsedArgs = parser.parse_args()
-        parsedArgs.labelVolume = sanitize_file_path(parsedArgs.labelVolume).as_posix()
-        parsedArgs.outputVolume = sanitize_file_path(parsedArgs.outputVolume).as_posix()
-        parsedArgs.outputReport = sanitize_file_path(parsedArgs.outputReport).as_posix()
-        parsedArgs.returnparameterfile = sanitize_file_path(parsedArgs.returnparameterfile)
-
-        main(parsedArgs)
+        main(parser.parse_args())
     except Exception as e:
-        parsedArgs = parser.parse_args()
-        parsedArgs.returnparameterfile = sanitize_file_path(parsedArgs.returnparameterfile)
-        with open(parsedArgs.returnparameterfile.as_posix(), "w") as returnFile:
+        with open(parser.parse_args().returnparameterfile, "w") as returnFile:
             returnFile.write(f"errors={e}\n")
 
     # Make sure all prints are flushed

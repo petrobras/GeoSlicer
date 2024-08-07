@@ -31,7 +31,7 @@ class ThinSectionLoader(Workstep):
             )
             logic = tsl.ThinSectionLoaderLogic()
             logic.load(params, baseName)
-            yield logic.node
+            yield slicer.mrmlScene.GetNodeByID(logic.nodeId)
 
     def expected_length(self, input_length):
         return len(list(self.files_to_load()))

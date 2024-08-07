@@ -67,6 +67,10 @@ def SegmentInspectorTab():
     return slicer.modules.segmentinspector.createNewWidgetRepresentation()
 
 
+def ThinSectionSegmentInspectorTab():
+    return slicer.modules.thinsectionsegmentinspector.createNewWidgetRepresentation()
+
+
 def LabelMapEditorTab():
     return slicer.modules.labelmapeditor.createNewWidgetRepresentation()
 
@@ -84,6 +88,7 @@ class SegmentationEnvWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
         self.hasModelling = False
         self.hasPetrography = False
+        self.isThinSection = False
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -101,7 +106,10 @@ class SegmentationEnvWidget(LTracePluginWidget):
             self.petrographyWidget = ThinSectionInstanceSegmenterTab()
             self.tabsWidget.addTab(self.petrographyWidget, "Instance")
             self.tabsWidget.addTab(ThinSectionInstanceEditorTab(), "Instance Editor")
-        self.tabsWidget.addTab(SegmentInspectorTab(), "Inspector")
+        if self.isThinSection:
+            self.tabsWidget.addTab(ThinSectionSegmentInspectorTab(), "Inspector")
+        else:
+            self.tabsWidget.addTab(SegmentInspectorTab(), "Inspector")
         self.tabsWidget.addTab(LabelMapEditorTab(), "Label Editor")
         if self.hasModelling:
             self.tabsWidget.addTab(SegmentationModellingTab(), "Modelling")
@@ -111,9 +119,6 @@ class SegmentationEnvWidget(LTracePluginWidget):
 
         self.layout.addWidget(self.tabsWidget)
         self.tabsWidget.tabBarClicked.connect(self.onTabBarClicked)
-
-    def cleanup(self):
-        pass
 
     def enter(self) -> None:
         super().enter()

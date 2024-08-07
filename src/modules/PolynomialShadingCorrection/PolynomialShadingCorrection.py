@@ -23,7 +23,6 @@ from ltrace.slicer.helpers import (
 )
 from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.transforms import clip_to
 from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
 
@@ -507,9 +506,6 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
 
         output_null_value = input_null_value if input_null_value != None else 0
         outputImageArray[inputMaskArray == 0] = output_null_value
-
-        # Converting to uint16
-        outputImageArray = clip_to(outputImageArray, "uint16")
 
         return outputImageArray
 

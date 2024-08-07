@@ -162,6 +162,9 @@ class DrawPipeline:
 
     def _getColor(self):
         color = [0, 0.6, 0.2]
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return color
         # Get color of edited segment
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
@@ -228,6 +231,9 @@ class DrawPipeline:
         return polyData
 
     def addPoint(self, ras):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
         # Add a world space point to the current outline
 
         # Store active slice when first point is added
@@ -294,6 +300,9 @@ class DrawPipeline:
         self.sliceWidget.sliceView().scheduleRender()
 
     def apply(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+
         masterNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()

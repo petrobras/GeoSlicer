@@ -3,11 +3,10 @@ import os
 import re
 import shutil
 
-from commons import sanitize_file_path
+from pathlib import Path
 
 
 def replace_content(path, words_to_replace: dict):
-    path = sanitize_file_path(path)
     with open(path, "r") as f:
         content = f.read()
 
@@ -26,7 +25,7 @@ def get_modules_directory_path():
         )
 
     path_string = match.group(1)
-    return sanitize_file_path(path_string)
+    return Path(path_string)
 
 
 if __name__ == "__main__":
@@ -58,18 +57,18 @@ if __name__ == "__main__":
     modules_dir_path = get_modules_directory_path()
 
     # Create module directory
-    new_module_path = sanitize_file_path(modules_dir_path / "src" / "modules" / name)
+    new_module_path = modules_dir_path / "src" / "modules" / name
     if new_module_path.exists():
         raise RuntimeError(f"Unable to create new module as {name}. A module named {name} already exists!")
 
     # Copy template files to the new module directory
-    module_template_directory = sanitize_file_path(__file__).parent / "resources" / "ModuleTemplate"
+    module_template_directory = Path(__file__).parent / "resources" / "ModuleTemplate"
     shutil.copytree(module_template_directory, new_module_path)
 
     new_module_file_path_list = [
-        sanitize_file_path(root) / file for root, _, files in os.walk(new_module_path.as_posix()) for file in files
+        Path(root) / file for root, _, files in os.walk(new_module_path.as_posix()) for file in files
     ]
-    new_module_dir_path_list = [sanitize_file_path(root) for root, _, _ in os.walk(new_module_path.as_posix())]
+    new_module_dir_path_list = [Path(root) for root, _, _ in os.walk(new_module_path.as_posix())]
 
     if not args.cli:
         # Remove CLI files

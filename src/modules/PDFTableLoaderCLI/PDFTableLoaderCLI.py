@@ -22,8 +22,6 @@ import numpy as np
 import pandas as pd
 
 from ltrace.ocr import parse_pdf
-from ltrace.wrappers import sanitize_file_path
-from pathvalidate.argparse import sanitize_filepath_arg
 
 
 def is_float(value):
@@ -69,7 +67,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    parser.add_argument("--file", type=sanitize_filepath_arg, required=True, help="PDF File")
+    parser.add_argument("--file", type=str, required=True, help="PDF File")
     parser.add_argument("--pages", type=str, default="1-end", help="Pages to extract table")
     parser.add_argument(
         "--columns",
@@ -94,14 +92,14 @@ if __name__ == "__main__":
     # This argument is automatically provided by Slicer channels, just capture it when using argparse
     parser.add_argument(
         "--returnparameterfile",
-        type=sanitize_filepath_arg,
+        type=str,
         default=None,
         help="File destination to store an execution outputs",
     )
 
     args = parser.parse_args()
 
-    filepath = sanitize_file_path(args.file)
+    filepath = Path(args.file)
 
     if not filepath.exists():
         raise ValueError(

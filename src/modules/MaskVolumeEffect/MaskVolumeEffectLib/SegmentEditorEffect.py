@@ -215,6 +215,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         return False
 
     def updateGUIFromMRML(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         self.updatingGUIFromMRML = True
 
         self.binaryMaskFillOutsideEdit.setValue(
@@ -282,6 +286,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         self.updatingGUIFromMRML = False
 
     def updateMRMLFromGUI(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         if self.updatingGUIFromMRML:
             return
         self.scriptedEffect.setParameter("FillValue", self.fillValueEdit.value)
@@ -321,6 +329,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         return inputVolume
 
     def onInputVisibilityButtonClicked(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         inputVolume = self.scriptedEffect.parameterSetNode().GetNodeReference("Mask volume.InputVolume")
         sourceVolume = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
         if inputVolume is None:
@@ -330,18 +342,28 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
             self.updateGUIFromMRML()
 
     def onOutputVisibilityButtonClicked(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
+
         outputVolume = self.scriptedEffect.parameterSetNode().GetNodeReference("Mask volume.OutputVolume")
         if outputVolume:
             slicer.util.setSliceViewerLayers(background=outputVolume)
             self.updateGUIFromMRML()
 
     def onInputVolumeChanged(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
         self.scriptedEffect.parameterSetNode().SetNodeReferenceID(
             "Mask volume.InputVolume", self.inputVolumeSelector.currentNodeID
         )
         self.updateGUIFromMRML()  # node reference changes are not observed, update GUI manually
 
     def onOutputVolumeChanged(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            logging.debug("Segment editor node is not available.")
+            return
         self.scriptedEffect.parameterSetNode().SetNodeReferenceID(
             "Mask volume.OutputVolume", self.outputVolumeSelector.currentNodeID
         )
@@ -351,6 +373,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         self.updateMRMLFromGUI()
 
     def onApply(self):
+        if self.scriptedEffect.parameterSetNode() is None:
+            slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
+            return
+
         inputVolume = self.getInputVolume()
         outputVolume = self.outputVolumeSelector.currentNode()
         operationMode = self.scriptedEffect.parameter("Operation")

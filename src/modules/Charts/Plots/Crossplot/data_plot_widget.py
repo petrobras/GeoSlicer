@@ -11,11 +11,14 @@ PLOT_MINIMUM_HEIGHT = 480
 PLOT_HISTOGRAM_SIZE = 100
 
 
-class DataPlotWidget:
+class DataPlotWidget(pg.QtCore.QObject):
+    toggleLegendSignal = pg.QtCore.Signal()
+
     def __init__(self):
         super().__init__()
 
         self.__legendItem = None
+        self.__embeddedLegendVisibility = True
         self.__currentColorMap = None
         self.__input_data = {}
         self.__xHistogramPlots = list()
@@ -41,6 +44,13 @@ class DataPlotWidget:
         axisItems = {"bottom": axisBottom}
 
         self.__plotItem = self.__graphicsLayoutWidget.addPlot(row=1, col=2, colspan=2, rowspan=2, axisItems=axisItems)
+
+        legendBorderPen = pg.mkPen(QtGui.QColor(0, 0, 0, 255), width=1)
+        legendBackgroundBrush = pg.mkBrush(QtGui.QColor(180, 180, 180, 100))
+        self.__embeddedLegendItem = self.__plotItem.addLegend(brush=legendBackgroundBrush, pen=legendBorderPen)
+        self.__embeddedLegendItem.anchor(itemPos=(1, 0), parentPos=(1, 0), offset=(-10, 10))
+        self.__embeddedLegendItem.setVisible(self.__embeddedLegendVisibility)
+
         self.__plotItem.showGrid(x=True, y=True, alpha=0.8)
         self.__yHistogramPlotItem = self.__graphicsLayoutWidget.addPlot(row=1, col=0, rowspan=2)
         self.__xHistogramPlotItem = self.__graphicsLayoutWidget.addPlot(row=0, col=2, colspan=2)
@@ -66,6 +76,18 @@ class DataPlotWidget:
     @property
     def themes(self):
         return self.__themeNames
+
+    @property
+    def embeddedLegendVisibility(self):
+        return self.__embeddedLegendVisibility
+
+    @embeddedLegendVisibility.setter
+    def embeddedLegendVisibility(self, isVisible):
+        if self.__embeddedLegendVisibility == isVisible:
+            return
+
+        self.__embeddedLegendVisibility = isVisible
+        self.__embeddedLegendItem.setVisible(self.__embeddedLegendVisibility)
 
     def clear_histogram_x(self):
         self.__xHistogramPlotItem.clear()
@@ -101,6 +123,7 @@ class DataPlotWidget:
             size=graphData.style.size,
             pen=pen,
             brush=brush,
+            name=graphData.name,
         )
         self.__plotItem.addItem(spi)
 
@@ -154,6 +177,7 @@ class DataPlotWidget:
             size=graphData.style.size,
             brush=brush,
             pen=pen,
+            name=graphData.name,
         )
 
         self.__plotItem.addItem(spi)
@@ -201,6 +225,7 @@ class DataPlotWidget:
             curve_data.y,
             stepMode=False,
             pen=pg.mkPen(curve_data.style.color, width=curve_data.style.line_size, style=curve_data.style.line_style),
+            name=curve_data.name,
         )
         self.__plotItem.addItem(new_curve)
 
@@ -345,6 +370,8 @@ class DataPlotWidget:
 
     def __overwritePlotMenu(self):
         menu = self.__plotItem.ctrlMenu
+
+        # Remove actions
         actions_to_remove = []
         blackList = ["Transforms", "Downsample", "Average", "Alpha", "Points"]
         for action in menu.actions():
@@ -353,6 +380,13 @@ class DataPlotWidget:
 
         for action in actions_to_remove:
             menu.removeAction(action)
+
+        # Add new actions
+        menu.addAction("Toggle legend", self.__toggleLegend)
+
+    def __toggleLegend(self):
+        self.embeddedLegendVisibility = not self.embeddedLegendVisibility
+        self.toggleLegendSignal.emit()
 
     def __createGradientLegend(self, z, zMin, zMax):
         """Handles pg.GradientLegend and related objects creation based on the color map chosed."""

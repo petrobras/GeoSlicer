@@ -256,7 +256,12 @@ def quantile_transform(
     delta_moved = max_moved - min_moved
 
     if not quantile_values:
-        table = x.ravel()
+        # getting internal sub-volume for not including borders in the transform
+        dy = slice(round(x.shape[1] / 4), round(3 * x.shape[1] / 4))
+        dx = slice(round(x.shape[2] / 4), round(3 * x.shape[2] / 4))
+        dz = slice(round(x.shape[3] / 4), round(3 * x.shape[3] / 4))
+
+        table = x[:, dy, dx, dz].ravel()
         if idx_sample is None:
             idx_sample = np.random.choice(len(table), n_samples)
             idx_sample = np.sort(idx_sample)

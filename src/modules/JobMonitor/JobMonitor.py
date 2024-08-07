@@ -18,7 +18,7 @@ import qt
 import slicer
 import vtk
 
-
+from ltrace.slicer.widget.elided_label import ElidedLabel
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 from ltrace.remote.targets import TargetManager, Host
@@ -63,6 +63,19 @@ def prettydt(dtt: datetime):
     return dtt.strftime(dt_fmt)
 
 
+class ThreeWayQuestion(qt.QMessageBox):
+    def __init__(self, jobname, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle(f"Job {jobname} has finished")
+        self.setText(
+            "It has been more than 15 days since this task finished. Please, delete the data to free up space in the cluster."
+        )
+        self.addButton(qt.QPushButton("Download"), qt.QMessageBox.YesRole)
+        self.addButton(qt.QPushButton("Delete"), qt.QMessageBox.NoRole)
+        self.addButton(qt.QPushButton("Close"), qt.QMessageBox.RejectRole)
+
+
 class JobListWidget(qt.QListWidget):
     def __init__(self, parent=None):
         qt.QListWidget.__init__(self, parent)
@@ -87,20 +100,34 @@ class JobListItemWidget(qt.QWidget):
     def __init__(self, job, parent=None):
         qt.QWidget.__init__(self, parent)
 
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(312)
         self.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
 
-        self.jobNameLabel = qt.QLabel(f"{job.name} (Host: {job.host.name})")
+        self.jobNameLabel = ElidedLabel(f"{job.name} (Host: {job.host.name})")
         self.jobNameLabel.setStyleSheet("QLabel {font-size: 14px; font-weight: bold;}")
+        self.jobNameLabel.setToolTip(f"{job.name} (Host: {job.host.name})")
+        self.jobNameLabel.setMaximumWidth(274)
         progressWidget = self.createProgressInfo()
         infoWidget = self.createInfoWidget(job.status)
 
         layout = qt.QHBoxLayout(self)
-        layout.setContentsMargins(16, 6, 6, 6)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        # self.iconBtn = self.actionButton("erro", onClick=self.showMessageAboutJobAging)
+        self.iconBtn = qt.QPushButton("")
+        self.iconBtn.clicked.connect(self.showMessageAboutJobAging)
+        self.iconBtn.setIcon(qt.QIcon(qt.QPixmap(str(JobMonitor.RES_DIR / "Icons" / "erro.png"))))
+        self.iconBtn.setIconSize(qt.QSize(24, 24))
+        self.iconBtn.setStyleSheet("QPushButton {padding: 2px}")
+        self.iconBtn.visible = False
+
+        iconBlock = qt.QVBoxLayout()
+        iconBlock.setContentsMargins(6, 6, 6, 6)
+        iconBlock.setSpacing(6)
+        iconBlock.addWidget(self.iconBtn)
 
         frontBlock = qt.QVBoxLayout()
         frontBlock.setContentsMargins(0, 0, 0, 0)
-
         frontBlock.addWidget(self.jobNameLabel)
         frontBlock.addWidget(progressWidget)
         frontBlock.addWidget(infoWidget)
@@ -111,12 +138,10 @@ class JobListItemWidget(qt.QWidget):
         menuBlock.setContentsMargins(6, 6, 6, 6)
         menuBlock.setSpacing(6)
         menuBlock.addWidget(self.menuBtn)
-        # errorButton = self.menuIcon("erro")
-        # menuBlock.addWidget(errorButton, hide=False)
-        # errorButton.clicked.connect(self.errorClick)
 
         menuBlock.addStretch(1)
 
+        layout.addLayout(iconBlock)
         layout.addLayout(frontBlock)
         layout.addLayout(menuBlock)
         self.update(job)
@@ -180,6 +205,15 @@ class JobListItemWidget(qt.QWidget):
         cancelAction.triggered.connect(self.onDeleteResults)
         menu.exec_(location)
 
+    def showMessageAboutJobAging(self):
+        dialog = ThreeWayQuestion(self.jobNameLabel.text)
+        clicked = dialog.exec_()
+
+        if clicked == qt.QMessageBox.AcceptRole:
+            self.loadResults.emit(True)
+        elif clicked == qt.QMessageBox.RejectRole:
+            self.onDeleteResults(True)
+
     def showContextMenuOnClick(self):
         self.setContextMenu(location=self.menuBtn.mapToGlobal(self.menuBtn.rect.topRight()))
 
@@ -202,12 +236,15 @@ class JobListItemWidget(qt.QWidget):
             self.allowLoadData = False
             self.allowRestart = False
 
+        if JobMonitorLogic.mustIndicateAging(job):
+            self.iconBtn.visible = True
+
     def onDeleteResults(self, clicked):
         """this function open a dialog to confirm and if yes, emit the signal to delete the results"""
         msg = qt.QMessageBox()
         msg.setIcon(qt.QMessageBox.Warning)
         msg.setText(
-            "Are you sure you want to cancel this job? This action will delete any result associated with this job."
+            "Are you sure you want to cancel/delete this job? This action will delete any result associated with this job on the cluster filesystem."
         )
         msg.setWindowTitle("Warning")
         msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
@@ -382,10 +419,8 @@ class JobMonitorWidget(LTracePluginWidget):
         self.update()
 
     def update(self):
-        print(JobManager.jobs)
         for uid, job in JobManager.jobs.items():
             if uid not in self.listedJobs:
-                print("addded")
                 self.addJob(job)
             else:
                 self.updateJob(job)
@@ -521,7 +556,6 @@ class JobMonitorLogic(LTracePluginLogic):
 
     def eventHandler(self, job, event):
         if event == "JOB_DELETED":
-            print("deletd", job.uid)
             self.widget.clearJob(job)
         else:
             self.widget.updateJob(job)
@@ -534,3 +568,7 @@ class JobMonitorLogic(LTracePluginLogic):
             JobManager.send(job.uid, "COLLECT")
         elif job.status == "IDLE":
             slicer.modules.RemoteServiceInstance.cli.resume(job)
+
+    @staticmethod
+    def mustIndicateAging(job: JobExecutor):
+        return JobExecutor.elapsed_time(job) > datetime.timedelta(days=15)

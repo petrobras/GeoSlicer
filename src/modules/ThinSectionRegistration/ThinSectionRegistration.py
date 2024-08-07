@@ -179,6 +179,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             self.onLayout()
 
     def cleanup(self):
+        super().cleanup()
         self.removeObservers()
         self.landmarksWidget.removeLandmarkObservers()
 

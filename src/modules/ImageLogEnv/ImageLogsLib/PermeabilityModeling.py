@@ -1,16 +1,22 @@
-import os
-
 import ctk
 import markdown2 as markdown
 import qt
 import slicer
+import logging
+import os
+
 from ltrace.slicer import helpers, ui
 from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_node
 from ltrace.slicer.helpers import reset_style_on_valid_text
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
+from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from typing import List
 from vtk.util.numpy_support import vtk_to_numpy
+from ImageLogsLib.KdsOptimizationTableWidget import KdsOptimizationWidget
+
+ERROR_CORRECTION_NODE_NAME = "ERROR_CORRECTION_TABLE_NODE"
 
 
 class PermeabilityModelingWidget(qt.QWidget):
@@ -20,6 +26,7 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.logic = PermeabilityModelingLogic(self)
 
         self.onOutputNodeReady = lambda volumes: None
+        self.__kdsOptimizationTableId = None
 
         layout = qt.QVBoxLayout()
         self.setLayout(layout)
@@ -36,9 +43,11 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.inputSection()
         self.paramsSection()
         self.measurementSection()
+        self.kdsOptimizationSection()
         self.outputSection()
 
         self.applyButton = ui.ButtonWidget(text="Apply", onClick=self.onApply)
+        self.applyButton.objectName = "Apply Button"
 
         self.applyButton.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 4px}")
         self.applyButton.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
@@ -50,6 +59,8 @@ class PermeabilityModelingWidget(qt.QWidget):
         layout.addWidget(self.progressBar)
 
         layout.addStretch(1)
+
+        slicer.mrmlScene.AddObserver(slicer.mrmlScene.EndImportEvent, self.__onLoadProject)
 
     @classmethod
     def help(cls):
@@ -64,6 +75,62 @@ class PermeabilityModelingWidget(qt.QWidget):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         return str(dir_path + "/" + "PermeabilityModeling.md")
 
+    def enter(self) -> None:
+        super().enter()
+        self.__updateKdsOptimizationTable()
+
+    def __onLoadProject(self, *args, **kwargs):
+        try:
+            nodes = slicer.util.getNodes(ERROR_CORRECTION_NODE_NAME, useLists=True)
+            nodes: List = list(nodes.values()) if nodes else []
+        except slicer.util.MRMLNodeNotFoundException:
+            self.__updateKdsOptimizationTable()
+            return
+
+        if len(nodes) <= 0:
+            self.__kdsOptimizationTableId = None
+            self.__updateKdsOptimizationTable()
+            return
+
+        nodes = nodes[0]
+        if len(nodes) == 1:
+            node = nodes[0]
+            self.__kdsOptimizationTableId = node.GetID()
+            self.__updateKdsOptimizationTable()
+            return
+
+        # If there is more than one related node, remove the old one and keep the first one in the list
+        for node in nodes[:]:
+            if node.GetID() != self.__kdsOptimizationTableId:
+                continue
+
+            nodes.remove(node)
+            slicer.mrmlScene.RemoveNode(node)
+            break
+
+        for node in nodes[1:]:
+            slicer.mrmlScene.RemoveNode(node)
+            del node
+
+        self.__kdsOptimizationTableId = nodes[0].GetID()
+        self.__updateKdsOptimizationTable()
+
+    def __updateKdsOptimizationTable(self):
+        if not self.kdsOptimizationWidget:
+            return
+
+        if self.__kdsOptimizationTableId is None:
+            self.kdsOptimizationWidget.setTableData(None)
+            return
+
+        node = helpers.tryGetNode(self.__kdsOptimizationTableId)
+        if node is None:
+            self.kdsOptimizationWidget.setTableData(None)
+            return
+
+        df = dataframeFromTable(node)
+        self.kdsOptimizationWidget.setTableData(df)
+
     def inputSection(self):
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Input Images"
@@ -74,11 +141,15 @@ class PermeabilityModelingWidget(qt.QWidget):
 
         self._porosity_log_input = hierarchyVolumeInput(onChange=lambda i: self.__on_porosity_table_changed(i))
         self._porosity_log_input.setNodeTypes(["vtkMRMLTableNode"])
+        self._porosity_log_input.objectName = "Well Logs Input"
+
         reset_style_on_valid_node(self._porosity_log_input)
         self._porosity_log_combo_box = qt.QComboBox()
+        self._porosity_log_combo_box.objectName = "Porosity Log Combo Box"
         reset_style_on_valid_node(self._porosity_log_combo_box)
         self.segmented_image_input = hierarchyVolumeInput(onChange=self.onSegmentedImageSelected)
         self.segmented_image_input.setNodeTypes(["vtkMRMLSegmentationNode", "vtkMRMLLabelMapVolumeNode"])
+        self.segmented_image_input.objectName = "Segmented Image Input"
         reset_style_on_valid_node(self.segmented_image_input)
 
         parametersFormLayout.addRow("Well logs (.las):", self._porosity_log_input)
@@ -115,10 +186,12 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.modelSelector = qt.QComboBox()
         self.modelSelector.enabled = False
         self.modelSelector.connect("currentIndexChanged(int)", lambda v: self.onNumericChanged("class1", v))
+        self.modelSelector.objectName = "Macro Pore Segment Combo Box"
 
         self.missingSelector = qt.QComboBox()
         self.missingSelector.enabled = False
         self.missingSelector.connect("currentIndexChanged(int)", lambda v: self.onNumericChanged("nullable", v))
+        self.missingSelector.objectName = "Ignored/null Segment Combo Box"
 
         parametersFormLayout.addRow("Macro Pore Segment: ", self.modelSelector)
         parametersFormLayout.addRow("Ignored/null Segment: ", self.missingSelector)
@@ -136,9 +209,39 @@ class PermeabilityModelingWidget(qt.QWidget):
         )
         reset_style_on_valid_node(self._plugs_permeability_table_combo_box)
         self._plugs_permeability_table_combo_box.setNodeTypes(["vtkMRMLTableNode"])
+        self._plugs_permeability_table_combo_box.objectName = "Plugs Measurements Input"
         self._plugs_permeability_log_combo_box = qt.QComboBox()
+        self._plugs_permeability_log_combo_box.objectName = "Plugs Permeability Log Combo Box"
         parametersFormLayout.addRow("Plugs measurements:", self._plugs_permeability_table_combo_box)
         parametersFormLayout.addRow("Plugs Permeability Log:", self._plugs_permeability_log_combo_box)
+
+    def kdsOptimizationSection(self):
+        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersCollapsibleButton.text = "Kds Optimization"
+        self.layout().addWidget(parametersCollapsibleButton)
+
+        # Layout within the dummy collapsible button
+        parametersFormLayout = qt.QVBoxLayout(parametersCollapsibleButton)
+
+        self.kdsOptimizationWidget = KdsOptimizationWidget()
+        self.kdsOptimizationWidget.tableUpdated.connect(self.storeKdsOptimizationTable)
+        self.kdsOptimizationWidget.objectName = "Kds Optimization Widget"
+        self.kdsOptimizationWidget.table.objectName = "Kds Optimization Table"
+        self.kdsOptimizationWidget.addButton.objectName = "Kds Optimization Add Button"
+        self.kdsOptimizationWidget.removeButton.objectName = "Kds Optimization Remove Button"
+        self.kdsOptimizationWidget.weightSpinBox.objectName = "Kds Optimization Weight Spin Box"
+        parametersFormLayout.addWidget(self.kdsOptimizationWidget)
+
+    def storeKdsOptimizationTable(self, df):
+        node = helpers.tryGetNode(ERROR_CORRECTION_NODE_NAME)
+        if node is None:
+            node = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__, ERROR_CORRECTION_NODE_NAME)
+            node.SetHideFromEditors(True)
+
+        node.RemoveAllColumns()
+        dataFrameToTableNode(df, node)
+        node.Modified()
+        self.__kdsOptimizationTableId = node.GetID()
 
     def __on_plugs_permeability_table_changed(self, node_id):
         node = self.subjectHierarchyNode.GetItemDataNode(node_id)
@@ -168,6 +271,7 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.outputNameLineEdit = qt.QLineEdit()
         reset_style_on_valid_text(self.outputNameLineEdit)
         self.outputNameLineEdit.setToolTip("Type the text to be used as the output node's name.")
+        self.outputNameLineEdit.objectName = "Output Name Line Edit"
 
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
@@ -203,6 +307,9 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.logic.model["outputVolumeName"] = self.outputNameLineEdit.text
 
         # Update model parameters
+
+        kdsOptimizationTable = helpers.tryGetNode(ERROR_CORRECTION_NODE_NAME)
+
         porosity_log_scalar_node = helpers.createTemporaryVolumeNode(
             slicer.vtkMRMLScalarVolumeNode, "POROSITY_LOG_TMP_NODE", hidden=True
         )
@@ -255,6 +362,10 @@ class PermeabilityModelingWidget(qt.QWidget):
         self.logic.model["perm_plugs"] = permeability_plug_log_scalar_node.GetID()
         self.logic.model["depth_plugs"] = permeability_plug_depth_scalar_node.GetID()
         self.logic.model["outputVolume"] = permeability_output.GetID()
+        self.logic.model["kdsOptimizationTable"] = (
+            kdsOptimizationTable.GetID() if kdsOptimizationTable is not None else None
+        )
+        self.logic.model["kdsOptimizationWeight"] = self.kdsOptimizationWidget.weightSpinBox.value
 
         self.logic.run()
 
@@ -350,7 +461,7 @@ class PermeabilityModelingLogic(object):
                 self.widget.onCancelled()
                 self.cliNode = None
         except Exception as e:
-            print(f'Exception on Event Handler: {repr(e)} with status "{status}"')
+            logging.info(f'Exception on Event Handler: {repr(e)} with status "{status}"')
             self.widget.onCompletedWithErrors()
 
     def run(self):
@@ -377,4 +488,6 @@ def PermeabilityModelingModel():
         outputVolume=None,
         nullable=0,
         outputVolumeName=None,
+        kdsOptimizationTable=None,
+        kdsOptimizationWeight=None,
     )

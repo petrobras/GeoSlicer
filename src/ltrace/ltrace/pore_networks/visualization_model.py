@@ -1,9 +1,8 @@
-import logging
 import os
 import re
+
 import numpy as np
 import vtk
-
 from vtk.util import numpy_support
 
 
@@ -183,14 +182,10 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005):
             pressures.append(pressure)
             previous_array = new_array
             file = open(filepath, "r")
-            try:
-                result = re.search("<!--[^#]+# Sw: ([\\d\\.]+) Cycle: (\\d+) -->", file.read())
-                data_points.append(float(result.group(1)))
-                data_cycles.append(float(result.group(2)))
-            except Exception as error:
-                logging.debug(f"Error: {error}")
-            finally:
-                file.close()
+            result = re.search("<!--[^#]+# Sw: ([\\d\\.e-]+) Cycle: (\\d+) -->", file.read())
+            data_points.append(float(result.group(1)))
+            data_cycles.append(float(result.group(2)))
+            file.close()
 
     saturation_steps = i
 

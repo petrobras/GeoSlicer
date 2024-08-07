@@ -295,7 +295,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
 
     def loadImage(self, file, p, baseName):
         node = volume_from_image(str(file))
-        self.nodeObserver = NodeObserver(node=node, parent=self)
+        self.nodeObserver = NodeObserver(node=node, parent=None)
         self.nodeObserver.removedSignal.connect(self.onNodeRemoved)
         self.nodeId = node.GetID()
         image_info = {}

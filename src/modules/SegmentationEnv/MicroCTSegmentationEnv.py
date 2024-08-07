@@ -10,6 +10,6 @@ class MicroCTSegmentationEnv(SegmentationEnv):
 
 
 class MicroCTSegmentationEnvWidget(SegmentationEnvWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
         self.hasModelling = True

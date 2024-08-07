@@ -21,6 +21,12 @@ MODEL_IMAGE_LOG_STOPS = "ImageLogStops"
 MODEL_IMAGE_LOG_ISLANDS = "ImageLogIslands"
 MODEL_IMAGE_LOG_SNOW = "ImageLogSnow"
 
+MODEL_TITLES = {
+    "synth_side": "Sidewall Sample Mask RCNN (trained on synthetic data)",
+    "side_1": "Petrobras Sidewall Sample Mask RCNN 1",
+    "side_2": "Petrobras Sidewall Sample Mask RCNN 2",
+}
+
 
 class ImageLogInstanceSegmenter(LTracePlugin):
     SETTING_KEY = "ImageLogInstanceSegmenter"
@@ -65,7 +71,7 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
 
         for model in models:
             modelFile = model.stem
-            modelName = string.capwords(modelFile.replace("_", " "))
+            modelName = MODEL_TITLES[modelFile]
             self.modelComboBox.addItem("Image Log: " + modelName, modelFile)
         self.modelComboBox.addItem("Image Log: Batentes", MODEL_IMAGE_LOG_STOPS)
         self.modelComboBox.addItem("Image Log: Generic (Island)", MODEL_IMAGE_LOG_ISLANDS)
@@ -83,9 +89,12 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
         self.snowModelWidget = SnowWidget(ImageLogInstanceSegmenter, self)
 
         self.stackedWidgets = qt.QStackedWidget()
+        # The order of the widgets must be the same as in the modelComboBox
+        # because the 'updateFormFromModel' method will change the index of the stacked widget
+        # based on the modelComboBox index
+        self.stackedWidgets.addWidget(self.sidewallSampleSyntheticModelWidget)
         self.stackedWidgets.addWidget(self.sidewallSampleV1ModelWidget)
         self.stackedWidgets.addWidget(self.sidewallSampleV2ModelWidget)
-        self.stackedWidgets.addWidget(self.sidewallSampleSyntheticModelWidget)
         self.stackedWidgets.addWidget(self.stopsModelWidget)
         self.stackedWidgets.addWidget(self.islandsModelWidget)
         self.stackedWidgets.addWidget(self.snowModelWidget)

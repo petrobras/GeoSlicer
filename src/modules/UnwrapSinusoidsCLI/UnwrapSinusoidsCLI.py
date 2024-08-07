@@ -10,12 +10,7 @@ import cv2
 import mrml
 import numpy as np
 import slicer.util
-import re
-
-from ltrace.constants import MAX_LOOP_ITERATIONS
 from ltrace.transforms import getRoundedInteger
-from ltrace.wrappers import sanitize_file_path
-from pathvalidate.argparse import sanitize_filepath_arg
 from scipy import optimize
 from scipy.optimize import OptimizeWarning
 from scipy.signal import correlate
@@ -30,8 +25,7 @@ def findUnwrapSinusoids(unwrapArray, sinusoidsStartingPositions):
     phases = manager.list()
     pool = Pool(max(cpu_count() - 2, 1))
     parameters = []
-    iterations = min(len(sinusoidsStartingPositions), MAX_LOOP_ITERATIONS)
-    for i in range(0, iterations):
+    for i in range(len(sinusoidsStartingPositions)):
         parameters.append((treatedUnwrapImage, sinusoidsStartingPositions[i], width, height, sinusoids, phases))
     pool.map(findUnwrapSinusoid, parameters)
     sinusoids = list(sinusoids)
@@ -117,27 +111,23 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("volume", type=sanitize_filepath_arg)
+    parser.add_argument("volume", type=str)
     parser.add_argument("sinusoidsStartingPositions", type=str)
-    parser.add_argument("unwrapSinusoidsDataFile", type=sanitize_filepath_arg)
+    parser.add_argument("unwrapSinusoidsDataFile", type=str)
     args = parser.parse_args()
 
-    volumePath = sanitize_file_path(args.volume)
     # Loading the volume nrrd file from disk
     storageNode = slicer.vtkMRMLNRRDStorageNode()
-    storageNode.SetFileName(volumePath.as_posix())
+    storageNode.SetFileName(args.volume)
     volume = mrml.vtkMRMLScalarVolumeNode()
     storageNode.ReadData(volume)
 
     # Retrieving the sinusoids suggested starting points
-    sinusoidsStartingPositions = args.sinusoidsStartingPositions or ""
-    sinusoidsStartingPositions = re.sub("[^0-9,.]", "", sinusoidsStartingPositions)
     sinusoidsStartingPositions = list(map(int, args.sinusoidsStartingPositions.split(",")))
 
     # Calculating the core geometry (core centers and radii)
     unwrapSinusoidsData = findUnwrapSinusoids(slicer.util.arrayFromVolume(volume), sinusoidsStartingPositions)
 
     # Saving result on disk
-    unwrapSinusoidsDataFilePath = sanitize_file_path(args.unwrapSinusoidsDataFile)
-    with open(unwrapSinusoidsDataFilePath.as_posix(), "wb") as f:
+    with open(Path(args.unwrapSinusoidsDataFile).absolute(), "wb") as f:
         f.write(pickle.dumps(unwrapSinusoidsData))

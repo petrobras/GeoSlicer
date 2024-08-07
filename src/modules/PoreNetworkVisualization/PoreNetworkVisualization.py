@@ -141,6 +141,8 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.thresholdSlider.setToolTip("Set saturation display threshold.")
         self.thresholdSlider.objectName = "Threshold Slider"
         # parametersFormLayout.addRow("Saturation threshold", self.thresholdSlider) # PL-1111
+        self.thresholdSlider.setParent(self.parent)
+        self.thresholdSlider.hide()  # PL-1111
         self.visualization_sliders.append(self.thresholdSlider)
 
         # clip X, Y, Z sliders
@@ -152,6 +154,8 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
             self.sliders[f"clip{axis}Slider"].setStep(0.01)
             self.sliders[f"clip{axis}Slider"].setToolTip(f"Clip {axis} axis for visualization.")
             self.sliders[f"clip{axis}Slider"].objectName = f"{axis} Clip Slider"
+            self.sliders[f"clip{axis}Slider"].setParent(self.parent)
+            self.sliders[f"clip{axis}Slider"].hide()  # PL-1105
             # parametersFormLayout.addRow(f"Clip {axis} axis threshold", self.sliders[f"clip{axis}Slider"])  # PL-1105
             self.visualization_sliders.append(self.sliders[f"clip{axis}Slider"])
 
@@ -290,6 +294,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def cleanup(self):
+        super().cleanup()
         if self.timer:
             self.timer.stop()
             del self.timer

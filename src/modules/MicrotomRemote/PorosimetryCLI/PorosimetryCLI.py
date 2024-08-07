@@ -9,15 +9,12 @@ import json
 
 import vtk, slicer, slicer.util, mrml
 
-import microtom
 import numpy as np
 import pandas as pd
-import re
 
-from ltrace.algorithms.common import FlowSetter
 from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-from ltrace.wrappers import sanitize_file_path, filter_module_name
-from pathvalidate.argparse import sanitize_filepath_arg
+
+import microtom
 
 
 """ CLI Core functionality
@@ -90,8 +87,7 @@ def main(args):
 
     processInfo = {"simulator": args.simulator, "workspace": args.workspace}
 
-    returnParameterFile = sanitize_file_path(args.returnparameterfile)
-    with open(returnParameterFile.as_posix(), "w") as returnFile:
+    with open(args.returnparameterfile, "w") as returnFile:
         returnFile.write("porosimetry=" + json.dumps(processInfo) + "\n")
 
     progressUpdate(value=100 / 100.0)
@@ -101,38 +97,19 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    parser.add_argument(
-        "--master", type=sanitize_filepath_arg, dest="inputVolume", required=True, help="Intensity Input (3d) Values"
-    )
-    parser.add_argument(
-        "--output",
-        type=sanitize_filepath_arg,
-        dest="outputVolume",
-        default=None,
-        help="PSD Output labelmap (3d) Values",
-    )
+    parser.add_argument("--master", type=str, dest="inputVolume", required=True, help="Intensity Input (3d) Values")
+    parser.add_argument("--output", type=str, dest="outputVolume", default=None, help="PSD Output labelmap (3d) Values")
     parser.add_argument("--psdaxis", type=str, dest="psdAxis", default=None, help="PSD Output Axis")
-    parser.add_argument("--outputdir", type=sanitize_filepath_arg, required=True, help="Output location to save")
+    parser.add_argument("--outputdir", type=str, required=True, help="Output location to save")
     parser.add_argument("--params", type=str, default=None, help="Simulator configuration")
     parser.add_argument("--simulator", type=str, required=True, help="Simulator to be executed")
     parser.add_argument("--workspace", type=str, required=True, help="Workspace to run")
     # This argument is automatically provided by Slicer channels, just capture it when using argparse
     parser.add_argument(
-        "--returnparameterfile",
-        type=sanitize_filepath_arg,
-        default=None,
-        help="File destination to store an execution outputs",
+        "--returnparameterfile", type=str, default=None, help="File destination to store an execution outputs"
     )
 
     args = parser.parse_args()
-    args.inputVolume = sanitize_file_path(args.inputVolume)
-    if args.outputVolume:
-        args.outputVolume = sanitize_file_path(args.outputVolume)
-    args.outputdir = sanitize_file_path(args.outputdir)
-    args.simulator = filter_module_name(args.simulator)
-
-    if not hasattr(microtom, args.simulator):
-        raise ValueError(f"Unknown simulator: {args.simulator}")
 
     main(args)
 

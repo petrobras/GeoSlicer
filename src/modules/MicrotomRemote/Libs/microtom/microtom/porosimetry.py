@@ -8,7 +8,6 @@
 # Funções do tipo run_psd estão importando apenas os .raw para análise, quando deveriam importar também .nc.
 # Fazer transformação entre radii X Sw e Pc X Sw de maneira simples.
 
-import logging
 import sys, time, os, datetime
 import numpy as np
 import xarray as xr
@@ -59,71 +58,64 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
     output_path = os.path.dirname(os.path.abspath(output_file_path))
     if not isdir(output_path):
         os.makedirs(output_path)
-    try:
-        output_psd_file = open(output_file_path, "a")
+    output_psd_file = open(output_file_path, "a")
 
-        start = time.time()
-        porosity = bin_data.mean()
-        bin_edt = ndimage.distance_transform_edt(bin_data)
-        max_radius = bin_edt.max()
+    start = time.time()
+    porosity = bin_data.mean()
+    bin_edt = ndimage.distance_transform_edt(bin_data)
+    max_radius = bin_edt.max()
 
-        nw_saturation = np.zeros(3, dtype=np.float32)
-        list_radii = np.array([1, max_radius / 4, max_radius], dtype=np.float32)
+    nw_saturation = np.zeros(3, dtype=np.float32)
+    list_radii = np.array([1, max_radius / 4, max_radius], dtype=np.float32)
+    for i in range(len(list_radii)):
+        nw_image = np.multiply(
+            bin_data,
+            (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]).astype(np.uint8),
+            dtype=np.uint8,
+        )
+        if verbose:
+            output_image = np.maximum(output_image, nw_image * list_radii[i])
+        nw_saturation[i] = nw_image.mean() / porosity
+        print("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]))
+        output_psd_file.write("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]) + "\n")
+        output_psd_file.flush()
+
+    more_radii = True
+    cur_resolution = np.max([nw_saturation[0] - nw_saturation[1], nw_saturation[1] - nw_saturation[2]])
+    while (cur_resolution > sat_resolution) and (more_radii):
+        more_radii = False
+        new_list_radii = list_radii
+        new_nw_saturation = nw_saturation
+        for i in range(len(list_radii) - 1):
+            if np.abs(nw_saturation[i + 1] - nw_saturation[i]) > sat_resolution:
+                if np.abs(list_radii[i + 1] - list_radii[i]) > 2 * rad_resolution:
+                    new_list_radii = np.append(new_list_radii, (list_radii[i + 1] + list_radii[i]) / 2)
+                    new_nw_saturation = np.append(new_nw_saturation, -1)
+                    more_radii = True
+        nw_saturation = new_nw_saturation
+        list_radii = new_list_radii
+
         for i in range(len(list_radii)):
-            nw_image = np.multiply(
-                bin_data,
-                (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]).astype(np.uint8),
-                dtype=np.uint8,
-            )
-            if verbose:
-                output_image = np.maximum(output_image, nw_image * list_radii[i])
-            nw_saturation[i] = nw_image.mean() / porosity
-            print("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]))
-            output_psd_file.write("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]) + "\n")
-            output_psd_file.flush()
+            if nw_saturation[i] < 0:
+                nw_image = np.multiply(
+                    bin_data,
+                    (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]).astype(np.uint8),
+                    dtype=np.uint8,
+                )
+                if verbose:
+                    output_image = np.maximum(output_image, nw_image * list_radii[i])
+                nw_saturation[i] = nw_image.mean() / porosity
+                print("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]))
+                output_psd_file.write("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]) + "\n")
+                output_psd_file.flush()
+        list_radii = np.sort(list_radii)
+        nw_saturation = np.sort(nw_saturation)[::-1]
 
-        more_radii = True
-        cur_resolution = np.max([nw_saturation[0] - nw_saturation[1], nw_saturation[1] - nw_saturation[2]])
-        while (cur_resolution > sat_resolution) and (more_radii):
-            more_radii = False
-            new_list_radii = list_radii
-            new_nw_saturation = nw_saturation
-            for i in range(len(list_radii) - 1):
-                if np.abs(nw_saturation[i + 1] - nw_saturation[i]) > sat_resolution:
-                    if np.abs(list_radii[i + 1] - list_radii[i]) > 2 * rad_resolution:
-                        new_list_radii = np.append(new_list_radii, (list_radii[i + 1] + list_radii[i]) / 2)
-                        new_nw_saturation = np.append(new_nw_saturation, -1)
-                        more_radii = True
-            nw_saturation = new_nw_saturation
-            list_radii = new_list_radii
+        cur_resolution = 0
+        for i in range(len(list_radii) - 1):
+            cur_resolution = np.max([cur_resolution, np.abs(nw_saturation[i + 1] - nw_saturation[i])])
 
-            for i in range(len(list_radii)):
-                if nw_saturation[i] < 0:
-                    nw_image = np.multiply(
-                        bin_data,
-                        (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]).astype(
-                            np.uint8
-                        ),
-                        dtype=np.uint8,
-                    )
-                    if verbose:
-                        output_image = np.maximum(output_image, nw_image * list_radii[i])
-                    nw_saturation[i] = nw_image.mean() / porosity
-                    print("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]))
-                    output_psd_file.write("Radius: " + str(list_radii[i]) + ", Snw: " + str(nw_saturation[i]) + "\n")
-                    output_psd_file.flush()
-            list_radii = np.sort(list_radii)
-            nw_saturation = np.sort(nw_saturation)[::-1]
-
-            cur_resolution = 0
-            for i in range(len(list_radii) - 1):
-                cur_resolution = np.max([cur_resolution, np.abs(nw_saturation[i + 1] - nw_saturation[i])])
-    except Exception as error:
-        logging.debug(f"Error: {error}")
-    finally:
-        if output_psd_file:
-            output_psd_file.close()
-
+    output_psd_file.close()
     print("Time spent in psd: " + str(time.time() - start))
     if verbose:
         if type(input_data) == np.ndarray:
@@ -386,66 +378,58 @@ def drainage_incompressible(
     output_path = os.path.dirname(os.path.abspath(output_file_path))
     if not isdir(output_path):
         os.makedirs(output_path)
+    output_drai_file = open(output_file_path, "a")
 
-    try:
-        output_drai_file = open(output_file_path, "a")
-        start = time.time()
-        porosity = bin_data.mean()
-        bin_edt = ndimage.distance_transform_edt(bin_data)
-        max_radius = bin_edt.max()
+    start = time.time()
+    porosity = bin_data.mean()
+    bin_edt = ndimage.distance_transform_edt(bin_data)
+    max_radius = bin_edt.max()
 
-        list_radii = np.array(
-            [max_radius, (3.0 * max_radius / 4), (max_radius / 2), (max_radius / 4), 1.0], dtype=np.float32
-        )
+    list_radii = np.array(
+        [max_radius, (3.0 * max_radius / 4), (max_radius / 2), (max_radius / 4), 1.0], dtype=np.float32
+    )
 
-        not_found = True
-        while not_found:
-            nw_saturation = []
-            unconnected_phase = np.zeros(bin_data.shape)
+    not_found = True
+    while not_found:
+        nw_saturation = []
+        unconnected_phase = np.zeros(bin_data.shape)
 
+        if verbose:
+            output_image = 0.5 * bin_data.copy()
+
+        for i in range(len(list_radii)):
+            nw_image = connected_image(
+                np.multiply(
+                    bin_data - unconnected_phase,
+                    ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i],
+                ),
+                direction=direction,
+            )
+            unconnected_phase = bin_data - nw_image - connected_image(bin_data - nw_image, direction="z+")
             if verbose:
-                output_image = 0.5 * bin_data.copy()
+                output_image = np.maximum(output_image, nw_image * list_radii[i])
+            nw_saturation.append((nw_image.mean() / porosity))
+            print("Radius: " + str(list_radii[i]) + ", Saturation: " + str(nw_saturation[-1]))
+            output_drai_file.write("Radius: " + str(list_radii[i]) + ", Saturation: " + str(nw_saturation[-1]) + "\n")
+            output_drai_file.flush()
 
-            for i in range(len(list_radii)):
-                nw_image = connected_image(
-                    np.multiply(
-                        bin_data - unconnected_phase,
-                        ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i],
-                    ),
-                    direction=direction,
-                )
-                unconnected_phase = bin_data - nw_image - connected_image(bin_data - nw_image, direction="z+")
-                if verbose:
-                    output_image = np.maximum(output_image, nw_image * list_radii[i])
-                nw_saturation.append((nw_image.mean() / porosity))
-                print("Radius: " + str(list_radii[i]) + ", Saturation: " + str(nw_saturation[-1]))
-                output_drai_file.write(
-                    "Radius: " + str(list_radii[i]) + ", Saturation: " + str(nw_saturation[-1]) + "\n"
-                )
-                output_drai_file.flush()
+        print("list_radii: " + str(list_radii))
+        print("nw_saturation: " + str(nw_saturation))
+        new_list_radii = list_radii
+        number_of_radii = len(new_list_radii)
+        for i in range(1, len(nw_saturation)):
+            if nw_saturation[i] - nw_saturation[i - 1] > sat_resolution:
+                if list_radii[i - 1] - list_radii[i] > rad_resolution:
+                    new_list_radii = np.append(new_list_radii, list_radii[i] + (list_radii[i - 1] - list_radii[i]) / 3)
+                    new_list_radii = np.append(
+                        new_list_radii, list_radii[i] + 2.0 * (list_radii[i - 1] - list_radii[i]) / 3
+                    )
+        new_list_radii = np.sort(new_list_radii)[::-1]
+        if number_of_radii == len(new_list_radii):
+            not_found = False
+        list_radii = new_list_radii
 
-            print("list_radii: " + str(list_radii))
-            print("nw_saturation: " + str(nw_saturation))
-            new_list_radii = list_radii
-            number_of_radii = len(new_list_radii)
-            for i in range(1, len(nw_saturation)):
-                if nw_saturation[i] - nw_saturation[i - 1] > sat_resolution:
-                    if list_radii[i - 1] - list_radii[i] > rad_resolution:
-                        new_list_radii = np.append(
-                            new_list_radii, list_radii[i] + (list_radii[i - 1] - list_radii[i]) / 3
-                        )
-                        new_list_radii = np.append(
-                            new_list_radii, list_radii[i] + 2.0 * (list_radii[i - 1] - list_radii[i]) / 3
-                        )
-            new_list_radii = np.sort(new_list_radii)[::-1]
-            if number_of_radii == len(new_list_radii):
-                not_found = False
-            list_radii = new_list_radii
-    except Exception as error:
-        logging.debug(f"Error: {error}")
-    finally:
-        if output_drai_file:
-            output_drai_file.close()
+    output_drai_file.close()
 
     print("Time spent in drainage: " + str(time.time() - start))
     if verbose:
@@ -512,76 +496,68 @@ def imbibition_compressible(
     output_path = os.path.dirname(os.path.abspath(output_file_path))
     if not isdir(output_path):
         os.makedirs(output_path)
+    output_imb_file = open(output_file_path, "a")
 
-    try:
-        output_imb_file = open(output_file_path, "a")
+    start = time.time()
+    porosity = bin_data.mean()
+    bin_edt = ndimage.distance_transform_edt(bin_data)
+    max_radius = bin_edt.max()
 
-        start = time.time()
-        porosity = bin_data.mean()
-        bin_edt = ndimage.distance_transform_edt(bin_data)
-        max_radius = bin_edt.max()
-
-        w_saturation = np.zeros(3, dtype=np.float32)
-        list_radii = np.array([1, max_radius / 2.0, max_radius], dtype=np.float32)
-        for i in range(len(list_radii)):
-            w_image = connected_image(
-                np.multiply(
-                    bin_data, 1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i])
-                ),
-                direction=direction,
+    w_saturation = np.zeros(3, dtype=np.float32)
+    list_radii = np.array([1, max_radius / 2.0, max_radius], dtype=np.float32)
+    for i in range(len(list_radii)):
+        w_image = connected_image(
+            np.multiply(bin_data, 1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i])),
+            direction=direction,
+        )
+        if verbose:
+            output_image = np.multiply(w_image, np.minimum(output_image, w_image * list_radii[i])) + np.multiply(
+                (1 - w_image), output_image
             )
-            if verbose:
-                output_image = np.multiply(w_image, np.minimum(output_image, w_image * list_radii[i])) + np.multiply(
-                    (1 - w_image), output_image
+        w_saturation[i] = w_image.mean() / porosity
+        print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]))
+        output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]) + "\n")
+        output_imb_file.flush()
+
+    more_radii = True
+    cur_resolution = np.max([w_saturation[1] - w_saturation[0], w_saturation[2] - w_saturation[1]])
+    while (cur_resolution > sat_resolution) and (more_radii):
+        more_radii = False
+        new_list_radii = list_radii
+        new_w_saturation = w_saturation
+        for i in range(len(list_radii) - 1):
+            if np.abs(w_saturation[i + 1] - w_saturation[i]) > sat_resolution:
+                if np.abs(list_radii[i + 1] - list_radii[i]) > 2 * rad_resolution:
+                    new_list_radii = np.append(new_list_radii, (list_radii[i + 1] + list_radii[i]) / 2)
+                    new_w_saturation = np.append(new_w_saturation, -1)
+                    more_radii = True
+        w_saturation = new_w_saturation
+        list_radii = new_list_radii
+
+        for i in range(len(list_radii)):
+            if w_saturation[i] < 0:
+                w_image = connected_image(
+                    np.multiply(
+                        bin_data, 1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i])
+                    ),
+                    direction=direction,
                 )
-            w_saturation[i] = w_image.mean() / porosity
-            print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]))
-            output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]) + "\n")
-            output_imb_file.flush()
+                if verbose:
+                    output_image = np.multiply(
+                        w_image, np.minimum(output_image, w_image * list_radii[i])
+                    ) + np.multiply(1 - w_image, output_image)
+                w_saturation[i] = w_image.mean() / porosity
+                print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]))
+                output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]) + "\n")
+                output_imb_file.flush()
+        list_radii = np.sort(list_radii)
+        w_saturation = np.sort(w_saturation)
 
-        more_radii = True
-        cur_resolution = np.max([w_saturation[1] - w_saturation[0], w_saturation[2] - w_saturation[1]])
-        while (cur_resolution > sat_resolution) and (more_radii):
-            more_radii = False
-            new_list_radii = list_radii
-            new_w_saturation = w_saturation
-            for i in range(len(list_radii) - 1):
-                if np.abs(w_saturation[i + 1] - w_saturation[i]) > sat_resolution:
-                    if np.abs(list_radii[i + 1] - list_radii[i]) > 2 * rad_resolution:
-                        new_list_radii = np.append(new_list_radii, (list_radii[i + 1] + list_radii[i]) / 2)
-                        new_w_saturation = np.append(new_w_saturation, -1)
-                        more_radii = True
-            w_saturation = new_w_saturation
-            list_radii = new_list_radii
+        cur_resolution = 0
+        for i in range(len(list_radii) - 1):
+            cur_resolution = np.max([cur_resolution, np.abs(w_saturation[i + 1] - w_saturation[i])])
 
-            for i in range(len(list_radii)):
-                if w_saturation[i] < 0:
-                    w_image = connected_image(
-                        np.multiply(
-                            bin_data,
-                            1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]),
-                        ),
-                        direction=direction,
-                    )
-                    if verbose:
-                        output_image = np.multiply(
-                            w_image, np.minimum(output_image, w_image * list_radii[i])
-                        ) + np.multiply(1 - w_image, output_image)
-                    w_saturation[i] = w_image.mean() / porosity
-                    print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]))
-                    output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[i]) + "\n")
-                    output_imb_file.flush()
-            list_radii = np.sort(list_radii)
-            w_saturation = np.sort(w_saturation)
-
-            cur_resolution = 0
-            for i in range(len(list_radii) - 1):
-                cur_resolution = np.max([cur_resolution, np.abs(w_saturation[i + 1] - w_saturation[i])])
-    except Exception as error:
-        logging.debug(f"Error: {error}")
-    finally:
-        if output_imb_file:
-            output_imb_file.close()
+    output_imb_file.close()
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
@@ -645,69 +621,62 @@ def imbibition_incompressible(
     output_path = os.path.dirname(os.path.abspath(output_file_path))
     if not isdir(output_path):
         os.makedirs(output_path)
+    output_imb_file = open(output_file_path, "a")
 
-    try:
-        output_imb_file = open(output_file_path, "a")
-        start = time.time()
-        porosity = bin_data.mean()
-        bin_edt = ndimage.distance_transform_edt(bin_data)
-        max_radius = bin_edt.max()
+    start = time.time()
+    porosity = bin_data.mean()
+    bin_edt = ndimage.distance_transform_edt(bin_data)
+    max_radius = bin_edt.max()
 
-        list_radii = np.array(
-            [1, (max_radius / 4), (max_radius / 2), (3 * max_radius / 4), max_radius], dtype=np.float32
-        )
+    list_radii = np.array([1, (max_radius / 4), (max_radius / 2), (3 * max_radius / 4), max_radius], dtype=np.float32)
 
-        not_found = True
-        while not_found:
-            w_saturation = []
-            unconnected_phase = np.zeros(bin_data.shape)
+    not_found = True
+    while not_found:
+        w_saturation = []
+        unconnected_phase = np.zeros(bin_data.shape)
 
+        if verbose:
+            output_image = np.max(bin_data.shape) * bin_data.copy()
+
+        for i in range(len(list_radii)):
+            w_image = connected_image(
+                np.multiply(
+                    bin_data - unconnected_phase,
+                    1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]),
+                ),
+                direction=direction,
+            )
+            unconnected_phase = bin_data - w_image - connected_image(bin_data - w_image, direction="z+")
             if verbose:
-                output_image = np.max(bin_data.shape) * bin_data.copy()
-
-            for i in range(len(list_radii)):
-                w_image = connected_image(
-                    np.multiply(
-                        bin_data - unconnected_phase,
-                        1 - (ndimage.distance_transform_edt(1 - (bin_edt >= list_radii[i])) < list_radii[i]),
-                    ),
-                    direction=direction,
+                output_image = np.multiply(w_image, np.minimum(output_image, w_image * list_radii[i])) + np.multiply(
+                    (1 - w_image), output_image
                 )
-                unconnected_phase = bin_data - w_image - connected_image(bin_data - w_image, direction="z+")
-                if verbose:
-                    output_image = np.multiply(
-                        w_image, np.minimum(output_image, w_image * list_radii[i])
-                    ) + np.multiply((1 - w_image), output_image)
-                w_saturation.append((w_image.mean() / porosity))
-                print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[-1]))
-                output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[-1]) + "\n")
-                output_imb_file.flush()
+            w_saturation.append((w_image.mean() / porosity))
+            print("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[-1]))
+            output_imb_file.write("Radius: " + str(list_radii[i]) + ", Sw: " + str(w_saturation[-1]) + "\n")
+            output_imb_file.flush()
 
-            print("list_radii: " + str(list_radii))
-            print("Sw: " + str(w_saturation))
-            new_list_radii = list_radii
-            number_of_radii = len(new_list_radii)
-            for i in range(1, len(w_saturation)):
-                if w_saturation[i] - w_saturation[i - 1] > sat_resolution:
-                    if list_radii[i] - list_radii[i - 1] > rad_resolution:
-                        new_list_radii = np.append(
-                            new_list_radii, list_radii[i - 1] + (list_radii[i] - list_radii[i - 1]) / 3
-                        )
-                        new_list_radii = np.append(
-                            new_list_radii, list_radii[i - 1] + 2.0 * (list_radii[i] - list_radii[i - 1]) / 3
-                        )
-            new_list_radii.sort()
-            if number_of_radii == len(new_list_radii):
-                not_found = False
-            list_radii = new_list_radii
+        print("list_radii: " + str(list_radii))
+        print("Sw: " + str(w_saturation))
+        new_list_radii = list_radii
+        number_of_radii = len(new_list_radii)
+        for i in range(1, len(w_saturation)):
+            if w_saturation[i] - w_saturation[i - 1] > sat_resolution:
+                if list_radii[i] - list_radii[i - 1] > rad_resolution:
+                    new_list_radii = np.append(
+                        new_list_radii, list_radii[i - 1] + (list_radii[i] - list_radii[i - 1]) / 3
+                    )
+                    new_list_radii = np.append(
+                        new_list_radii, list_radii[i - 1] + 2.0 * (list_radii[i] - list_radii[i - 1]) / 3
+                    )
+        new_list_radii.sort()
+        if number_of_radii == len(new_list_radii):
+            not_found = False
+        list_radii = new_list_radii
 
-        list_radii = np.sort(list_radii)
-        w_saturation = np.sort(w_saturation)
-    except Exception as error:
-        logging.debug(f"Error: {error}")
-    finally:
-        if output_imb_file:
-            output_imb_file.close()
+    list_radii = np.sort(list_radii)
+    w_saturation = np.sort(w_saturation)
+    output_imb_file.close()
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
@@ -1164,14 +1133,9 @@ def run_generic_psd(
         + sim_type
         + '.sh | egrep -o -e "\\b[0-9]+$"` > job_id;sleep 0.2'
     )
-    try:
-        job_id_file = open("job_id", "r")
-        job_id = int(job_id_file.readline())
-    except ValueError:
-        job_id = -1
-    finally:
-        if job_id_file:
-            job_id_file.close()
+    job_id_file = open("job_id", "r")
+    job_id = int(job_id_file.readline())
+    job_id_file.close()
     print("job_id = " + str(job_id))
     print("work_dir = " + output_path.replace(".", "") + "/" + cluster + "_" + str(job_id))
     print("final_results = " + output_path.replace(".", "") + "/" + cluster + "_" + str(job_id) + ".nc")

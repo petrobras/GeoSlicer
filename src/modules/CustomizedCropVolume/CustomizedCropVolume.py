@@ -9,6 +9,7 @@ import vtk
 
 from ltrace.slicer.helpers import bounds2size, copy_display
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_observer import NodeObserver
 
 try:
     from Test.CustomizedCropVolumeTest import CustomizedCropTest
@@ -38,6 +39,7 @@ class CustomizedCropVolume(LTracePlugin):
 class CustomizedCropVolumeWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+        self.roiObserver = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -143,14 +145,14 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
     def currentNodeChanged(self):
         volume = self.volumeComboBox.currentNode()
 
-        if volume:
+        if volume and volume.GetImageData() is not None:
             dims = volume.GetImageData().GetDimensions()
             for dim, sizeBox in zip(dims, self.sizeBoxes):
                 sizeBox.setRange(0, dim)
+                sizeBox.setValue(dim)
             self.sizeEditWidget.setVisible(True)
         else:
             self.sizeEditWidget.setVisible(False)
-
         self.logic.initializeVolume(volume)
 
     def onCropButtonClicked(self):
@@ -199,14 +201,23 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
 
     def enter(self) -> None:
         super().enter()
+        if self.roiObserver is not None:
+            return
         self.volumeComboBox.setCurrentNode(None)
         self.logic.roi = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLMarkupsROINode.__name__, "Crop ROI")
         self.logic.roi.SetDisplayVisibility(False)
         self.logic.roi.GetDisplayNode().SetFillOpacity(0.5)
-        self.logic.roi.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onRoiModified)
+        self.roiObserver = NodeObserver(node=self.logic.roi, parent=None)
+        self.roiObserver.modifiedSignal.connect(self.onRoiModified)
 
     def exit(self):
         slicer.mrmlScene.RemoveNode(self.logic.roi)
+        if self.roiObserver is None:
+            return
+
+        self.roiObserver.clear()
+        del self.roiObserver
+        self.roiObserver = None
 
     def updateStatus(self, message, progress=None, processEvents=True):
         self.progressBar.show()
@@ -226,6 +237,10 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
         with self.progressMux:
             slicer.app.processEvents()
 
+    def cleanup(self):
+        super().cleanup()
+        self.exit()
+
 
 class Callback(object):
     def __init__(self, on_update=None):
@@ -239,7 +254,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         self.cropVolumeNode = None
 
     def initializeVolume(self, volume):
-        if volume is not None:
+        if volume is not None and self.roi is not None:
             cropVolumeParameters = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLCropVolumeParametersNode.__name__)
             cropVolumeParameters.SetIsotropicResampling(True)
             cropVolumeParameters.SetInputVolumeNodeID(volume.GetID())
@@ -248,7 +263,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
             self.roi.SetDisplayVisibility(True)
             slicer.util.setSliceViewerLayers(foreground=None, background=volume, label=None, fit=True)
             self.cropVolumeNode = cropVolumeParameters
-        else:
+        elif self.roi is not None:
             self.roi.SetDisplayVisibility(False)
 
     def crop(self, volume, ijkSize):

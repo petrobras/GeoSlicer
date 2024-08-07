@@ -11,10 +11,10 @@ import subprocess
 import sys
 import vswhere
 import tarfile
+import traceback
 import zipfile
 
 from pathlib import Path
-from pathvalidate.argparse import sanitize_filepath_arg
 from shutil import ignore_patterns
 from string import Template
 from typing import List
@@ -42,9 +42,6 @@ MODULES_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "modules"
 LTRACE_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "ltrace"
 SUBMODULES_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "submodules"
 LTRACE_PACKAGE_LIB_FOLDER = SLICERLTRACE_REPO_FOLDER / "ltrace"
-
-sys.path.append(THIS_FOLDER.parent.as_posix())  # Workaround to import commons.py module
-from commons import sanitize_file_path, filter_path_string
 
 GREEN_TAG = "\x1b[32;20m"
 RESET_COLOR_TAG = "\x1b[0m"
@@ -77,6 +74,8 @@ with open(REQUIREMENTS_FILE) as file:
                 runResult = subprocess.run([python_interpreter, "-m", "pip", "install", "-r", REQUIREMENTS_FILE])
                 runResult.check_returncode()
                 globals()[import_name] = importlib.import_module(import_name)
+            except Exception as error:
+                logger.info(f"Error: {error}\n{traceback.print_exc()}")
 
 
 def generate_slicer_package(
@@ -101,7 +100,7 @@ def generate_slicer_package(
         output_dir,
         version,
         fast_and_dirty,
-        with_porespy_pyedt=args.with_porespy_pyedt,
+        with_porespy=args.with_porespy,
         development=False,
     )
 
@@ -113,7 +112,7 @@ def deploy_development_environment(
     output_dir,
     fast_and_dirty,
     keep_name,
-    with_porespy_pyedt,
+    with_porespy,
     args,
 ):
     generic_deploy(
@@ -125,7 +124,7 @@ def deploy_development_environment(
         None,
         fast_and_dirty,
         development=True,
-        with_porespy_pyedt=with_porespy_pyedt,
+        with_porespy=with_porespy,
         keep_name=keep_name,
     )
 
@@ -139,7 +138,7 @@ def generic_deploy(
     version,
     fast_and_dirty,
     development,
-    with_porespy_pyedt,
+    with_porespy,
     keep_name=False,
 ):
     public_version = False
@@ -176,9 +175,6 @@ def generic_deploy(
     logger.info("Slicer version " + str(slicer_version))
 
     if not fast_and_dirty:
-        # logger.info("Installing extension dependencies")
-        # install_extension_dependencies(slicer_dir)
-
         logger.info("Uninstalling local packages")
         uninstall_packages(slicer_dir=slicer_dir, package="ltrace")
 
@@ -193,7 +189,14 @@ def generic_deploy(
         # Installing packages from submodules
         for path in find_submodules_setup_directory(SUBMODULES_PACKAGE_FOLDER):
             submodule_name = path.name
-            if not with_porespy_pyedt and submodule_name in ["porespy", "pyedt"] and development:
+            if (
+                not with_porespy
+                and submodule_name
+                in [
+                    "porespy",
+                ]
+                and development
+            ):
                 continue
 
             logger.info(f"Uninstalling current version from submodule '{submodule_name}'")
@@ -254,8 +257,6 @@ def generic_deploy(
             logger.info("Archiving")
             make_archive(args, archive_folder_name, slicer_archive.with_name(version_name))
 
-        logger.info("Done")
-
 
 def remove_unwanted_files(slicer_dir, slicer_version):
     with open(DEPLOY_CONFIG) as f:
@@ -274,7 +275,7 @@ def copy_extensions(slicer_dir, extensions, location, ignore=None):
         current_dir = extensions_dir / location / source_dir.name
 
         if current_dir.exists():
-            shutil.rmtree(current_dir)
+            shutil.rmtree(current_dir, onerror=make_directory_writable)
 
         shutil.copytree(source_dir, current_dir, ignore=ignore)
 
@@ -317,68 +318,40 @@ def extract_archive(slicer_archive, output_dir):
         slicer_archive_stem = slicer_archive_stem[:-4]
     extract_dir = output_dir / slicer_archive_stem
 
-    slicer_archive_str = filter_path_string(slicer_archive.as_posix())
-    output_dir_str = filter_path_string(output_dir.as_posix())
-    shutil.unpack_archive(slicer_archive_str, output_dir_str)
+    shutil.unpack_archive(str(slicer_archive), str(output_dir))
     return extract_dir
 
 
 def find_executable(slicer_dir):
-    files = [entry for entry in sanitize_file_path(slicer_dir).glob("*Slicer*") if entry.is_file()]
+    files = [entry for entry in Path(slicer_dir).glob("*Slicer*") if entry.is_file()]
     if len(files) > 0:
         return files[0]
     return None
 
 
-def install_extension_dependencies(slicer_dir):
-    install_extensions_script = THIS_FOLDER / "install_slicer_extensions.py"
-    slicer_fp = find_executable(slicer_dir)
-
-    if slicer_fp is None:
-        raise ValueError(f"Can't find Slicer or GeoSlicer executable on {slicer_fp}")
-
-    slicer_call = [
-        str(slicer_fp),
-        "--disable-modules",
-        "--python-code",
-        "with open(r'{}') as script:\n".format(install_extensions_script)
-        + "    exec(script.read())\n"
-        + "install_extensions(r'{}')\n".format(DEPLOY_CONFIG)
-        + "exit()",
-    ]
-
-    logger.info("Running: " + " ".join(slicer_call))
-    subprocess.run(slicer_call)
-
-
 def uninstall_packages(slicer_dir: Path, package: str) -> None:
     slicer_python = slicer_dir / "bin" / "PythonSlicer"
-    slicer_python_path_str = filter_path_string(slicer_python.as_posix())
-    subprocess.run([slicer_python_path_str, "-m", "pip", "uninstall", "-y", package], check=True)
+    subprocess.run([str(slicer_python), "-m", "pip", "uninstall", "-y", package], check=True)
 
 
 def install_pip_dependencies(slicer_dir, lib_folder, development=False):
     slicer_python = slicer_dir / "bin" / "PythonSlicer"
-    slicer_python_path_str = filter_path_string(slicer_python.as_posix())
-    lib_folder_str = filter_path_string(lib_folder.as_posix())
-    pip_call = [slicer_python_path_str, "-m", "pip", "install"]
+    pip_call = [str(slicer_python), "-m", "pip", "install"]
     if development:
         pip_call.append("--editable")
-    pip_call.append(lib_folder_str)
+    pip_call.append(str(lib_folder))
 
-    subprocess.run([slicer_python_path_str, "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==59.8.0"])
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==59.8.0"])
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
 
 def install_module_from_folder(slicer_dir, folder, development=False):
     slicer_python = slicer_dir / "bin" / "PythonSlicer"
-    slicer_python_path_str = filter_path_string(slicer_python.as_posix())
-    folder_str = filter_path_string(folder.as_posix())
-    pip_call = [slicer_python_path_str, "-m", "pip", "install"]
+    pip_call = [str(slicer_python), "-m", "pip", "install"]
     if development:
         pip_call.append("--editable")
-    pip_call.append(folder_str)
+    pip_call.append(str(folder))
 
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
@@ -433,9 +406,7 @@ def install_customizer(slicer_dir, modules, extensions, version, dev_environment
 
     repo = git.Repo(path=SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
 
-    plugins_folder_path = sanitize_file_path(get_plugins_dir(slicer_dir))
-    customizer_source_path = plugins_folder_path / "qt-scripted-modules" / "Customizer.py"
-    with open(customizer_source_path, "w") as f:
+    with open(get_plugins_dir(slicer_dir) / "qt-scripted-modules" / "Customizer.py", "w") as f:
         f.write(customizer_source)
 
     json_output = {
@@ -450,7 +421,7 @@ def install_customizer(slicer_dir, modules, extensions, version, dev_environment
         "GEOSLICER_DEV_ENVIRONMENT": repr(dev_environment),
     }
 
-    json_path = plugins_folder_path / "qt-scripted-modules" / "Resources" / "json" / "WelcomeGeoSlicer.json"
+    json_path = get_plugins_dir(slicer_dir) / "qt-scripted-modules" / "Resources" / "json" / "WelcomeGeoSlicer.json"
     with open(json_path, "w") as json_file:
         json.dump(json_output, json_file, indent=4)
 
@@ -459,7 +430,7 @@ def copy_notebooks(slicer_dir, modules_package_folder):
     notebooks_dir = modules_package_folder / "Notebooks"
     target_dir = slicer_dir / "Notebooks"
     if target_dir.exists():
-        shutil.rmtree(target_dir)
+        shutil.rmtree(target_dir, onerror=make_directory_writable)
 
     copy_file_or_tree(notebooks_dir, target_dir, exist_ok=True)
 
@@ -469,7 +440,7 @@ def copy_extra_files(slicer_dir, slicer_version, repo_folder, fast_and_dirty, de
         is_glob = source.endswith("*")
         if is_glob:
             source = source[:-1]
-        source = repo_folder / source
+        source = repo_folder / Path(source)
         target = slicer_dir / target
         if not source.exists():
             raise RuntimeError(f"Required file {source.as_posix()} doesn't exist.")
@@ -515,11 +486,11 @@ def _get_extra_files_to_copy(slicer_version):
             yield source, target
 
 
-def _update_slicer_version_placeholders(source: Path, slicer_version: str, repo_folder: Path):
-    with open(repo_folder / source) as f:
+def _update_slicer_version_placeholders(source, slicer_version, repo_folder):
+    with open(repo_folder / Path(source)) as f:
         newText = f.read()
         newText = Template(newText).substitute(slicer_dir=f"{APP_NAME}-{slicer_version}")
-    with open(repo_folder / source, "w") as f:
+    with open(repo_folder / Path(source), "w") as f:
         f.write(newText)
 
 
@@ -532,7 +503,7 @@ def apply_patches(slicer_dir, slicer_version):
     for patch_folder_name, target_folder, strip_folders in patches:
         patch_folder = THIS_FOLDER / "Patches" / patch_folder_name
         target_folder = Template(target_folder).substitute(slicer_dir=f"{APP_NAME}-{slicer_version}")
-        target_folder = slicer_dir / target_folder
+        target_folder = slicer_dir / Path(target_folder)
         for patch_file in sorted(patch_folder.glob("*.patch")):
             patch_set = patch.fromfile(patch_file)
             patch_set.apply(strip=strip_folders, root=target_folder)
@@ -611,29 +582,33 @@ def copy_file_or_tree(source, target_dir, exist_ok=False):
         shutil.copy2(source, target_dir)
 
 
-def make_archive(args, source_dir, target_file_without_extension):
+def make_archive(args, source_dir: Path, target_file_without_extension: Path) -> Path:
+    if args.generate_public_version:
+        target_file_without_extension = target_file_without_extension.with_name(
+            target_file_without_extension.name + "_public"
+        )
+
     if args.sfx:
         ext = ".exe" if sys.platform == "win32" else ".sfx"
         packager = "7zG" if sys.platform == "win32" else "7z"
         target = target_file_without_extension.parent / f"{target_file_without_extension.name}{ext}"
-        target_str = filter_path_string(target.as_posix())
-        source_dir_str = filter_path_string(source_dir.as_posix())
-        command = [packager, "a", target_str, "-mx5", "-sfx", source_dir_str]
+        command = [packager, "a", target.as_posix(), "-mx5", "-sfx", source_dir.as_posix()]
         subprocess.run(command, shell=False, capture_output=True)
 
     else:
         archive_format = "zip" if sys.platform == "win32" else "gztar"
         result = shutil.make_archive(
-            filter_path_string(target_file_without_extension.name),
+            target_file_without_extension.name,
             archive_format,
             root_dir=source_dir.parent,
             base_dir=source_dir.name,
         )
 
-        result = sanitize_file_path(result)
+        result = Path(result)
         target = target_file_without_extension.with_name(result.name)
         shutil.move(result, target)
 
+    logger.info(f"Compressed file created: {target.as_posix()}")
     return target
 
 
@@ -766,6 +741,7 @@ def remove_closed_source_files():
                 if "submodules" in path.parent.name:
                     repository.git.submodule("deinit", "-f", path.resolve().as_posix())
                     repository.git.rm(path, r=True)
+                    repository.git.add(".gitmodules")
                     git_module_path = SLICERLTRACE_REPO_FOLDER / ".git" / "modules" / path.name
                     remove_directory_recursively(git_module_path)
 
@@ -779,7 +755,7 @@ def remove_module_test_directories():
         if not path.is_dir():
             continue
 
-        shutil.rmtree(path)
+        shutil.rmtree(path, onerror=make_directory_writable)
 
 
 def add_open_source_files():
@@ -820,9 +796,9 @@ def prepare_open_source_environment():
 
     repository = git.Repo(SLICERLTRACE_REPO_FOLDER)
 
-    if repository.git.status("--porcelain"):
+    if status := repository.git.status("--porcelain"):
         raise RuntimeError(
-            "Cancelling process because the current work directory has modified files. Please commit or discard the changes."
+            f"Cancelling process because the current work directory has modified files. Please commit or discard the changes. Status:\n{status}"
         )
 
     try:
@@ -835,20 +811,22 @@ def prepare_open_source_environment():
 
 
 def run(args):
-    if args.archive:
-        slicer_archive = sanitize_file_path(args.archive)
-        output_dir = slicer_archive.parent
-    elif not args.public_commit_only:
-        logger.info("error: the following arguments are required: archive")
-        exit(1)
+    if not args.public_commit_only:
+        if args.archive:
+            slicer_archive = Path(args.archive).resolve().absolute()
+            output_dir = slicer_archive.parent
+        else:
+            logger.info("error: the following arguments are required: archive")
+            exit(1)
 
     # Checking for __init__.py files on ltrace lib dir
     if not args.dev:
         no_init_list = []
         for d in LTRACE_PACKAGE_LIB_FOLDER.rglob("**/"):
-            # Directories with data or assets don't need init files
-            if not any([x in str(d) for x in ["__pycache__", "assets", "Resources", "resources"]]):
-                no_init_list.append(d)
+            if not Path.exists(d / "__init__.py"):
+                # Directories with data or assets don't need init files
+                if not any([x in str(d) for x in ["__pycache__", "assets", "Resources", "resources"]]):
+                    no_init_list.append(d)
 
         if len(no_init_list) > 0:
             raise RuntimeError(
@@ -856,13 +834,10 @@ def run(args):
             )
 
     if args.geoslicer_version and args.dev:
-        raise RuntimeError("Unable to deploy the development version together with production version")
+        raise RuntimeError("Can't deploy the development version together with production version")
 
     if args.no_public_commit and args.public_commit_only:
-        raise RuntimeError("Unable to avoid public commit if you want only to make the public commit.")
-
-    if args.dev and args.public_commit_only:
-        raise RuntimeError("Unable to make the commit to the public repository with the development version.")
+        raise RuntimeError("Can't avoid public commit if you want only to make the public commit.")
 
     if args.dev:
         if args.generate_public_version:
@@ -876,7 +851,7 @@ def run(args):
                 output_dir,
                 fast_and_dirty=args.fast_and_dirty,
                 keep_name=args.keep_name,
-                with_porespy_pyedt=args.with_porespy_pyedt,
+                with_porespy=args.with_porespy,
                 args=args,
             )
         except Exception as error:
@@ -899,6 +874,7 @@ def run(args):
                 logger.info(
                     f"\n{GREEN_TAG}The application's extended version has been deployed in {GREEN_BOLD_TAG}development{RESET_COLOR_TAG}{GREEN_TAG} mode.{RESET_COLOR_TAG}"
                 )
+
     elif args.public_commit_only:
         prepare_open_source_environment()
         commit_to_opensource_repository(args, force=True)
@@ -950,7 +926,6 @@ if __name__ == "__main__":
         "archive",
         help="Geoslicer instalation downloaded from the LTrace repo. Either the .tar file or the extracted folder.",
         nargs="?",
-        type=sanitize_filepath_arg,
     )
     parser.add_argument(
         "--dev",
@@ -994,9 +969,9 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
-        "--with-porespy-pyedt",
+        "--with-porespy",
         action="store_true",
-        help="Install porespy and pyedt as editable local submodules for development",
+        help="Install porespy as editable local submodules for development",
         default=False,
     )
     parser.add_argument(

@@ -10,6 +10,9 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "model type": VALVATNE_BLUNT,
         "simulation type": ONE_ANGLE,
         "rotation angles": 100,
+        "keep_temporary": False,
+        "subres_model_name": "Fixed Radius",
+        "subres_params": {"radius": 0.1},
     }
 
     def __init__(self):
@@ -44,11 +47,22 @@ class OnePhaseSimulationWidget(qt.QFrame):
         layout.addRow(self.mercury_widget)
 
     def getParams(self):
+        subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
+        subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
+            subres_params = {
+                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
+            }
+
         return {
             "model type": self.modelTypeComboBox.currentText,
             "simulation type": self.simulationTypeComboBox.currentText,
             "rotation angles": int(self.rotationAnglesEdit.text),
+            "keep_temporary": False,
             "subresolution function call": self.mercury_widget.getFunction,
+            "subres_model_name": subres_model_name,
+            "subres_params": subres_params,
         }
 
     def onSimulationTypeChanged(self, text):
@@ -59,3 +73,4 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.modelTypeComboBox.setCurrentText(params["model type"])
         self.modelTypeComboBox.setCurrentText(params["simulation type"])
         self.modelTypeComboBox.setCurrentText(params["rotation angles"])
+        self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])

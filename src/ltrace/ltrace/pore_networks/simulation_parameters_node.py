@@ -27,8 +27,10 @@ def parameter_node_to_dict(parameterNode):
     return parameters_dict
 
 
-def dict_to_parameter_node(parameter_dict, node_name, parent_node=None):
-    return dataframe_to_parameter_node(parameters_dict_to_dataframe(parameter_dict), node_name, parent_node)
+def dict_to_parameter_node(parameter_dict, node_name, parent_node=None, update_current_node=False):
+    return dataframe_to_parameter_node(
+        parameters_dict_to_dataframe(parameter_dict), node_name, parent_node, update_current_node
+    )
 
 
 def parameters_dict_to_dataframe(parameter_dict: dict) -> pd.DataFrame:
@@ -53,9 +55,13 @@ def parameters_dict_to_dataframe(parameter_dict: dict) -> pd.DataFrame:
     return df
 
 
-def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None):
+def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None, update_current_node=False):
+    if update_current_node:
+        slicer.mrmlScene.RemoveNode(parent_node)
+        slicer.app.processEvents()
+
     parameterNode = dataFrameToTableNode(input_values_df)
-    newParameterNodeName = slicer.mrmlScene.GenerateUniqueName(node_name)
+    newParameterNodeName = slicer.mrmlScene.GenerateUniqueName(node_name) if not update_current_node else node_name
     parameterNode.SetName(newParameterNodeName)
     subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     if parent_node:

@@ -7,8 +7,6 @@ import slicer
 import slicer.util
 import mrml
 import SimpleITK as sitk
-from pathlib import Path
-from typing import Union, List, Tuple, Callable
 from vtk.util import numpy_support
 
 from ltrace.transforms import clip_to
@@ -61,40 +59,26 @@ def _readVectorFrom(volumeFile):
     return vectorVolumeNode
 
 
-def readFrom(
-    volumeFilePath: Union[str, Path], builder: Callable, storageNode: Callable = slicer.vtkMRMLNRRDStorageNode
-) -> slicer.vtkMRMLNode:
+def readFrom(volumeFile, builder, storageNode=slicer.vtkMRMLNRRDStorageNode):
     """Reads data from a GeoSlicer's VolumeNode to another Volume Node visible to this CLI
     use storageNode accordingly. ex. vtkMRMLNRRDStorageNode for volumes and
     vtkMRMLTableStorageNode for tables. Handles the fact that vtkMRMLNRRDStorageNode cannot
     read vtkMRMLVectorVolumeNode directly.
     """
-    if isinstance(volumeFilePath, Path):
-        volumeFilePath = volumeFilePath.as_posix()
-
     if builder == mrml.vtkMRMLVectorVolumeNode:
-        return _readVectorFrom(volumeFilePath)
+        return _readVectorFrom(volumeFile)
 
     sn = storageNode()
-    sn.SetFileName(volumeFilePath)
+    sn.SetFileName(volumeFile)
     nodeIn = builder()
-    sn.ReadData(nodeIn)  # read data from volumeFilePath into nodeIn
+    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
     return nodeIn
 
 
-def writeDataInto(
-    volumeFilePath: Union[str, Path],
-    dataVoxelArray: np.ndarray,
-    builder: Callable,
-    reference: slicer.vtkMRMLNode = None,
-    spacing: Union[List, Tuple, np.ndarray] = None,
-) -> None:
+def writeDataInto(volumeFile, dataVoxelArray, builder, reference=None, spacing=None):
     """Writes data from CLI's Volume Node into GeoSlicer Volume Node"""
-    if isinstance(volumeFilePath, Path):
-        volumeFilePath = volumeFilePath.as_posix()
-
     sn_out = slicer.vtkMRMLNRRDStorageNode()
-    sn_out.SetFileName(volumeFilePath)
+    sn_out.SetFileName(volumeFile)
     nodeOut = builder()
 
     if reference:
@@ -125,8 +109,5 @@ def writeDataInto(
     sn_out.WriteData(nodeOut)
 
 
-def writeToTable(df, tableFilePath: Union[Path, str], na_rep: str = "") -> None:
-    if isinstance(tableFilePath, Path):
-        tableFilePath = tableFilePath.as_posix()
-
-    df.to_csv(tableFilePath, sep="\t", header=True, index=False, na_rep=na_rep)
+def writeToTable(df, tableID, na_rep=""):
+    df.to_csv(tableID, sep="\t", header=True, index=False, na_rep=na_rep)

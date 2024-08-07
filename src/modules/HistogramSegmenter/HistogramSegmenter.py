@@ -313,9 +313,6 @@ class HistogramSegmenterWidget(LTracePluginWidget):
 
         return buttonsLayout
 
-    def cleanup(self):
-        pass
-
     def updateLoadingInfo(self, text=None):
         if text is None:
             self.loadingInfoLabel.setText("")
@@ -374,7 +371,7 @@ class HistogramSegmenterWidget(LTracePluginWidget):
             setDimensionFrom(getNodeById(self.inputSelector.currentItem()), outputVolumeNode)
             self.applyButton.enabled = True
         except AttributeError as ae:
-            logging.error(f"{repr(ae)}")
+            print(repr(ae))
 
     def onReloadHistogram(self):
         inputVolumeNode = getNodeById(self.inputSelector.currentItem())

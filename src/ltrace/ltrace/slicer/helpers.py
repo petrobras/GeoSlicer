@@ -22,10 +22,16 @@ from ltrace import transforms
 from ltrace.slicer.node_attributes import (
     NodeEnvironment,
     NodeTemporarity,
+    LosslessAttribute,
 )
+from ltrace.wrappers import timeit
+
 from pathlib import Path
 from skimage.segmentation import relabel_sequential
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
+
+from ltrace.slicer import data_utils as dutils
+
 
 """ 
 Type references:
@@ -270,19 +276,19 @@ def getCurrentEnvironment():
 
 
 def in_image_log_environment():
-    return getCurrentEnvironment() == NodeEnvironment.IMAGE_LOG.value
+    return getCurrentEnvironment() == NodeEnvironment.IMAGE_LOG
 
 
 def in_micro_ct_environment():
-    return getCurrentEnvironment() == NodeEnvironment.MICRO_CT.value
+    return getCurrentEnvironment() == NodeEnvironment.MICRO_CT
 
 
 def in_core_environment():
-    return getCurrentEnvironment() == NodeEnvironment.CORE.value
+    return getCurrentEnvironment() == NodeEnvironment.CORE
 
 
 def in_thin_section_environment():
-    return getCurrentEnvironment() == NodeEnvironment.THIN_SECTION.value
+    return getCurrentEnvironment() == NodeEnvironment.THIN_SECTION
 
 
 def moveNodeTo(dirId, node, dirTree=None):
@@ -312,7 +318,7 @@ def createNode(cls, name, environment=None, hidden=True, content=None, display=N
     if environment is not None:
         node.SetAttribute(NodeEnvironment.name(), environment.value)
 
-    if display is None:
+    if display is None and hasattr(node, "CreateDefaultDisplayNodes"):
         node.CreateDefaultDisplayNodes()
     elif display:
         node.SetAndObserveDisplayNodeID(display)
@@ -1488,6 +1494,120 @@ def arrayFromSegmentBinaryLabelmap(segmentationNode, segmentId, referenceVolumeN
     return narray
 
 
+# Copied from ImageLogCSV.py - TODO MUSA-89
+def arrayPartsFromNode(node: slicer.vtkMRMLNode) -> tuple[np.ndarray, np.ndarray]:
+
+    mmToM = 0.001
+    if isinstance(node, slicer.vtkMRMLScalarVolumeNode):
+        values = slicer.util.arrayFromVolume(node).copy().squeeze()
+        if values.ndim != 2:
+            raise ValueError(f"Node has dimension {values.ndim}, expected 2.")
+
+        bounds = [0] * 6
+        node.GetBounds(bounds)
+        ymax = -bounds[4] * mmToM
+        ymin = -bounds[5] * mmToM
+        spacing = node.GetSpacing()[2] * mmToM
+        depthColumn = np.arange(ymin, ymax - spacing / 2, spacing)
+
+        ijkToRas = np.zeros([3, 3])
+        node.GetIJKToRASDirections(ijkToRas)
+        if ijkToRas[0][0] > 0:
+            values = np.flip(values, axis=0)
+        if ijkToRas[1][1] > 0:
+            values = np.flip(values, axis=1)
+        if ijkToRas[2][2] > 0:
+            values = np.flip(values, axis=2)
+    elif isinstance(node, slicer.vtkMRMLTableNode):
+        if node.GetAttribute("table_type") == "histogram_in_depth":
+            df = dutils.tableNodeToDataFrame(node)  # using ltrace's version, not slicer.utils
+            df_columns = df.columns
+            depthColumn = df[df_columns[0]].to_numpy() * mmToM
+            values = df[df_columns[1:]].to_numpy()
+        else:
+            values = slicer.util.arrayFromTableColumn(node, node.GetColumnName(1))
+            depthColumn = slicer.util.arrayFromTableColumn(node, node.GetColumnName(0)) * mmToM
+            if depthColumn[0] > depthColumn[-1]:
+                depthColumn = np.flipud(depthColumn)
+                values = np.flipud(values)
+
+    return depthColumn, values
+
+
+def redactAnonymize(
+    node: slicer.vtkMRMLNode,
+    messDepths: bool,
+    messData: bool,
+    newName="DummyName",
+    newWellName="DummyWell",
+):
+    """Anonymizes data (and optionally edits numerical values) to meet NDA criteria".
+
+    Well name is replaced, node name is replaced, depths can be offset by a random value. And (not working yet) numerical data can be shuffled.
+    No noise is added to the data so to keep the standard null entries and to preserve the numerical range.
+    """
+
+    raise NotImplementedError("redactAnonymize not fully implemented.")
+
+    # messData not working yet
+    if messData:
+        messData = False
+
+    node.SetAttribute("WellName", newWellName)
+
+    if newWellName:
+        node.SetName(f"{newWellName}_{newName}")
+    else:
+        node.SetName(f"{newName}")
+
+    if isinstance(node, slicer.vtkMRMLTableNode):
+        df = None  # dutils.tableNodeToDataFrame(node)
+        df_inner = df.values
+        depths = df_inner[0:, 0]
+        dfTo = None  # dutils.tableNodeToDataFrame(node)
+        if messDepths:
+            offset = 100000.0 + (np.random.random_sample() * 200000.0)
+            depths += offset
+            dfTo.iloc[0:, 0] = pd.Series(depths)
+            dutils.dataFrameToTableNode(dfTo, node)
+        if messData:  # not working yet
+            values = df_inner[0:, 1:]
+            values = np.squeeze(values)
+            np.random.shuffle(values)
+            values = values.transpose()
+            np.random.shuffle(values)
+            values = values.transpose()
+            dfTo.iloc[0:, 1] = pd.Series(values)  # doesn't work for multidimensional arrays
+            dutils.dataFrameToTableNode(dfTo, node)
+    else:
+        values = []
+        spacing = []
+        origin = []
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            values, spacing, origin = arrayFromVisibleSegmentsBinaryLabelmap(node)
+        else:
+            values = slicer.util.arrayFromVolume(node)
+            origin = node.GetOrigin()
+
+        if messDepths:
+            new_origin = [
+                origin[0],
+                origin[1],
+                origin[2] - 100000.0 - (np.random.random_sample() * 200000.0),
+            ]
+        else:
+            new_origin = origin
+        node.SetOrigin(new_origin)
+
+        if messData:
+            values = np.squeeze(values)
+            np.random.shuffle(values)
+            values = values.transpose()
+            np.random.shuffle(values)
+            values = values.transpose()
+            slicer.util.updateVolumeFromArray(node, values)
+
+
 def themeIsDark():
     import qt
 
@@ -1611,11 +1731,11 @@ def export_las_from_histogram_in_depth_data(df: pd.DataFrame, file_path: str):
     df_array = df_array[df_array[:, 0].argsort()]
 
     # add depth as double to first curve
-    lf.add_curve("DEPT", df_array[:-1, 0].astype(np.double), unit="m")
+    lf.append_curve("DEPT", df_array[:-1, 0].astype(np.double), unit="m")
 
     # add remaining data as pore size distribution i
     for i in range(df_array.shape[1] - 1):
-        lf.add_curve("DTP" + str(i), df_array[:-1, i + 1])
+        lf.append_curve("DTP" + str(i), df_array[:-1, i + 1])
 
     lf.well.append(lasio.HeaderItem(mnemonic="BIN0", value=df_array[-1, 1], descr="VALOR INICIAL DOS BINS"))
     lf.well.append(lasio.HeaderItem(mnemonic="BINN", value=df_array[-1, -1], descr="VALOR FINAL DOS BINS"))
@@ -1714,12 +1834,6 @@ def getVolumeVisibilityIn3D(volumeNode):
     volumeRenderingLogic = slicer.modules.volumerendering.logic()
     renderingNode = volumeRenderingLogic.GetVolumeRenderingDisplayNodeForViewNode(volumeNode, viewNode)
     return renderingNode.GetVisibility() if renderingNode else False
-
-
-def setSlicesVisibilityIn3D(visible):
-    for sliceViewLabel in ["Red", "Yellow", "Green"]:
-        sliceView = slicer.app.layoutManager().sliceWidget(sliceViewLabel).sliceView()
-        sliceView.mrmlSliceNode().SetSliceVisible(visible)
 
 
 def get_memory_usage(mode="bytes"):
