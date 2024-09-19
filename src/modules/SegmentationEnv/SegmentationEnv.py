@@ -55,6 +55,10 @@ def SmartSegmenterTab():
     return slicer.modules.segmenter.createNewWidgetRepresentation()
 
 
+def PoreStatsTab():
+    return slicer.modules.porestats.createNewWidgetRepresentation()
+
+
 def ThinSectionInstanceSegmenterTab():
     return slicer.modules.thinsectioninstancesegmenter.createNewWidgetRepresentation()
 
@@ -100,6 +104,7 @@ class SegmentationEnvWidget(LTracePluginWidget):
         self.tabsWidget = qt.QTabWidget()
         self.segmentEditorWidget = ManualSegmentationTab()
         self.smartSegWidget = SmartSegmenterTab()
+        self.poreStatsWdiget = PoreStatsTab()
         self.tabsWidget.addTab(self.segmentEditorWidget, "Manual")
         self.tabsWidget.addTab(self.smartSegWidget, "Smart-seg")
         if self.hasPetrography:
@@ -108,6 +113,7 @@ class SegmentationEnvWidget(LTracePluginWidget):
             self.tabsWidget.addTab(ThinSectionInstanceEditorTab(), "Instance Editor")
         if self.isThinSection:
             self.tabsWidget.addTab(ThinSectionSegmentInspectorTab(), "Inspector")
+            self.tabsWidget.addTab(self.poreStatsWdiget, "Pore Stats")
         else:
             self.tabsWidget.addTab(SegmentInspectorTab(), "Inspector")
         self.tabsWidget.addTab(LabelMapEditorTab(), "Label Editor")

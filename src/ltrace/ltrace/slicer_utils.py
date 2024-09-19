@@ -1,16 +1,20 @@
+import qt
+import slicer
+import vtk
 import json
-from pathlib import Path
-from typing import Union
-
 import markdown2 as markdown
 import numpy as np
+import os
 import pandas as pd
-from SegmentEditorEffects import *
-from slicer import ScriptedLoadableModule
 
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
 from ltrace.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
+from pathlib import Path
+from SegmentEditorEffects import *
+from slicer import ScriptedLoadableModule
+from typing import Union
+
 
 __all__ = [
     "LTracePlugin",
@@ -447,3 +451,36 @@ def tableWidgetToDataFrame(tableWidget: qt.QTableWidget) -> pd.DataFrame:
 
     df = pd.DataFrame(data, columns=columnHeaders, index=indexHeaders)
     return df
+
+
+class DebounceSignal:
+    """Wrapper for qt.Signal with debouncing, emiting the signal only one time after a given interval."""
+
+    def __init__(
+        self, parent: Union[qt.QWidget, qt.QObject], signal: qt.Signal, intervalMs: int = 500, qtTimer=qt.QTimer
+    ) -> None:
+        assert signal is not None, "Invalid signal reference."
+        assert parent is not None, "Invalid parent reference."
+
+        self.__signal = signal
+        self.timer = qtTimer(parent)
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(intervalMs)
+        self.timer.timeout.connect(self.__onTimeout)
+        self.timer.stop()
+        self.__args = None
+        self.__kwargs = None
+
+    def emit(self, *args, **kwargs) -> None:
+        self.__args = args
+        self.__kwargs = kwargs
+
+        if self.timer.isActive():
+            self.timer.stop()
+
+        self.timer.start()
+
+    def __onTimeout(self) -> None:
+        self.__signal.emit(*self.__args, **self.__kwargs)
+        self.__args = None
+        self.__kwargs = None

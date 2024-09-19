@@ -14,6 +14,7 @@ import vtk
 from numba import njit
 from pyqtgraph import QtCore
 from scipy import optimize, ndimage, interpolate
+import re
 
 from ltrace.slicer import ui
 from ltrace.slicer.helpers import highlight_error
@@ -217,7 +218,12 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
             symbolBrush=None,
         )
         self.seriesShock = self.fractionPlotItem.plot(
-            name="Shock", pen=None, symbol="o", symbolPen=0.0, symbolSize=12, symbolBrush=None
+            name="Shock",
+            pen=None,
+            symbol="o",
+            symbolPen=pg.mkPen((230, 100, 0, 255), width=3),
+            symbolSize=12,
+            symbolBrush=None,
         )
 
         # Sensitivity visualization plot
@@ -292,8 +298,6 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         self.simulateButton.enabled = True
 
     def onChangeVisualization(self, i):
-        sim = "_" + str(int(self.simulationSlider.value))
-
         # current_item = self.visualizationSelector.currentItem()
         production_node = self.visualizationSelector.currentNode()
         if not production_node:
@@ -304,6 +308,11 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
             self.visualizationGraphicsLayout.show()
 
             fraction_node, details_node = self.logic.get_other_nodes(production_node)
+
+            fraction_node_table = fraction_node.GetTable()
+            cols = fraction_node_table.GetNumberOfColumns()
+            name = fraction_node_table.GetColumnName(cols - 1)
+            sim = "_" + re.search(r"\d+", name).group()
 
             sw_points_vtk_array = fraction_node.GetTable().GetColumnByName("Sw")
             self.sw_values = vtk.util.numpy_support.vtk_to_numpy(sw_points_vtk_array)
@@ -476,6 +485,11 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         output_dir = folderTree.CreateFolderItem(sample_dir, "Production preview")
 
         if not sensitivity_test:
+            for i in range(numberOfSimulations):
+                if i != simulation:
+                    for prefix in ["cycle_", "Pc_", "Krw_", "Kro_"]:
+                        del krel_dict[f"{prefix}{i}"]
+
             try:
                 krel_dict, production, details = self.calculate_production_preview(
                     krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim=simulation
@@ -575,10 +589,12 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         V = U.copy()
         V[np.isnan(U)] = 0
         VV = ndimage.gaussian_filter1d(V, smoothing)
+        VV[np.isnan(U)] = np.nan
 
         W = 0 * U.copy() + 1
         W[np.isnan(U)] = 0
         WW = ndimage.gaussian_filter1d(W, smoothing)
+        WW[np.isnan(U)] = np.nan
 
         return VV / WW
 

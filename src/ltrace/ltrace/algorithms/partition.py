@@ -76,6 +76,7 @@ def runPartitioning(
     tag=None,
     inputNode=None,
     wait=False,
+    checkPercent=True,
     **kwargs,
 ):
     reportNode = createOutput(
@@ -112,13 +113,14 @@ def runPartitioning(
 
     segment_percent = (segment_count_array[1] / sum(segment_count_array)) * 100
 
-    threshold = 0.08  # arbitrarily chosen
-    if segment_percent < threshold:
-        result = slicer.util.confirmOkCancelDisplay(
-            f"The selected segments represents less than {threshold}% of the image. Are you sure you want to continue?\n"
-        )
-        if result == False:
-            raise RuntimeError("Canceled")
+    if checkPercent:
+        threshold = 0.08  # arbitrarily chosen
+        if segment_percent < threshold:
+            result = slicer.util.confirmOkCancelDisplay(
+                f"The selected segments represent less than {threshold}% of the image. Are you sure you want to continue?\n"
+            )
+            if result == False:
+                raise RuntimeError("Canceled")
 
     directionVector = params.get("direction", None)
     if directionVector:

@@ -28,6 +28,7 @@ from ltrace.slicer.helpers import (
     rgb2label,
     maskInputWithROI,
     highlight_error,
+    hex2Rgb,
 )
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widgets import BaseSettingsWidget, PixelLabel
@@ -456,10 +457,8 @@ class SegmenterWidget(LTracePluginWidget):
         self.loadClassifierHelpButton.updateMessage(message)
 
         # Add pretrained models
-        self._addPretrainedModelsIfAvailable()
         if self.classifierInput.count == 0:
-            self.loadClassifierRadio.hide()
-            self.loadClassifierHelpButton.hide()
+            self._addPretrainedModelsIfAvailable()
         self._updateWidgetsVisibility()
 
     def _addPretrainedModelsIfAvailable(self):
@@ -469,6 +468,7 @@ class SegmenterWidget(LTracePluginWidget):
         if env not in envs:
             return
 
+        self.classifierInput.clear()
         model_dirs = get_trained_models_with_metadata(env)
         for model_dir in model_dirs:
             try:
@@ -803,6 +803,13 @@ class SegmenterWidget(LTracePluginWidget):
         for widget in self.hideWhenCreatingClassifier:
             widget.visible = not isCreating
 
+        isPreTrainedModelsAvailable = self.classifierInput.count > 0
+        if not isPreTrainedModelsAvailable:
+            self.loadClassifierRadio.setChecked(False)
+
+        self.loadClassifierRadio.visible = isPreTrainedModelsAvailable
+        self.loadClassifierHelpButton.visible = isPreTrainedModelsAvailable
+
         self.classifierInput.visible = self.loadClassifierRadio.isChecked()
         self.userClassifierInput.visible = self.userClassifierRadio.isChecked()
 
@@ -811,6 +818,7 @@ class SegmenterWidget(LTracePluginWidget):
             self.keepFeaturesCheckbox.visible = False
 
     def _initWidgetsStates(self):
+        self._updateWidgetsVisibility()
         self.createClassifierRadio.toggle()
 
 
@@ -1173,12 +1181,6 @@ class MonaiModelsLogic(LTracePluginLogic):
         self.onFinish = onFinish or (lambda: None)
         self.progressUpdate = lambda value: print(value * 100, "%")
 
-    def hex2rgb(self, hex):
-        hex = hex.lstrip("#")
-        lv = len(hex)
-        rgb = tuple(int(hex[i : i + lv // 3], 16) / 255.0 for i in range(0, lv, lv // 3))
-        return rgb
-
     def loadInvmapFromFile(self, metadata):
         invmap = []
 
@@ -1190,7 +1192,7 @@ class MonaiModelsLogic(LTracePluginLogic):
         model_classes = model_output["class_names"]
         index = model_output.get("class_indices", list(range(1, len(model_classes) + 1)))
         name = model_output["class_names"]
-        color = list(map(self.hex2rgb, model_output["class_colors"]))
+        color = list(map(hex2Rgb, model_output["class_colors"]))
 
         for i in range(len(index)):
             invmap.append([index[i], name[i], color[i]])
@@ -1281,6 +1283,8 @@ class MonaiModelsLogic(LTracePluginLogic):
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=False)
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
+
+                self.outNodeId = outNode.GetID()
 
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())
@@ -1383,12 +1387,6 @@ class BayesianInferenceLogic(LTracePluginLogic):
         slicer.util.updateVolumeFromArray(labelmapNode, annotations)
         return labelmapNode, invmap
 
-    def hex2rgb(self, hex):
-        hex = hex.lstrip("#")
-        lv = len(hex)
-        rgb = tuple(int(hex[i : i + lv // 3], 16) / 255.0 for i in range(0, lv, lv // 3))
-        return rgb
-
     def loadInvmapFromFile(self, metadata):
         invmap = []
 
@@ -1399,7 +1397,7 @@ class BayesianInferenceLogic(LTracePluginLogic):
 
         index = model_output["class_indices"]
         name = model_output["class_names"]
-        color = list(map(self.hex2rgb, model_output["class_colors"]))
+        color = list(map(hex2Rgb, model_output["class_colors"]))
 
         for i in range(len(index)):
             invmap.append([index[i], name[i], color[i]])
@@ -1506,6 +1504,8 @@ class BayesianInferenceLogic(LTracePluginLogic):
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=False)
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
+
+                self.outNodeId = outNode.GetID()
 
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())

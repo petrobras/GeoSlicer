@@ -1213,7 +1213,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
             )
             self.inspectorProcessStarted.emit()
             return self.cliNode
-        except RuntimeError as e:
+        except (RuntimeError, AttributeError) as e:
             print(f"An error occurred: {e}")
 
     def __createVariablesOutputNode(
@@ -1389,6 +1389,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
 
                 if info.referenceNode:
                     slicer.util.setSliceViewerLayers(background=info.referenceNode, fit=True)  # NEEDED?
+                self.outLabelMapId = resultNode.GetID()
             else:
                 slicer.util.setSliceViewerLayers(background=resultNode, fit=True)
 

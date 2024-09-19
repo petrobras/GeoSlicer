@@ -134,21 +134,6 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         self.nodes = ExportLogic().getDataNodes(items, self.EXPORTABLE_TYPES)
         self.exportButton.enabled = self.nodes
 
-    def onCliModified(self, caller, event, progressOutput):
-        if caller.GetStatusString() == "Running":
-            progressValue = caller.GetProgress()
-            progressOutput.set_progress(progressValue / 100)
-        else:
-            if caller.GetStatusString() == "Completed":
-                self.cliCompleted = True
-            else:
-                self.currentStatusLabel.text = "Export failed."
-                logging.error(caller.GetErrorText())
-
-            if self.auxNode is not None:
-                slicer.mrmlScene.RemoveNode(self.auxNode)
-                self.auxNode = None
-
     def onExportClicked(self):
         self.currentStatusLabel.text = "Exporting..."
         slicer.app.processEvents()
@@ -225,7 +210,7 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         if (
             self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
             or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
-        ) and nodeToLASList:
+        ) and len(nodeToLASList):
             try:
                 self.startLasExport(nodeToLASList, outputDir, lasProgress)
             except RuntimeError as e:

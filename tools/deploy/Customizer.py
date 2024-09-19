@@ -980,6 +980,10 @@ class Customizer(LTracePlugin):
                 module_selector.removeCategory(category)
 
     def needs_to_set_modules_path(self):
+        user_settings = slicer.app.userSettings()
+        if user_settings.value("Modules/HomeModule") != "WelcomeGeoSlicer":
+            return True
+
         revision_settings = slicer.app.revisionUserSettings()
         current_saved_paths = set(os.path.abspath(i) for i in revision_settings.value("Modules/AdditionalPaths"))
         ltrace_paths = set(os.path.abspath(i) for i in self.get_module_paths())
@@ -1203,6 +1207,7 @@ class Customizer(LTracePlugin):
                     self.sideBySideSegmentationSetupComplete = True
 
                 # These are necessary despite also being called inside _useSameBackgroundAs and _useSameForegroundAs
+                slicer.app.processEvents(1000)
                 layout.sliceWidget("SideBySideImageSlice").sliceLogic().FitSliceToAll()
                 layout.sliceWidget("SideBySideSegmentationSlice").sliceLogic().FitSliceToAll()
             else:

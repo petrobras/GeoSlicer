@@ -31,5 +31,11 @@
       <channel>output</channel>
       <default></default>
     </string>
+    <integer>
+      <name>isMultiScale</name>
+      <label>isMultiScale</label>
+      <longflag>isMultiScale</longflag>
+      <default>0</default>
+    </integer>
   </parameters>
 </executable>

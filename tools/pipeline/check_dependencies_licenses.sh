@@ -8,7 +8,6 @@ echo -e "\
 %%%%%%% Starting dependencies license checking %%%%%%%%\n\
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
 
-
 for requirement_file in $requirement_files; do
     module_name=$(basename $(dirname ${requirement_file}))
     echo "Checking licenses for '${module_name}' dependencies"

@@ -50,8 +50,14 @@ class TwoPhaseParametersEditDialog:
             if parameterValues is None:
                 slicer.util.errorDisplay(f"Could not save parameter input. {invalidParameter} has invalid value.")
                 return 0, None
-            name = self.node.GetName()
-            outNode = dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
+
+            if self.node:
+                name = self.node.GetName()
+                outNode = dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
+            else:
+                name = "simulation_input_parameters"
+                outNode = dict_to_parameter_node(parameterValues, name, self.node)
+
             outNode.SetName(name)
             return status, outNode
 
@@ -70,6 +76,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
     }
 
     WIDGET_TYPES = {
+        "singleint": SinglestepIntWidget,
         "singlefloat": SinglestepEditWidget,
         "multifloat": MultistepEditWidget,
         "checkbox": CheckboxWidget,
@@ -92,6 +99,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         )
         self.parameterInputWidget.objectName = "Parameter input"
         self.parameterInputWidget.addNodeAttributeIncludeFilter(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
+        self.parameterInputWidget.showEmptyHierarchyItems = False
         parameterInputLoadButton = qt.QPushButton("Load parameters")
         parameterInputLoadButton.objectName = "Parameter input load button"
         parameterInputLoadButton.clicked.connect(self.onParameterInputLoad)
@@ -243,24 +251,32 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
-        for key in ["frac_contact_angle_fraction", "second_contact_fraction"]:
-            self.widgets[key].fractionChanged.connect(self.onUpdateFraction)
-            self.widgets[key].onFractionChanged()
-
         for key, widget in self.widgets.items():
             if isinstance(widget, MultistepEditWidget):
                 widget.stepChanged.connect(self.updateSimulationCount)
-
-            if isinstance(widget, ComboboxWidget):
-                if key in ["init_contact_model", "equil_contact_model"]:
-                    widget.currentTextChanged.connect(self.onChangedContactModel)
-                    widget.onTextChanged()
 
         self.updateSimulationCount()
 
         self.mercury_widget = MercurySimulationWidget()
         if not hide_parameters_io:
             layout.addRow(self.mercury_widget)
+
+        self.widgets["init_contact_model"].currentTextChanged.connect(
+            lambda: self.onChangedContactModel("init_contact_model")
+        )
+        self.widgets["equil_contact_model"].currentTextChanged.connect(
+            lambda: self.onChangedContactModel("equil_contact_model")
+        )
+        self.widgets["second_contact_fraction"].valueChanged.connect(
+            lambda: self.onChangedFraction("second_contact_fraction")
+        )
+        self.widgets["frac_contact_angle_fraction"].valueChanged.connect(
+            lambda: self.onChangedFraction("frac_contact_angle_fraction")
+        )
+        self.widgets["frac_contact_method"].currentTextChanged.connect(
+            lambda: self.onChangedFraction("frac_contact_angle_fraction")
+        )
+        self.updateFieldsActivation()
 
     def create_custom_widget(self, name, params):
         full_params = params.copy()
@@ -284,7 +300,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             target_layout.addRow(new_label, new_widget)
             widgets_list[widget_name] = new_widget
 
-    def onChangedContactModel(self, name, text):
+    def updateFieldsActivation(self):
+        self.onChangedContactModel("init_contact_model")
+        self.onChangedContactModel("equil_contact_model")
+        self.onChangedFraction("second_contact_fraction")
+        self.onChangedFraction("frac_contact_angle_fraction")
+
+    def onChangedContactModel(self, name):
+        text = self.widgets[name].get_text()
         prefix = name.split("_")[0]
         if text != "Model 2 (constant difference)":
             self.widgets[f"{prefix}_contact_angle_separation"].steps.setText("1")
@@ -292,16 +315,33 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             widget = self.widgets[f"{prefix}_contact_angle_separation"].itemAt(i).widget()
             widget.setEnabled(text == "Model 2 (constant difference)")
 
-    def onUpdateFraction(self, name, state):
+    def onChangedFraction(self, name):
         """
         This function is a callback that enable/disable items for the second distribution
         as the Fraction parameter is available.
         """
+        fracion_widget = self.widgets[name]
+        if fracion_widget.get_steps() >= 1 and (fracion_widget.get_start() > 0.0 or fracion_widget.get_stop() > 0.0):
+            state = True
+        else:
+            state = False
+
         prefix = name.split("_")[0]
+
         filt_widgets = {k: v for k, v in self.widgets.items() if k.startswith(f"{prefix}_") and k != name}
-        for widget in filt_widgets.values():
+        for widget_name, widget in filt_widgets.items():
+            enable_widget = state
+            if widget_name.startswith("frac_cluster_"):
+                if self.widgets["frac_contact_method"].get_value() != "corr":
+                    enable_widget = False
             for i in range(widget.count()):
-                widget.itemAt(i).widget().setEnabled(state)
+                widget.itemAt(i).widget().setEnabled(enable_widget)
+
+        if prefix == "frac":
+            enable_widget = state
+            if self.widgets["frac_contact_method"].get_value() != "corr":
+                enable_widget = False
+            self.widgets["oilInWCluster"].setEnabled(enable_widget)
 
     def setCurrentNode(self, currentNode):
         self.currentNode = currentNode
@@ -410,6 +450,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                         values = parameters_dict[name]
                         widget.set_value(values["start"] or "")
             self.parameterInputLoadCollapsible.collapsed = True
+        self.updateFieldsActivation()
 
     def onParameterInputSave(self):
         parameterValues, invalidParameter = self.getFormParams()

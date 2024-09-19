@@ -2,8 +2,10 @@ import os
 import csv
 import slicer
 import numpy as np
-from tqdm import tqdm
+
+from ltrace.slicer.helpers import hex2Rgb
 from pathlib import Path
+from tqdm import tqdm
 
 
 def get_brightness_factor_sequence(max_value):
@@ -23,13 +25,6 @@ def get_brightness_factor_sequence(max_value):
     return seq
 
 
-def hex2rgb(hex):
-    hex = hex.lstrip("#")
-    lv = len(hex)
-    rgb = tuple(int(hex[i : i + lv // 3], 16) / 255.0 for i in range(0, lv, lv // 3))
-    return rgb
-
-
 def import_colors_from_csv(path):
     with open(path, mode="r", encoding="utf8") as f:
         reader = csv.reader(f)
@@ -37,7 +32,7 @@ def import_colors_from_csv(path):
         for rows in reader:
             k = rows[1]
             v = rows[0]
-            color_dict[k] = hex2rgb(v)
+            color_dict[k] = hex2Rgb(v)
     return color_dict
 
 

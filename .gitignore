@@ -156,3 +156,6 @@ _deps
 
 # Personal To Do's
 TODO.md
+
+# Streamlit data files
+src/modules/MicrotomRemote/PNM_Report/static/

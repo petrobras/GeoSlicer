@@ -86,6 +86,9 @@ class ConnectionManager:
                 host.delete_password()
                 raise
 
+            if not client:
+                return client
+
             logging.error(f"Storing host {host.server_name()}'s key {host_key}.")
             cls.connections[host_key] = client
 

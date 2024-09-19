@@ -1,6 +1,7 @@
 import os
 import re
 
+import numba as nb
 import numpy as np
 import vtk
 from vtk.util import numpy_support
@@ -11,7 +12,17 @@ TUBE_TYPE = 2
 ARROW_TYPE = 3
 
 
-def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwargs):
+def visualize_vtu(
+    unstructured_grid,
+    cycle,
+    scale_factor=10**3,
+    pore_scale=2000,
+    throat_scale=500,
+    arrow_scale=150,
+    axis="x",
+    normalize_radius=False,
+    **kwargs,
+):
     """
     unstructured_grid (vtkUnstructuredGrid)
         VtkUnstructured grid, as loaded from the output folder of PNFlow
@@ -26,8 +37,19 @@ def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwar
     arrow_shaft_resolution = 8
     tubes_resolution = 6
 
-    model_elements = _model_elements_from_grid(unstructured_grid, cycle, scale_factor, axis=axis)
+    model_elements = _model_elements_from_grid(
+        unstructured_grid,
+        cycle,
+        scale_factor,
+        pore_scale,
+        throat_scale,
+        arrow_scale,
+        axis=axis,
+        normalize_radius=normalize_radius,
+    )
     object_id = model_elements["last_object_id"]
+    if "volume_side" in model_elements:
+        arrow_scale *= model_elements["volume_side"]
 
     ### Set up point coordinates and scalars for spheres and tubes ###
 
@@ -47,7 +69,7 @@ def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwar
     sphereSource.SetPhiResolution(sphere_phi_resolution)
     glyph3D = vtk.vtkGlyph3D()
     glyph3D.SetScaleModeToScaleByScalar()
-    glyph3D.SetScaleFactor(2000)
+    glyph3D.SetScaleFactor(1)
     glyph3D.SetSourceConnection(sphereSource.GetOutputPort())
     glyph3D.SetInputData(polydata)
     glyph3D.Update()
@@ -97,7 +119,7 @@ def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwar
     arrowSource.SetShaftResolution(arrow_shaft_resolution)
     arrowSource.SetTipRadius(0.15)
     arrow_glyph3D = vtk.vtkGlyph3D()
-    arrow_glyph3D.SetScaleFactor(0.200)
+    arrow_glyph3D.SetScaleFactor(arrow_scale)
     arrow_glyph3D.SetSourceConnection(arrowSource.GetOutputPort())
     arrow_glyph3D.SetInputData(arrow_polydata)
     arrow_glyph3D.SetVectorModeToUseVector()
@@ -119,7 +141,7 @@ def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwar
     tubes.SetInputData(tubes_polydata)
     tubes.SetNumberOfSides(tubes_resolution)
     tubes.SetVaryRadiusToVaryRadiusByScalar()
-    tubes.SetRadius(model_elements["min_radius"] * 500.000)  # Actually this sets the minimum radius
+    tubes.SetRadius(model_elements["min_radius"])  # Actually this sets the minimum radius
     tubes.SetRadiusFactor((model_elements["max_radius"] / model_elements["min_radius"]) ** (1.0))
     tubes.Update()
 
@@ -147,8 +169,8 @@ def visualize_vtu(unstructured_grid, cycle, scale_factor=10**3, axis="x", **kwar
     return pressure, merger
 
 
-def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005):
-    file_names = [i for i in os.listdir(temp_folder) if i[-4:] == ".vtu"]
+def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005, is_multiscale=False):
+    file_names = sorted([i for i in os.listdir(temp_folder) if i[-4:] == ".vtu"])
 
     pressures = []
     reader = vtk.vtkXMLUnstructuredGridReader()
@@ -157,7 +179,9 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005):
     reader.SetFileName(base_filepath)
     reader.Update()
     mesh = reader.GetOutput()
-    pressure, pore_mesh = visualize_vtu(mesh, create_model=False, cycle=file_names[0][2].lower())
+    pressure, pore_mesh = visualize_vtu(
+        mesh, create_model=False, cycle=file_names[0][2].lower(), normalize_radius=is_multiscale
+    )
     point_data = pore_mesh.GetOutput().GetPointData()
     pressures.append(pressure)
     point_data.GetArray("saturation").SetName("saturation_0")
@@ -172,7 +196,9 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005):
         reader.SetFileName(filepath)
         reader.Update()
         mesh = reader.GetOutput()
-        pressure, poly_data = visualize_vtu(mesh, cycle=file_name[2].lower(), create_model=False)
+        pressure, poly_data = visualize_vtu(
+            mesh, cycle=file_name[2].lower(), create_model=False, normalize_radius=is_multiscale
+        )
         saturation = poly_data.GetOutput().GetPointData().GetArray("saturation")
         new_array = vtk.util.numpy_support.vtk_to_numpy(saturation)
 
@@ -209,26 +235,50 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005):
     return extract.GetOutputDataObject(0), saturation_steps
 
 
-def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis="x", size_reduction=True, **kwargs):
+def _model_elements_from_grid(
+    unstructured_grid,
+    cycle,
+    scale_factor=10**3,
+    pore_scale=2000,
+    throat_scale=20,
+    arrow_scale=0.2,
+    axis="x",
+    normalize_radius=False,
+    **kwargs,
+):
+    """Model elements from unstructured grid
+
+    Args:
+        unstructured_grid (vtkUnstructuredGrid): unstructured_grid
+        cycle (char): "w" for water injection, "o" for oil injection
+        scale_factor (float): Scales entire network
+        pore_scale (float): Scales pore sizes
+        throat_scale (float): Scale throat sizes
+        arrow_scale (float): Scale arrow sizes
+        axis (char): axis
+        normalize_radius (bool): If true, ignore throats and pores scale factors and normalize their size by the grid volume
+
+    Returns:
+        dict: model elements data
+    """
     n_points = unstructured_grid.GetNumberOfPoints()
     n_cells = unstructured_grid.GetNumberOfCells()
 
     pores = {}  # only points that are in the edges of quadratic edge cells on grid
     throats = {}  # only points that are in the center of quadratic edge cells on grid
     pore_mapper = {}
-    arrows = []
 
     linear_size_reduction = 10**-6
 
     bounds = unstructured_grid.GetPoints().GetBounds()
-    x_min = bounds[4]
-    x_max = bounds[5]
+    x_min = bounds[0]
+    x_max = bounds[1]
     x_length = x_max - x_min
     x_min += x_length * linear_size_reduction
     x_max -= x_length * linear_size_reduction
 
-    z_min = bounds[0]
-    z_max = bounds[1]
+    z_min = bounds[4]
+    z_max = bounds[5]
     # z_length = z_max - z_min
     # z_min -= z_length * linear_size_reduction
     # z_max += z_length * linear_size_reduction
@@ -239,10 +289,23 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
     # y_min -= y_length * linear_size_reduction
     # y_max += y_length * linear_size_reduction
 
+    throat_id_list = np.empty(n_cells, dtype=np.int64)
+    throat_index_list = np.empty(n_cells, dtype=np.int64)
+    neighbors_id_list = np.empty((n_cells, 2), dtype=np.int64)
+    throat_radius_list = np.empty(n_cells, dtype=np.float64)
+
+    position_list = np.empty((n_points, 3), dtype=np.float64)
+    pore_radius_list = np.empty(n_points, dtype=np.float64)
+    sw_list = np.empty(n_points, dtype=np.float64)
+    inlet_bool_list = np.full(n_points, False, dtype=np.bool_)
+    outlet_bool_list = np.full(n_points, False, dtype=np.bool_)
+
+    throat_count = 0
+    pore_count = 0
+
     for i in range(n_cells):
         left_pore_id = unstructured_grid.GetCell(i).GetPointIds().GetId(0)
         right_pore_id = unstructured_grid.GetCell(i).GetPointIds().GetId(1)
-        throat_id = unstructured_grid.GetCell(i).GetPointIds().GetId(2)
         left_pos = unstructured_grid.GetPoint(left_pore_id)
         right_pos = unstructured_grid.GetPoint(right_pore_id)
         if (
@@ -258,35 +321,32 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
         ):
             continue
 
+        throat_id = unstructured_grid.GetCell(i).GetPointIds().GetId(2)
+        throat_radius = unstructured_grid.GetCellData().GetArray("RRR").GetComponent(i, 0)
+
+        throat_id_list[throat_count] = throat_id
+        throat_index_list[throat_count] = i
+        neighbors_id_list[throat_count] = (left_pore_id, right_pore_id)
+        throat_radius_list[throat_count] = throat_radius
+
+        throat_count += 1
+
         for pore_position in (left_pore_id, right_pore_id):
-            new_id = len(pores)
             if pore_position not in pore_mapper.keys():
                 position = unstructured_grid.GetPoint(pore_position)
+                x_pos = position[0]
                 if axis == "x":
                     position = position[-1::-1]
                 radius = unstructured_grid.GetPointData().GetArray("radius").GetComponent(pore_position, 0)
-                sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(pore_position, 0)
-                pores[new_id] = {
-                    "position": position,
-                    "radius": radius,
-                    "Sw": sw,
-                }
-                pore_mapper[pore_position] = new_id
-                x_pos = position[2]
+
+                pore_mapper[pore_position] = pore_count
                 if x_pos < x_min:
-                    pores[new_id]["radius"] *= 0.9
                     if cycle == "w":
                         sw = 1
                     else:  # cycle == 'o'
                         sw = 0
-                    arrow_position = [i * scale_factor for i in position]
-                    arrow_position[2] -= 0.200 + radius * scale_factor
-                    arrows.append(
-                        (arrow_position, sw),
-                    )
-                    pores[new_id]["Sw"] = sw
+                    inlet_bool_list[pore_count] = True
                 elif x_pos > x_max:
-                    pores[new_id]["radius"] *= 0.9
                     if pore_position == left_pore_id:
                         sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(right_pore_id, 0)
                         other_x = unstructured_grid.GetPoint(right_pore_id)[2]
@@ -294,16 +354,78 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
                         sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(left_pore_id, 0)
                         other_x = unstructured_grid.GetPoint(left_pore_id)[2]
                     if other_x < x_max:
-                        arrows.append(
-                            ([i * scale_factor for i in position], sw),
-                        )
+                        outlet_bool_list[pore_count] = True
+                else:
+                    sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(pore_position, 0)
 
-        throats[i] = {
+                position_list[pore_count] = position
+                pore_radius_list[pore_count] = radius
+                sw_list[pore_count] = sw
+
+                pore_count += 1
+
+    if normalize_radius:
+        volume = (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+        volume_pore_ratio = (volume / n_points) ** (1.0 / 3.0)
+
+        max_pore_radius_factor = 850
+        min_pore_radius_factor = 200
+        max_throat_radius_factor = 110
+        min_throat_radius_factor = 30
+
+        max_pore_radius = max_pore_radius_factor * volume_pore_ratio
+        min_pore_radius = min_pore_radius_factor * volume_pore_ratio
+        max_throat_radius = max_throat_radius_factor * volume_pore_ratio
+        min_throat_radius = min_throat_radius_factor * volume_pore_ratio
+
+        pore_radius_list[:pore_count] = np.interp(
+            pore_radius_list[:pore_count],
+            (pore_radius_list[:pore_count].min(), pore_radius_list[:pore_count].max()),
+            (min_pore_radius, max_pore_radius),
+        )
+
+        throat_radius_list[:throat_count] = np.interp(
+            throat_radius_list[:throat_count],
+            (throat_radius_list[:throat_count].min(), throat_radius_list[:throat_count].max()),
+            (min_throat_radius, max_throat_radius),
+        )
+    else:
+        pore_radius_list[:pore_count] *= pore_scale
+        throat_radius_list[:throat_count] *= throat_scale
+
+    volume = (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+    volume_side = volume ** (1.0 / 3.0)
+
+    inlet_arrows_positions = position_list[inlet_bool_list] * scale_factor
+    inlet_arrows_positions[:, 2] -= volume_side * arrow_scale + pore_radius_list[inlet_bool_list] / 2
+    outlet_arrows_positions = position_list[outlet_bool_list] * scale_factor
+    outlet_arrows_positions[:, 2] += pore_radius_list[outlet_bool_list] / 2
+
+    arrows = []
+    for i, sw in enumerate(sw_list[inlet_bool_list]):
+        arrows.append((inlet_arrows_positions[i], sw))
+    for i, sw in enumerate(sw_list[outlet_bool_list]):
+        arrows.append((outlet_arrows_positions[i], sw))
+
+    pores = {}
+    for i in range(pore_count):
+        pores[i] = {
+            "position": position_list[i],
+            "radius": pore_radius_list[i],
+            "Sw": sw_list[i],
+        }
+
+    throats = {}
+    for i in range(throat_count):
+        throat_index = throat_index_list[i]
+        throat_id = throat_id_list[i]
+        left_pore_id, right_pore_id = neighbors_id_list[i]
+        throats[throat_index] = {
             "first_conn": pore_mapper[left_pore_id],
             "second_conn": pore_mapper[right_pore_id],
-            "radius": unstructured_grid.GetCellData().GetArray("RRR").GetComponent(i, 0),
+            "radius": throat_radius_list[i],
             "Sw": unstructured_grid.GetPointData().GetArray("Sw").GetComponent(throat_id, 0),
-            "Sw_cell": unstructured_grid.GetCellData().GetArray("Sw").GetComponent(i, 0),
+            "Sw_cell": unstructured_grid.GetCellData().GetArray("Sw").GetComponent(throat_index, 0),
         }
 
     coordinates = vtk.vtkPoints()
@@ -320,16 +442,15 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
     pore_id.SetName("id")
 
     object_id = 0
-    for pore_index in pores.keys():
-        pos_x, pos_y, pos_z = pores[pore_index]["position"]
-        coordinates.InsertPoint(
-            pore_index, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1
-        )
-        radii.InsertTuple1(pore_index, pores[pore_index]["radius"] * 1)
-        saturation.InsertTuple1(pore_index, pores[pore_index]["Sw"])
-        pore_position.InsertTuple3(
-            pore_index, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1
-        )
+    for pore_index, pore_data in pores.items():
+        pos_x, pos_y, pos_z = pore_data["position"]
+        pos_x = pos_x * scale_factor
+        pos_y = pos_y * scale_factor
+        pos_z = pos_z * scale_factor
+        coordinates.InsertPoint(pore_index, pos_x, pos_y, pos_z)
+        radii.InsertTuple1(pore_index, pore_data["radius"])
+        saturation.InsertTuple1(pore_index, pore_data["Sw"])
+        pore_position.InsertTuple3(pore_index, pos_x, pos_y, pos_z)
         pore_type.InsertTuple1(pore_index, PORE_TYPE)
         pore_id.InsertTuple1(pore_index, object_id)
         object_id += 1
@@ -353,34 +474,39 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
         first_conn = throat["first_conn"]
         second_conn = throat["second_conn"]
         throat_radius = throat["radius"]
+        throat_sw = throat["Sw_cell"]
+
         pos_x, pos_y, pos_z = pores[first_conn]["position"]
-        tubes_coordinates.InsertPoint(
-            i * 2, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1
-        )
-        tubes_position.InsertTuple3(i * 2, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1)
-        tubes_radii.InsertTuple1(i * 2, throat_radius)
-        tubes_saturation.InsertTuple1(i * 2, throat["Sw_cell"])
+        pos_x = pos_x * scale_factor
+        pos_y = pos_y * scale_factor
+        pos_z = pos_z * scale_factor
+        point_0_index = i * 2
+        tubes_coordinates.InsertPoint(point_0_index, pos_x, pos_y, pos_z)
+        tubes_position.InsertTuple3(point_0_index, pos_x, pos_y, pos_z)
+        tubes_radii.InsertTuple1(point_0_index, throat_radius)
+        tubes_saturation.InsertTuple1(point_0_index, throat_sw)
+
         pos_x, pos_y, pos_z = pores[second_conn]["position"]
-        tubes_coordinates.InsertPoint(
-            i * 2 + 1, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1
-        )
-        tubes_position.InsertTuple3(
-            i * 2 + 1, pos_x * scale_factor * 1, pos_y * scale_factor * 1, pos_z * scale_factor * 1
-        )
-        tubes_radii.InsertTuple1(i * 2 + 1, throat_radius)
-        tubes_saturation.InsertTuple1(i * 2 + 1, throat["Sw_cell"])
+        pos_x = pos_x * scale_factor
+        pos_y = pos_y * scale_factor
+        pos_z = pos_z * scale_factor
+        point_1_index = i * 2 + 1
+        tubes_coordinates.InsertPoint(point_1_index, pos_x, pos_y, pos_z)
+        tubes_position.InsertTuple3(point_1_index, pos_x, pos_y, pos_z)
+        tubes_radii.InsertTuple1(point_1_index, throat_radius)
+        tubes_saturation.InsertTuple1(point_1_index, throat_sw)
+
         elementIdList = vtk.vtkIdList()
-        _ = elementIdList.InsertNextId(i * 2)
-        _ = elementIdList.InsertNextId(i * 2 + 1)
+        _ = elementIdList.InsertNextId(point_0_index)
+        _ = elementIdList.InsertNextId(point_1_index)
         _ = link_elements.InsertNextCell(elementIdList)
-        if (throat_radius < min_radius) and (throat_radius > 0):
-            min_radius = throat_radius
-        if throat_radius > max_radius:
-            max_radius = throat_radius
-        tubes_type.InsertTuple1(i * 2, TUBE_TYPE)
-        tubes_type.InsertTuple1(i * 2 + 1, TUBE_TYPE)
-        tubes_id.InsertTuple1(i * 2, object_id)
-        tubes_id.InsertTuple1(i * 2 + 1, object_id)
+        if throat_radius > 0:
+            min_radius = min(min_radius, throat_radius)
+        max_radius = max(max_radius, throat_radius)
+        tubes_type.InsertTuple1(point_0_index, TUBE_TYPE)
+        tubes_type.InsertTuple1(point_1_index, TUBE_TYPE)
+        tubes_id.InsertTuple1(point_0_index, object_id)
+        tubes_id.InsertTuple1(point_1_index, object_id)
         object_id += 1
 
     return {
@@ -401,4 +527,5 @@ def _model_elements_from_grid(unstructured_grid, cycle, scale_factor=10**3, axis
         "max_radius": max_radius,
         "min_radius": min_radius,
         "arrows": arrows,
+        "volume_side": volume_side,
     }

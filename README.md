@@ -1,10 +1,28 @@
+[![Apache 2.0][apache-shield]][apache] 
+[![Code style][black-shield]][black]
+![OS](https://img.shields.io/badge/OS-linux%2C%20windows-0078D4)
+![language](https://img.shields.io/badge/language-Python-239120)
+[![based](https://img.shields.io/badge/Based_on-3D_Slicer-1F65B0)](https://github.com/Slicer/Slicer)
+
+[apache]: https://opensource.org/licenses/Apache-2.0
+[apache-shield]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
+[black]: https://github.com/psf/black
+[black-shield]: https://img.shields.io/badge/code%20style-black-000000.svg
+
+
 # GeoSlicer
 
 GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple approaches involving thin section, CT and mCT imagery. We use advanced techniques, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform.
 
 Download GeoSlicer latest public release [here](https://grrjnyzvhu1t.objectstorage.sa-saopaulo-1.oci.customer-oci.com/p/21K1LIUA6UiqhKhzhp9lGq8ZG9T6uDmzTOFsyhqep1C1wSczZzpbEr62pkQMBiUP/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/builds/windows/GeoSlicer-latest-public.exe)
 
-## Intro
+## Use cases and examples
+
+Users can find examples of GeoSlicer uses in the following video and at [LTrace's Youtube channel](https://www.youtube.com/@ltracegeo).
+
+[![Watch te video](https://img.youtube.com/vi/EPKBOYkJE40/0.jpg)](https://www.youtube.com/watch?v=EPKBOYkJE40)
+
+## Developer intro
 
 The GeoSlicer code is a set of modules and auxiliary functions to work with digital rock images. The modules are installed onto a modified version of [3D Slicer](https://github.com/Slicer/Slicer) which we call GeoSlicer-base. To do so, a deploy script is used to deploy and install modules, generate a release, install in development mode, generate the public and opensource versions and commit them to the open source repository.
 GeoSlicer-base can be obtained from pre-built binaries available for [windows](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/9YamKS-nDFknDBbJ_J3Dr8bgiUxfRDVnI5VhGXJpp81l1DUOCMPTZ58H0qHa056V/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.2.2-2024-04-01-win-amd64.zip) and [linux](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/ODrLP5ha4lH7usFggSHCVUbRTl70-bqYdf7gXUscC6AI82Kbd8namWWXmfknZ0J9/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz) or built from source using the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories. 

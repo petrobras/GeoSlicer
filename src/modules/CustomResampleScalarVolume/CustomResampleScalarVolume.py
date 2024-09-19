@@ -563,7 +563,7 @@ class CustomResampleScalarVolumeLogic(LTracePluginLogic):
         self.cliNode = None
         self.progressBar = progressBar
 
-    def run(self, data: ResampleScalarVolumeData):
+    def run(self, data: ResampleScalarVolumeData, cli_wait=False):
         """
         Run the resample algorithm
         """
@@ -611,7 +611,7 @@ class CustomResampleScalarVolumeLogic(LTracePluginLogic):
                 }
                 resampleModule = slicer.modules.meanresamplecli
 
-            self.cliNode = slicer.cli.run(resampleModule, None, cliParams)
+            self.cliNode = slicer.cli.run(resampleModule, None, cliParams, wait_for_completion=cli_wait)
             self.progressBar.setCommandLineModuleNode(self.cliNode)
             self.cliNode.AddObserver("ModifiedEvent", partial(self.eventHandler, outputVolumeID=outputVolume.GetID()))
 

@@ -36,8 +36,11 @@ EQUIL_CON_ANG: $equil_contact_model $equil_contact_angle_min $equil_contact_angl
 //!          fraction                  min                        max                        delta                       gamma                      RCtrl
 2ND_CON_ANG: $second_contact_fraction  $second_contact_angle_min  $second_contact_angle_max  $second_contact_angle_del   $second_contact_angle_eta  $second_contact_angle_rctrl;
 
-//!            fraction              volBased              min              max              delta              gamma              method               corrDiam
-FRAC_CON_ANG:  $frac_contact_angle_fraction $frac_contact_angle_volbased $frac_contact_angle_min $frac_contact_angle_max $frac_contact_angle_del $frac_contact_angle_eta $frac_contact_method  $frac_contact_angle_corrdiam
+//!             fraction                     volBased                     totalFrac spatialDistrib        oilInWCluster  clustDiam1              clustDiam2              delta                   eta                     wbClustr.cor
+FRAC_CONT_OPT:  $frac_contact_angle_fraction $frac_contact_angle_volbased T         $frac_contact_method  $oilInWCluster $frac_cluster_count_min $frac_cluster_count_max $frac_cluster_count_del $frac_cluster_count_eta $frac_cluster_count_rctrl;
+
+//!             model               min                     max                     delta                   gamma                   RCtrl
+FRAC_CONT_ANG:  $frac_contact_model $frac_contact_angle_min $frac_contact_angle_max $frac_contact_angle_del $frac_contact_angle_eta $frac_contact_angle_rctrl;
 
 //     viscosity(Pa.s)   resistivity(Ohm.m)  density(kg/m3)
 Water  $water_viscosity  1  $water_density;

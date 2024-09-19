@@ -19,7 +19,7 @@ import pickle
 import porespy
 import openpnm
 from ltrace.slicer.cli_utils import progressUpdate
-from PoreNetworkExtractorCLILib.utils import general_pn_extract
+from ltrace.pore_networks.functions_extract import general_pn_extract
 
 
 def readFrom(volumeFile, builder):

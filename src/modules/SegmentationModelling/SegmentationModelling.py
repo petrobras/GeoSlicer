@@ -38,6 +38,7 @@ class SegmentationModellingWidget(LTracePluginWidget):
     def __init__(self, parent) -> None:
         LTracePluginWidget.__init__(self, parent)
         self.logic = None
+        self.onProcessEnded = lambda: None
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -62,6 +63,7 @@ class SegmentationModellingWidget(LTracePluginWidget):
 
         methods_collapsible_button = ctk.ctkCollapsibleButton()
         methods_collapsible_button.text = "Methods"
+        self.methods_collapsible_button = methods_collapsible_button
         self.layout.addWidget(methods_collapsible_button)
         methods_layout = qt.QVBoxLayout(methods_collapsible_button)
         methods_layout.addWidget(self.method_selector.selector)
@@ -69,6 +71,7 @@ class SegmentationModellingWidget(LTracePluginWidget):
         # Inputs
         inputs_collapsible_button = ctk.ctkCollapsibleButton()
         inputs_collapsible_button.text = "Inputs"
+        self.inputs_collapsible_button = inputs_collapsible_button
         self.layout.addWidget(inputs_collapsible_button)
 
         self.stacked_input_widgets = qt.QStackedWidget()
@@ -207,6 +210,7 @@ class SegmentationModellingWidget(LTracePluginWidget):
 
     def __on_process_ended(self):
         self.__update_output_info(self.method_selector.currentWidget().getOutputInfo())
+        self.onProcessEnded()
 
 
 class SegmentationModellingLogic(LTracePluginLogic):

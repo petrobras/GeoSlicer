@@ -12,10 +12,7 @@ import shutil
 from pathlib import Path
 
 from ltrace.pore_networks.functions import geo2spy
-from ltrace.slicer_utils import (
-    LTracePluginLogic,
-    dataFrameToTableNode,
-)
+from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
 
 HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
 HG_CONTACT_ANGLE = 140  # º
@@ -42,6 +39,7 @@ class MercurySimulationLogic(LTracePluginLogic):
 
     def run_mercury(self, inputTable, params, prefix, callback, wait=False):
         self.params = params
+        self.params["save_tables"] = slicer_is_in_developer_mode()
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
         self.prefix = prefix

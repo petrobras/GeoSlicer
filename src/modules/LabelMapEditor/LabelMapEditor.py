@@ -87,6 +87,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         self.cliNode = None
         self.markup = None
         self.edition_labelmap = None
+        self.labelmapGenerated = lambda labelmapId: None
         self.__throat_analysis_generator = None
         self.__in_debug_mode = False
 
@@ -101,6 +102,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         input_collapsible.collapsed = False
         input_collapsible.text = "Input"
         input_layout = qt.QFormLayout(input_collapsible)
+        self.input_collapsible = input_collapsible
 
         self.input_selector = ui.hierarchyVolumeInput(
             onChange=self.on_input_node_changed,
@@ -173,6 +175,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         output_collapsible = ctk.ctkCollapsibleButton()
         output_collapsible.collapsed = False
         output_collapsible.text = "Output"
+        self.output_collapsible = output_collapsible
         output_layout = qt.QFormLayout(output_collapsible)
 
         # Saving group box
@@ -330,6 +333,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
                 create_output=True,
                 saveTo=params.get("saveTo", None),
                 inputNode=input_node,
+                checkPercent=False,
             )
             # Avoid multiple clicks at the Save button
             self.save_button.setEnabled(False)
@@ -809,11 +813,16 @@ class LabelMapEditorWidget(LTracePluginWidget):
                         nsegments = int(caller.GetParameterAsString("number_of_partitions"))
 
                         colors = rand_cmap(nsegments)
+                        color_names = [str(i) for i in range(1, nsegments + 1)]
                         colorTableNode = create_color_table(
-                            f"{resultNode.GetName()}_ColorMap", colors=colors, add_background=True
+                            f"{resultNode.GetName()}_ColorMap",
+                            colors=colors,
+                            color_names=color_names,
+                            add_background=True,
                         )
 
                         resultNode.GetDisplayNode().SetAndObserveColorNodeID(colorTableNode.GetID())
+                        self.labelmapGenerated(resultNode.GetID())
 
                 self.progress_update(0.9)
 

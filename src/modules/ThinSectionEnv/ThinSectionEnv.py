@@ -56,6 +56,7 @@ class ThinSectionEnvWidget(LTracePluginWidget):
         self.dataTab.addTab(slicer.modules.thinsectionloader.createNewWidgetRepresentation(), "Import")
         self.dataTab.addTab(slicer.modules.qemscanloader.createNewWidgetRepresentation(), "Import QEMSCAN")
         self.dataTab.addTab(slicer.modules.thinsectionexport.createNewWidgetRepresentation(), "Export")
+        self.dataTab.addTab(slicer.modules.thinsectionflows.createNewWidgetRepresentation(), "Flows")
         self.mainTab.addTab(self.dataTab, "Data")
         self.mainTab.addTab(slicer.modules.customizedcropvolume.createNewWidgetRepresentation(), "Crop")
         self.mainTab.addTab(slicer.modules.imagetools.createNewWidgetRepresentation(), "Image Tools")
@@ -70,7 +71,7 @@ class ThinSectionEnvWidget(LTracePluginWidget):
         self.registrationTab.addTab(thinSectionAutoRegistrationWidget, "Automatic")
         self.mainTab.addTab(self.registrationTab, "Registration")
 
-        self.multipleImageAnalysisWidget = slicer.modules.multipleimageanalysis.widgetRepresentation()
+        self.multipleImageAnalysisWidget = slicer.modules.multipleimageanalysis.createNewWidgetRepresentation()
         self.mainTab.addTab(self.multipleImageAnalysisWidget, "Multi-Image Analysis")
 
         self.lastAccessedWidget = self.dataTab.widget(0)

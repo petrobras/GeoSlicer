@@ -1,13 +1,12 @@
-import re
-
 import numpy as np
 import qt
+import re
 import slicer
 
+from .base_view_widget import BaseViewWidget
 
-class SliceViewWidget(qt.QObject):
-    signal_updated = qt.Signal()
 
+class SliceViewWidget(BaseViewWidget):
     def __init__(self, viewWidget, viewData, primaryNode):
         super().__init__()
 
@@ -52,7 +51,7 @@ class SliceViewWidget(qt.QObject):
         sliceNode.SetFieldOfView(*fieldOfView)
         sliceNode.SetSliceOrigin(*origin)
 
-    def get_graph_x(self, view_x, width):
+    def getGraphX(self, view_x, width):
         origin = self.primaryNode.GetOrigin()
         circumference = origin[0] * 2
 
@@ -64,12 +63,12 @@ class SliceViewWidget(qt.QObject):
         xDepth = view_x / xScale
         return xDepth
 
-    def get_bounds(self):
+    def getBounds(self):
         bounds = np.zeros(6)
         self.primaryNode.GetBounds(bounds)
         return bounds[4], bounds[5]
 
-    def get_value(self, x, y):
+    def getValue(self, x, y):
         value = None
 
         # Gets the last piece of the B string on the Data Probe and

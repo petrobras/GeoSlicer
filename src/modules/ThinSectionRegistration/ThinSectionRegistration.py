@@ -1,21 +1,28 @@
-import os
-import time
-from collections import Counter
-from pathlib import Path
-
-import RegistrationLib
 import ctk
-import numpy as np
 import qt
 import slicer
-from ltrace.utils.ProgressBarProc import ProgressBarProc
 import vtk
-from skimage.transform import resize
 
-
+import logging
+import numpy as np
+import os
+import re
+import RegistrationLib
 import ThinSectionRegistrationLib
+import time
+
+from collections import Counter
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer_utils import *
 from ltrace.transforms import getRoundedInteger
+from pathlib import Path
+from skimage.transform import resize
+from typing import Dict, List, Union
+
+try:
+    from Test.ThinSectionRegistrationTest import ThinSectionRegistrationTest
+except ImportError:
+    ThinSectionRegistrationTest = None
 
 
 class ThinSectionRegistration(LTracePlugin):
@@ -43,7 +50,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
-        self.logic = ThinSectionRegistrationLogic()
+        self.logic = ThinSectionRegistrationLogic(parent)
         self.logic.registrationState = self.registrationState
         self.sliceNodesByViewName = {}
         self.sliceNodesByVolumeID = {}
@@ -53,11 +60,14 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         self.volumeSelectDialog = None
         self.selectedVolumes = {}
         self.transformNode = None
+        self.registering = False
+        self.previousLayout = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
 
         self.selectVolumesButton = qt.QPushButton("Select the images to register")
+        self.selectVolumesButton.objectName = "Select Volumes Button"
         self.selectVolumesButton.setFixedHeight(40)
         self.selectVolumesButton.connect("clicked(bool)", self.setupDialog)
         self.layout.addWidget(self.selectVolumesButton)
@@ -66,23 +76,25 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         self.layout.addWidget(self.interfaceFrame)
 
         # Parameters Area
-        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "Parameters"
+        self.imagesFrame = qt.QFrame()
+        imagesLayout = qt.QFormLayout(self.imagesFrame)
         parametersFormLayout = qt.QFormLayout(self.interfaceFrame)
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
         parametersFormLayout.setContentsMargins(0, 0, 0, 0)
 
         self.fixedNodeLineEdit = qt.QLineEdit()
         self.fixedNodeLineEdit.setReadOnly(True)
-        parametersFormLayout.addRow("Fixed image:", self.fixedNodeLineEdit)
+        imagesLayout.addRow("Fixed image:", self.fixedNodeLineEdit)
 
         self.movingNodeLineEdit = qt.QLineEdit()
         self.movingNodeLineEdit.setReadOnly(True)
-        parametersFormLayout.addRow("Moving image:", self.movingNodeLineEdit)
+        imagesLayout.addRow("Moving image:", self.movingNodeLineEdit)
 
         self.transformedNodeLineEdit = qt.QLineEdit()
         self.transformedNodeLineEdit.setReadOnly(True)
-        parametersFormLayout.addRow("Transformed image:", self.transformedNodeLineEdit)
+        imagesLayout.addRow("Transformed image:", self.transformedNodeLineEdit)
+
+        parametersFormLayout.addRow(self.imagesFrame)
 
         # Visualization Widget
         self.visualizationWidget = ThinSectionRegistrationLib.VisualizationWidget(self.logic)
@@ -103,48 +115,51 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         # Landmarks Widget
         self.landmarksWidget = ThinSectionRegistrationLib.LandmarksWidget(self.logic)
-        self.landmarksWidget.connect("landmarkPicked(landmarkName)", self.onLandmarkPicked)
-        self.landmarksWidget.connect("landmarkMoved(landmarkName)", self.onLandmarkMoved)
-        self.landmarksWidget.connect("landmarkEndMoving(landmarkName)", self.onLandmarkEndMoving)
         parametersFormLayout.addRow(self.landmarksWidget.widget)
 
         self.finishRegistrationButton = qt.QPushButton("Finish registration")
+        self.finishRegistrationButton.objectName = "Finish Registration Button"
         self.finishRegistrationButton.setFixedHeight(40)
         self.finishRegistrationButton.clicked.connect(self.finishRegistration)
 
         self.cancelRegistrationButton = qt.QPushButton("Cancel registration")
+        self.cancelRegistrationButton.objectName = "Cancel Registration Button"
         self.cancelRegistrationButton.setFixedHeight(40)
         self.cancelRegistrationButton.clicked.connect(self.cancelRegistration)
 
-        hBoxLayout = qt.QHBoxLayout()
+        self.buttonsFrame = qt.QFrame()
+        hBoxLayout = qt.QHBoxLayout(self.buttonsFrame)
         hBoxLayout.addWidget(self.finishRegistrationButton)
         hBoxLayout.addWidget(self.cancelRegistrationButton)
-        parametersFormLayout.addRow(hBoxLayout)
+        parametersFormLayout.addRow(self.buttonsFrame)
 
         # Add vertical spacer
         self.layout.addStretch(1)
 
+        # Connections
+        self.landmarksWidget.connect("landmarkAdded()", self.onLandmarkAdded)
+        self.landmarksWidget.connect("landmarkPicked(landmarkName)", self.onLandmarkPicked)
+        self.landmarksWidget.connect("landmarkMoved(landmarkName)", self.onLandmarkMoved)
+        self.landmarksWidget.connect("landmarkEndMoving(landmarkName)", self.onLandmarkEndMoving)
+        self.landmarksWidget.connect("fiducialNodeRenamed(fiducialNodeId)", self.onFiducialNodeRenamed)
         self.interfaceFrame.enabled = False
         self.interfaceFrame.visible = False
 
     def finishRegistration(self):
         with ProgressBarProc() as progressBar:
             progressBar.nextStep(0, f"Finishing registration (applying transform)...")
-            transformedVolume = self.selectedVolumes["Transformed"]
+            transformedVolume = self.selectedVolumes.get("Transformed")
             transformedVolume.HardenTransform()
             self.fixHardenTransformBug(transformedVolume)
 
             progressBar.nextStep(70, f"Finishing registration (equalizing spacing)...")
             self.logic.equalizeSpacing(transformedVolume, self.selectedVolumes["Fixed"])
 
-            progressBar.nextStep(80, f"Finishing registration (setting slice viewer layers)...")
-            slicer.util.setSliceViewerLayers(background=None, foreground=None, label=None)
-
             progressBar.nextStep(90, f"Finishing registration...")
             self.reset()
 
             progressBar.nextStep(100, f"Registration finished.")
-            time.sleep(0.5)
+        return transformedVolume
 
     def fixHardenTransformBug(self, volume):
         """
@@ -167,10 +182,14 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         volume.SetOrigin(origin[0], origin[1], 0)
 
     def cancelRegistration(self):
-        if "Transformed" in self.selectedVolumes:
-            slicer.mrmlScene.RemoveNode(self.selectedVolumes["Transformed"])
-        slicer.util.setSliceViewerLayers(background=None, foreground=None, label=None)
+        if not self.registering:
+            return
+
+        transformedVolume = self.selectedVolumes.get("Transformed")
         self.reset()
+
+        if transformedVolume is not None:
+            slicer.mrmlScene.RemoveNode(transformedVolume)
 
     def enter(self) -> None:
         super().enter()
@@ -180,29 +199,65 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
     def cleanup(self):
         super().cleanup()
-        self.removeObservers()
-        self.landmarksWidget.removeLandmarkObservers()
+        if self.logic is not None:
+            self.logic.registrationState = None
 
-    def reset(self):
+        self.removeObservers()
+        self.landmarksWidget.cleanUp()
+        self.visualizationWidget.cleanUp()
+
+    def _clearNodes(self) -> None:
+        """Remove related nodes from the references and from the scene"""
+        if self.transformNode:
+            slicer.mrmlScene.RemoveNode(self.transformNode)
+            self.transformNode = None
+
+        fiducialNode = self.logic.getNodeByName("F", "vtkMRMLMarkupsFiducialNode")
+        if fiducialNode is not None:
+            slicer.mrmlScene.RemoveNode(fiducialNode)
+
+        for key, volume in self.selectedVolumes.items():
+            if volume is None:
+                continue
+
+            node = self.logic.getNodeByName(volume.GetName() + "-landmarks", "vtkMRMLMarkupsFiducialNode")
+            if node is None:
+                continue
+
+            slicer.mrmlScene.RemoveNode(node)
+            self.selectedVolumes[key] = None
+
+    def reset(self) -> None:
+        """Restore values to initial state"""
+        # Reset the markup interaction with slice view
+        self.removeObservers()
+        self.registering = False
+
+        interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+        if interactionNode:
+            interactionNode.SwitchToViewTransformMode()
+
+        slicer.util.setSliceViewerLayers(background=None, foreground=None, label=None)
+
         self.selectVolumesButton.show()
         self.interfaceFrame.enabled = False
         self.interfaceFrame.visible = False
         self.visualizationWidget.resetDisplaySettings()
-        slicer.mrmlScene.RemoveNode(self.transformNode)
-        slicer.mrmlScene.RemoveNode(self.logic.getNodeByName("F", "vtkMRMLMarkupsFiducialNode"))
-        for volume in self.selectedVolumes.values():
-            node = self.logic.getNodeByName(volume.GetName() + "-landmarks", "vtkMRMLMarkupsFiducialNode")
-            slicer.mrmlScene.RemoveNode(node)
+        self._clearNodes()
+
         # self.imageToolsWidget.self().reset()  # Changes from Image Tools for registration are not permanent
         # self.imageToolsCollapsibleButton.collapsed = True
-        slicer.app.layoutManager().setLayout(self.previousLayout)
+        if self.previousLayout:
+            slicer.app.layoutManager().setLayout(self.previousLayout)
 
-    def setupDialog(self):
+        self.selectedVolumes.clear()
+
+    def setupDialog(self) -> None:
         if not self.volumeSelectDialog:
-            self.volumeSelectDialog = qt.QDialog(slicer.util.mainWindow())
+            self.volumeSelectDialog = qt.QDialog(self.parent)
             self.volumeSelectDialog.setModal(True)
             self.volumeSelectDialog.setFixedSize(550, 150)
-            self.volumeSelectDialog.objectName = "ThinSectionRegistrationVolumeSelect"
+            self.volumeSelectDialog.objectName = "Thin Section Registration Volume Select"
             self.volumeSelectDialog.setLayout(qt.QVBoxLayout())
 
             self.volumeSelectLabel = qt.QLabel()
@@ -231,6 +286,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
                 self.volumeDialogSelectors[viewName].showChildNodeTypes = True
                 self.volumeDialogSelectors[viewName].setMRMLScene(slicer.mrmlScene)
                 self.volumeDialogSelectors[viewName].setToolTip("Pick the %s image." % viewName.lower())
+                self.volumeDialogSelectors[viewName].objectName = f"{viewName} Volume Node Combo Box"
                 self.volumeSelectorFrame.layout().addRow("%s image:" % viewName, self.volumeDialogSelectors[viewName])
 
             self.volumeSelectorFrame.layout().addRow(" ", None)
@@ -241,23 +297,29 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             self.volumeSelectDialog.layout().addWidget(self.volumeButtonFrame)
 
             self.volumeDialogApply = qt.QPushButton("Apply", self.volumeButtonFrame)
-            self.volumeDialogApply.objectName = "VolumeDialogApply"
+            self.volumeDialogApply.objectName = "Volume Dialog Apply"
             self.volumeDialogApply.setToolTip("Use currently selected images.")
             self.volumeButtonFrame.layout().addWidget(self.volumeDialogApply)
 
             self.volumeDialogCancel = qt.QPushButton("Cancel", self.volumeButtonFrame)
-            self.volumeDialogCancel.objectName = "VolumeDialogCancel"
+            self.volumeDialogCancel.objectName = "Volume Dialog Cancel"
             self.volumeDialogCancel.setToolTip("Cancel current operation.")
             self.volumeButtonFrame.layout().addWidget(self.volumeDialogCancel)
 
             self.volumeDialogApply.connect("clicked()", self.onVolumeDialogApply)
             self.volumeDialogCancel.connect("clicked()", self.volumeSelectDialog.hide)
 
+        if self.volumeDialogSelectors["Fixed"].nodeCount() <= 1:
+            slicer.util.warningDisplay("You need at least two different images to register.")
+            return
+
+        self.volumeDialogSelectors["Fixed"].setCurrentNodeIndex(0)
+        self.volumeDialogSelectors["Moving"].setCurrentNodeIndex(1)
+
         self.volumeSelectLabel.setText("Select the images to register:")
         self.volumeSelectDialog.show()
 
-    # volumeSelectDialog callback (slot)
-    def onVolumeDialogApply(self):
+    def onVolumeDialogApply(self) -> None:
         fixedVolume = self.volumeDialogSelectors["Fixed"].currentNode()
         movingVolume = self.volumeDialogSelectors["Moving"].currentNode()
 
@@ -269,39 +331,50 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             ):
                 return
 
-        if fixedVolume and movingVolume:
-            self.volumeSelectDialog.hide()
-            self.selectVolumesButton.hide()
-            self.selectedVolumes["Fixed"] = fixedVolume
-            self.selectedVolumes["Moving"] = movingVolume
-            self.fixedNodeLineEdit.text = fixedVolume.GetName()
-            self.movingNodeLineEdit.text = movingVolume.GetName()
-            self.transformNode = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTransformNode.__name__)
-            volumesLogic = slicer.modules.volumes.logic()
-            transformedName = "%s - Transformed" % movingVolume.GetName()
-            transformed = volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, transformedName)
-            self.selectedVolumes["Transformed"] = transformed
-            transformed.SetAndObserveTransformNodeID(self.transformNode.GetID())
-            self.transformedNodeLineEdit.text = transformed.GetName()
-            self.onLayout()
-            self.interfaceFrame.enabled = True
-            self.interfaceFrame.visible = True
+        if fixedVolume == movingVolume:
+            slicer.util.errorDisplay(
+                "You selected the same image for both fixed and moving images. Please select different images."
+            )
+            return
 
-            volumeNodes = self.currentVolumeNodes()
-            self.landmarksWidget.setVolumeNodes(volumeNodes)
-            self.logic.hiddenFiducialVolumes = (transformed,)
+        if fixedVolume is None or movingVolume is None:
+            return
 
-            subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(movingVolume))
-            subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(transformed), itemParent)
+        self.volumeSelectDialog.hide()
+        self.selectVolumesButton.hide()
+        self.selectedVolumes["Fixed"] = fixedVolume
+        self.selectedVolumes["Moving"] = movingVolume
+        self.fixedNodeLineEdit.text = fixedVolume.GetName()
+        self.movingNodeLineEdit.text = movingVolume.GetName()
+        self.transformNode = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTransformNode.__name__)
+        volumesLogic = slicer.modules.volumes.logic()
+        transformedName = "%s - Transformed" % movingVolume.GetName()
+        transformed = volumesLogic.CloneVolume(slicer.mrmlScene, movingVolume, transformedName)
+        self.selectedVolumes["Transformed"] = transformed
+        transformed.SetAndObserveTransformNodeID(self.transformNode.GetID())
+        self.transformedNodeLineEdit.text = transformed.GetName()
+        self.onLayout()
+        self.interfaceFrame.enabled = True
+        self.interfaceFrame.visible = True
 
-            segmentationNodes = slicer.util.getNodesByClass("vtkMRMLSegmentationDisplayNode")
-            for node in segmentationNodes:
-                node.SetVisibility(False)
+        volumeNodes = self.currentVolumeNodes()
+        self.landmarksWidget.setVolumeNodes(volumeNodes)
+        self.logic.hiddenFiducialVolumes = (transformed,)
 
-            self.addObservers()
+        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(movingVolume))
+        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(transformed), itemParent)
 
-    def imageSizesCompatible(self, fixedImage, movingImage):
+        segmentationNodes = slicer.util.getNodesByClass("vtkMRMLSegmentationDisplayNode")
+        for node in segmentationNodes:
+            node.SetVisibility(False)
+
+        self.registering = True
+        self.addObservers()
+
+    def imageSizesCompatible(
+        self, fixedImage: slicer.vtkMRMLScalarVolumeNode, movingImage: slicer.vtkMRMLScalarVolumeNode
+    ) -> bool:
         boundsFixed = np.zeros(6)
         boundsMoving = np.zeros(6)
         fixedImage.GetBounds(boundsFixed)
@@ -313,7 +386,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             return False
         return True
 
-    def addObservers(self):
+    def addObservers(self) -> None:
         """Observe the mrml scene for changes that we wish to respond to.
         scene observer:
          - whenever a new node is added, check if it was a new fiducial.
@@ -323,14 +396,52 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
          - when fiducials are manipulated, perform (or schedule) an update
            to the currently active registration method.
         """
-        tag = slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.landmarksWidget.requestNodeAddedUpdate)
-        self.observerTags.append((slicer.mrmlScene, tag))
-        tag = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.NodeRemovedEvent, self.landmarksWidget.requestNodeAddedUpdate
+        self.observerTags.append(
+            (
+                slicer.mrmlScene,
+                slicer.mrmlScene.AddObserver(
+                    slicer.mrmlScene.NodeAddedEvent, self.landmarksWidget.requestNodeAddedUpdate
+                ),
+            )
         )
-        self.observerTags.append((slicer.mrmlScene, tag))
+        self.observerTags.append(
+            (
+                slicer.mrmlScene,
+                slicer.mrmlScene.AddObserver(
+                    slicer.mrmlScene.NodeRemovedEvent, self.landmarksWidget.requestNodeAddedUpdate
+                ),
+            )
+        )
+        self.observerTags.append(
+            (slicer.mrmlScene, slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self._onNodeRemoved))
+        )
+        self.observerTags.append(
+            (slicer.mrmlScene, slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self._onCloseScene))
+        )
 
-    def removeObservers(self):
+    @vtk.calldata_type(vtk.VTK_OBJECT)
+    def _onNodeRemoved(self, caller, event, node) -> None:
+        """Handle node removed from scene event. If the removed node is related to the current process, then cancel the registration."""
+        if not self.registering or not self.selectedVolumes:
+            return
+
+        fixedVolume = self.selectedVolumes.get("Fixed")
+        movingVolume = self.selectedVolumes.get("Moving")
+        transformedVolume = self.selectedVolumes.get("Transformed")
+
+        if node not in [fixedVolume, movingVolume, transformedVolume, self.transformNode]:
+            return
+
+        self.cancelRegistration()
+
+    def _onCloseScene(self, *args, **kwargs) -> None:
+        """Handle node removed from scene event."""
+        if not self.registering:
+            return
+
+        self.cancelRegistration()
+
+    def removeObservers(self) -> None:
         """Remove observers and any other cleanup needed to
         disconnect from the scene"""
         self.removeInteractorObservers()
@@ -338,7 +449,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             obj.RemoveObserver(tag)
         self.observerTags = []
 
-    def addInteractorObservers(self):
+    def addInteractorObservers(self) -> None:
         """Add observers to the Slice interactors"""
         self.removeInteractorObservers()
         layoutManager = slicer.app.layoutManager()
@@ -349,20 +460,24 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             tag = interactor.AddObserver(vtk.vtkCommand.MouseMoveEvent, self.processSliceEvents)
             self.interactorObserverTags.append((interactor, tag))
 
-    def removeInteractorObservers(self):
+    def onFiducialNodeRenamed(self, fiducialNodeId: str) -> None:
+        """Handle fiducial node rename event."""
+        self.processSliceEvents(self, vtk.vtkCommand.MouseMoveEvent)
+
+    def removeInteractorObservers(self) -> None:
         """Remove observers from the Slice interactors"""
         for obj, tag in self.interactorObserverTags:
             obj.RemoveObserver(tag)
         self.interactorObserverTags = []
 
-    def registrationState(self):
+    def registrationState(self) -> RegistrationLib.RegistrationState:
         """Return an instance of RegistrationState populated
         with current gui parameters"""
         state = RegistrationLib.RegistrationState()
         state.logic = self.logic
-        state.fixed = self.selectedVolumes["Fixed"]
-        state.moving = self.selectedVolumes["Moving"]
-        state.transformed = self.selectedVolumes["Transformed"]
+        state.fixed = self.selectedVolumes.get("Fixed")
+        state.moving = self.selectedVolumes.get("Moving")
+        state.transformed = self.selectedVolumes.get("Transformed")
         state.fixedFiducials = self.logic.volumeFiducialList(state.fixed)
         state.movingFiducials = self.logic.volumeFiducialList(state.moving)
         state.transformedFiducials = self.logic.volumeFiducialList(state.transformed)
@@ -371,11 +486,11 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         return state
 
-    def currentVolumeNodes(self):
+    def currentVolumeNodes(self) -> List[slicer.vtkMRMLScalarVolumeNode]:
         """List of currently selected volume nodes"""
         return self.selectedVolumes.values()
 
-    def onLayout(self, layoutMode="Axial", volumesToShow=None):
+    def onLayout(self, layoutMode="Axial", volumesToShow=None) -> None:
         """When the layout is changed by the VisualizationWidget
         volumesToShow: list of the volumes to include, None means include all
         """
@@ -412,12 +527,12 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         self.__disable_sliceview_doubleclick_maximization()
 
-    def overlayFixedOnTransformed(self):
+    def overlayFixedOnTransformed(self) -> None:
         """If there are viewers showing the tranfsformed volume
         in the background, make the foreground volume be the fixed volume
         and set opacity to 0.5"""
-        fixedNode = self.selectedVolumes["Fixed"]
-        transformedNode = self.selectedVolumes["Transformed"]
+        fixedNode = self.selectedVolumes.get("Fixed")
+        transformedNode = self.selectedVolumes.get("Transformed")
         if transformedNode:
             compositeNodes = slicer.util.getNodesByClass("vtkMRMLSliceCompositeNode")
             for compositeNode in compositeNodes:
@@ -425,7 +540,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
                     compositeNode.SetForegroundVolumeID(fixedNode.GetID())
                     compositeNode.SetForegroundOpacity(0.5)
 
-    def updateSliceNodesByVolumeID(self):
+    def updateSliceNodesByVolumeID(self) -> None:
         """Build a mapping to a list of slice nodes
         node that are currently displaying a given volumeID"""
         compositeNodes = slicer.util.getNodesByClass("vtkMRMLSliceCompositeNode")
@@ -444,7 +559,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         self.addInteractorObservers()
 
-    def processSliceEvents(self, caller=None, event=None):
+    def processSliceEvents(self, caller=None, event=None) -> None:
         if caller is None:
             return
 
@@ -453,10 +568,6 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         for sliceNodeName in self.sliceNodesByViewName.keys():
             sliceWidget = layoutManager.sliceWidget(sliceNodeName)
             sliceLogic = sliceWidget.sliceLogic()
-            sliceView = sliceWidget.sliceView()
-            interactor = sliceView.interactorStyle().GetInteractor()
-            if not interactor is caller:
-                continue
 
             compositeNode = sliceLogic.GetSliceCompositeNode()
             break
@@ -466,14 +577,15 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         volumeID = compositeNode.GetBackgroundVolumeID()
         if volumeID is None:
+
             return
 
         volumeNode = slicer.util.getNode(volumeID)
         if volumeNode is None:
             return
 
-        fiducialList = self.logic.volumeFiducialList(volumeNode)
-        if not fiducialList:
+        fiducialNode = self.logic.volumeFiducialList(volumeNode)
+        if not fiducialNode:
             return
 
         fiducialsInLandmarks = False
@@ -483,15 +595,15 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             if fiducialsInLandmarks:
                 break
             for tempList, index in landmarks[landmarkName]:
-                if tempList == fiducialList:
+                if tempList == fiducialNode:
                     fiducialsInLandmarks = True
                     break
 
         if fiducialsInLandmarks:
             markupsLogic = slicer.modules.markups.logic()
-            markupsLogic.SetActiveListID(fiducialList)
+            markupsLogic.SetActiveListID(fiducialNode)
 
-    def restrictLandmarksToViews(self):
+    def restrictLandmarksToViews(self) -> None:
         """Set fiducials so they only show up in the view
         for the volume on which they were defined.
         Also turn off other fiducial lists, since leaving
@@ -531,7 +643,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
                         displayNode.AddViewNodeID("__invalid_view_id__")
         slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
 
-    def onLocalRefineClicked(self):
+    def onLocalRefineClicked(self) -> None:
         """Refine the selected landmark"""
         timing = True
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
@@ -545,12 +657,17 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             self.onLandmarkPicked(self.landmarksWidget.selectedLandmark)
             if timing:
                 onLandmarkPickedEnd = time.time()
-            if timing:
-                print("Time to update visualization " + str(onLandmarkPickedEnd - onLandmarkPickedStart) + " seconds")
+                logging.debug(
+                    f"Time to update visualization: {str(onLandmarkPickedEnd - onLandmarkPickedStart)} seconds"
+                )
 
         slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
 
-    def onLandmarkPicked(self, landmarkName):
+    def onLandmarkAdded(self) -> None:
+        """Landmark added event handler"""
+        self.processSliceEvents(caller=self)
+
+    def onLandmarkPicked(self, landmarkName) -> None:
         """Jump all slice views such that the selected landmark
         is visible"""
         if not self.landmarksWidget.movingView:
@@ -566,22 +683,22 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
                     point = [
                         0,
                     ] * 3
-                    fiducialList.GetNthFiducialPosition(index, point)
+                    fiducialList.GetNthControlPointPosition(index, point)
                     for sliceNode in self.sliceNodesByVolumeID[volumeNodeID]:
                         if sliceNode.GetLayoutName() != self.landmarksWidget.movingView:
                             sliceNode.JumpSliceByCentering(*point)
 
-    def onLandmarkMoved(self, landmarkName):
+    def onLandmarkMoved(self, landmarkName) -> None:
         """Called when a landmark is moved (probably through
         manipulation of the widget in the slice view).
         This updates the active registration"""
         # self.onThinPlateApply()
 
-    def onLandmarkEndMoving(self, landmarkName):
+    def onLandmarkEndMoving(self, landmarkName) -> None:
         """Called when a landmark is done being moved (e.g. when mouse button released)"""
         self.onThinPlateApply()
 
-    def onThinPlateApply(self):
+    def onThinPlateApply(self) -> None:
         """Call this whenever thin plate needs to be calculated"""
         state = self.registrationState()
 
@@ -589,7 +706,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             landmarks = state.logic.landmarksForVolumes((state.fixed, state.moving))
             self.logic.performThinPlateRegistration(state, landmarks)
 
-    def __disable_sliceview_doubleclick_maximization(self):
+    def __disable_sliceview_doubleclick_maximization(self) -> None:
         layoutManager = slicer.app.layoutManager()
         for sliceNodeName in self.sliceNodesByViewName.keys():
             sliceWidget = layoutManager.sliceWidget(sliceNodeName)
@@ -605,8 +722,8 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
 
 class ThinSectionRegistrationLogic(LTracePluginLogic):
-    def __init__(self):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent):
+        super().__init__(parent)
         self.linearMode = "Rigid"
         self.hiddenFiducialVolumes = ()
         self.cropLogic = None
@@ -615,8 +732,8 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
 
         self.thinPlateTransform = None
 
-    def setFiducialListDisplay(self, fiducialList):
-        displayNode = fiducialList.GetDisplayNode()
+    def setFiducialNodeDisplay(self, fiducialNode: slicer.vtkMRMLMarkupsFiducialNode) -> None:
+        displayNode = fiducialNode.GetDisplayNode()
         # TODO: pick appropriate defaults
         # 135,135,84
         displayNode.SetTextScale(3.0)
@@ -627,36 +744,40 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         # displayNode.GetAnnotationTextDisplayNode().SetColor((1,1,0))
         displayNode.SetVisibility(True)
 
-    def addFiducial(self, name, position=(0, 0, 0), associatedNode=None):
+    def addFiducial(self, name, position=(0, 0, 0), associatedNode=None) -> None:
         """Add an instance of a fiducial to the scene for a given
         volume node.  Creates a new list if needed.
         If list already has a fiducial with the given name, then
         set the position to the passed value.
         """
-
+        aname = associatedNode.GetName() if associatedNode is not None else "None"
         markupsLogic = slicer.modules.markups.logic()
         originalActiveListID = markupsLogic.GetActiveListID()  # TODO: naming convention?
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
+        fiducialNode = None
 
         # make the fiducial list if required
-        listName = associatedNode.GetName() + "-landmarks"
-        fiducialList = slicer.mrmlScene.GetFirstNodeByName(listName)
-        if not fiducialList:
-            fiducialListNodeID = markupsLogic.AddNewFiducialNode(listName, slicer.mrmlScene)
-            fiducialList = slicer.mrmlScene.GetNodeByID(fiducialListNodeID)
-            fiducialList.SetMarkupLabelFormat("F-%d")
+        if associatedNode:
+            listName = associatedNode.GetName() + "-landmarks"
+            fiducialNode = slicer.mrmlScene.GetFirstNodeByName(listName)
+
+            if not fiducialNode:
+                fiducialNodeNodeID = markupsLogic.AddNewFiducialNode(listName, slicer.mrmlScene)
+                fiducialNode = slicer.mrmlScene.GetNodeByID(fiducialNodeNodeID)
+                fiducialNode.SetMarkupLabelFormat("F-%d")
+
             if associatedNode:
-                fiducialList.SetAttribute("AssociatedNodeID", associatedNode.GetID())
-            self.setFiducialListDisplay(fiducialList)
+                fiducialNode.SetAttribute("AssociatedNodeID", associatedNode.GetID())
+            self.setFiducialNodeDisplay(fiducialNode)
 
         # make this active so that the fids will be added to it
-        markupsLogic.SetActiveListID(fiducialList)
+        markupsLogic.SetActiveListID(fiducialNode)
 
         foundLandmarkFiducial = False
-        fiducialSize = fiducialList.GetNumberOfFiducials()
+        fiducialSize = fiducialNode.GetNumberOfControlPoints()
         for fiducialIndex in range(fiducialSize):
-            if fiducialList.GetNthFiducialLabel(fiducialIndex) == name:
-                fiducialList.SetNthFiducialPosition(fiducialIndex, *position)
+            if fiducialNode.GetNthControlPointLabel(fiducialIndex) == name:
+                fiducialNode.SetNthControlPointPosition(fiducialIndex, *position)
                 foundLandmarkFiducial = True
                 break
 
@@ -672,19 +793,19 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
                         position[i] = rasBounds[2 * i]
                     if position[i] > rasBounds[2 * i + 1]:
                         position[i] = rasBounds[2 * i + 1]
-            fiducialList.AddFiducial(*position)
-            fiducialIndex = fiducialList.GetNumberOfFiducials() - 1
+            fiducialNode.AddControlPoint(*position)
+            fiducialIndex = fiducialNode.GetNumberOfControlPoints() - 1
 
-        fiducialList.SetNthFiducialLabel(fiducialIndex, name)
-        fiducialList.SetNthFiducialSelected(fiducialIndex, False)
-        fiducialList.SetNthMarkupLocked(fiducialIndex, False)
+        fiducialNode.SetNthControlPointLabel(fiducialIndex, name)
+        fiducialNode.SetNthControlPointSelected(fiducialIndex, False)
+        fiducialNode.SetNthControlPointLocked(fiducialIndex, False)
 
         originalActiveList = slicer.mrmlScene.GetNodeByID(originalActiveListID)
         if originalActiveList:
             markupsLogic.SetActiveListID(originalActiveList)
         slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
 
-    def addLandmark(self, volumeNodes=[], position=(0, 0, 0), movingPosition=(0, 0, 0)):
+    def addLandmark(self, volumeNodes=[], position=(0, 0, 0), movingPosition=(0, 0, 0)) -> str:
         """Add a new landmark by adding correspondingly named
         fiducials to all the current volume nodes.
         Find a unique name for the landmark and place it at the origin.
@@ -695,11 +816,16 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         state = self.registrationState()
         landmarks = self.landmarksForVolumes(volumeNodes)
         index = 1
-        while True:
-            landmarkName = "F-%d" % index
-            if not landmarkName in landmarks.keys():
-                break
-            index += 1
+
+        currentLandmarksName = list(landmarks.keys())
+        if len(currentLandmarksName) > 0:
+            lastLandmarkName = currentLandmarksName[-1]
+            match = re.findall(r"\d+", lastLandmarkName)
+            if match:
+                index = int(match[0]) + 1
+
+        landmarkName = f"F-{index}"
+
         for volumeNode in volumeNodes:
             # if the volume is the moving on, map position through transform to world
             if volumeNode == state.moving:
@@ -709,16 +835,16 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
             fiducial = self.addFiducial(landmarkName, position=positionToAdd, associatedNode=volumeNode)
         return landmarkName
 
-    def removeLandmarkForVolumes(self, landmark, volumeNodes):
+    def removeLandmarkForVolumes(self, landmark, volumeNodes) -> None:
         """Remove the fiducial nodes from all the volumes."""
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
         landmarks = self.landmarksForVolumes(volumeNodes)
         if landmark in landmarks:
             for fiducialList, fiducialIndex in landmarks[landmark]:
-                fiducialList.RemoveMarkup(fiducialIndex)
+                fiducialList.RemoveNthControlPoint(fiducialIndex)
         slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
 
-    def volumeFiducialList(self, volumeNode):
+    def volumeFiducialList(self, volumeNode) -> None:
         """return fiducial list node that is
         list associated with the given volume node"""
         if not volumeNode:
@@ -727,11 +853,11 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         listNode = slicer.mrmlScene.GetFirstNodeByName(listName)
         if listNode:
             if listNode.GetAttribute("AssociatedNodeID") != volumeNode.GetID():
-                self.setFiducialListDisplay(listNode)
+                self.setFiducialNodeDisplay(listNode)
                 listNode.SetAttribute("AssociatedNodeID", volumeNode.GetID())
         return listNode
 
-    def landmarksForVolumes(self, volumeNodes):
+    def landmarksForVolumes(self, volumeNodes) -> None:
         """Return a dictionary of keyed by
         landmark name containing pairs (fiducialListNodes,index)
         Only fiducials that exist for all volumes are returned."""
@@ -739,9 +865,9 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         for volumeNode in volumeNodes:
             listForVolume = self.volumeFiducialList(volumeNode)
             if listForVolume:
-                fiducialSize = listForVolume.GetNumberOfMarkups()
+                fiducialSize = listForVolume.GetNumberOfControlPoints()
                 for fiducialIndex in range(fiducialSize):
-                    fiducialName = listForVolume.GetNthFiducialLabel(fiducialIndex)
+                    fiducialName = listForVolume.GetNthControlPointLabel(fiducialIndex)
                     if fiducialName in landmarksByName:
                         landmarksByName[fiducialName].append((listForVolume, fiducialIndex))
                     else:
@@ -753,7 +879,7 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
                 landmarksByName.__delitem__(fiducialName)
         return landmarksByName
 
-    def ensureFiducialInListForVolume(self, volumeNode, landmarkName, landmarkPosition):
+    def ensureFiducialInListForVolume(self, volumeNode, landmarkName, landmarkPosition) -> Union[None, str]:
         """Make sure the fiducial list associated with the given
         volume node contains a fiducial named landmarkName and that it
         is associated with volumeNode.  If it does not have one, add one
@@ -763,20 +889,20 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         fiducialList = self.volumeFiducialList(volumeNode)
         if not fiducialList:
             return None
-        fiducialSize = fiducialList.GetNumberOfMarkups()
+        fiducialSize = fiducialList.GetNumberOfControlPoints()
         for fiducialIndex in range(fiducialSize):
-            if fiducialList.GetNthFiducialLabel(fiducialIndex) == landmarkName:
-                fiducialList.SetNthMarkupAssociatedNodeID(fiducialIndex, volumeNode.GetID())
+            if fiducialList.GetNthControlPointLabel(fiducialIndex) == landmarkName:
+                fiducialList.SetNthControlPointAssociatedNodeID(fiducialIndex, volumeNode.GetID())
                 return None
         # if we got here, then there is no fiducial with this name so add one
-        fiducialList.AddFiducial(*landmarkPosition)
-        fiducialIndex = fiducialList.GetNumberOfFiducials() - 1
-        fiducialList.SetNthFiducialLabel(fiducialIndex, landmarkName)
-        fiducialList.SetNthFiducialSelected(fiducialIndex, False)
-        fiducialList.SetNthMarkupLocked(fiducialIndex, False)
+        fiducialList.AddControlPoint(*landmarkPosition)
+        fiducialIndex = fiducialList.GetNumberOfControlPoints() - 1
+        fiducialList.SetNthControlPointLabel(fiducialIndex, landmarkName)
+        fiducialList.SetNthControlPointSelected(fiducialIndex, False)
+        fiducialList.SetNthControlPointLocked(fiducialIndex, False)
         return landmarkName
 
-    def collectAssociatedFiducials(self, volumeNodes):
+    def collectAssociatedFiducials(self, volumeNodes) -> str:
         """Look at each fiducial list in scene and find any fiducials associated
         with one of our volumes but not in in one of our lists.
         Add the fiducial as a landmark and delete it from the other list.
@@ -799,16 +925,16 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
             if fiducialList not in landmarkFiducialLists:
                 # this is not one of our fiducial lists, so look for fiducials
                 # associated with one of our volumes
-                fiducialSize = fiducialList.GetNumberOfMarkups()
+                fiducialSize = fiducialList.GetNumberOfControlPoints()
                 for fiducialIndex in range(fiducialSize):
                     status = fiducialList.GetNthControlPointPositionStatus(fiducialIndex)
                     if status != fiducialList.PositionDefined:
                         continue
 
-                    associatedID = fiducialList.GetNthMarkupAssociatedNodeID(fiducialIndex)
+                    associatedID = fiducialList.GetNthControlPointAssociatedNodeID(fiducialIndex)
                     if associatedID in volumeNodeIDs:
                         # found one, so add it as a landmark
-                        landmarkPosition = fiducialList.GetMarkupPointVector(fiducialIndex, 0)
+                        landmarkPosition = fiducialList.GetNthControlPointPositionVector(fiducialIndex)
                         volumeNode = slicer.mrmlScene.GetNodeByID(associatedID)
                         # if new fiducial is associated with moving volume,
                         # then map the position back to where it would have been
@@ -831,11 +957,13 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
                                 volumeTransform.TransformPoint(landmarkPosition, movingPosition)
                         addedLandmark = self.addLandmark(volumeNodes, landmarkPosition, movingPosition)
                         listIndexToRemove.insert(0, (fiducialList, fiducialIndex))
+
         for fiducialList, fiducialIndex in listIndexToRemove:
-            fiducialList.RemoveMarkup(fiducialIndex)
+            fiducialList.RemoveNthControlPoint(fiducialIndex)
+
         return addedLandmark
 
-    def landmarksFromFiducials(self, volumeNodes):
+    def landmarksFromFiducials(self, volumeNodes) -> str:
         """Look through all fiducials in the scene and make sure they
         are in a fiducial list that is associated with the same
         volume node.  If they are in the wrong list fix the node id, and make a new
@@ -848,20 +976,20 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         for volumeNode in volumeNodes:
             fiducialList = self.volumeFiducialList(volumeNode)
             if not fiducialList:
-                print("no fiducialList for volume %s" % volumeNode.GetName())
                 continue
-            fiducialSize = fiducialList.GetNumberOfMarkups()
+
+            fiducialSize = fiducialList.GetNumberOfControlPoints()
             for fiducialIndex in range(fiducialSize):
                 status = fiducialList.GetNthControlPointPositionStatus(fiducialIndex)
                 if status != fiducialList.PositionDefined:
                     continue
 
-                fiducialAssociatedVolumeID = fiducialList.GetNthMarkupAssociatedNodeID(fiducialIndex)
-                landmarkName = fiducialList.GetNthFiducialLabel(fiducialIndex)
-                landmarkPosition = fiducialList.GetMarkupPointVector(fiducialIndex, 0)
+                fiducialAssociatedVolumeID = fiducialList.GetNthControlPointAssociatedNodeID(fiducialIndex)
+                landmarkName = fiducialList.GetNthControlPointLabel(fiducialIndex)
+                landmarkPosition = fiducialList.GetNthControlPointPositionVector(fiducialIndex)
                 if fiducialAssociatedVolumeID != volumeNode.GetID():
                     # fiducial was placed on a viewer associated with the non-active list, so change it
-                    fiducialList.SetNthMarkupAssociatedNodeID(fiducialIndex, volumeNode.GetID())
+                    fiducialList.SetNthControlPointAssociatedNodeID(fiducialIndex, volumeNode.GetID())
                 # now make sure all other lists have a corresponding fiducial (same name)
                 for otherVolumeNode in volumeNodes:
                     if otherVolumeNode != volumeNode:
@@ -873,7 +1001,7 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         slicer.mrmlScene.EndState(slicer.mrmlScene.BatchProcessState)
         return addedLandmark
 
-    def vtkPointsForVolumes(self, volumeNodes, fiducialNodes):
+    def vtkPointsForVolumes(self, volumeNodes, fiducialNodes) -> Dict:
         """Return dictionary of vtkPoints instances containing the fiducial points
         associated with current landmarks, indexed by volume"""
         points = {}
@@ -882,9 +1010,9 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         sameNumberOfNodes = len(volumeNodes) == len(fiducialNodes)
         noNoneNodes = None not in volumeNodes and None not in fiducialNodes
         if sameNumberOfNodes and noNoneNodes:
-            fiducialCount = fiducialNodes[0].GetNumberOfFiducials()
+            fiducialCount = fiducialNodes[0].GetNumberOfControlPoints()
             for fiducialNode in fiducialNodes:
-                if fiducialCount != fiducialNode.GetNumberOfFiducials():
+                if fiducialCount != fiducialNode.GetNumberOfControlPoints():
                     raise Exception("Fiducial counts don't match {0}".format(fiducialCount))
             point = [
                 0,
@@ -892,7 +1020,7 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
             indices = range(fiducialCount)
             for fiducials, volumeNode in zip(fiducialNodes, volumeNodes):
                 for index in indices:
-                    fiducials.GetNthFiducialPosition(index, point)
+                    fiducials.GetNthControlPointPosition(index, point)
                     points[volumeNode].InsertNextPoint(point)
         return points
 
@@ -917,11 +1045,11 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         self.thinPlateTransform.Update()
 
         if points[state.moving].GetNumberOfPoints() != points[state.fixed].GetNumberOfPoints():
-            print("Error")
+            logging.debug("Error: fixed and moving fiducials must have same number of points")
 
         state.transform.SetAndObserveTransformToParent(self.thinPlateTransform)
 
-    def getNodeByName(self, name, className=None):
+    def getNodeByName(self, name, className=None) -> Union[None, slicer.vtkMRMLNode]:
         """get the first MRML node that has the given name
         - use a regular expression to match names post-pended with addition characters
         - optionally specify a classname that must match
@@ -935,7 +1063,7 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
                     return nodes[nodeName]
         return None
 
-    def equalizeSpacing(self, firstVolume, secondVolume):
+    def equalizeSpacing(self, firstVolume, secondVolume) -> None:
         """
         Equalizes the spacings of the volumes, by setting the low resolution volume spacing (bigger spacing) to the
         spacing of the high resolution volume and applying a resize. If the low resolution volume is a label map,

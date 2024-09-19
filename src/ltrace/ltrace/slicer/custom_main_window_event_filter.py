@@ -1,6 +1,8 @@
 import qt
 import slicer
 
+from ltrace.slicer.application_observables import ApplicationObservables
+
 
 class CustomizerEventFilter(qt.QWidget):
     """Class to handle Geoslicer main window event filter.
@@ -15,11 +17,13 @@ class CustomizerEventFilter(qt.QWidget):
         """Qt eventFilter method overload.
         Please read reference for more information: https://doc.qt.io/archives/qt-4.8/eventsandfilters.html
         """
+        appObservables = ApplicationObservables()
         mainWindow = slicer.util.mainWindow()
         if event.type() == qt.QEvent.Close:
             isModified = mainWindow.isWindowModified()
             if isModified is False:
                 event.accept()
+                appObservables.aboutToQuit.emit()
                 return False
 
             messageBox = qt.QMessageBox(mainWindow)
@@ -31,19 +35,23 @@ class CustomizerEventFilter(qt.QWidget):
             cancelButton = messageBox.addButton("&Cancel Exit", qt.QMessageBox.ActionRole)
 
             messageBox.exec_()
+
             if messageBox.clickedButton() == saveExitButton:
                 saveCallback = self.__kwarg.get("saveSceneCallback", None)
                 if saveCallback:
                     result = saveCallback()
                     if result is True:
                         event.accept()
+                        appObservables.aboutToQuit.emit()
                         return False
                     else:
                         # Save process was cancelled or an error occurred
                         qt.QMessageBox(qt.QMessageBox.Warning, "Error saving", "Try to save your data manually")
+                        appObservables.aboutToQuit.emit()
                         return False
             elif messageBox.clickedButton() == exitButton:
                 event.accept()
+                appObservables.aboutToQuit.emit()
                 return False
             else:
                 event.ignore()

@@ -24,7 +24,6 @@ RUN python -m pip install -e c:/slicerltrace/src/modules
 RUN python -m pip install -r c:/slicerltrace/src/modules/MicrotomRemote/Libs/microtom/requirements.txt
 
 COPY ./src/submodules/ c:/slicerltrace/src/submodules/
-RUN python -m pip install -e c:/slicerltrace/src/submodules/pyedt
 RUN python -m pip install -e c:/slicerltrace/src/submodules/porespy
 RUN python -m pip install -e c:/slicerltrace/src/submodules/biaep
 

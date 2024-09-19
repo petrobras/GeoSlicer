@@ -44,14 +44,9 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)
-        self.__applicationObservables = ApplicationObservables()
         self.parameterSetNode = None
         self.editor = None
         self.__tag = None
-        self.__updateEffectRegisteredTimer = qt.QTimer()
-        self.__updateEffectRegisteredTimer.setSingleShot(True)
-        self.__updateEffectRegisteredTimer.timeout.connect(lambda: self.__handleUpdatePlot())
-        self.__updateEffectRegisteredTimer.setInterval(1000)
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -119,7 +114,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.configureEffects()
 
-        self.__applicationObservables.applicationLoadFinished.connect(self.__onApplicationLoadFinished)
+        ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
 
     def __onApplicationLoadFinished(self):
         # Connect observers to scene events
@@ -127,6 +122,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndImportEvent, self.onSceneEndImport)
         self.activateEditorRegisteredCallback()
+        ApplicationObservables().applicationLoadFinished.disconnect()
 
     def activateEditorRegisteredCallback(self):
         self.effectFactorySingleton.effectRegistered.connect(self.editorEffectRegistered)
@@ -212,14 +208,6 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         """Callback for registres effect signal. A QTimer is used to avoid multiple calls at once when multiple effects are registered.
         The method 'qMRMLSegmentEditorWidget.updateEffectList' causes some widget's to update, it might result in some widgets blinking in the background if parent tree is not defined.
         """
-        # if self.__updateEffectRegisteredTimer.isActive():
-        #     self.__updateEffectRegisteredTimer.stop()
-
-        # self.__updateEffectRegisteredTimer.start()
-        self.editor.updateEffectList()
-
-    def __handleUpdatePlot(self) -> None:
-        """Wrapper for 'qMRMLSegmentEditorWidget.updateEffectList' through QTimer callback."""
         self.editor.updateEffectList()
 
     def selectParameterNodeByTag(self, tag: str):
@@ -294,5 +282,4 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         super().cleanup()
         self.removeObservers()
         self.deactivateEditorRegisteredCallback()
-        self.__updateEffectRegisteredTimer.timeout.disconnect()
         self.__applicationObservables.applicationLoadFinished.disconnect()

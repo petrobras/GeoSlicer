@@ -1,20 +1,20 @@
-import logging
-import math
-import os
-import traceback
-from pathlib import Path
-
 import PySide2
 import shiboken2
 import slicer
 import ctk
 import vtk
 import qt
+import logging
 import json
-from PySide2 import QtWidgets
+import math
+import numpy as np
+import os
+import traceback
+
 from ltrace.slicer.widget.depth_overview_axis_item import DepthOverviewAxisItem
 from ltrace.slicer_utils import *
 from ltrace.constants import ImageLogConst
+from pathlib import Path
 from slicer.util import VTKObservationMixin
 from ltrace.slicer.helpers import tryGetNode
 
@@ -59,14 +59,14 @@ class ImageLogDataWidget(CustomizedDataWidget):
     # Global shared logic for all widget instances
     logic = None
 
-    def __init__(self, widgetName):
-        super().__init__(widgetName)
+    def __init__(self, parent):
+        super().__init__(parent)
 
     def setup(self):
         super().setup()
         self.isFirstInstance = False
         if not ImageLogDataWidget.logic:
-            ImageLogDataWidget.logic = ImageLogDataLogic()
+            ImageLogDataWidget.logic = ImageLogDataLogic(self.parent)
             self.isFirstInstance = True
 
         ## Add custom context menu actions
@@ -222,8 +222,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     viewsRefreshed = qt.Signal()
     addViewClicked = qt.Signal(bool)
 
-    def __init__(self):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent):
+        LTracePluginLogic.__init__(self, parent)
         VTKObservationMixin.__init__(self)
 
         self.imageLogViewList = []  # Stores ViewData objects, containing all the data and metadata regarding a view
@@ -349,6 +349,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                         super().__init__(parent)
 
                     def getGeometry(self, viewWidget):
+                        if self.dataLogic is None or not hasattr(self.dataLogic, "axisItem"):
+                            return qt.QRect(0, 0, 0, 0)
+
                         logGeometry = viewWidget.geometry
 
                         oldWidth = logGeometry.width()
@@ -361,15 +364,15 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
                         return logGeometry
 
-                    def getCursorPhysicalPosition(self, viewWidget, image_log_view, x, y):
+                    def getCursorPhysicalPosition(self, viewWidget, imageLogView, x, y):
                         width = viewWidget.geometry.width()
 
-                        if image_log_view.widget == None:
+                        if imageLogView.widget == None:
                             # This avoids raising unnecessary errors,
                             # but might also avoid unknown necessary ones, too
                             return -1, -1
 
-                        xDepth = image_log_view.widget.get_graph_x(x, width)
+                        xDepth = imageLogView.widget.getGraphX(x, width)
 
                         axisItem = self.dataLogic.axisItem
                         height = axisItem.geometry().height()
@@ -386,10 +389,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
                         return xDepth, yDepth
 
-                    def getValue(self, image_log_view, x, y):
+                    def getValue(self, imageLogView, x, y):
                         value = None
-                        if image_log_view.widget:
-                            value = image_log_view.widget.get_value(x, y)
+                        if imageLogView.widget:
+                            value = imageLogView.widget.getValue(x, y)
                         return value
 
                     def writeCoordinates(self, identifier, x, y, value):
@@ -403,13 +406,16 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                         if not (isinstance(event, qt.QHoverEvent) or isinstance(event, qt.QWheelEvent)):
                             return
                         for identifier in self.dataLogic.getViewDataListIdentifiers():
-                            image_log_view = self.dataLogic.imageLogViewList[identifier]
+                            imageLogView = self.dataLogic.imageLogViewList[identifier]
+                            if imageLogView is None:
+                                continue
+
                             try:
                                 viewWidget = self.dataLogic.viewWidgets[identifier]
                             except IndexError as error:
                                 logging.debug(error)
                                 continue
-                            viewData = image_log_view.viewData
+                            viewData = imageLogView.viewData
                             if viewData.primaryNodeId == None:
                                 continue
                             if (
@@ -424,9 +430,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                                 relativePosMouseY = posMouse.y() - logGeometry.y()
                                 relativePosMouseX = posMouse.x() - logGeometry.x()
                                 physicalPos = self.getCursorPhysicalPosition(
-                                    viewWidget, image_log_view, relativePosMouseX, relativePosMouseY
+                                    viewWidget, imageLogView, relativePosMouseX, relativePosMouseY
                                 )
-                                value = self.getValue(image_log_view, *physicalPos)
+                                value = self.getValue(imageLogView, *physicalPos)
                                 self.writeCoordinates(identifier, *physicalPos, value)
                                 break
 
@@ -738,7 +744,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         axisWidgetLayout.setSpacing(0)
         axisWidgetVerticalLayout.addWidget(axisWidgetFrame)
 
-        pysideQHBoxLayout = shiboken2.wrapInstance(hash(axisWidgetLayout), QtWidgets.QHBoxLayout)
+        pysideQHBoxLayout = shiboken2.wrapInstance(hash(axisWidgetLayout), PySide2.QtWidgets.QHBoxLayout)
         pysideQHBoxLayout.setContentsMargins(0, 0, 0, 21)
 
         self.depthOverview = pg.GraphicsLayoutWidget()
@@ -846,9 +852,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 continue
 
             view.setup_widget(viewWidget)
-            view.widget.signal_updated.connect(lambda: self.refreshViews("logMode"))
+            view.widget.signalUpdated.connect(self.refreshViews)
             if isinstance(viewData, GraphicViewData):
-                self.curvePlotWidgets[identifier] = view.widget.get_plot()
+                self.curvePlotWidgets[identifier] = view.widget.getPlot()
 
     def populatePrimaryNodeInterfaceItems(self):
         for identifier in self.getViewDataListIdentifiers():
@@ -1104,7 +1110,14 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 self.observedPrimaryNodes.append([observerID, primaryNode])
 
     def updateViewLabel(self, identifier):
-        viewData = self.imageLogViewList[identifier].viewData
+        if identifier >= len(self.imageLogViewList):
+            return
+
+        view = self.imageLogViewList[identifier]
+        if view is None:
+            return
+
+        viewData = view.viewData
         viewControllerWidget = self.viewControllerWidgets[identifier]
         viewLabel = viewControllerWidget.findChild(qt.QLabel, "viewLabel" + str(identifier))
         primaryNode = self.getNodeById(viewData.primaryNodeId)
@@ -1172,7 +1185,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
     def deleteWidget(self, widget):
         try:
-            widget.deleteLater()
+            widget.delete()
         except Exception as error:
             logging.debug(error)
 
@@ -1218,25 +1231,51 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.imageLogViewList.append(None)
         identifier = len(self.imageLogViewList) - 1
         if isVolumeNode or isTableNode:
-            # No need to create an ImageLogView as primaryNodeChanged creates it and refreshs everything
-            self.primaryNodeChanged(identifier, selectedNode)
+            self.imageLogViewList[identifier] = ImageLogView(selectedNode)
 
         elif isSegmentationNode:
             primaryNode = selectedNode.GetNodeReference("referenceImageGeometryRef")
-            self.primaryNodeChanged(identifier, primaryNode)
-            self.segmentationNodeChanged(identifier, selectedNode)
+            self.imageLogViewList[identifier] = ImageLogView(primaryNode)
+            self.imageLogViewList[identifier].set_new_segmentation_node(selectedNode)
         else:
             # creates everything else and refreshs
             self.imageLogViewList[identifier] = ImageLogView(selectedNode)
-            self.__refreshViews("AddView")
 
-    def removeView(self, identifier):
+        if self.imageLogViewList[identifier] is None:
+            self.imageLogViewList[identifier] = ImageLogView(None)
+
+        self.__refreshViews("AddView")
+
+    def removeViewFromPrimaryNode(self, nodeId: str) -> None:
+        if nodeId is None:
+            return
+
+        viewRemoved = False
+
+        for identifier in self.getViewDataListIdentifiers()[::-1]:
+            view = self.imageLogViewList[identifier]
+            if view is None:
+                continue
+
+            viewData = view.viewData
+            primaryNodeId = viewData.primaryNodeId
+            if primaryNodeId != nodeId:
+                continue
+
+            viewRemoved = True
+            self.removeView(identifier, refresh=False)
+
+        if viewRemoved:
+            self.refreshViews("removeViewFromPrimaryNode")
+
+    def removeView(self, identifier, refresh=True):
         del self.imageLogViewList[identifier]
-        self.refreshViews("removeView")
+        if refresh:
+            self.refreshViews("removeView")
 
     def primaryNodeChanged(self, identifier, node):
+        """The first node combo box of a view determines the primary node. The primary node type determines the type of the view."""
         if not self.nodeAboutToBeRemoved:
-            """The first node combo box of a view determines the primary node. The primary node type determines the type of the view."""
             self.imageLogViewList[identifier] = ImageLogView(node)
             self.refreshViews("primaryNodeChanged")
 
@@ -1332,7 +1371,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
             msg_box.setDefaultButton(qt.QMessageBox.Yes)
 
-            print(segmentationNode.GetName(), sourceVolumeNode.GetName())
             msg_box.text = (
                 "Would you like to edit the segmentation in a 3-view layout? This will reset any current views."
             )
@@ -1424,15 +1462,15 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             if identifier >= len(self.imageLogViewList) or identifier >= len(self.viewWidgets):
                 continue
 
-            image_log_view = self.imageLogViewList[identifier]
-            if image_log_view is None or image_log_view.widget is None:
+            imageLogView = self.imageLogViewList[identifier]
+            if imageLogView is None or imageLogView.widget is None:
                 continue
 
             if self.currentRange is None:
-                bounds = image_log_view.widget.get_bounds()
+                bounds = imageLogView.widget.getBounds()
                 self.currentRange = [-1 * bounds[0], -1 * bounds[1]]
 
-            image_log_view.widget.set_range(self.currentRange)
+            imageLogView.widget.set_range(self.currentRange)
         self.updateViewsAxis("adjustViewsVisibleRegion")
 
     def _on_scroll_forward(self, interactorStyle, *args):
@@ -1457,7 +1495,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.currentRange = list(range)
         self.updateViewsAxis("onGraphicViewRangeChange")
         for identifier in self.getViewDataListIdentifiers():
-            if self.imageLogViewList[identifier].widget is None:
+            imageLogView = self.imageLogViewList[identifier]
+            if imageLogView is None or imageLogView.widget is None:
                 continue
             self.imageLogViewList[identifier].widget.set_range(self.currentRange)
         self.updateScaleRatio()
@@ -1528,8 +1567,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Only show axis if there is data visible (slice view or graphic view)
         contentViewDataPresent = False
-        for image_log_view in self.imageLogViewList:
-            viewData = image_log_view.viewData
+        for imageLogView in self.imageLogViewList:
+            if imageLogView is None:
+                continue
+
+            viewData = imageLogView.viewData
             if viewData.primaryNodeId is not None:
                 if type(viewData) is SliceViewData:
                     contentViewDataPresent = True
@@ -1835,10 +1877,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     def __createRefreshTimer(self):
         """Initialize timer object that process plots refresh"""
         if hasattr(self, "__refreshViewsTimer") and self.__refreshViewsTimer is not None:
-            self.__refreshViewsTimer.deleteLater()
+            self.__refreshViewsTimer.delete()
             self.__refreshViewsTimer = None
 
-        self.__refreshViewsTimer = QtCore.QTimer()
+        self.__refreshViewsTimer = qt.QTimer(self)
         self.__refreshViewsTimer.setSingleShot(True)
         self.__refreshViewsTimer.timeout.connect(lambda: self.__refreshViews("Timer"))
         self.__refreshViewsTimer.setInterval(self.REFRESH_DELAY)
@@ -1846,12 +1888,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     def __createAdjustViewsVisibleRegionTimer(self):
         """Initialize timer object that process plots refresh"""
         if hasattr(self, "__adjustViewsVisibleRegionTimer") and self.__adjustViewsVisibleRegionTimer is not None:
-            self.__adjustViewsVisibleRegionTimer.deleteLater()
+            self.__adjustViewsVisibleRegionTimer.delete()
             self.__adjustViewsVisibleRegionTimer = None
 
-        self.__adjustViewsVisibleRegionTimer = QtCore.QTimer()
+        self.__adjustViewsVisibleRegionTimer = qt.QTimer(self)
         self.__adjustViewsVisibleRegionTimer.setSingleShot(True)
-        self.__adjustViewsVisibleRegionTimer.timeout.connect(lambda: self.adjustViewsVisibleRegion())
+        self.__adjustViewsVisibleRegionTimer.timeout.connect(self.adjustViewsVisibleRegion)
         self.__adjustViewsVisibleRegionTimer.setInterval(self.REFRESH_DELAY)
 
     def fit(self):
@@ -1874,8 +1916,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         id_ = node.GetID()
 
-        for image_log_view in self.imageLogViewList:
-            viewData = image_log_view.viewData
+        for imageLogView in self.imageLogViewList:
+            viewData = imageLogView.viewData
             if not isinstance(viewData, SliceViewData):
                 continue
             if viewData.primaryNodeId == id_:
@@ -1913,7 +1955,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         for identifier in self.getViewDataListIdentifiers():
             if self.imageLogViewList[identifier].widget is None:
                 continue
-            bottom_bound, up_bound = self.imageLogViewList[identifier].widget.get_bounds()
+            bottom_bound, up_bound = self.imageLogViewList[identifier].widget.getBounds()
             lowest_bound = min(lowest_bound, bottom_bound) if lowest_bound is not None else bottom_bound
             highest_bound = max(highest_bound, up_bound) if highest_bound is not None else up_bound
         if lowest_bound is not None and highest_bound is not None:

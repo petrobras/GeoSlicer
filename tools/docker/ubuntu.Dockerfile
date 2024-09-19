@@ -104,9 +104,6 @@ RUN python -m pip install -e ./src/ltrace
 # Install Geoslicer modules as package
 RUN python -m pip install -e ./src/modules
 
-# Install pyedt package
-RUN python -m pip install -e ./src/submodules/pyedt
-
 # Install porespy package
 RUN python -m pip install -e ./src/submodules/porespy
 

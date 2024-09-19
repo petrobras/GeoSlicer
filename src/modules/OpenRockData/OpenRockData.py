@@ -110,19 +110,23 @@ class OpenRockDataWidget(LTracePluginWidget):
         stdout_file = open(data_home / "stdout.txt", "wb")
         stderr_file = open(data_home / "stderr.txt", "wb")
 
-        self.loadProcess = subprocess.Popen(
-            [
-                sys.executable,
-                "-X",
-                "utf8",
-                str(OpenRockData.MODULE_DIR / "Libs" / "drd_wrapper.py"),
-                "/".join(hierarchy),
-                str(data_home),
-            ],
-            stdout=stdout_file,
-            stderr=stderr_file,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        popen_args = [
+            sys.executable,
+            "-X",
+            "utf8",
+            str(OpenRockData.MODULE_DIR / "Libs" / "drd_wrapper.py"),
+            "/".join(hierarchy),
+            str(data_home),
+        ]
+        popen_kwargs = {
+            "stdout": stdout_file,
+            "stderr": stderr_file,
+        }
+
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        self.loadProcess = subprocess.Popen(popen_args, **popen_kwargs)
 
         self.outputPath = data_home / "output_nc" / "output.nc"
         self.outputNodeName = hierarchy[-1]

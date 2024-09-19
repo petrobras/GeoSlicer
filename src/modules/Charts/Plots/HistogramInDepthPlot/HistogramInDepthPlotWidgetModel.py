@@ -11,10 +11,12 @@ PORE_FOLDER_REGEX_PATTERN = r"[0-9]+" + PORE_DELIMETER_REGEX_PATTERN + r"[0-9]{2
 
 class HistogramInDepthPlotWidgetModel(QtCore.QObject):
     def __init__(self, widget: BasePlotWidget, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(widget, *args, **kwargs)
         self.__widget = widget
         self.__graphDataList = list()
         self.__plotScale = "linear"
+
+        self.destroyed.connect(lambda: self.__onDestroyed())
 
     def appendData(self, dataNode):
         """Store and parse node's data. Each data will be available at the table's widget as well.
@@ -45,13 +47,15 @@ class HistogramInDepthPlotWidgetModel(QtCore.QObject):
         # Updata graph data table
         self.__widget.updatePlot()
 
-    def removeGraphDataFromTable(self, graphData: NodeGraphData):
+    def removeGraphDataFromTable(self, graphData: NodeGraphData, updatePlot: bool = True):
         """Remove data and objects related to the GraphData object."""
         if not graphData in self.__graphDataList:
             return
 
         self.__graphDataList.remove(graphData)
-        self.__widget.updatePlot()
+        graphData.signalModified.disconnect(self.__widget.updatePlot)
+        if updatePlot:
+            self.__widget.updatePlot()
 
     def __getPlotScaleFromNode(self, dataNode):
         return dataNode.GetAttribute(PlotScaleXAxisAttribute.name()) or PlotScaleXAxisAttribute.LOG_SCALE.value
@@ -63,3 +67,17 @@ class HistogramInDepthPlotWidgetModel(QtCore.QObject):
     @property
     def plotScale(self) -> Union[None, str]:
         return self.__plotScale
+
+    def clear(self):
+        for graphData in self.__graphDataList:
+            self.removeGraphDataFromTable(graphData, updatePlot=False)
+
+        self.__graphDataList.clear()
+        self.__widget.updatePlot()
+
+    def __del__(self):
+        self.__onDestroyed()
+
+    def __onDestroyed(self):
+        self.clear()
+        self.__widget = None

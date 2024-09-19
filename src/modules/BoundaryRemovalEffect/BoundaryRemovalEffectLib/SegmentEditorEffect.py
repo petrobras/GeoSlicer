@@ -119,6 +119,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         except Exception as error:
             logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
+        # Set views opacity back to normal
+        nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
+        for node in nodes.values():
+            node.SetBackgroundOpacity(1)
+            node.SetForegroundOpacity(0)
+
     def setCurrentSegmentTransparent(self):
         """Save current segment opacity and set it to zero
         to temporarily hide the segment so that threshold preview

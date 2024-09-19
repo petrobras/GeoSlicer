@@ -8,9 +8,6 @@ python -m pip install -e "$repository_path"/src/ltrace
 # Install Geoslicer modules package
 python -m pip install -e "$repository_path"/src/modules
 
-# Install pyedt package
-python -m pip install -e "$repository_path"/src/submodules/pyedt
-
 # Install porespy package
 python -m pip install -e "$repository_path"/src/submodules/porespy
 

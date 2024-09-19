@@ -70,6 +70,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.inputSelector.clearSelection()
         self.inputSelector.setToolTip('Pick a Table node of type "pore_table".')
         self.inputSelector.objectName = "Input Selector"
+        self.inputSelector.showEmptyHierarchyItems = False
         labelWidget = qt.QLabel("Input Pore Table: ")
         inputFormLayout.addRow(labelWidget, self.inputSelector)
 

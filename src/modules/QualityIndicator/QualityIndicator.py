@@ -17,6 +17,11 @@ from ltrace.units import global_unit_registry as ureg
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 
+try:
+    from Test.QualityIndicatorTest import QualityIndicatorTest
+except ImportError:
+    QualityIndicatorTest = None
+
 
 class QualityIndicator(LTracePlugin):
     SETTING_KEY = "QualityIndicator"
@@ -83,7 +88,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
-        self.logic = QualityIndicatorLogic(self.progressBar)
+        self.logic = QualityIndicatorLogic(self.parent, self.progressBar)
         self.logic.processFinished.connect(lambda: self.updateApplyCancelButtonsEnablement(True))
 
         frame = qt.QFrame()
@@ -110,6 +115,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.inputVolume.setMRMLScene(slicer.mrmlScene)
         self.inputVolume.setToolTip("Select the input image to the algorithm.")
         self.inputVolume.currentNodeChanged.connect(self.onInputVolumeCurrentNodeChanged)
+        self.inputVolume.objectName = "Transit Time Combo Box"
         inputFormLayout.addRow("Transit Time:", self.inputVolume)
         inputFormLayout.addRow(" ", None)
 
@@ -126,6 +132,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.windowSizeDoubleSpinBox.setSingleStep(1)
         self.windowSizeDoubleSpinBox.setValue(float(self.getWindowSize()))
         self.windowSizeDoubleSpinBox.setToolTip("Size of the moving window in meters used to compute de indicator.")
+        self.windowSizeDoubleSpinBox.objectName = "Window Size Spin Box"
         parametersFormLayout.addRow("Window size (m):", self.windowSizeDoubleSpinBox)
 
         self.minimumWavelengthDoubleSpinBox = qt.QDoubleSpinBox()
@@ -134,6 +141,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.minimumWavelengthDoubleSpinBox.setSingleStep(1)
         self.minimumWavelengthDoubleSpinBox.setValue(float(self.getMinimumWavelength()))
         self.minimumWavelengthDoubleSpinBox.setToolTip("Minimum vertical wavelength of the spiraling effect in meters.")
+        self.minimumWavelengthDoubleSpinBox.objectName = "Minimum Wavelength Spin Box"
         parametersFormLayout.addRow("Minimum wavelength (m):", self.minimumWavelengthDoubleSpinBox)
 
         self.maximumWavelengthDoubleSpinBox = qt.QDoubleSpinBox()
@@ -142,6 +150,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.maximumWavelengthDoubleSpinBox.setSingleStep(1)
         self.maximumWavelengthDoubleSpinBox.setValue(float(self.getMaximumWavelength()))
         self.maximumWavelengthDoubleSpinBox.setToolTip("Maximum vertical wavelength of the spiraling effect in meters.")
+        self.maximumWavelengthDoubleSpinBox.objectName = "Maximum Wavelength Spin Box"
         parametersFormLayout.addRow("Maximum wavelength (m):", self.maximumWavelengthDoubleSpinBox)
         parametersFormLayout.addRow(" ", None)
 
@@ -162,6 +171,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.multiplicationFactorDoubleSpinBox.setToolTip(
             "Multiplicative factor of the filter. 0 leads to  no filtering at all. 1 leads to the maximum filtering."
         )
+        self.multiplicationFactorDoubleSpinBox.objectName = "Filtering Factor Spin Box"
         advancedSettingsFormLayout.addRow("Filtering factor:", self.multiplicationFactorDoubleSpinBox)
 
         self.smoothstepFactorDoubleSpinBox = qt.QDoubleSpinBox()
@@ -172,6 +182,7 @@ class QualityIndicatorWidget(LTracePluginWidget):
         self.smoothstepFactorDoubleSpinBox.setToolTip(
             "Step length of the filter spectrum band. Higher this values, more smooth the step of the band width."
         )
+        self.smoothstepFactorDoubleSpinBox.objectName = "Band Spectrum Step Length Spin Box"
         advancedSettingsFormLayout.addRow("Band spectrum step length:", self.smoothstepFactorDoubleSpinBox)
         advancedSettingsFormLayout.addRow(" ", None)
 
@@ -184,11 +195,13 @@ class QualityIndicatorWidget(LTracePluginWidget):
 
         self.outputPrefixLineEdit = qt.QLineEdit()
         self.outputPrefixLineEdit.setToolTip("Set the output prefix.")
+        self.outputPrefixLineEdit.objectName = "Output Prefix Line Edit"
         outputFormLayout.addRow("Output prefix:", self.outputPrefixLineEdit)
 
         self.outputAsImage = qt.QCheckBox("Output as image")
         self.outputAsImage.setChecked(self.getOutputAsImage() == "True")
         self.outputAsImage.setToolTip("Generate the output as an image, instead of a table.")
+        self.outputAsImage.objectName = "Output As Image Check Box"
         outputFormLayout.addRow(self.outputAsImage)
         outputFormLayout.addRow(" ", None)
 
@@ -265,8 +278,8 @@ class QualityIndicatorWidget(LTracePluginWidget):
 class QualityIndicatorLogic(LTracePluginLogic):
     processFinished = qt.Signal()
 
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
         self.progressBar = progressBar
 
@@ -351,6 +364,8 @@ class QualityIndicatorLogic(LTracePluginLogic):
                     # Reducing the number of data points to 1/10
                     shrinkFactor = 0.1
                     reducedRasDepths = zoom(rasDepths, shrinkFactor)
+                    if reducedRasDepths[0] > reducedRasDepths[-1]:
+                        reducedRasDepths = np.flip(reducedRasDepths)
                     reducedQualities = zoom(qualities, shrinkFactor)
 
                     tableArray = [reducedRasDepths, reducedQualities]

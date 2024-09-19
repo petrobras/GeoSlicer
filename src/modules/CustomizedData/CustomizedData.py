@@ -38,8 +38,8 @@ class CustomizedData(LTracePlugin):
 
 
 class CustomizedDataWidget(LTracePluginWidget):
-    def __init__(self, widgetName):
-        super(CustomizedDataWidget, self).__init__(widgetName)
+    def __init__(self, parent):
+        super().__init__(parent)
         self.formLayout = None
         self.subjectHierarchyTreeView = None
 

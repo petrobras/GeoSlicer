@@ -24,10 +24,17 @@ from ltrace.algorithms.common import (
 )
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
 from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
+from ltrace.pore_networks.functions_simulation import (
+    get_connected_spy_network,
+    get_flow_rate,
+    get_sub_spy,
+    manual_valvatne_blunt,
+    set_subresolution_conductance,
+    single_phase_permeability,
+)
+from PoreNetworkSimulationCLILib.vtk_utils import create_flow_model, create_permeability_sphere
+from PoreNetworkSimulationCLILib.subres_models import set_subres_model
 from PoreNetworkSimulationCLILib.pnflow.pnflow_parallel import PnFlow
-from PoreNetworkSimulationCLILib.utils import *
-from PoreNetworkSimulationCLILib.vtk_utils import *
-from PoreNetworkSimulationCLILib.subres_models import *
 from ltrace.slicer.cli_utils import progressUpdate
 import shutil
 
@@ -60,8 +67,6 @@ def onePhase(args, params):
     in_faces = ("xmin", "ymin", "zmin")
     out_faces = ("xmax", "ymax", "zmax")
 
-    pore_shape, throat_shape = [i.strip().lower() for i in params["model type"].split("-")]
-
     flow_array = np.zeros((3, 3), dtype="float")
     permeability_array = np.zeros((3, 3), dtype="float")
 
@@ -77,17 +82,21 @@ def onePhase(args, params):
         out_face = out_faces[outlet]
         perm, pn_pores, pn_throats = single_phase_permeability(
             pore_network,
-            throat_shape,
-            pore_shape,
             in_face,
             out_face,
             subresolution_function=subres_func,
+            solver=params["solver"],
+            target_error=params["solver_error"],
+            preconditioner=params["preconditioner"],
+            clip_check=params["clip_check"],
+            clip_value=params["clip_value"],
         )
         if (perm == 0) or (perm.network.throats("all").size == 0):
             continue
-        inlet_flow = perm.rate(perm.project[0].pores(in_face))
-        outlet_flow = perm.rate(perm.project[0].pores(out_face))
-        flow_rate = (inlet_flow - outlet_flow) / 2  # cm^3/s
+        net = perm.project.network
+
+        flow_rate = get_flow_rate(pn_pores, pn_throats)
+
         if in_face[0] == out_face[0]:
             length = sizes[in_faces[2 - inlet][0]]
             area = sizes_product / length
@@ -101,7 +110,8 @@ def onePhase(args, params):
         permeability_array[outlet, inlet] = permeability * 1000  # Conversion factor from darcy to milidarcy
 
         # Create VTK models
-        throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
+        # throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
+        throat_values = np.zeros(pn_throats["throat.all"].size)
         try:
             min_throat = np.min(throat_values[throat_values > (-np.inf)])
             max_throat = np.max(throat_values[throat_values > (-np.inf)])
@@ -110,7 +120,8 @@ def onePhase(args, params):
             max_throat = np.inf
         minmax.append({"inlet": inlet, "outlet": outlet, "min": min_throat, "max": max_throat})
 
-        pore_values = perm["pore.pressure"]
+        # pore_values = perm["pore.pressure"]
+        pore_values = pn_pores["pore.pressure"]
         pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values)
         writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
         writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
@@ -148,6 +159,7 @@ def onePhase(args, params):
         ("z [mD]", "y [mD]", "x [mD]"),
     )
     writeDataFrame(permeability_df, cwd / "permeability.pd")
+    # writeDataFrame(pd.DataFrame(x, "Pressure"), cwd / "pressure.pd")
 
 
 def onePhaseMultiAngle(args, params):
@@ -155,8 +167,6 @@ def onePhaseMultiAngle(args, params):
 
     with open(str(cwd / "pore_network.dict"), "rb") as file:
         pore_network = pickle.load(file)
-
-    pore_shape, throat_shape = [i.strip().lower() for i in params["model type"].split("-")]
 
     boundingbox = {
         "xmin": pore_network["pore.coords"][:, 0].min(),
@@ -205,26 +215,38 @@ def onePhaseMultiAngle(args, params):
             (px, py, pz),
         )
 
+        """
         perm, pn_pores, pn_throats = single_phase_permeability(
             pore_network,
-            throat_shape,
-            pore_shape,
             subresolution_function=subres_func,
+            solver=params["solver"],
+            target_error=params["solver_error"],
+        )
+        """
+        perm, pn_pores, pn_throats = single_phase_permeability(
+            pore_network,
+            subresolution_function=subres_func,
+            solver=params["solver"],
+            target_error=params["solver_error"],
+            preconditioner=params["preconditioner"],
+            clip_check=params["clip_check"],
+            clip_value=params["clip_value"],
         )
         if perm == 0:
             permeabilities.append((px, py, pz, 0))
             continue
-        inlet_flow = perm.rate(perm.project[0].pores("xmin"))
-        outlet_flow = perm.rate(perm.project[0].pores("xmax"))
-        flow_rate = (inlet_flow - outlet_flow) / 2  # cm^3/s
+
+        flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
+
         permeability = flow_rate / (2 * bb_radius)  # return is Darcy
-        permeabilities.append((px, py, pz, permeability[0]))
-        permeabilities.append((-px, -py, -pz, permeability[0]))
+        permeabilities.append((px, py, pz, permeability))
+        permeabilities.append((-px, -py, -pz, permeability))
 
         # Create VTK models
         if i % 20 != 0:
             continue
-        throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
+
+        throat_values = np.log10(pn_throats["throat.flow"])
         try:
             min_throat = np.min(throat_values[throat_values > (-np.inf)])
             max_throat = np.max(throat_values[throat_values > (-np.inf)])
@@ -232,7 +254,7 @@ def onePhaseMultiAngle(args, params):
             min_throat = -np.inf
             max_throat = np.inf
         minmax.append({"index": i, "min": min_throat, "max": max_throat})
-        pore_values = perm["pore.pressure"]
+        pore_values = pn_pores["pore.pressure"]
         pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values)
 
         writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{i}.vtk")
@@ -267,7 +289,7 @@ def onePhaseMultiAngle(args, params):
         json.dump(return_params, file)
 
 
-def twoPhaseSensibilityTest(args, params):
+def twoPhaseSensibilityTest(args, params, is_multiscale):
     cwd = Path(args.cwd)
 
     with open(str(cwd / "statoil_dict.json"), "r") as file:
@@ -275,12 +297,15 @@ def twoPhaseSensibilityTest(args, params):
 
     num_tests = get_number_of_tests(params)
     keep_temporary = params["keep_temporary"]
+    timeout_enabled = params["timeout_enabled"]
 
     if statoil_dict is None:
         raise RuntimeError("The network is invalid.")
         return
 
-    pnflow_parallel = PnFlow(cwd=cwd, statoil_dict=statoil_dict, params=params, num_tests=num_tests)
+    pnflow_parallel = PnFlow(
+        cwd=cwd, statoil_dict=statoil_dict, params=params, num_tests=num_tests, timeout_enabled=timeout_enabled
+    )
 
     saturation_steps_list = []
     krel_result = KrelResult()
@@ -301,7 +326,9 @@ def twoPhaseSensibilityTest(args, params):
             writeDataFrame(curve_analysis_df, cwd / "krelResults")
 
             if params["create_sequence"] == "T":
-                polydata, saturation_steps = generate_model_variable_scalar(Path(pnflow_result["cwd"]) / "Output_res")
+                polydata, saturation_steps = generate_model_variable_scalar(
+                    Path(pnflow_result["cwd"]) / "Output_res", is_multiscale=is_multiscale
+                )
                 writePolydata(polydata, f"{args.tempDir}/cycle_node_{i}.vtk")
                 saturation_steps_list.append(saturation_steps)
 
@@ -330,7 +357,7 @@ def simulate_mercury(args, params):
         np.nan_to_num(sub_network[prop], copy=False)
 
     manual_valvatne_blunt(sub_network)
-    set_subresolution_conductance(sub_network, subres_func)
+    set_subresolution_conductance(sub_network, subres_func, save_tables=params["save_tables"])
     net = openpnm.io.network_from_porespy(sub_network)
 
     hg = openpnm.phase.Mercury(network=net, name="mercury")
@@ -389,6 +416,7 @@ if __name__ == "__main__":
         default=None,
         help="File destination to store an execution outputs",
     )
+    parser.add_argument("--isMultiScale", type=int, default=0, required=False)
     args = parser.parse_args()
 
     with open(f"{args.cwd}/params_dict.json", "r") as file:
@@ -401,7 +429,7 @@ if __name__ == "__main__":
     elif args.model == "onePhase" and params.get("simulation type") == "Multiple orientations":
         onePhaseMultiAngle(args, params)
     elif args.model == "TwoPhaseSensibilityTest":
-        twoPhaseSensibilityTest(args, params)
+        twoPhaseSensibilityTest(args, params, bool(args.isMultiScale))
     elif args.model == "MICP":
         simulate_mercury(args, params)
 

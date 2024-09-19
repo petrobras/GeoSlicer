@@ -264,7 +264,7 @@ def main(args):
     """
     voxel_size = np.prod(spacing)  # TODO fix get_voxel_volume(labelVolumeNode) to handle this case (dim=1)
 
-    if "all" in products or "partitions" in products and params.get("method") is not None:
+    if ("all" in products or "partitions" in products) and params.get("method") is not None:
         if np.any(shape == 1):
             im_mod = im.squeeze()
             if params.get("method") != "medial surface":

@@ -78,7 +78,7 @@ class FixedRadiusWidget(qt.QWidget):
         self.micropore_radius.text = 0.1
         self.auto_radius_btn = qt.QPushButton("Auto detect radius")
 
-        layout.addRow("Micropore radius: ", self.micropore_radius)
+        layout.addRow("Micropore radius (mm): ", self.micropore_radius)
         layout.addRow(self.auto_radius_btn)
 
     def get_params(self):

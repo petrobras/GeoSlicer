@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import git
 import importlib
@@ -41,7 +42,6 @@ SLICERLTRACE_REPO_FOLDER = THIS_FOLDER.parent.parent
 MODULES_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "modules"
 LTRACE_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "ltrace"
 SUBMODULES_PACKAGE_FOLDER = SLICERLTRACE_REPO_FOLDER / "src" / "submodules"
-LTRACE_PACKAGE_LIB_FOLDER = SLICERLTRACE_REPO_FOLDER / "ltrace"
 
 GREEN_TAG = "\x1b[32;20m"
 RESET_COLOR_TAG = "\x1b[0m"
@@ -209,12 +209,16 @@ def generic_deploy(
         modules_to_add = list(find_plugins_source(modules_package_folder))
         modules_to_add.extend(find_cli_source(modules_package_folder))
     else:
+        if args.keep_tests:
+            discarded_patterns = ("*CLI*",)
+        else:
+            discarded_patterns = ("*CLI*", "*Test")
         modules_to_add = list(
             copy_extensions(
                 slicer_dir,
                 find_plugins_source(modules_package_folder),
                 "qt-scripted-modules",
-                ignore_patterns("*CLI*", "*Test"),
+                ignore_patterns(*discarded_patterns),
             )
         )
         modules_to_add.extend(copy_extensions(slicer_dir, find_cli_source(modules_package_folder), "cli-modules"))
@@ -810,6 +814,23 @@ def prepare_open_source_environment():
         raise RuntimeError(f"Cancelling process due to an error:\n{error}")
 
 
+def check_init_files() -> None:
+    no_init_list = []
+    for d in LTRACE_PACKAGE_FOLDER.rglob("**/"):
+        if d == LTRACE_PACKAGE_FOLDER:
+            continue
+
+        if not Path.exists(d / "__init__.py"):
+            # Directories with data or assets don't need init files
+            if not any(
+                [x in str(d) for x in ["ltrace.egg-info", "build", "__pycache__", "assets", "Resources", "resources"]]
+            ):
+                no_init_list.append(d)
+
+    if len(no_init_list) > 0:
+        raise RuntimeError("The following ltrace lib modules does not contain a __init__.py file: " + str(no_init_list))
+
+
 def run(args):
     if not args.public_commit_only:
         if args.archive:
@@ -821,17 +842,7 @@ def run(args):
 
     # Checking for __init__.py files on ltrace lib dir
     if not args.dev:
-        no_init_list = []
-        for d in LTRACE_PACKAGE_LIB_FOLDER.rglob("**/"):
-            if not Path.exists(d / "__init__.py"):
-                # Directories with data or assets don't need init files
-                if not any([x in str(d) for x in ["__pycache__", "assets", "Resources", "resources"]]):
-                    no_init_list.append(d)
-
-        if len(no_init_list) > 0:
-            raise RuntimeError(
-                "The following ltrace lib modules does not contain a __init__.py file: " + str(no_init_list)
-            )
+        check_init_files()
 
     if args.geoslicer_version and args.dev:
         raise RuntimeError("Can't deploy the development version together with production version")
@@ -919,8 +930,6 @@ def run(args):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="Configures a clean Slicer download for deploy or development.")
     parser.add_argument(
         "archive",
@@ -978,6 +987,12 @@ if __name__ == "__main__":
         "--no-public-commit",
         action="store_true",
         help="Avoid commiting to the opensource code repository",
+        default=False,
+    )
+    parser.add_argument(
+        "--keep-tests",
+        action="store_true",
+        help="Keeps tests when generating standalone build.",
         default=False,
     )
     run(parser.parse_args())

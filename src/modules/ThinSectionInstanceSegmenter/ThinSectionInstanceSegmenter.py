@@ -15,6 +15,7 @@ from ltrace.slicer.helpers import (
     rgb2label,
     maskInputWithROI,
     separateLabelmapVolumeIntoSlices,
+    hex2Rgb,
 )
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
@@ -539,13 +540,6 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
                 logging.error(error)
 
 
-def hex2rgb(hex):
-    hex = hex.lstrip("#")
-    lv = len(hex)
-    rgb = tuple(int(hex[i : i + lv // 3], 16) / 255.0 for i in range(0, lv, lv // 3))
-    return rgb
-
-
 def import_colors_from_csv(path):
     with open(path, mode="r") as f:
         reader = csv.reader(f)
@@ -553,7 +547,7 @@ def import_colors_from_csv(path):
         for rows in reader:
             k = rows[1]
             v = rows[0]
-            color_dict[k] = hex2rgb(v)
+            color_dict[k] = hex2Rgb(v)
     return color_dict
 
 

@@ -1,0 +1,87 @@
+MUSA-42: Integração do Geolog, incluindo conexão, importação e exportação de dados. Melhorias na interface, correções de bugs, tratamento de erros e padronização de código. Pequenos aprimoramentos na interface e seletores de diretório de separação para melhor compatibilidade com Linux.
+MUSA-62: Melhorias na exportação/importação de arquivos LAS, incluindo imagens de furos de sondagem e tratamento de curvas 1-D e 2-D. Limpeza de código, tratamento de erros e gerenciamento de memória. Adicionado suporte para Geolog ler curvas 2D exportadas pelo GeoSlicer e exportação de histograma. Ajustes de estilo de código e pequenas alterações.
+MUSA-67: Confirmação inicial na usabilidade do ambiente imagelog com pequenas alterações e adições de imagens. Revise as correções e correções de itens.
+MUSA-68: Adicionada opção para carregar arquivos .tif como volumes labelmap no MicroCTLoader e melhorias para desabilitar o carregamento de múltiplas fatias 2D como labelmap.
+MUSA-81: Módulo ImageLogInpaint adicionado e atualizado para pintura interna, incluindo tratamento de erros, comentários, atualizações do README e formatação de código.
+MUSA-90: Erros corrigidos na importação DLIS, incluindo tratamento de curvas sem nome e sem unidade. Rótulos de unidade corrigidos em nós de tabela.
+MUSA-91: Habilitado o crossplot de dados de log mesclando colunas, testes incluídos e revisão de código realizada.
+PL-1373: Recurso de tempo limite adicionado para ambiente de teste de integração e método de wrapper CLI, logs CLI aprimorados e duração de tempo limite atualizada.
+PL-1373B: Recurso de tempo limite aprimorado no ambiente de teste de integração.
+PL-2068: Painel GeoSlicer ajustado para compatibilidade de versão pública, problemas de implantação corrigidos e erro de digitação de nome corrigido.
+PL-2068B: Atalho de fluxo de trabalho ausente corrigido no "Welcome Geoslicer".
+PL-2238: Volume selecionado exibido em "Slices in 3D", CPUs limitadas e importação de CoreCT otimizada.
+PL-2249: Corrigido o ROI de corte de imagem grande em 0,5 pixel.
+PL-2268: Módulos multiescala adaptados ao fluxo de trabalho, erros corrigidos na seleção da tabela MICP, simulações Kabs e Krel adaptadas e várias correções de bugs e melhorias feitas.
+PL-2284: Dados de Histograma em profundidade corretamente escritos e lidos do CSV, com pequenas correções.
+PL-2287: Link de fatia lado a lado corrigido.
+PL-2291: Janelas impedidas de abrir e fechar rapidamente.
+PL-2299: Fluxo de trabalho PNM aprimorado, gráficos de distribuição de raios adicionados, testes de unidade corrigidos e várias correções de bugs e melhorias feitas.
+PL-2300: Problema corrigido de 'git lfs install', chamada shutil rmtree corrigida e ajustes feitos para criação de versão pública.
+PL-2304: Superfície medial removida da seção fina.
+PL-2330: Opção de legenda adicionada ao diagrama cruzado, caixa de seleção sincronizada com menu de contexto e ajustes feitos na âncora da legenda.
+PL-2331: Corrigidas as configurações de PCR/crop habilitado.
+PL-2332-2: Aplicadas as alterações.
+PL-2338: Tipos de nó filtrados que recebem um observador de nó quando criados.
+PL-2340: Excluído o widget do módulo após cada caso de teste, corrigidos vários problemas de teste de log de imagem e feitas mais correções de bugs.
+PL-2340b: Corrigidos widgets sobrepostos no PoreNetworkVisualization e MultiScale.
+PL-2341: Corrigido WidgetsTest.
+PL-2346: Adicionados verificadores para o nó do editor de segmento.
+PL-2346b: Corrigido BigImageTest.test_spacing.
+PL-2351: Método ajustado causando vazamento de memória.
+PL-2352: Corrigido ThinSectionLoaderTest e sobreposição de UI no explorer.
+PL-2353: Fluxo de trabalho PNM aprimorado no MicroTom, adicionadas simulações Multiscale e Krel e feitas várias correções de bugs e melhorias.
+PL-2354: Corrigido acesso inválido ao intervalo em ImageLogData.
+PL-2355: Corrigidos testes de integração usando atributos de membros de classe reservados.
+PL-2359: Seleção de segmento restaurada após remoção de limite.
+PL-2362: Adicionada legenda na captura de tela.
+PL-2363: Tamanho da fonte de anotação inicial restaurado e fator de escala ajustado.
+PL-2364: Opção de opacidade de nó de segmentação aprimorada para visualização 3D.
+PL-2365: Versão e referência do pyqtgraph atualizadas.
+PL-2368: Implantação do aplicativo corrigida.
+PL-2392: Problema de correção de sombreamento polinomial Big Image corrigido e tempo limite de teste de integração atualizado.
+PL-2397: Teste de rastreamento corrigido.
+PL-2398: Teste CustomizedData corrigido.
+PL-2400: Teste de integração MicroCTCupsAnalysis corrigido.
+PL-2401: Teste WidgetIdentification corrigido.
+PL-2402: Limpeza ajustada para remover o pai dos widgets dos plugins internos.
+PL-2409: Notificação do Slack adicionada para execuções de testes diários com falha e suporte aprimorado ao Windows.
+PL-2409b: Problemas de notificação do Slack do pipeline corrigidos e alterações limpas.
+PL-2410: Uso corrigido do QWidget excluído em gráficos.
+PL-2410B: Teste de integração do CrossplotWidget corrigido.
+PL-2411: Matriz de edição corrigida no registro manual do MCT e interface aprimorada.
+PL-2413: Filtro regex corrigido no PorosimetryCLI e testes de integração do modo em lote aprimorados.
+PL-2417: Nó de proporção pendente "vazio" corrigido.
+PL-2419: Divisão por zero corrigida na biblioteca patchmatch e teste adicionado.
+PL-2422: Correção de sombreamento atualizada para float e teste de correção de sombreamento polinomial adicionado para dados de PCR.
+PL-2424: Removida a dependência de retorno de chamada no SingleShot, usando Signal em vez disso.
+PL-2425: Exibido o tamanho na memória dos volumes escalares no explorador de dados.
+PL-2426: Adicionada verificação de extensão de nome de arquivo e corrigido o tratamento de volumes clonados.
+PL-2427: Corrigida a criação de labelmap de proporção no log de imagem e abertura manual da visualização de adereços.
+PL-2429: Melhoria da UI de controle de dados e corrigidos problemas com o carregamento de múltiplas réplicas.
+PL-2430: Adicionado módulo Open Rock Data (drd) e botão na tela de boas-vindas.
+PL-2430c: Corrigida a verificação de licença e a versão TBB.
+PL-2431: Movido pnflow para GitHub.
+PL-2432: Atualizado o README com instruções de construção e implantação.
+PL-2435: Redirecionado 'Exportar para arquivo...' para o módulo export.
+PL-2436: Corrigido erro de pipeline de lançamento.
+PL-2437: Corrigido carregamento de parâmetros de unidade e simulação do pnflow, testes atualizados.
+PL-2441: Corrigido importação de CoreCT e QEMSCAN revertendo algumas correções de vulnerabilidade.
+PL-2441b: Corrigidos testes de unidade e outros detalhes.
+PL-2442: Construído libpnflow.so com Ubuntu 18.04.
+PL-2443: Corrigidos widgets 3D em relatórios do Streamlit e removido o Streamlit da versão pública.
+PL-2446: Corrigido aviso para nenhuma rede conectada, porespy atualizado e testes aprimorados.
+PL-2449: Submódulo porespy atualizado e extração multiescala aprimorada.
+PL-2450: Corrigido interface pública do GeoSlicer e reduzido comprimento de caminho.
+PL-2451: Gerado erro no PNM bifásico quando a rede não percola e registro aprimorado.
+PL-2453: Problemas públicos corrigidos do GeoSlicer.
+PL-2454: Observador de nó removido na saída do corte e teste relevante adicionado.
+PL-2472: Importação RAW corrigida após excluir a saída do labelmap anterior.
+PL-2473: Histograma em profundidade corrigido da análise de múltiplas imagens.
+PL-2476: Simulação de fluxo de pn corrigida travando com muitas conexões de poros e submódulo atualizado.
+PL-2478: Comportamento esperado do caso de teste de integração corrigido e ordens de modelo aprimoradas.
+PL-2480: Processo de ajuste de corte manual corrigido para corte automático MCT.
+PL-2481: Comportamento da interface padrão de análise de múltiplas imagens ajustado para o método 'histograma em profundidade' e teste de integração adicionado.
+PL-2483: Dlisio atualizado e processo de carregamento mostrado com barra de progresso.
+PL-2484: Troca de layout de segmentação de log de imagem aprimorada e traceback corrigido.
+PL-397: Adicionado erro de otimização Kds à equação de erro de permeabilidade e pai do widget atualizado.
+outros: Novos worksteps de ThinSection adicionados no Workflow, fluxo de trabalho melhorado. Métodos de exportação/importação de arquivo LAS e inspetor. Adicionados testes de integração, correções de bugs e formatação de código.

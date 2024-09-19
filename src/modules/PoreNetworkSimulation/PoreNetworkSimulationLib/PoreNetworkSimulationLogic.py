@@ -17,11 +17,7 @@ from ltrace.algorithms.common import (
     generate_equidistant_points_on_sphere,
     points_are_below_plane,
 )
-from ltrace.pore_networks.functions import (
-    single_phase_permeability,
-    geo2pnf,
-    geo2spy,
-)
+from ltrace.pore_networks.functions import is_multiscale_geo, geo2pnf, geo2spy
 from ltrace.pore_networks.vtk_utils import (
     create_flow_model,
     create_permeability_sphere,
@@ -30,7 +26,6 @@ from ltrace.slicer import helpers
 from ltrace.slicer_utils import (
     LTracePluginLogic,
     dataFrameToTableNode,
-    slicer_is_in_developer_mode,
     hide_nodes_of_type,
 )
 
@@ -74,6 +69,21 @@ def readPolydata(filename):
     return polydata
 
 
+def calculateTransformNodeFromVolume(tableNode):
+    origin_attr = tableNode.GetAttribute("origin")
+    origin = [float(val) for val in origin_attr.split(";")]
+
+    transformMatrix = vtk.vtkMatrix4x4()
+    transformMatrix.SetElement(0, 3, origin[0])
+    transformMatrix.SetElement(1, 3, origin[1])
+    transformMatrix.SetElement(2, 3, origin[2])
+
+    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
+    transformNode.SetMatrixTransformToParent(transformMatrix)
+
+    return transformNode
+
+
 class OnePhaseSimulationLogic(LTracePluginLogic):
     def __init__(self, progressBar):
         LTracePluginLogic.__init__(self)
@@ -84,6 +94,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         self.results = {}
 
     def run_1phase(self, inputTable, params, prefix, callback, wait=False):
+        self.inputTableID = inputTable.GetID()
         self.params = params
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
@@ -200,12 +211,21 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         folderTree.SetItemExpanded(visualization_dir, False)
         folderTree.ItemModified(visualization_dir)
 
+        inputTable = slicer.mrmlScene.GetNodeByID(self.inputTableID)
+        transformNode = calculateTransformNodeFromVolume(inputTable)
+
         with open(f"{self.temp_dir}/return_params.json", "r") as file:
             minmax = json.load(file)
 
-        counter = 0
+        minmax_dict = {}
+        for line in minmax:
+            key = (line["inlet"], line["outlet"])
+            val = {"min": line["min"], "max": line["max"]}
+            minmax_dict[key] = val
+
         for inlet, outlet in itertools.combinations_with_replacement((0, 1, 2), 2):
-            if counter >= len(minmax):
+            key = (inlet, outlet)
+            if key not in minmax_dict.keys():
                 break
 
             subDir = folderTree.CreateFolderItem(
@@ -223,6 +243,8 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
                 model_node[prefix] = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", name)
                 model_node[prefix].SetAndObservePolyData(polydata)
                 model_node[prefix].CreateDefaultDisplayNodes()
+                model_node[prefix].SetAndObserveTransformNodeID(transformNode.GetID())
+                slicer.vtkSlicerTransformLogic().hardenTransform(model_node[prefix])
                 model_display = model_node[prefix].GetDisplayNode()
                 model_node[prefix].SetDisplayVisibility(True)
                 model_display.SetScalarVisibility(True)
@@ -236,9 +258,8 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             model_node["throat_flow_rate"].GetDisplayNode().SetAndObserveColorNodeID("vtkMRMLColorTableNodeWarmTint1")
             model_node["border_pores"].GetDisplayNode().SetAndObserveColorNodeID("vtkMRMLColorTableNodeFileViridis.txt")
             model_node["throat_flow_rate"].GetDisplayNode().SetScalarRangeFlag(0)
-            min_throat = minmax[counter]["min"]
-            max_throat = minmax[counter]["max"]
-            counter += 1
+            min_throat = minmax_dict[key]["min"]
+            max_throat = minmax_dict[key]["max"]
             model_node["throat_flow_rate"].GetDisplayNode().SetScalarRange(min_throat, max_throat)
 
             if (inlet + outlet) != 0:  # by default only display z-z results
@@ -262,6 +283,9 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             _ = dataFrameToTableNode(df_throats, throatOutputTable)
             _ = folderTree.CreateItem(subDir, poreOutputTable)
             _ = folderTree.CreateItem(subDir, throatOutputTable)
+
+        slicer.mrmlScene.RemoveNode(transformNode)
+        slicer.app.processEvents()
 
     def createVisualizationMultiAngleModels(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -431,6 +455,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
             "maxSubprocesses": self.params["max_subprocesses"],
             "krelResults": self.krelResultsTableNodeId,
             "tempDir": self.temp_dir,
+            "isMultiScale": int(is_multiscale_geo(pore_node)),
         }
 
         for cycle in range(1, 4):

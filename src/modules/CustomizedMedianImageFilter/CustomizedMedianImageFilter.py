@@ -69,6 +69,7 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
         # Input section
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
         inputCollapsibleButton.setText("Input")
+        self.inputCollapsibleButton = inputCollapsibleButton
         formLayout.addRow(inputCollapsibleButton)
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -128,6 +129,7 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
 
         # Output section
         outputCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.outputCollapsibleButton = outputCollapsibleButton
         outputCollapsibleButton.setText("Output")
         formLayout.addRow(outputCollapsibleButton)
         outputFormLayout = qt.QFormLayout(outputCollapsibleButton)
@@ -190,6 +192,8 @@ class CustomizedMedianImageFilterLogic(LTracePluginLogic):
         LTracePluginLogic.__init__(self)
         self.cliNode = None
         self.progressBar = progressBar
+        self.onComplete = lambda: None
+        self.onFailed = lambda: None
 
     def apply(self, p):
         # Removing old cli node if it exists
@@ -232,11 +236,14 @@ class CustomizedMedianImageFilterLogic(LTracePluginLogic):
 
             if status == "Completed":
                 print("Filtering end time: " + str(datetime.datetime.now()))
+                self.onComplete()
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputVolume)
+                self.onFailed()
             else:
                 slicer.mrmlScene.RemoveNode(self.outputVolume)
                 slicer.util.errorDisplay("Filtering failed.")
+                self.onFailed
 
     def cancel(self):
         if self.cliNode is None:

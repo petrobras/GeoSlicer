@@ -1,26 +1,25 @@
 import numpy as np
 import qt
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 import PySide2
 import shiboken2
 import slicer
-from collections import namedtuple
 
+from .base_view_widget import BaseViewWidget
+from collections import namedtuple
 from ImageLogDataLib.view.View import PlotControlsEventFilter
-from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data, tryGetNode
+from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data, tryGetNode, hex2Rgb
 from ltrace.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from ltrace.slicer.node_attributes import PlotScaleXAxisAttribute
 from Plots.HistogramInDepthPlot.HistogramInDepthPlotWidgetModel import HistogramInDepthPlotWidgetModel
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter"])
 
 
-class HistogramInDepthViewWidget(qt.QObject):
-    signal_updated = qt.Signal()
-
+class HistogramInDepthViewWidget(BaseViewWidget):
     def __init__(self, parent, view_data, primary_node):
-        super().__init__()
+        super().__init__(parent)
         self.view_data = view_data
 
         view_widget_layout = qt.QVBoxLayout(parent)
@@ -58,10 +57,20 @@ class HistogramInDepthViewWidget(qt.QObject):
                     symbol=secondary_plot_symbol,
                 )
 
-        pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
-        pyside_qvbox_layout.addWidget(self.curve_plot)
+        self.pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
+        self.pyside_qvbox_layout.addWidget(self.curve_plot)
 
-    def get_plot(self):
+    def clear(self):
+        if self.curve_plot is not None:
+            self.curve_plot.clear()
+            del self.curve_plot
+
+        for child in self.children():
+            del child
+
+        del self.pyside_qvbox_layout
+
+    def getPlot(self):
         return self.curve_plot
 
     def set_range(self, current_range):
@@ -70,7 +79,7 @@ class HistogramInDepthViewWidget(qt.QObject):
         if self.curve_plot is not None:
             self.curve_plot.set_y_range(min_depth, max_depth)
 
-    def get_graph_x(self, view_x, width):
+    def getGraphX(self, view_x, width):
         range = self.curve_plot._plotItem.viewRange()
         hDif = range[0][1] - range[0][0]
         if hDif == 0:
@@ -81,20 +90,20 @@ class HistogramInDepthViewWidget(qt.QObject):
             xOffset = range[0][0] * xScale
 
         xDepth = (view_x + xOffset) / xScale
-        if self.curve_plot.get_plotscale() == PlotScaleXAxisAttribute.LINEAR_SCALE.value:
+        if self.curve_plot._getPlotScale() == PlotScaleXAxisAttribute.LINEAR_SCALE.value:
             return xDepth
         else:
             return 10**xDepth
 
-    def get_bounds(self):
-        bounds = self.curve_plot.get_data_range()
+    def getBounds(self):
+        bounds = self.curve_plot.getDataRange()
         y_min, y_max = bounds
         y_min = y_min if y_min is not None else 0
         y_max = y_max if y_max is not None else 0
         bounds = (-1000 * y_max, -1000 * y_min)
         return bounds
 
-    def get_value(self, x, y):
+    def getValue(self, x, y):
         return self.curve_plot.getValue(x, y)
 
 
@@ -107,11 +116,28 @@ class PlotWidget(QtWidgets.QWidget):
         super().__init__(*args, **kwargs)
 
         self.__model = HistogramInDepthPlotWidgetModel(self)
-        self.__curve_indexer = CurveIndexer()
+        self.__curveIndexer = CurveIndexer()
         self.__color = "#000000"
         self.__plots = list()
+        self.__graphicsLayoutWidget = None
 
         self.setupUi()
+
+        self.destroyed.connect(self.__onDestroyed)
+
+    def __onDestroyed(self):
+        self.clear()
+        del self.__model
+        self.__model = None
+
+    def clear(self):
+        if hasattr(self.__model, "clear"):
+            self.__model.clear()
+
+        if self.__graphicsLayoutWidget is not None:
+            self.__graphicsLayoutWidget.clear()
+
+        del self.__curveIndexer
 
     def setupUi(self):
         """Initialize widgets"""
@@ -135,7 +161,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.export_action.triggered.connect(self.__on_export_to_las_clicked)
         menu.addAction(self.export_action)
 
-        self._plotItem.sigYRangeChanged.connect(self.__on_y_range_changed)
+        self._plotItem.sigYRangeChanged.connect(self.__onYRangeChanged)
 
         # Hide Contents
         self._plotItem.ctrl.fftCheck.setVisible(False)
@@ -186,17 +212,28 @@ class PlotWidget(QtWidgets.QWidget):
 
     def updatePlot(self):
         self._plotItem.clear()
-        self.__curve_indexer = CurveIndexer()
+        if self.__curveIndexer is not None:
+            del self.__curveIndexer
+
+        self.__curveIndexer = CurveIndexer()
 
         graph_data_list = self.__model.graphDataList
+        xMin = xMax = None
+        yMin = yMax = None
         for graph_data in graph_data_list:
             # Set pen color and scales
-            pen = self.get_plot_prop(graph_data)
-            maxdepth, mindepth = self.get_data_range()
+            colorRgb = hex2Rgb(self.__color, normalize=False)
+            brush = pg.mkBrush(colorRgb)
+            pen = pg.mkPen(colorRgb, width=0.01)
+            maxDepth, minDepth = self.getDataRange()
+
             scale_depth = self.get_scale(graph_data)
             scale_plot = self.__scaleHistogram
             # Get x values
-            x = self.get_x_array(graph_data)
+            x = self._getXArray(graph_data)
+            if x.size == 0:
+                continue
+
             # Get y values
             if graph_data.data.get("X", None) is not None:
                 y_all = np.zeros((graph_data.data.df.shape[1] - 1, graph_data.data.df.shape[0]))
@@ -223,23 +260,46 @@ class PlotWidget(QtWidgets.QWidget):
             y_all = y_all[:: self.__samples, :]
             y_scaled = y_scaled[:: self.__samples, :]
             depth_hist = depth_hist[:: self.__samples]
-            self._plotItem.plot(x, y_scaled, fillLevel=depth_hist, brush=self.__color, pen=pen)
+            self._plotItem.plot(x, y_scaled, fillLevel=depth_hist, brush=brush, pen=pen)
             for i in range(y_scaled.shape[0]):
-                self.__curve_indexer.addCurve(x, y_scaled[i, :], y_all[i, :])
+                self.__curveIndexer.addCurve(x, y_scaled[i, :], y_all[i, :])
 
             # Apply plot customization
-            if mindepth is None or maxdepth is None or x is None:
+            if minDepth is None or maxDepth is None or x is None:
                 continue
-            self._plotItem.setYRange(mindepth, mindepth)
-            self._plotItem.setXRange(x[0], x[-1])
+
+            if xMin is None or xMax is None:
+                xMin = x[0]
+                xMax = x[-1]
+            else:
+                xMin = min(xMin, x[0])
+                xMax = max(xMax, x[-1])
+
+            if yMin is None or yMax is None:
+                yMin = minDepth
+                yMax = minDepth
+            else:
+                yMin = min(yMin, minDepth)
+                yMax = max(yMax, maxDepth)
+
+        # Apply Log Scale
+        if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
+            self._plotItem.setLogMode(x=True, y=False)
+
+        if xMin is not None and xMax is not None:
+            if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
+                xMin = np.log10(xMin) if xMin > 0 else 0
+                xMax = np.log10(xMax) if xMax > 0 else 0
+
+            self._plotItem.setXRange(xMin, xMax)
+
+        if yMin is not None and yMax is not None:
+            self._plotItem.setYRange(yMin, yMax)
 
         # Apply plot customization
         self._plotItem.showGrid(x=True, y=True)
         self._plotItem.showAxis("bottom", True)
         self._plotItem.invertY(True)
-        # Apply Log Scale
-        if self.get_plotscale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
-            self._plotItem.setLogMode(x=True, y=False)
 
     def updateSecondPlot(self):
 
@@ -251,7 +311,7 @@ class PlotWidget(QtWidgets.QWidget):
 
             x_data = graph_data.data.get(xAxisParameter, None)
             y_data = graph_data.data.get(yAxisParameter, None)
-            if self.get_plotscale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
+            if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
                 x_data = np.log10(x_data)
 
             color = QtGui.QColor(graph_data.style.color)
@@ -273,7 +333,7 @@ class PlotWidget(QtWidgets.QWidget):
             self._plotItem.addItem(plot)
 
     def getValue(self, x, y):
-        return self.__curve_indexer.getValue(x, y)
+        return self.__curveIndexer.getValue(x, y)
 
     def __on_export_to_las_clicked(self):
         filter = "LAS (*.las)"
@@ -302,7 +362,7 @@ class PlotWidget(QtWidgets.QWidget):
         self._plotItem.getViewBox().disableAutoRange(axis="y")
         self._plotItem.getViewBox().setRange(yRange=(y_min, y_max), padding=0)
 
-    def get_data_range(self):
+    def getDataRange(self):
         max_depth = None
         min_depth = None
 
@@ -324,15 +384,15 @@ class PlotWidget(QtWidgets.QWidget):
     def setScalingSpeed(self, scalingSpeed):
         self.plot_controls_event_filter.setScalingSpeed(scalingSpeed)
 
-    def __on_y_range_changed(self, cls, tuple_range):
+    def __onYRangeChanged(self, cls, tuple_range):
         min_depth = 1000 * tuple_range[0]
         max_depth = 1000 * tuple_range[1]
         self.signal_y_range_changed.emit(cls, (min_depth, max_depth))
 
-    def get_plotscale(self):
+    def _getPlotScale(self):
         return self.__model.plotScale
 
-    def get_x_array(self, graph_data):
+    def _getXArray(self, graph_data):
         """Obtain an array for the X-axis based on the graph data type.
         If the graph data contains the key 'X', the function returns an array
         corresponding to that key. Otherwise, it creates an array based on a logarithmic
@@ -356,18 +416,6 @@ class PlotWidget(QtWidgets.QWidget):
             bins_time = 10**bins_log10time
             x = bins_time
         return x
-
-    def get_plot_prop(self, graph_data):
-        color_pen = QtGui.QColor(0, 0, 0)
-        if self.__color == "#000000":
-            if graph_data.data.get("X", None) is not None:
-                color_pen = QtGui.QColor(255, 255, 255, 255)
-                self.__color = QtGui.QColor(50, 50, 200, 127)
-            else:
-                self.__color = QtGui.QColor(0, 191, 0, 127)
-        brush = QtGui.QBrush(color_pen)
-        pen = QtGui.QPen(brush, 0.01)
-        return pen
 
     def get_scale(self, graph_data):
         scale = 1.0
@@ -416,15 +464,18 @@ class CurveIndexer:
     def __init__(self):
         self.__curves = []
 
-    def addCurve(self, x_values, y_values, pore_data):
-        curve_dict = {
-            self.MIN_Y: np.min(y_values),
-            self.MAX_Y: np.max(y_values),
-            self.X: x_values,
-            self.Y: y_values,
+    def addCurve(self, xValues, yValues, pore_data):
+        if xValues.size == 0 or yValues.size == 0:
+            return
+
+        curveDict = {
+            self.MIN_Y: np.min(yValues),
+            self.MAX_Y: np.max(yValues),
+            self.X: xValues,
+            self.Y: yValues,
             self.PORE: pore_data,
         }
-        self.__curves.append(curve_dict)
+        self.__curves.append(curveDict)
 
     def getValue(self, x, y):
         curves = self.__getCurvesInDepth(y)

@@ -2,6 +2,7 @@ import qt
 import slicer
 import logging
 import traceback
+import os
 
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -51,7 +52,9 @@ def getFeatures() -> OrderedDictType:
                 Feature("NetCDF", "NetCDF.png", "NetCDF"),
                 Feature("Workflow (Beta)", "Workflow.png", None, customActionWorkflow),
                 Feature("BIAEP Browser", "BIAEPBrowser.png", "BIAEPBrowser"),
-                Feature("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData"),
+                Feature("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData")
+                if os.getenv("GEOSLICER_MODE") != "Remote"
+                else None,  # Not working in cluster
                 Feature(
                     "Multiple\nImage Analysis",
                     "MultipleImageAnalysis.png",
@@ -184,6 +187,8 @@ class WelcomeGeoSlicerWidget(LTracePluginWidget):
             currentColumn = 0
             currentRow = 0
             for feature in features:
+                if not feature:
+                    continue
                 gridPosition = (currentRow, currentColumn)
 
                 button = feature.createToolButton(parent=vBoxLayout, gridPosition=gridPosition)

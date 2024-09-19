@@ -324,6 +324,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
             lossless = p.lossless
         losslessAttributeValue = LosslessAttribute.TRUE.value if lossless is True else LosslessAttribute.FALSE.value
         node.SetAttribute(LosslessAttribute.name(), losslessAttributeValue)
+        image_info["node"] = node
         self.setImageSpacingOnVolume(imageSpacing)
 
         loader.configureInitialNodeMetadata(self.ROOT_DATASET_DIRECTORY_NAME, baseName, node)

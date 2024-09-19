@@ -12,7 +12,7 @@ import slicer
 import vtk
 from pyqtgraph.Qt import QtCore
 
-from ltrace.slicer import widgets
+from ltrace.slicer import ui, widgets
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from ltrace.slicer_utils import (
     LTracePlugin,
@@ -75,16 +75,8 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
 
         # input volume selector
-        self.inputSelector = slicer.qMRMLNodeComboBox()
-        self.inputSelector.nodeTypes = ["vtkMRMLModelNode"]
-        self.inputSelector.selectNodeUponCreation = True
-        self.inputSelector.addAttribute("vtkMRMLModelNode", "saturation_steps", None)
-        self.inputSelector.addEnabled = False
-        self.inputSelector.removeEnabled = False
-        self.inputSelector.noneEnabled = True
-        self.inputSelector.showHidden = False
-        self.inputSelector.showChildNodeTypes = False
-        self.inputSelector.setMRMLScene(slicer.mrmlScene)
+        self.inputSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLModelNode"])
+        self.inputSelector.addNodeAttributeIncludeFilter("saturation_steps", None)
         self.inputSelector.setToolTip("Pick a Model node with multiple saturation tables.")
         self.inputSelector.objectName = "Input Selector"
         labelWidget = qt.QLabel("Input Model Node: ")
@@ -277,7 +269,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.subvolumeLogPlotItem.setLogMode(False, True)
 
         # connections
-        self.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onChangeModel)
+        self.inputSelector.currentItemChanged.connect(self.onChangeModel)
         self.stepSlider.connect("valueChanged(double)", self.onChangeStep)
         self.speedSlider.connect("valueChanged(double)", self.animationSetup)
         self.timer.timeout.connect(self.nextStep)

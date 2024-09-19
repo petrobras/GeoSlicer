@@ -4,7 +4,7 @@ import slicer
 import numpy as np
 
 from dataclasses import dataclass, field
-from Libs.MicroCTLoaderLogic import MicroCTLoaderLogic
+from ltrace.slicer import microct
 import importlib
 import Libs.RawLoader
 
@@ -172,7 +172,6 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
     def setup(self):
         LTracePluginWidget.setup(self)
-        self.logic = MicroCTLoaderLogic()
 
         self.unloaded = True
 
@@ -192,7 +191,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
 
-        globs = [f"*{ext}" for ext in MicroCTLoaderLogic.MICRO_CT_LOADER_FILE_EXTENSIONS]
+        globs = [f"*{ext}" for ext in microct.MICRO_CT_LOADER_FILE_EXTENSIONS]
         globs += ["*.raw"]
         self.pathWidget = DirOrFileWidget(
             settingKey=self.DIALOG_DIRECTORY,
@@ -235,10 +234,15 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
     def onPathSelected(self, path):
         self.pathWidget.pathLineEdit.setStyleSheet("")
 
+        if self.pathWidget.path.strip() == "":
+            message = "No images found"
+            self._setInvertWidgetVisibility(False)
+            highlight_error(self.pathWidget.pathLineEdit)
+            self.pathInfoLabel.setText(message)
+            return
+
         path = Path(path)
         isFile = path.is_file() and path.is_absolute()
-
-        self.logic.loaded = False
 
         self.rawWidget.visible = False
         self.rawParamsSection.visible = False
@@ -258,13 +262,13 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             message = "Will import a single image from RAW file"
             self.rawWidget.onCurrentPathChanged(path)
         else:  # File path is a directory or a single file
-            spacing = self.logic.detectSpacing(Path(self.pathWidget.path))
+            spacing = microct.detectSpacing(Path(self.pathWidget.path))
             mmSpacing = [f"{s.m_as('micrometer'):.3f}" for s in spacing] if spacing else None
             self._setImageSpacingVisibility(True, values=mmSpacing)
 
             self.pathInfoLabel.setText("Analyzing...")
             slicer.app.processEvents()
-            sliceCount, images, is3dBatch = self.logic.getCountsAndLoadPathsForImageFiles(path)
+            sliceCount, images, is3dBatch = microct.getCountsAndLoadPathsForImageFiles(path)
 
             if images and images[0].suffix == ".nc":
                 self._setImageSpacingVisibility(False)
@@ -291,18 +295,8 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.pathInfoLabel.setText(message)
 
     def onLoadButtonClicked(self):
-        if self.logic.loaded:
-            return
-
-        callback = Callback(
-            on_update=lambda message, percent, processEvents=True: self.updateStatus(
-                message,
-                progress=percent,
-                processEvents=processEvents,
-            )
-        )
+        callback = self.updateStatus
         try:
-            self.logic.loaded = True
             self.pathInfoLabel.setText("")
 
             path = Path(self.pathWidget.path)
@@ -314,21 +308,27 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             slicer.app.settings().setValue(self.IMAGE_SPACING_2, self.imageSpacing2LineEdit.text)
             slicer.app.settings().setValue(self.IMAGE_SPACING_3, self.imageSpacing3LineEdit.text)
             slicer.app.settings().setValue(self.CENTER_VOLUME, str(self.centerVolumeCheckbox.isChecked()))
-            loadParameters = LoadParameters(
-                callback,
+
+            imageSpacing = (
                 float(self.imageSpacing1LineEdit.text) * ureg.micrometer,
                 float(self.imageSpacing2LineEdit.text) * ureg.micrometer,
                 float(self.imageSpacing3LineEdit.text) * ureg.micrometer,
-                self.centerVolumeCheckbox.isChecked(),
-                [
-                    self.widthDirectionCheckbox.isChecked(),
-                    self.lengthDirectionCheckbox.isChecked(),
-                    self.heightDirectionCheckbox.isChecked(),
-                ],
-                self.loadAsLabelmapCheckBox.isChecked(),
             )
-            callback.on_update("Loading...", 10)
-            node, *_ = self.logic.load(path, loadParameters)
+            invertDirections = [
+                self.widthDirectionCheckbox.isChecked(),
+                self.lengthDirectionCheckbox.isChecked(),
+                self.heightDirectionCheckbox.isChecked(),
+            ]
+
+            callback("Loading...", 10, True)
+            microct.load(
+                path,
+                callback=callback,
+                imageSpacing=imageSpacing,
+                centerVolume=self.centerVolumeCheckbox.isChecked(),
+                invertDirections=invertDirections,
+                loadAsLabelmap=self.loadAsLabelmapCheckBox.isChecked(),
+            )
         except LoadInfo as e:
             slicer.util.infoDisplay(str(e))
             return

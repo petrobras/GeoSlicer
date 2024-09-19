@@ -237,6 +237,7 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
                 self.fillMissingCheckBox.isChecked(),
                 float(self.imageSpacingLineEdit.text) * ureg.millimeter,
             )
+            print(loadParameters)
             self.logic.load(path, loadParameters)
             self.pathWidget.currentPath = Path(path).parent.resolve()
         except LoadInfo as e:
@@ -283,13 +284,13 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
     def load(self, path, p):
         path = Path(path)
         if path.is_file():
-            self.loadImage(path, p, path.parent.name)
+            return self.loadImage(path, p, path.parent.name)
         else:
             files = []
             for extension in self.QEMSCAN_LOADER_FILE_EXTENSIONS:
                 files.extend(list(path.glob("*" + extension)))
             for file in files:
-                self.loadImage(file, p, path.name)
+                return self.loadImage(file, p, path.name)
 
     def configureInitialNodeMetadata(self, node, baseName, p):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -379,6 +380,7 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
             slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentationNode, labelMapVolumeNode)
             self.setImageSpacing(labelMapVolumeNode, p.imageSpacing)
             self.configureInitialNodeMetadata(labelMapVolumeNode, baseName, p)
+            return labelMapVolumeNode
         except Exception as e:
             raise e
             slicer.mrmlScene.RemoveNode(labelMapVolumeNode)

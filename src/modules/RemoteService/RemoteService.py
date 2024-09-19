@@ -31,9 +31,9 @@ class RemoteService(LTracePlugin):
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = ""
 
-        self.hosts_file = Path(slicer.app.toSlicerHomeAbsolutePath("LTrace/remote/config"))
+        self.hosts_file = Path(slicer.app.userSettings().fileName()).parent / "remote" / "config.json"
 
-        self.job_file = Path(slicer.app.toSlicerHomeAbsolutePath("LTrace/remote/jobs"))
+        self.job_file = Path(slicer.app.userSettings().fileName()).parent / "remote" / "jobs.json"
 
         moduleDir = Path(os.path.dirname(os.path.realpath(__file__)))
         self.templates_dir = moduleDir / "Resources" / "templates"

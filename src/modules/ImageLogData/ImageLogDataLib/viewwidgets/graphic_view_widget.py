@@ -4,14 +4,13 @@ import qt
 import shiboken2
 import slicer
 
+from .base_view_widget import BaseViewWidget
 from ImageLogDataLib.view.View import CurvePlot
 from ltrace.slicer.graph_data import LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from ltrace.slicer_utils import tableNodeToDict
 
 
-class GraphicViewWidget(qt.QObject):
-    signal_updated = qt.Signal()
-
+class GraphicViewWidget(BaseViewWidget):
     def __init__(self, parent, view_data, primary_node):
         super().__init__()
         self.view_data = view_data
@@ -73,14 +72,14 @@ class GraphicViewWidget(qt.QObject):
         graphics_layout_widget = self.curve_plot._graphics_layout_widget
         pyside_qvbox_layout.addWidget(graphics_layout_widget)
 
-    def get_plot(self):
+    def getPlot(self):
         return self.curve_plot
 
     def set_range(self, current_range):
         if self.curve_plot is not None:
             self.curve_plot.set_y_range(*current_range[::-1])
 
-    def get_graph_x(self, view_x, width):
+    def getGraphX(self, view_x, width):
         range = self.curve_plot._plot_item.viewRange()
         hDif = range[0][1] - range[0][0]
         if hDif == 0:
@@ -94,7 +93,7 @@ class GraphicViewWidget(qt.QObject):
 
         return xDepth
 
-    def get_bounds(self):
+    def getBounds(self):
         bounds = self.curve_plot.get_data_range()
         _, (y_min, y_max) = bounds
         y_min = y_min if y_min is not None else 0
@@ -102,7 +101,7 @@ class GraphicViewWidget(qt.QObject):
         bounds = (-1 * y_max, -1 * y_min)
         return bounds
 
-    def get_value(self, x, y):
+    def getValue(self, x, y):
         primary_dict = self.__primary_table_dict
         try:
             depths = primary_dict["DEPTH"]
@@ -125,7 +124,7 @@ class GraphicViewWidget(qt.QObject):
 
     def __on_logmode_changed(self, activated):
         self.view_data.logMode = activated
-        self.signal_updated.emit()
+        self.signalUpdated.emit()
 
     def __get_bounding_depth_indices(self, depths, y):
         index_pairs = []

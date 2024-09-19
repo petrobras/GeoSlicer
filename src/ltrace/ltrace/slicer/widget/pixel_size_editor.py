@@ -127,7 +127,7 @@ class PixelSizeEditor(qt.QWidget):
                 self.scaleSizeInputChanged.emit()
                 self.__reset_style(self.scaleSizePxLineEdit)
                 self.__reset_style(self.scaleSizeMmLineEdit)
-                self.__set_lineedit_style_gray(self.imageSpacingLineEdit)
+                self.__set_lineedit_style_highlighted(self.imageSpacingLineEdit)
                 self.imageSpacingLineEdit.text = str(
                     float(self.scaleSizeMmLineEdit.text) / float(self.scaleSizePxLineEdit.text)
                 )
@@ -135,8 +135,8 @@ class PixelSizeEditor(qt.QWidget):
         else:
             if self.imageSpacingLineEdit.text:
                 self.imageSpacingInputChanged.emit()
-                self.__set_lineedit_style_gray(self.scaleSizePxLineEdit)
-                self.__set_lineedit_style_gray(self.scaleSizeMmLineEdit)
+                self.__set_lineedit_style_highlighted(self.scaleSizePxLineEdit)
+                self.__set_lineedit_style_highlighted(self.scaleSizeMmLineEdit)
                 self.__reset_style(self.imageSpacingLineEdit)
                 self.scaleSizePxLineEdit.text = ""
                 self.scaleSizeMmLineEdit.text = ""
@@ -165,16 +165,11 @@ class PixelSizeEditor(qt.QWidget):
         line_edit_widget.setStyleSheet("")
 
     def __set_lineedit_style_red(self, line_edit_widget):
-        line_edit_widget.setStyleSheet("QLineEdit { background-color: #600000; }")
+        helpers.highlight_error(line_edit_widget)
 
-    def __set_lineedit_style_gray(self, line_edit_widget):
+    def __set_lineedit_style_highlighted(self, line_edit_widget):
         line_edit_widget.setStyleSheet(
-            "QLineEdit {"
-            "    background-color: gray;"
-            "    border-color: yellow;"
-            "    border-width: 1px;"
-            "    border-style: outset;"
-            "}"
+            "QLineEdit {" "    border-color: yellow;" "    border-width: 1px;" "    border-style: outset;" "}"
         )
 
     @property

@@ -13,6 +13,7 @@ from ltrace.algorithms.measurements import (
 from ltrace.slicer.helpers import tryGetNode
 from pyqtgraph import QtCore
 from ltrace.slicer import data_utils as dutils
+from ltrace.slicer_utils import DebounceSignal
 
 TEXT_SYMBOLS = {
     "● Circle": "o",
@@ -155,16 +156,25 @@ class DictInterface:
         self.df = df
 
     def get(self, key, defaults=None):
+        if self.df is None:
+            return None
+
         if key in self.df.columns:
             return self.df[key]
 
         return defaults
 
     def items(self):
+        if self.df is None:
+            return None
+
         for column in self.df.columns:
             yield column, self.df[column].to_numpy()
 
     def item(self):
+        if self.df is None:
+            return None
+
         for column in self.df.columns:
             yield column
 
@@ -181,9 +191,15 @@ class DictInterface:
         )
 
     def __len__(self):
+        if self.df is None:
+            return 0
+
         return len(self.df.columns)
 
     def __rows__(self):
+        if self.df is None:
+            return 0
+
         return self.df.shape[0]
 
 
@@ -220,6 +236,7 @@ class GraphData(QtCore.QObject):
 
         # destroyed signal only works with a lambda
         self.destroyed.connect(lambda: self._cleanUp())
+        self.signalModifiedDebouncer = DebounceSignal(parent=self, signal=self.signalModified, qtTimer=QtCore.QTimer)
 
     def __eq__(self, other):
         if not isinstance(other, GraphData):
@@ -405,7 +422,7 @@ class NodeGraphData(GraphData):
         """Handles node's modification."""
         node = tryGetNode(self.__nodeId)
         if self.__parseData(node) is True:
-            self.signalModified.emit()
+            self.signalModifiedDebouncer.emit()
         else:
             # notify something went wrong
             self.signalRemoved.emit()

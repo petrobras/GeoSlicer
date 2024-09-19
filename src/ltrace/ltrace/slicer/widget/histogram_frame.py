@@ -8,7 +8,7 @@ import PySide2
 from ltrace.algorithms.common import randomChoice
 from ltrace.slicer.helpers import getVolumeNullValue, themeIsDark, BlockSignals
 from ltrace.slicer.node_observer import NodeObserver
-from ltrace.slicer.ui import numberParamInt
+from ltrace.slicer.ui import CheckBoxWidget, numberParamInt
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
@@ -46,6 +46,10 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
 
         self.view_widget = view_widget
 
+        self.remove_background_check = CheckBoxWidget(
+            tooltip="Remove background points for best Y range", checked=False, onToggle=self._on_checkbox_toggled
+        )
+
         self.number_of_bins_box = numberParamInt(vrange=(10, 1000), value=200)
         self.number_of_bins_box.editingFinished.connect(self._on_number_of_bins_changed)
         self.number_of_bins_box.setToolTip("Number of bins")
@@ -81,8 +85,13 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
         self.array_colors = list()
         for i in range(len(self.voxel_array)):
             self.array_colors.append(plot_colors[i])
-
-        self._update_plot(self.number_of_bins_box.value, auto_adjust_zoom=update_plot_auto_zoom)
+        self._update_plot(
+            self.number_of_bins_box.value,
+            number_of_sample_points=min(
+                int(self.number_of_sample_points_box.value), sum([len(arr) for arr in self.voxel_array])
+            ),
+            auto_adjust_zoom=update_plot_auto_zoom,
+        )
 
     def set_region(self, lower_limit, upper_limit):
         self.data_plot.set_region(lower_limit, upper_limit)
@@ -119,10 +128,10 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
     def _on_region_values_changed(self, first_, second_):
         pass
 
-    def _update_plot(self, number_of_bins, auto_adjust_zoom=True):
+    def _update_plot(self, number_of_bins, number_of_sample_points=40000, auto_adjust_zoom=True):
         if not self.has_loaded_data():
             return
-
+        self.number_of_sample_points_box.value = number_of_sample_points
         numberOfSamplePoints = int(self.number_of_sample_points_box.value)
         region_range_min = np.inf
         region_range_max = np.NINF
@@ -141,16 +150,14 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
                 continue
 
             histogram, histogram_edges = np.histogram(sampleIntensities, number_of_bins, self.histogram_range)
-
+            y_values = self.remove_background_max(histogram) if self.remove_background_check.checked else histogram
             region_range_min = min(region_range_min, np.percentile(sampleIntensities, 0.05))
             region_range_max = max(region_range_max, np.percentile(sampleIntensities, 99.95))
 
             min_x_value = min(min_x_value, histogram_edges[0])
             max_x_value = max(max_x_value, histogram_edges[-1])
 
-            self.data_plot.add_plot(histogram_edges, histogram, self.array_colors[i] + (127,))
-
-        self.number_of_sample_points_box.value = min(numberOfSamplePoints, sum([len(arr) for arr in self.voxel_array]))
+            self.data_plot.add_plot(histogram_edges, y_values, self.array_colors[i] + (127,))
 
         region_diff = (region_range_max - region_range_min) * self.region_leeway
         self._set_region_range(region_range_min - region_diff, region_range_max + region_diff)
@@ -177,11 +184,23 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
 
         self.data_plot.set_graphical_zoom_min_max(*current_data_zoom_range)
 
+    def remove_background_max(self, arr):
+        arr = np.array(arr)
+        modified_arr = arr.copy()
+
+        if arr[0] == arr.max() and arr[1] == 0:
+            modified_arr[0] = 0
+
+        return modified_arr
+
+    def _on_checkbox_toggled(self, checkbox, state):
+        self._update_plot(self.number_of_bins_box.value, self.number_of_sample_points_box.value, auto_adjust_zoom=False)
+
     def _on_number_of_bins_changed(self):
-        self._update_plot(self.number_of_bins_box.value, auto_adjust_zoom=False)
+        self._update_plot(self.number_of_bins_box.value, self.number_of_sample_points_box.value, auto_adjust_zoom=False)
 
     def _on_number_of_sample_points_changed(self):
-        self._update_plot(self.number_of_bins_box.value, auto_adjust_zoom=False)
+        self._update_plot(self.number_of_bins_box.value, self.number_of_sample_points_box.value, auto_adjust_zoom=False)
 
     @abstractmethod
     def _set_region_block_signals(self, block):
@@ -204,6 +223,13 @@ class DisplayNodeHistogramFrame(HistogramFrame):
         layout.addLayout(self.data_plot)
 
         # ------------------------------------------------------------------------
+        buttonsZ_layout = qt.QHBoxLayout()
+        buttonsZ_layout.setSpacing(4)
+
+        remove_background_check_label = qt.QLabel("Remove background points:")
+        buttonsZ_layout.addWidget(remove_background_check_label)
+        buttonsZ_layout.addWidget(self.remove_background_check)
+
         buttonsA_layout = qt.QHBoxLayout()
         buttonsA_layout.setSpacing(4)
 
@@ -221,6 +247,7 @@ class DisplayNodeHistogramFrame(HistogramFrame):
         controls_layout = qt.QHBoxLayout(self)
         controls_layout.setSpacing(16)
         controls_layout.addStretch(1)
+        controls_layout.addLayout(buttonsZ_layout)
         controls_layout.addLayout(buttonsA_layout)
         controls_layout.addLayout(buttonsB_layout)
 
@@ -331,6 +358,13 @@ class SegmentationModellingHistogramFrame(HistogramFrame):
         self.data_plot.region_changed.connect(self._on_region_changed)
         layout.addLayout(self.data_plot)
 
+        buttonsZ_layout = qt.QHBoxLayout()
+        buttonsZ_layout.setSpacing(4)
+
+        remove_background_check_label = qt.QLabel("Remove background points:")
+        buttonsZ_layout.addWidget(remove_background_check_label)
+        buttonsZ_layout.addWidget(self.remove_background_check)
+
         buttonsA_layout = qt.QHBoxLayout()
         buttonsA_layout.setSpacing(4)
 
@@ -348,6 +382,7 @@ class SegmentationModellingHistogramFrame(HistogramFrame):
         controls_layout = qt.QHBoxLayout(self)
         controls_layout.setSpacing(16)
         controls_layout.addStretch(1)
+        controls_layout.addLayout(buttonsZ_layout)
         controls_layout.addLayout(buttonsA_layout)
         controls_layout.addLayout(buttonsB_layout)
 

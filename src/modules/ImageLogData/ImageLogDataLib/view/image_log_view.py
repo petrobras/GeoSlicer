@@ -62,7 +62,22 @@ class ImageLogView:
 
         self.viewData, self.table_type = self.__add_node(self.primaryNode, self.segmentation_node)
 
+    def __del__(self):
+        self.primaryNode = None
+        self.segmentation_node = None
+
+        if self.widget is not None:
+            self.widget.delete()
+
+        self.widget = None
+        del self.viewData
+        del self.table_type
+
     def setup_widget(self, parent):
+        if self.widget is not None:
+            self.widget.clear()
+            self.widget.delete()
+
         if isinstance(self.viewData, SliceViewData):
             self.widget = SliceViewWidget(parent, self.viewData, self.primaryNode)
             self.primary_table_dict = None

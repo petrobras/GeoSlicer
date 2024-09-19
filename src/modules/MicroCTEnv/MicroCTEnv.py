@@ -26,6 +26,101 @@ except ImportError:
     MicrotomRemote = None
 
 
+class FlowTabWidget(qt.QFrame):
+    def __init__(self, *args):
+        super().__init__(*args)
+        layout = qt.QVBoxLayout(self)
+        layout.setSpacing(10)
+        select_module = slicer.util.mainWindow().moduleSelector().selectModule
+
+        helpLabel = qt.QLabel(
+            "<b>Flows</b> are a way to follow a sequence of work steps in a simpler, streamlined way."
+        )
+        segGroupBox = qt.QGroupBox()
+        segLayout = qt.QVBoxLayout()
+        segGroupBox.setLayout(segLayout)
+        segLabel = qt.QLabel(
+            """
+<h3>Modelling Flow</h3>
+Compute a porosity map and statistics of a MicroCT volume.
+
+<h4>Flow inputs</h4>
+<ul>
+    <li>A MicroCT volume (use the 'Import' tab to load)</li>
+</ul>
+
+<h4>Steps in flow</h4>
+<ul>
+    <li>Crop</li>
+    <li>Filter</li>
+    <li>Threshold</li>
+    <li>Adjust boundary (boundary removal, expand segments)</li>
+    <li>Select SOI</li>
+    <li>Model</li>
+</ul>
+
+<h4>Flow outputs</h4>
+<ul>
+    <li>Porosity map volume</li>
+    <li>Report table</li>
+</ul>
+"""
+        )
+        segLabel.setWordWrap(True)
+        segButton = qt.QPushButton()
+        segButton.setFixedHeight(40)
+        segButton.setText("Start Modelling Flow")
+        segButton.clicked.connect(lambda: select_module("StreamlinedModelling"))
+        segLayout.addWidget(segLabel)
+        segLayout.addWidget(segButton)
+
+        modelingGroupBox = qt.QGroupBox()
+        modelingLayout = qt.QVBoxLayout()
+        modelingGroupBox.setLayout(modelingLayout)
+        modelingLabel = qt.QLabel(
+            """
+<h3>Virtual Segmentation Flow</h3>
+Segment without loading an entire image into memory. Ideal for big images.
+
+<h4>Flow inputs</h4>
+<ul>
+    <li>A virtual image</li>
+    <li>A loaded sample from the virtual image</li>
+</ul>
+Note: go to the 'Big Image' module to load a virtual image and its sample.
+
+<h4>Steps in flow</h4>
+<ul>
+    <li>Threshold</li>
+    <li>Adjust boundary (boundary removal, expand segments)</li>
+</ul>
+
+<h4>Flow outputs</h4>
+<ul>
+    <li>Segmentation of image into macroporosity, microporosity, reference solid and solid, as a virtual image.</li>
+</ul>
+"""
+        )
+        modelingLabel.setWordWrap(True)
+        modelingButton = qt.QPushButton()
+        modelingButton.setFixedHeight(40)
+        modelingButton.setText("Start Virtual Segmentation Flow")
+        modelingButton.clicked.connect(lambda: select_module("StreamlinedSegmentation"))
+        modelingLayout.addWidget(modelingLabel)
+        modelingLayout.addWidget(modelingButton)
+
+        layout.addWidget(helpLabel)
+        layout.addWidget(segGroupBox)
+        layout.addWidget(modelingGroupBox)
+        layout.addStretch(1)
+
+    def enter(self):
+        pass
+
+    def exit(self):
+        pass
+
+
 class MicroCTEnv(LTracePlugin):
     SETTING_KEY = "MicroCTEnv"
     MODULE_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
@@ -68,6 +163,7 @@ class MicroCTEnvWidget(LTracePluginWidget):
         dataTab.addTab(slicer.modules.microctloader.createNewWidgetRepresentation(), "Import")
         dataTab.addTab(slicer.modules.rawloader.createNewWidgetRepresentation(), "RAW import")
         dataTab.addTab(slicer.modules.microctexport.createNewWidgetRepresentation(), "Export")
+        dataTab.addTab(FlowTabWidget(), "Flows")
 
         self.mainTab.addTab(dataTab, "Data")
         self.mainTab.addTab(slicer.modules.customizedcropvolume.createNewWidgetRepresentation(), "Crop")

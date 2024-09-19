@@ -177,8 +177,8 @@ PARAMETERS = {
         "display_name": "Keep temporary files",
         "layout": "options",
         "dtype": "singlecheckbox",
-        "true_value": True,
-        "false_value": False,
+        "true_value": "T",
+        "false_value": "F",
         "default_value": False,
     },
     "max_subprocesses": {
@@ -188,6 +188,14 @@ PARAMETERS = {
         "minimum_value": 1,
         "maximum_value": 256,
         "default_value": 8,
+    },
+    "timeout_enabled": {
+        "display_name": "Enable timeout",
+        "layout": "options",
+        "dtype": "singlecheckbox",
+        "true_value": "T",
+        "false_value": "F",
+        "default_value": True,
     },
 }
 
@@ -227,10 +235,10 @@ PARAMETERS["frac_contact_method"] = {
     "dtype": "combobox",
     "default_value": 0,
     "display_names": {
+        "Random": "rand",
         "Spatially correlated": "corr",
         "Smaller pores": "rMin",
         "Larger pores": "rMax",
-        "Random": "rand",
     },
 }
 PARAMETERS["second_contact_fraction"] = {
@@ -238,6 +246,56 @@ PARAMETERS["second_contact_fraction"] = {
     "dtype": "multifloat",
     "default_value": 0.0,
     "layout": "second",
+}
+PARAMETERS["oilInWCluster"] = {
+    "display_name": "oilInWCluster",
+    "dtype": "combobox",
+    "default_value": 0,
+    "display_names": {
+        "True": "T",
+        "False": "F",
+    },
+    "layout": "frac",
+}
+PARAMETERS["frac_cluster_count"] = {
+    "display_name": "Cluster count center",
+    "tooltip": "Number of elements in each cluster",
+    "dtype": "singleint",
+    "default_value": 20.0,
+    "min_value": 0,
+    "max_value": 10000,
+    "layout": "frac",
+}
+PARAMETERS["frac_cluster_count_range"] = {
+    "display_name": "Cluster count range",
+    "dtype": "singleint",
+    "default_value": 10.0,
+    "min_value": 0,
+    "max_value": 10000,
+    "layout": "frac",
+}
+PARAMETERS["frac_cluster_count_del"] = {
+    "display_name": "Delta",
+    "dtype": "multifloat",
+    "default_value": -1.0,
+    "layout": "frac",
+}
+PARAMETERS["frac_cluster_count_eta"] = {
+    "display_name": "Gamma",
+    "dtype": "multifloat",
+    "default_value": -1.0,
+    "layout": "frac",
+}
+PARAMETERS["frac_cluster_count_rctrl"] = {
+    "display_name": "Cluster correlation",
+    "layout": "frac",
+    "dtype": "combobox",
+    "default_value": 0,
+    "display_names": {
+        "Uncorrelated": "rand",
+        "Positive radius": "rMax",
+        "Negative radius": "rMin",
+    },
 }
 
 for i in ("init", "second", "equil", "frac"):
@@ -304,5 +362,5 @@ for i in ("init", "second", "equil", "frac"):
 del PARAMETERS["second_contact_model"]
 del PARAMETERS["second_contact_angle_separation"]
 
-del PARAMETERS["frac_contact_model"]
+# del PARAMETERS["frac_contact_model"]
 del PARAMETERS["frac_contact_angle_separation"]

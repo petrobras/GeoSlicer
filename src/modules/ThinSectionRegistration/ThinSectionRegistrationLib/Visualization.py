@@ -193,3 +193,11 @@ class VisualizationWidget(pqWidget):
         self.revealCheckBox.checked = False
         for _, checkBox in self.volumeDisplayCheckboxes.items():
             checkBox.checked = True
+
+    def cleanUp(self) -> None:
+        for timer in [self.rockTimer, self.flickerTimer]:
+            if timer is not None:
+                timer.stop()
+                del timer
+
+        self.connections.clear()

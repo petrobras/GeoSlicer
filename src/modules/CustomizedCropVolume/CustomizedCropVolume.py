@@ -54,6 +54,7 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
         # Input section
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
         inputCollapsibleButton.setText("Input")
+        self.inputCollapsibleButton = inputCollapsibleButton
         loadFormLayout.addRow(inputCollapsibleButton)
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -211,13 +212,8 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
         self.roiObserver.modifiedSignal.connect(self.onRoiModified)
 
     def exit(self):
-        slicer.mrmlScene.RemoveNode(self.logic.roi)
-        if self.roiObserver is None:
-            return
-
-        self.roiObserver.clear()
-        del self.roiObserver
         self.roiObserver = None
+        slicer.mrmlScene.RemoveNode(self.logic.roi)
 
     def updateStatus(self, message, progress=None, processEvents=True):
         self.progressBar.show()
@@ -305,6 +301,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         copy_display(volume, croppedVolume)
 
         self.roi.SetDisplayVisibility(False)
+        self.lastCroppedVolume = croppedVolume
 
     def getCroppedSize(self, volume):
         position = [0] * 3

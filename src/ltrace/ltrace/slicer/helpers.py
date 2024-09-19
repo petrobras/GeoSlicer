@@ -2349,3 +2349,20 @@ def get_scripted_modules_path() -> str:
     lib_path = Path(slicer.app.slicerHome) / "lib"
     lib_geoslicer_path = next(lib_path.glob("GeoSlicer-*"))
     return (lib_geoslicer_path / "qt-scripted-modules").resolve().as_posix()
+
+
+def hex2Rgb(hex: str, normalize=True) -> Tuple:
+    """Convert color hex string to RGB tuple
+
+    Args:
+        hex (str): the color hex string.
+        normalize (bool, optional): Normalize color value between 0~1 when True, otherwise maintain 0~255 range. Defaults to True.
+
+    Returns:
+        Tuple: The RGB color tuple.
+    """
+    normalizeValue = 255.0 if normalize else 1
+    hex = hex.lstrip("#")
+    lv = len(hex)
+    rgb = tuple(int(hex[i : i + lv // 3], 16) / normalizeValue for i in range(0, lv, lv // 3))
+    return rgb

@@ -1,17 +1,17 @@
-import logging
-import os
 import qt
-
+import slicer
+import logging
 import numpy as np
 import pandas as pd
-import slicer
+import os
 
+from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
 from collections import defaultdict
-
-from AnalysisTypes.analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
 from ltrace.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
 from ltrace.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
 from ltrace.slicer.node_attributes import TableDataOrientation, TableType
+from ltrace.utils.ProgressBarProc import ProgressBarProc
+from typing import Dict
 
 
 class MeanInDepthAnalysisWidget(AnalysisWidgetBase):
@@ -21,98 +21,108 @@ class MeanInDepthAnalysisWidget(AnalysisWidgetBase):
     def setup(self):
         REPORT_PARAMETERS = InspectorReportFile.header(accept_types=[float, int])
 
-        form_layout = qt.QFormLayout()
+        formLayout = qt.QFormLayout()
 
-        self.parameter_label_combo_box = qt.QComboBox()
-        self.parameter_label_combo_box.addItem("All")
-        self.parameter_label_combo_box.addItems(REPORT_PARAMETERS)
-        self.parameter_label_combo_box.currentText = "max_feret"
-        self.parameter_label_combo_box.setToolTip("Select one of the table parameters to compute the mean.")
-        form_layout.addRow("Mean Input Parameter: ", self.parameter_label_combo_box)
+        self.parameterLabelComboBox = qt.QComboBox()
+        self.parameterLabelComboBox.addItem("All")
+        self.parameterLabelComboBox.addItems(REPORT_PARAMETERS)
+        self.parameterLabelComboBox.currentText = "max_feret"
+        self.parameterLabelComboBox.setToolTip("Select one of the table parameters to compute the mean.")
+        self.parameterLabelComboBox.objectName = "Mean in Depth Parameter Combo Box"
+        formLayout.addRow("Mean Input Parameter: ", self.parameterLabelComboBox)
 
-        self.weight_label_combo_box = qt.QComboBox()
-        self.weight_label_combo_box.addItem("None")
-        self.weight_label_combo_box.addItems(REPORT_PARAMETERS)
-        self.weight_label_combo_box.currentText = "None"
-        self.weight_label_combo_box.setToolTip("Select one of the table parameters to be used as the weight.")
-        form_layout.addRow("Mean Weight Parameter: ", self.weight_label_combo_box)
+        self.weightLabelComboBox = qt.QComboBox()
+        self.weightLabelComboBox.addItem("None")
+        self.weightLabelComboBox.addItems(REPORT_PARAMETERS)
+        self.weightLabelComboBox.currentText = "None"
+        self.weightLabelComboBox.setToolTip("Select one of the table parameters to be used as the weight.")
+        self.weightLabelComboBox.objectName = "Mean in Depth Weight Combo Box"
+        formLayout.addRow("Mean Weight Parameter: ", self.weightLabelComboBox)
 
-        self.setLayout(form_layout)
+        self.setLayout(formLayout)
 
-    def update_report_parameters(self, parameters):
+        # Connections
+        self.parameterLabelComboBox.currentTextChanged.connect(lambda text: self.modified())
+        self.weightLabelComboBox.currentTextChanged.connect(lambda text: self.modified())
+
+    def updateReportParameters(self, parameters: Dict) -> None:
         parameters.sort()
-        current_selected_input_parameter = self.parameter_label_combo_box.currentText
-        self.parameter_label_combo_box.clear()
-        self.parameter_label_combo_box.addItem("All")
-        self.parameter_label_combo_box.addItems(parameters)
-        self.parameter_label_combo_box.setCurrentText(current_selected_input_parameter)
-        self.parameter_label_combo_box.currentIndexChanged.connect(lambda *args: self.output_name_changed())
+        currentSelectedInputParameter = self.parameterLabelComboBox.currentText
+        self.parameterLabelComboBox.clear()
+        self.parameterLabelComboBox.addItem("All")
+        self.parameterLabelComboBox.addItems(parameters)
+        self.parameterLabelComboBox.setCurrentText(currentSelectedInputParameter)
+        self.parameterLabelComboBox.currentIndexChanged.connect(lambda *args: self.outputNameChangedSignal.emit())
 
-        current_selected_weight_parameter = self.weight_label_combo_box.currentText
-        self.weight_label_combo_box.clear()
-        self.weight_label_combo_box.addItem("None")
-        self.weight_label_combo_box.addItems(parameters)
-        self.weight_label_combo_box.setCurrentText(current_selected_weight_parameter)
-        self.weight_label_combo_box.currentIndexChanged.connect(lambda *args: self.output_name_changed())
+        currentSelectedWeightParameter = self.weightLabelComboBox.currentText
+        self.weightLabelComboBox.clear()
+        self.weightLabelComboBox.addItem("None")
+        self.weightLabelComboBox.addItems(parameters)
+        self.weightLabelComboBox.setCurrentText(currentSelectedWeightParameter)
+        self.weightLabelComboBox.currentIndexChanged.connect(lambda *args: self.outputNameChangedSignal.emit())
 
 
 class MeanInDepthAnalysis(AnalysisBase):
-    def __init__(self):
-        super().__init__(name="Mean in Depth Analysis", config_widget=MeanInDepthAnalysisWidget())
+    def __init__(self, parent) -> None:
+        super().__init__(parent=parent, name="Mean in Depth Analysis", configWidget=MeanInDepthAnalysisWidget())
 
-    def run(self, files_dir, output_name):
+    def run(self, filesDir: str, outputName: str) -> AnalysisReport:
         """Runs analysis.
 
         Args:
-            files_dir (str): the selected data's directory.
+            filesDir (str): the selected data's directory.
+            outputName (str): the report's name.
+
+        Returns:
+            AnalysisReport: the analysis report object.
         """
-        inspector_file_reader = InspectorFileReader()
-        pores_data_dict = inspector_file_reader.parse_directory(files_dir)
-        sample_column_label = self.config_widget.parameter_label_combo_box.currentText
-        weight_column_label = self.config_widget.weight_label_combo_box.currentText
+        inspectorFileReader = InspectorFileReader()
+        poresDataDict = inspectorFileReader.parse_directory(filesDir)
+        sampleColumnLabel = self.configWidget.parameterLabelComboBox.currentText
+        weightColumnLabel = self.configWidget.weightLabelComboBox.currentText
 
         # Filter valid depths
-        for pore in list(pores_data_dict.keys()):
-            if pores_data_dict[pore]["Report"] is None:
-                pores_data_dict.pop(pore)
+        for pore in list(poresDataDict.keys()):
+            if poresDataDict[pore]["Report"] is None:
+                poresDataDict.pop(pore)
 
         data = defaultdict(list)
-        for key, value in pores_data_dict.items():
-            report_data = value["Report"].data
-            weight_data = None
-            if weight_column_label != "None":
-                weight_data = report_data.loc[:, weight_column_label]
+        for key, value in poresDataDict.items():
+            reportData = value["Report"].data
+            weightData = None
+            if weightColumnLabel != "None":
+                weightData = reportData.loc[:, weightColumnLabel]
 
-            if sample_column_label == "All":
-                columns = list(report_data.select_dtypes(include=[np.number]))
+            if sampleColumnLabel == "All":
+                columns = list(reportData.select_dtypes(include=[np.number]))
                 if columns[0] == "label":
                     columns = columns[1:]
             else:
-                columns = [sample_column_label]
+                columns = [sampleColumnLabel]
 
-            sample_data = report_data.loc[:, columns]
+            sampleData = reportData.loc[:, columns]
             data["DEPTH"].append(key * 1000)  # m to mm
             for column in columns:
-                data[f"MEAN_{column}"].append(np.average(sample_data[column], weights=weight_data))
+                data[f"MEAN_{column}"].append(np.average(sampleData[column], weights=weightData))
 
         # Create AnalysisReport from data
         config = {
             TableDataOrientation.name(): TableDataOrientation.COLUMN.value,
             TableType.name(): TableType.MEAN_IN_DEPTH.value,
         }
-        report = AnalysisReport(name=output_name, data=data, config=config)
+        report = AnalysisReport(name=outputName, data=data, config=config)
         return report
 
-    def get_suggested_output_name(self, files_dir):
-        project_name = os.path.basename(files_dir)
-        sample_column_label = self.config_widget.parameter_label_combo_box.currentText
-        weight_column_label = self.config_widget.weight_label_combo_box.currentText
-        name = f"{project_name} {sample_column_label} Mean in Depth"
-        if weight_column_label != "None":
-            name += f" Weighted by {weight_column_label}"
+    def getSuggestedOutputName(self, filesDir: str) -> None:
+        projectName = os.path.basename(filesDir)
+        sampleColumnLabel = self.configWidget.parameterLabelComboBox.currentText
+        weightColumnLabel = self.configWidget.weightLabelComboBox.currentText
+        name = f"{projectName} {sampleColumnLabel} Mean in Depth"
+        if weightColumnLabel != "None":
+            name += f" Weighted by {weightColumnLabel}"
         return name
 
-    def refresh_input_report_files(self, folder):
+    def refreshInputReportfiles(self, folder: str) -> pd.DataFrame:
         """Retrieve valid information, related to the this analysis, from the selected directory.
 
         Args:
@@ -124,60 +134,58 @@ class MeanInDepthAnalysis(AnalysisBase):
         Returns:
             dict: the summary information about the analysis files found at the input folder.
         """
-        inspector_file_reader = InspectorFileReader()
-        pores_dict = inspector_file_reader.parse_directory(folder)
+        inspectorFileReader = InspectorFileReader()
+        poresDict = inspectorFileReader.parse_directory(folder)
 
-        report_files = list()
+        reportFiles = list()
 
-        if not pores_dict:
+        if not poresDict:
             raise RuntimeError("The selected directory doesn't contain any data related to this analysis type")
 
-        pores = list(pores_dict.keys())
+        pores = list(poresDict.keys())
 
         for pore in pores:
             try:
-                report_file = pores_dict[pore]["Report"]
-                if not report_file:
+                reportFile = poresDict[pore]["Report"]
+                if not reportFile:
                     logging.error(f"Depth {str(pore)} does not contain a valid report file.")
-                    report_files.append(FILE_NOT_FOUND)
+                    reportFiles.append(FILE_NOT_FOUND)
                     continue
 
-                report_files.append(report_file.filename)
+                reportFiles.append(reportFile.filename)
             except KeyError:
                 logging.warning("Problem during dictionary parsing. Please check this behavior.")
                 continue
 
-        if not report_files:
+        if not reportFiles:
             raise RuntimeError("The selected directory doesn't contain any data related to this analysis type")
 
         # Update widgets information with the available parameters
-        self._update_widget_informations(pores_dict)
-        df = pd.DataFrame(data=zip(list(pores), report_files), columns=["Depth", "Report File"])
+        self._updateWidgetInformation(poresDict)
+        df = pd.DataFrame(data=zip(list(pores), reportFiles), columns=["Depth", "Report File"])
         return df
 
-    def _update_widget_informations(self, pores_dict):
+    def _updateWidgetInformation(self, poresDict: Dict) -> None:
         """Update config widgets informations based on loaded files.
 
         Args:
-            pores_dict (dict): dictionary with valid loaded files.
+            poresDict (dict): dictionary with valid loaded files.
         """
         # Check report files version being used
-        report_versions_used = list()
-        for key, value in pores_dict.items():
-            report_file = value["Report"]
-            if report_file in (None, FILE_NOT_FOUND):
+        reportVersionsUsed = list()
+        for key, value in poresDict.items():
+            reportFile = value["Report"]
+            if reportFile in (None, FILE_NOT_FOUND):
                 continue
-            report_versions_used.append(report_file.version)
+            reportVersionsUsed.append(reportFile.version)
 
-        if len(report_versions_used) <= 0:
+        if len(reportVersionsUsed) <= 0:
             return
 
         # Select the newer 'protocol' version
-        current_report_version = (
-            report_versions_used[0] if len(set(report_versions_used)) == 1 else max(report_versions_used)
-        )
+        currentReportVersion = reportVersionsUsed[0] if len(set(reportVersionsUsed)) == 1 else max(reportVersionsUsed)
 
         # Update related widgets
-        self.config_widget.update_report_parameters(
-            InspectorReportFile.header(version=current_report_version, accept_types=[float, int])
+        self.configWidget.updateReportParameters(
+            InspectorReportFile.header(version=currentReportVersion, accept_types=[float, int])
         )

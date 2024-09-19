@@ -8,7 +8,7 @@ from ltrace.slicer.helpers import themeIsDark
 
 class MultistepEditWidget(qt.QBoxLayout):
     stepChanged = qt.Signal()
-    fractionChanged = qt.Signal(str, bool)
+    valueChanged = qt.Signal()
 
     def __init__(self, **kwargs):
         super().__init__(qt.QBoxLayout.LeftToRight)
@@ -19,16 +19,16 @@ class MultistepEditWidget(qt.QBoxLayout):
         self.start = ui.floatParam()
         self.start.text = kwargs["default_value"]
         self.start.objectName = f"{self.parameter_name}_start"
-        self.start.editingFinished.connect(self.onFractionChanged)
+        self.start.editingFinished.connect(self.onValueChanged)
         self.stop = ui.floatParam()
         self.stop.text = kwargs["default_value"] * 2
         self.stop.objectName = f"{self.parameter_name}_stop"
-        self.stop.editingFinished.connect(self.onFractionChanged)
+        self.stop.editingFinished.connect(self.onValueChanged)
         self.steps = ui.intParam()
         self.steps.text = 1
         self.steps.objectName = f"{self.parameter_name}_step"
         self.steps.editingFinished.connect(self.onStepEdited)
-        self.steps.editingFinished.connect(self.onFractionChanged)
+        self.steps.editingFinished.connect(self.onValueChanged)
         self.startLabel = qt.QLabel(" Value:")
 
         self.multiWidget = qt.QWidget()
@@ -44,7 +44,7 @@ class MultistepEditWidget(qt.QBoxLayout):
         self.multiPushButton.setCheckable(True)
         self.multiPushButton.setChecked(False)
         self.multiPushButton.clicked.connect(self.onMultiPushButtonToggle)
-        self.multiPushButton.clicked.connect(self.onFractionChanged)
+        self.multiPushButton.clicked.connect(self.onValueChanged)
 
         self.addWidget(self.startLabel)
         self.addWidget(self.start)
@@ -57,17 +57,8 @@ class MultistepEditWidget(qt.QBoxLayout):
         self.steps.text = 1
         self.stepChanged.emit()
 
-    def onFractionChanged(self):
-        """
-        This function is a callback to enable/disable items for the second distribution
-        as the Fraction parameter is available.
-        """
-        state = False
-        if int(self.steps.text) == 1 and float(self.start.text) != 0.0:
-            state = True
-        elif int(self.steps.text) > 1 and float(self.stop.text) - float(self.start.text) != 0.0:
-            state = True
-        self.fractionChanged.emit(self.parameter_name, state)
+    def onValueChanged(self):
+        self.valueChanged.emit()
 
     def onStepEdited(self):
         self.stepChanged.emit()
@@ -147,6 +138,29 @@ class SinglestepEditWidget(qt.QBoxLayout):
 
     def set_value(self, value: float):
         self.entry.text = str(value)
+
+
+class SinglestepIntWidget(qt.QBoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(qt.QBoxLayout.LeftToRight)
+        self.parameter_name = kwargs["parameter_name"]
+
+        self.entry = ui.intParam()
+        self.entry.text = str(int(kwargs["default_value"]))
+        self.entry.objectName = f"{self.parameter_name}_entry"
+        self.addWidget(self.entry)
+
+    def get_values(self):
+        return {self.parameter_name: int(self.entry.text)}
+
+    def get_name(self):
+        return self.parameter_name
+
+    def get_value(self):
+        return int(self.entry.text)
+
+    def set_value(self, value: int):
+        self.entry.text = str(int(float(value)))
 
 
 class IntegerSpinBoxWidget(qt.QBoxLayout):
@@ -272,6 +286,9 @@ class ComboboxWidget(qt.QBoxLayout):
     def get_values(self):
         return {self.parameter_name: self.string_values[self.combo_box.currentIndex]}
 
+    def get_text(self):
+        return self.combo_box.currentText
+
     def get_name(self):
         return self.parameter_name
 
@@ -286,6 +303,9 @@ class ComboboxWidget(qt.QBoxLayout):
 
     def onTextChanged(self):
         self.currentTextChanged.emit(self.parameter_name, self.combo_box.currentText)
+
+    def setEnabled(self, new_state):
+        self.combo_box.setEnabled(new_state)
 
 
 class TooltipLabel(qt.QLabel):

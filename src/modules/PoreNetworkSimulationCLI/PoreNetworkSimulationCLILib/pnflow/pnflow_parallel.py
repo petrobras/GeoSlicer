@@ -14,17 +14,18 @@ IGNORE_RI = True
 
 
 class PnFlow:
-    def __init__(self, cwd: Path, statoil_dict: dict, params: dict, num_tests: int):
+    def __init__(self, cwd: Path, statoil_dict: dict, params: dict, num_tests: int, timeout_enabled: bool):
         self.cwd = cwd
         self.statoil_file_strings = self.create_statoil_file_strings(statoil_dict)
         self.params_dict = params
         self.num_tests = num_tests
+        self.timeout_enabled = timeout_enabled
         self.manager = Manager()
         self.subprocess_id_count = 0
+        self.subprocess_timeout_s = 0.1 * (len(statoil_dict["node1"]) + len(statoil_dict["link1"]))
 
     def run_pnflow(self, max_subprocesses=8):
         LOOP_REFRESH_RATE_S = 0.01
-        SUBPROCESS_TIMEOUT_S = 1800  # 30min
         SUBPROCESS_RETRY_LIMIT = 0
 
         params_iterator = self.get_params_iterator(self.params_dict)
@@ -39,13 +40,13 @@ class PnFlow:
                 if pnflow_subprocess.is_finished():
                     running_pnflow_subprocesses[j] = None
                     finished_pnflow_subprocesses.append(pnflow_subprocess)
-                elif pnflow_subprocess.uptime() > SUBPROCESS_TIMEOUT_S:
+                elif self.timeout_enabled and (pnflow_subprocess.uptime() > self.subprocess_timeout_s):
                     pnflow_subprocess.terminate()
                     if pnflow_subprocess.get_run_count() < SUBPROCESS_RETRY_LIMIT:
                         pnflow_subprocess.start()
                     else:
                         print(
-                            f"error: process {pnflow_subprocess.get_id()} couldn't finish in any of the {SUBPROCESS_RETRY_LIMIT} retries"
+                            f"timeout: process {pnflow_subprocess.get_id()} couldn't finish in any of the {SUBPROCESS_RETRY_LIMIT} retries"
                         )
                         running_pnflow_subprocesses[j] = None
 
@@ -164,6 +165,10 @@ class PnFlow:
                 width = mutable_params[f"{i}_contact_angle_range"]
                 mutable_params[f"{i}_contact_angle_min"] = max(center - width / 2, 0)
                 mutable_params[f"{i}_contact_angle_max"] = min(center + width / 2, 180)
+            center = mutable_params["frac_cluster_count"]
+            width = mutable_params["frac_cluster_count_range"]
+            mutable_params["frac_cluster_count_min"] = round(max(center - width / 2, 0))
+            mutable_params["frac_cluster_count_max"] = round(center + width / 2)
             yield mutable_params
 
         while True:
