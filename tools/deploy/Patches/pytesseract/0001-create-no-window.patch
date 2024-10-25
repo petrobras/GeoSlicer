@@ -1,0 +1,23 @@
+diff --git a/pytesseract/pytesseract.py b/pytesseract/pytesseract.py
+index 4297e48..21c62b2 100644
+--- a/pytesseract/pytesseract.py
++++ b/pytesseract/pytesseract.py
+@@ -378,12 +378,16 @@ def get_tesseract_version():
+     """
+     Returns LooseVersion object of the Tesseract version
+     """
++
++    kwargs = subprocess_args()
++    kwargs['stderr'] = subprocess.STDOUT
++    del kwargs['stdout']
++
+     try:
+         return LooseVersion(
+             subprocess.check_output(
+                 [tesseract_cmd, '--version'],
+-                stderr=subprocess.STDOUT,
+-                env=environ,
++                **kwargs
+             )
+             .decode(DEFAULT_ENCODING)
+             .split()[1]

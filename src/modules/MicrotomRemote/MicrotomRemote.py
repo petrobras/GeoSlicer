@@ -833,11 +833,11 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             advancedFormLayout.addRow("Report Folder:", folderLineEdit)
 
             ApplicationObservables().applicationLoadFinished.connect(self.server.retrieveActiveStreamlit)
-
-            ioPageFormLayout.addWidget(self.streamlitAdvancedSection)
         else:
             self.server = None
             self.toggleServerButton.clicked.connect(self.onStreamlitServerUnavailable)
+
+        ioPageFormLayout.addWidget(self.streamlitAdvancedSection)
 
         return ioPageFormLayout
 
@@ -905,6 +905,9 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         modeWidget = self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME]
         batchWidget = self.modeWidgets[widgets.BatchInputWidget.MODE_NAME]
+        modeWidget.soiInput.setCurrentNode(None)
+        modeWidget.soiLabel.visible = True
+        modeWidget.soiInput.visible = True
         if "darcy_kabs_foam" in self.simOptions.currentData:
             self.logicType = MicrotomRemoteLogic
 
@@ -1098,6 +1101,8 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             slicer.util.selectModule("JobMonitor")
 
     def onExecuteClicked(self):
+        uid = None
+
         try:
             self._createLogic(logicCls=self.logicType)
             self.simBtn.enabled = False
@@ -1172,12 +1177,13 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                     params=params,
                 )
 
-            if self.chosenExecutionMode == "Remote" and uid:
-                self.showJobs()
-                self.restartApplyButton()
-
         except Exception as e:
-            print(repr(e))
+            logging.error(repr(e))
+        finally:
+            if self.chosenExecutionMode == "Remote":
+                if uid:
+                    self.showJobs()
+                self.restartApplyButton()
 
     def restartApplyButton(self):
         slicer.app.processEvents()

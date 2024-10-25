@@ -52,9 +52,11 @@ def getFeatures() -> OrderedDictType:
                 Feature("NetCDF", "NetCDF.png", "NetCDF"),
                 Feature("Workflow (Beta)", "Workflow.png", None, customActionWorkflow),
                 Feature("BIAEP Browser", "BIAEPBrowser.png", "BIAEPBrowser"),
-                Feature("Download\nOpen Datasets", "OpenRockData.png", "OpenRockData")
-                if os.getenv("GEOSLICER_MODE") != "Remote"
-                else None,  # Not working in cluster
+                (
+                    Feature("Digital Rocks Portal", "OpenRockData.png", "OpenRockData")
+                    if os.getenv("GEOSLICER_MODE") != "Remote"
+                    else None
+                ),  # Not working in cluster
                 Feature(
                     "Multiple\nImage Analysis",
                     "MultipleImageAnalysis.png",

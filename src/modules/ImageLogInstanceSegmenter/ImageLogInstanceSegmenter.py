@@ -27,6 +27,12 @@ MODEL_TITLES = {
     "side_2": "Petrobras Sidewall Sample Mask RCNN 2",
 }
 
+MODEL_IDENTIFIER = {
+    "synth_side": "Synthetic",
+    "side_1": "V1",
+    "side_2": "V2",
+}
+
 
 class ImageLogInstanceSegmenter(LTracePlugin):
     SETTING_KEY = "ImageLogInstanceSegmenter"
@@ -69,35 +75,33 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
         self.modelComboBox = qt.QComboBox()
         self.modelComboBox.setObjectName("modelComboBox")
 
+        # Add to stackedWidgets at the same time as adding to modelComboBox to guarantee the match
+        # TODO Figure out a way for users to add custom models
+        self.stackedWidgets = qt.QStackedWidget()
         for model in models:
             modelFile = model.stem
-            modelName = MODEL_TITLES[modelFile]
-            self.modelComboBox.addItem("Image Log: " + modelName, modelFile)
+            modelName = MODEL_TITLES.get(modelFile, None)
+            if modelName:
+                widget = SidewallSampleWidget(ImageLogInstanceSegmenter, self, MODEL_IDENTIFIER[modelFile])
+                self.stackedWidgets.addWidget(widget)
+                self.modelComboBox.addItem("Image Log: " + modelName, modelFile)
+
+        self.stopsModelWidget = StopsWidget()
+        self.stackedWidgets.addWidget(self.stopsModelWidget)
         self.modelComboBox.addItem("Image Log: Batentes", MODEL_IMAGE_LOG_STOPS)
+
+        self.islandsModelWidget = IslandsWidget(ImageLogInstanceSegmenter, self)
+        self.stackedWidgets.addWidget(self.islandsModelWidget)
         self.modelComboBox.addItem("Image Log: Generic (Island)", MODEL_IMAGE_LOG_ISLANDS)
+
+        self.snowModelWidget = SnowWidget(ImageLogInstanceSegmenter, self)
+        self.stackedWidgets.addWidget(self.snowModelWidget)
         self.modelComboBox.addItem("Image Log: Generic (Watershed)", MODEL_IMAGE_LOG_SNOW)
+
         self.modelComboBox.setToolTip("Model to be used.")
         form.addRow("Model:", self.modelComboBox)
         form.addRow(" ", None)
         self.modelComboBox.currentTextChanged.connect(lambda _: self.updateFormFromModel())
-
-        self.sidewallSampleV1ModelWidget = SidewallSampleWidget(ImageLogInstanceSegmenter, self, "V1")
-        self.sidewallSampleV2ModelWidget = SidewallSampleWidget(ImageLogInstanceSegmenter, self, "V2")
-        self.sidewallSampleSyntheticModelWidget = SidewallSampleWidget(ImageLogInstanceSegmenter, self, "Synthetic")
-        self.stopsModelWidget = StopsWidget()
-        self.islandsModelWidget = IslandsWidget(ImageLogInstanceSegmenter, self)
-        self.snowModelWidget = SnowWidget(ImageLogInstanceSegmenter, self)
-
-        self.stackedWidgets = qt.QStackedWidget()
-        # The order of the widgets must be the same as in the modelComboBox
-        # because the 'updateFormFromModel' method will change the index of the stacked widget
-        # based on the modelComboBox index
-        self.stackedWidgets.addWidget(self.sidewallSampleSyntheticModelWidget)
-        self.stackedWidgets.addWidget(self.sidewallSampleV1ModelWidget)
-        self.stackedWidgets.addWidget(self.sidewallSampleV2ModelWidget)
-        self.stackedWidgets.addWidget(self.stopsModelWidget)
-        self.stackedWidgets.addWidget(self.islandsModelWidget)
-        self.stackedWidgets.addWidget(self.snowModelWidget)
 
         self.layout.addWidget(self.stackedWidgets)
         self.layout.addStretch(1)

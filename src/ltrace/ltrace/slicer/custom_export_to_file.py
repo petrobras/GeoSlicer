@@ -1,7 +1,9 @@
 import slicer
 import qt
+import vtk
 from ltrace.slicer.helpers import getCurrentEnvironment
 from ltrace.slicer.node_attributes import NodeEnvironment
+from ltrace.slicer.widget.save_netcdf import SaveNetcdfWidget
 
 Env = NodeEnvironment
 
@@ -73,10 +75,31 @@ def _export_node_as(selected_item_id, env):
         return
 
 
+def _export_folder_as_netcdf(folder_id):
+    slicer.util.mainWindow().moduleSelector().selectModule("NetCDFExport")
+    ids = vtk.vtkIdList()
+    ids.SetNumberOfIds(1)
+    ids.SetId(0, folder_id)
+    slicer.modules.NetCDFExportWidget.subjectHierarchyTreeView.setCurrentItems(ids)
+
+
+def _save_folder_as_netcdf(folder_id):
+    widget = SaveNetcdfWidget()
+    widget.setFolder(folder_id)
+    widget.show()
+
+
 def _export_selected_node():
     sh = slicer.mrmlScene.GetSubjectHierarchyNode()
     plugin_handler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
     selected_item_id = plugin_handler.currentItem()
+
+    if sh.GetItemOwnerPluginName(selected_item_id) == "Folder":
+        if sh.GetItemAttribute(selected_item_id, "netcdf_path"):
+            _save_folder_as_netcdf(selected_item_id)
+        else:
+            _export_folder_as_netcdf(selected_item_id)
+        return
     node = sh.GetItemDataNode(selected_item_id)
     detected_env = _detect_node_env(node, getCurrentEnvironment())
     _export_node_as(selected_item_id, detected_env)

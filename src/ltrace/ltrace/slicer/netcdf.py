@@ -25,7 +25,7 @@ def _crop_value(array: xr.DataArray, value: int):
     for dim in array.dims:
         if dim == "c":
             continue
-        crop_over_dim = crop_where.all(dim=tuple(set(array.dims) - set(dim)))
+        crop_over_dim = crop_where.all(dim=tuple(set(array.dims) - set([dim])))
         first = crop_over_dim.argmin()
         last = array[dim].size - crop_over_dim[::-1].argmin()
         slice_dict[dim] = slice(int(first), int(last))

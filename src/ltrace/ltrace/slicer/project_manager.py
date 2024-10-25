@@ -7,6 +7,7 @@ import re
 import shutil
 import traceback
 
+from ltrace.constants import SaveStatus
 from ltrace.slicer.helpers import bounds2size, singleton
 from ltrace.slicer.nodes.custom_behavior_node_manager import CustomBehaviorNodeManager
 from ltrace.slicer.nodes.defs import TriggerEvent
@@ -128,7 +129,7 @@ class ProjectManager(qt.QObject):
         if not internal_call:
             self.custom_behavior_node_manager.triggerEvent = TriggerEvent.SAVE
             slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
-        status = True
+        status = SaveStatus.IN_PROGRESS
         root_dir_before_save = slicer.mrmlScene.GetRootDirectory()
         self.__config_compression_mode(*args, **kwargs)
         if os.path.isdir(project_url):
@@ -137,57 +138,71 @@ class ProjectManager(qt.QObject):
             # Save Scene
             if not self.__save_scene(project_url, *args, **kwargs):
                 slicer.mrmlScene.SetRootDirectory(root_dir_before_save)
-                status = False
+                status = SaveStatus.FAILED
         else:
             slicer.mrmlScene.SetRootDirectory(os.path.dirname(project_url))
 
             # Save nodes
-            status &= self.__save_nodes(*args, **kwargs)
+            nodeSavingStatus = self.__save_nodes(*args, **kwargs)
 
             # Save Scene
-            if not self.__save_scene(project_url, *args, **kwargs):
+            if not nodeSavingStatus or not self.__save_scene(project_url, *args, **kwargs):
                 slicer.mrmlScene.SetRootDirectory(root_dir_before_save)
-                status = False
+                status = SaveStatus.FAILED
+
+        if status == SaveStatus.IN_PROGRESS:
+            status = SaveStatus.SUCCEED
 
         if not internal_call:
             slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
 
-        if status:
-            self.__set_project_modified(False)
+        self.__set_project_modified(status != SaveStatus.SUCCEED)
+
         return status
 
     def save_as(self, scene_path, *args, **kwargs):
         """Handle custom save scene as operation."""
         self.custom_behavior_node_manager.triggerEvent = TriggerEvent.SAVE_AS
         slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
+        status = SaveStatus.IN_PROGRESS
 
         scene_path = Path(scene_path)
 
         if scene_path.is_file():
             slicer.util.errorDisplay(f'Cannot create project directory at "{scene_path}" because it is a file.')
-            return False
+            self.__set_project_modified(True)
+            return SaveStatus.FAILED_FILE_ALREADY_EXISTS
 
-        scene_path.mkdir(parents=True, exist_ok=True)
-        self.save(str(scene_path), internal_call=True, *args, **kwargs)
+        try:
+            scene_path.mkdir(parents=True, exist_ok=True)
+        except Exception as error:
+            logging.error("Failed during attempt to create new project directory.")
+            return SaveStatus.FAILED
+
+        status = self.save(str(scene_path), internal_call=True, *args, **kwargs)
+
+        if status != SaveStatus.SUCCEED and status != SaveStatus.IN_PROGRESS:  # CANCELLED or FAILED options
+            self.__set_project_modified(True)
+            return status
+
         self.__configure_project_folder(str(scene_path))
         project_file = self.__find_project_file(str(scene_path))
 
         if project_file is None:
-            return False
+            self.__set_project_modified(True)
+            return SaveStatus.FAILED
 
         slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
 
-        status = False
         file_project_path = os.path.join(str(scene_path), project_file)
         try:
             self.load(file_project_path)
         except Exception as error:
-            status = False
-            logging.error(
-                "A problem occured during the 'Save As Scene' process: {}\n{}".format(error, traceback.format_exc())
-            )
+            status = SaveStatus.FAILED
+            logging.error(f"A problem occured during the 'Save As Scene' process: {error}\n{traceback.format_exc()}")
+            self.__set_project_modified(True)
         else:
-            status = True
+            status = SaveStatus.SUCCEED
             self.__set_project_modified(False)
             self.projectChangedSignal.emit()
 
@@ -214,6 +229,7 @@ class ProjectManager(qt.QObject):
     def close(self) -> None:
         """Wrapper method to close the project."""
         slicer.mrmlScene.Clear(0)
+        slicer.mrmlScene.SetURL("")
 
     def setup(self):
         """Initialize project's event handlers"""
@@ -487,39 +503,44 @@ class ProjectManager(qt.QObject):
         data_folder = Path(slicer.mrmlScene.GetRootDirectory()) / "Data"
         files_to_delete = set(data_folder.iterdir())
 
-        for node in self.__get_nodes_to_save():
-            if not self.__handle_storable_node(node, *args, **kwargs):
-                continue
+        try:
+            for node in self.__get_nodes_to_save():
+                if not self.__handle_storable_node(node, *args, **kwargs):
+                    continue
 
-            storage_node = node.GetStorageNode()
-            file_path = Path(storage_node.GetFileName()).resolve()
-            file_paths = {file_path}
+                storage_node = node.GetStorageNode()
+                file_path = Path(storage_node.GetFileName()).resolve()
+                file_paths = {file_path}
 
-            # File name list. Typically used to store a table schema.
-            for i in range(storage_node.GetNumberOfFileNames()):
-                path = Path(storage_node.GetNthFileName(i)).resolve()
-                file_paths.add(path)
-            files_to_delete -= file_paths
+                # File name list. Typically used to store a table schema.
+                for i in range(storage_node.GetNumberOfFileNames()):
+                    path = Path(storage_node.GetNthFileName(i)).resolve()
+                    file_paths.add(path)
+                files_to_delete -= file_paths
 
-            file_already_exists = all(path.exists() for path in file_paths)
-            if node.GetModifiedSinceRead() is False and file_already_exists:
-                continue
+                file_already_exists = all(path.exists() for path in file_paths)
+                if node.GetModifiedSinceRead() is False and file_already_exists:
+                    continue
 
-            file_path = str(file_path)
-            node_status = slicer.util.saveNode(node, file_path)
-            if not node_status:
-                logging.error(
-                    "Failed to save {} node's file at the location: {}\n{}".format(
-                        node.GetName(), file_path, traceback.format_exc()
+                file_path = str(file_path)
+                node_status = slicer.util.saveNode(node, file_path)
+                if not node_status:
+                    logging.error(
+                        "Failed to save {} node's file at the location: {}\n{}".format(
+                            node.GetName(), file_path, traceback.format_exc()
+                        )
                     )
-                )
-            else:
-                logging.debug("Node {} was saved succesfully at {}".format(node.GetName(), file_path))
-            status &= node_status
+                    return False
+                else:
+                    logging.debug("Node {} was saved succesfully at {}".format(node.GetName(), file_path))
+                status &= node_status
 
-        for file_path in files_to_delete:
-            file_path.unlink()
-            logging.debug(f"File {file_path} was deleted as it is no longer associated to any node.")
+            for file_path in files_to_delete:
+                file_path.unlink()
+                logging.debug(f"File {file_path} was deleted as it is no longer associated to any node.")
+        except Exception as error:
+            logging.error(f"A problem has occured during the nodes' save process: {error}\n{traceback.format_exc()}")
+            return False
 
         return status
 
@@ -590,15 +611,15 @@ class ProjectManager(qt.QObject):
         status = True
 
         try:
-            slicer.util.saveScene(project_url)
+            status = slicer.util.saveScene(project_url)
         except Exception as error:
             status = False
-            raise RuntimeError(
+            logging.error(
                 "A problem has occured during the save scene's process: {}\n{}".format(error, traceback.format_exc())
             )
-        else:
-            status = True
-            self.__set_project_modified(False)
+
+        # Don't need to log in case of status being False because slicer.util.saveScene does that
+        if status:
             logging.debug("Scene was saved succesfully!")
 
         return status

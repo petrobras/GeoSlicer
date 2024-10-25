@@ -235,6 +235,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.containerWidgets = {}  # Other layout widgets (axis, spacers, etc)
         self.observedDisplayNodes = []
         self.observedPrimaryNodes = []
+        self.observedInteractors = []
         self.layoutId = self.DEFAULT_LAYOUT_ID_START_VALUE
         self.currentRange = (
             None  # This is the current range of the tracks. [bottom depth, top depth] where bottom depth > top depth
@@ -680,11 +681,14 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         sliceViewInteractorStyle.SetActionEnabled(sliceViewInteractorStyle.AdjustWindowLevelBackground, True)
 
         sliceViewInteractorStyle.RemoveAllObservers()
-        sliceViewInteractorStyle.GetInteractor().AddObserver(
-            vtk.vtkCommand.MouseWheelForwardEvent, self._on_scroll_forward
+        interactor = sliceViewInteractorStyle.GetInteractor()
+
+        self.observedInteractors.append(
+            (interactor, interactor.AddObserver(vtk.vtkCommand.MouseWheelForwardEvent, self._on_scroll_forward))
         )
-        sliceViewInteractorStyle.GetInteractor().AddObserver(
-            vtk.vtkCommand.MouseWheelBackwardEvent, self._on_scroll_backwards
+
+        self.observedInteractors.append(
+            (interactor, interactor.AddObserver(vtk.vtkCommand.MouseWheelBackwardEvent, self._on_scroll_backwards))
         )
 
         sliceNode = sliceViewWidget.sliceLogic().GetSliceNode()
@@ -794,7 +798,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 observerID = displayNode.AddObserver(
                     "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateColorBar(identifier_)
                 )
-                self.observedDisplayNodes.append([observerID, displayNode])
+                self.observedDisplayNodes.append([displayNode, observerID])
                 colorBarWidget.setColorTableNode(displayNode.GetColorNode())
                 displayNode.Modified()  # To update the color bar
             else:
@@ -1107,7 +1111,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 observerID = primaryNode.AddObserver(
                     "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateViewLabel(identifier_)
                 )
-                self.observedPrimaryNodes.append([observerID, primaryNode])
+                self.observedPrimaryNodes.append([primaryNode, observerID])
 
     def updateViewLabel(self, identifier):
         if identifier >= len(self.imageLogViewList):
@@ -1189,16 +1193,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         except Exception as error:
             logging.debug(error)
 
-    def removeAllObservers(self):
-        # Removing display node observers
-        for observerID, displayNode in self.observedDisplayNodes:
-            displayNode.RemoveObserver(observerID)
-        self.observedDisplayNodes = []
+    def removeAllObservers(self) -> None:
+        for observerList in [self.observedDisplayNodes, self.observedPrimaryNodes, self.observedInteractors]:
+            for obj, tag in observerList:
+                obj.RemoveObserver(tag)
 
-        # Removing primary node observers
-        for observerID, primaryNode in self.observedPrimaryNodes:
-            primaryNode.RemoveObserver(observerID)
-        self.observedPrimaryNodes = []
+            observerList.clear()
 
     def updateColorBar(self, identifier):
         displayNode = self.getViewPrimaryNode(identifier).GetDisplayNode()

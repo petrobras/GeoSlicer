@@ -2,6 +2,7 @@ import os
 import qt
 import slicer
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer.widget.save_netcdf import SaveNetcdfWidget
 from pathlib import Path
 
 # Checks if closed source code is available
@@ -34,9 +35,15 @@ class NetCDFWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
+        self.import_module = slicer.modules.netcdfloader.createNewWidgetRepresentation()
+        self.export_module = slicer.modules.netcdfexport.createNewWidgetRepresentation()
+        self.save_module = SaveNetcdfWidget()
+
         main_tab = qt.QTabWidget()
-        main_tab.addTab(slicer.modules.netcdfloader.createNewWidgetRepresentation(), "Import")
-        main_tab.addTab(slicer.modules.netcdfexport.createNewWidgetRepresentation(), "Export")
+        main_tab.addTab(self.import_module, "Import")
+        main_tab.addTab(self.save_module, "Save")
+        main_tab.addTab(self.export_module, "Export")
+
         self.layout.addWidget(main_tab)
         self.layout.addStretch(1)
 

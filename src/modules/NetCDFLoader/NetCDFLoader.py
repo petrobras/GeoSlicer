@@ -76,6 +76,7 @@ class NetCDFLoaderWidget(LTracePluginWidget):
             folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
             scene_id = folderTree.GetSceneItemID()
             current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
+            folderTree.SetItemAttribute(current_dir, "netcdf_path", dataset_path.as_posix())
 
             for node, progress in zip(import_dataset(dataset), np.arange(0, 1, 1 / len(dataset))):
                 self.on_progress(f"Imported {node.GetName()}", progress)

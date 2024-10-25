@@ -5,9 +5,10 @@ import qt
 import shutil
 import time
 
-from ltrace.utils.string_comparison import StringComparison
+from ltrace.constants import SaveStatus
 from ltrace.slicer.project_manager import ProjectManager
 from ltrace.slicer.helpers import make_directory_writable, WatchSignal
+from ltrace.utils.string_comparison import StringComparison
 from pathlib import Path
 from stopit import TimeoutException
 from typing import Union
@@ -237,7 +238,7 @@ def save_project(project_path: Union[str, Path], timeout_ms=300000, properties=N
     project_manager = ProjectManager(folder_icon_path="")
 
     with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=timeout_ms):
-        return project_manager.save_as(project_path.parent, properties=properties)
+        return project_manager.save_as(project_path.parent, properties=properties) == SaveStatus.SUCCEED
 
 
 def save_current_project(timeout_ms=300000, properties=None) -> bool:
@@ -259,7 +260,7 @@ def save_current_project(timeout_ms=300000, properties=None) -> bool:
     project_manager = ProjectManager(folder_icon_path="")
 
     with WatchSignal(signal=slicer.mrmlScene.EndSaveEvent, timeout_ms=timeout_ms):
-        return project_manager.save(url, properties=properties)
+        return project_manager.save(url, properties=properties) == SaveStatus.SUCCEED
 
 
 def close_project(timeout_ms: int = 300000) -> None:

@@ -23,7 +23,7 @@ class OpenRockData(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Open Rock Data"
+        self.parent.title = "Digital Rocks Portal"
         self.parent.categories = ["LTrace Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = OpenRockData.help()

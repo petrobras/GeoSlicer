@@ -333,7 +333,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             slicer.util.infoDisplay(str(e))
             return
         finally:
-            callback.on_update("", 100)
+            callback("", 100)
 
     def _setInvertWidgetVisibility(self, isVisible):
         self.centerVolumeCheckbox.setVisible(isVisible)

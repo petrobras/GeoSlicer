@@ -56,6 +56,7 @@ def _loadNetCDF(path, callback):
     folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     scene_id = folderTree.GetSceneItemID()
     current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
+    folderTree.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
 
     nodes = []
     for node, progress in zip(import_dataset(dataset), np.arange(10, 100, 90 / len(dataset))):

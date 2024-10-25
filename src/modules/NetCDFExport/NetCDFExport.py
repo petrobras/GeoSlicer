@@ -311,6 +311,15 @@ def _recommended_chunksizes(img):
     return None
 
 
+def _get_dataset_main_dims(dataset):
+    # Uses a heuristic to find likely zyxc dimensions of a dataset
+    for var in dataset:
+        array = dataset[var]
+        dims = array.dims
+        if len(dims) >= 3:
+            return dims[:4]
+
+
 def exportNetcdf(
     exportPath,
     dataNodes,
@@ -320,6 +329,7 @@ def exportNetcdf(
     callback=None,
     nodeNames=None,
     nodeDtypes=None,
+    save_in_place=False,
 ):
     if not dataNodes:
         raise ValueError("No images selected.")
@@ -327,7 +337,7 @@ def exportNetcdf(
     if callback is None:
         callback = Export.Callback(on_update=lambda *args, **kwargs: None)
 
-    if single_coords:
+    if single_coords and not save_in_place:
         if not referenceItem:
             raise ValueError("No reference node selected.")
         if referenceItem not in dataNodes:
@@ -346,11 +356,19 @@ def exportNetcdf(
 
     id_to_name_map = {node.GetID(): name for node, name in zip(dataNodes, nodeNames)}
 
+    if save_in_place:
+        existing_dataset = xr.load_dataset(exportPath)
+        existing_dims = _get_dataset_main_dims(existing_dataset)
+
     for node, dtype in zip(dataNodes, nodeDtypes):
         name = id_to_name_map[node.GetID()]
+        if save_in_place and name in existing_dataset:
+            continue
         is_ref = node == referenceItem
 
-        if single_coords or name == "microtom":
+        if save_in_place:
+            dims = existing_dims
+        elif single_coords or name == "microtom":
             dims = list("zyxc")
         else:
             dims = [f"{d}_{name}" for d in "zyx"] + ["c"]
@@ -377,10 +395,23 @@ def exportNetcdf(
         arrays[name] = (data_array, _get_transform(node, data_array.shape), node)
 
     if single_coords:
-        ref_spacing = np.array(referenceItem.GetSpacing())[::-1]
-        ras_min = np.array([tr.ras_min for _, tr, _ in arrays.values()]).min(axis=0)
-        ras_max = np.array([tr.ras_max for _, tr, _ in arrays.values()]).max(axis=0)
-        output_shape = np.ceil((ras_max - ras_min) / ref_spacing).astype(int) + 1
+        if save_in_place:
+            ref_spacing = []
+            ras_min = []
+            output_shape = []
+            for dim in existing_dims[:3]:
+                dim_coords = existing_dataset.coords[dim]
+                if len(dim_coords) > 1:
+                    ref_spacing.append((dim_coords[1] - dim_coords[0]).item())
+                else:
+                    ref_spacing.append(1)
+                ras_min.append(dim_coords[0].item())
+                output_shape.append(len(dim_coords))
+        else:
+            ref_spacing = np.array(referenceItem.GetSpacing())[::-1]
+            ras_min = np.array([tr.ras_min for _, tr, _ in arrays.values()]).min(axis=0)
+            ras_max = np.array([tr.ras_max for _, tr, _ in arrays.values()]).max(axis=0)
+            output_shape = np.ceil((ras_max - ras_min) / ref_spacing).astype(int) + 1
 
         output_transform_no_color = np.array(
             [
@@ -446,7 +477,10 @@ def exportNetcdf(
     removeTemporaryNodes()
     callback.on_update("Exporting to NetCDF…", 90)
 
-    if single_coords:
+    if save_in_place:
+        for dim in existing_dims[:3]:
+            coords[dim] = existing_dataset.coords[dim]
+    elif single_coords:
         for min_, spacing, size, dim in zip(ras_min, ref_spacing, output_shape, "zyx"):
             max_ = min_ + spacing * (size - 1)
             coords[dim] = np.linspace(min_, max_, size)
@@ -461,11 +495,18 @@ def exportNetcdf(
                 coord_name = f"{dim}_{name}" if name != "microtom" else dim
                 coords[coord_name] = np.linspace(origin, origin + spacing * (size - 1), size)
     dataset = xr.Dataset(data_arrays, coords=coords)
-    dataset.attrs["geoslicer_version"] = slicer.app.applicationVersion
+
+    if save_in_place:
+        for var in dataset:
+            existing_dataset[var] = dataset[var]
+        dataset = existing_dataset
+
     encoding = {}
     for var in dataset:
         img = dataset[var]
         encoding[var] = {"zlib": use_compression, "chunksizes": _recommended_chunksizes(img)}
+
+    dataset.attrs["geoslicer_version"] = slicer.app.applicationVersion
     dataset.to_netcdf(exportPath, encoding=encoding, format="NETCDF4")
 
     return warnings

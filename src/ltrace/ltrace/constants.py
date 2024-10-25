@@ -1,3 +1,5 @@
+from enum import Enum
+
 # TODO move global constants to this file
 
 # ImageLogData.py
@@ -6,7 +8,6 @@
 """
 This module contains the constants used in the ltrace library and the GeoSlicer modules.
 """
-
 MAX_LOOP_ITERATIONS = 100000
 
 
@@ -28,3 +29,22 @@ class ImageLogInpaintConst:
     TEMP_SEGMENTATION_NAME = "Inpaint_Segmentation_ImageLog"
     TEMP_LABEL_MAP_NAME = "Inpaint_Mask_ImageLog"
     TEMP_VOLUME_NAME = "Inpaint_Volume_ImageLog"
+
+
+class DLISImportConst:
+    SCALAR_VOLUME_TYPE = "ScalarVolumeType"
+    WELL_PROFILE_TAG = "WellProfile"
+    NULL_VALUE_TAG = "NullValue"
+    LOGICAL_FILE_TAG = "LogicalFile"
+    FRAME_TAG = "Frame"
+    WELL_NAME_TAG = "WellName"
+    UNITS_TAG = "Units"
+    DEPTH_LABEL = "DEPTH"
+
+
+class SaveStatus(Enum):
+    IN_PROGRESS = 0
+    SUCCEED = 1
+    CANCELLED = 2
+    FAILED = 3
+    FAILED_FILE_ALREADY_EXISTS = 4

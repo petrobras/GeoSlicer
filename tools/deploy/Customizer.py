@@ -13,6 +13,7 @@ import vtk
 import logging
 import slicer
 
+from ltrace.constants import SaveStatus
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.helpers import themeIsDark, BlockSignals
 from ltrace.slicer.modules_help_menu import ModulesHelpMenu
@@ -164,7 +165,7 @@ class Customizer(LTracePlugin):
         self.parent.helpText = ""
         self.parent.acknowledgementText = ""
         self.ltraceBugReportDialog = None
-        self.__project_manager = ProjectManager(folder_icon_path=self.FOLDER_ICON_PATH)
+        self.__projectManager = ProjectManager(folder_icon_path=self.FOLDER_ICON_PATH)
         self.__layout_menu = None
 
         self.popup_widget = None
@@ -375,11 +376,11 @@ class Customizer(LTracePlugin):
         self.customize_data_probe_info()
         self.initialize_reload_widget_cache()
 
-        self.__project_manager.setup()
-        self.__project_manager.projectChangedSignal.connect(self.__update_window_title)
+        self.__projectManager.setup()
+        self.__projectManager.projectChangedSignal.connect(self.__update_window_title)
 
         lazy.register_eye_event()
-        self.__project_manager.projectChangedSignal.connect(lazy.register_eye_event)
+        self.__projectManager.projectChangedSignal.connect(lazy.register_eye_event)
 
         # Expand scene folder
         folder_tree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -541,8 +542,6 @@ class Customizer(LTracePlugin):
         pg.setConfigOptions = warning_wrap(pg.setConfigOptions)
 
     def _saveScene(self):
-        import shutil
-
         """Save current scene/project
 
         Returns:
@@ -552,20 +551,20 @@ class Customizer(LTracePlugin):
         if url == "":
             return self._saveSceneAs()
 
-        if not self.__project_manager.save(url):
-            qt.QMessageBox.critical(
-                slicer.util.mainWindow(),
+        status = self.__projectManager.save(url)
+
+        if status == SaveStatus.FAILED:
+            slicer.util.errorDisplay(
+                "An error occurred while saving the project. Please check the following:\n\n"
+                + "1. Ensure that there is sufficient disk space available.\n"
+                + "2. Verify that you have the necessary file writing permissions.\n\n"
+                + "For further details, please consult the GeoSlicer log file. If the problem persists, consider reaching out to support.",
                 "Failed to save project",
-                "A problem occurred during project's saving process. Please, check Geoslicer log file for more information.",
             )
 
-        return True
+        return status
 
     def _saveSceneAs(self):
-        """Shows 'save as' dialog to user"""
-        return self.__onSaveButtonClicked()
-
-    def __onSaveButtonClicked(self):
         """Handles save button clicked on save scene as dialog"""
         # Save directory
         path = qt.QFileDialog.getSaveFileName(
@@ -576,17 +575,25 @@ class Customizer(LTracePlugin):
             "",
             qt.QFileDialog.DontConfirmOverwrite,
         )
-        if not path:
-            return
-        try:
-            self.__project_manager.save_as(path)
 
-        except Exception as error:
-            qt.QMessageBox.critical(
-                slicer.util.mainWindow(),
+        if not path:
+            return SaveStatus.CANCELLED  # Nothing to do
+
+        status = self.__projectManager.save_as(path)
+
+        if status == SaveStatus.FAILED:
+            slicer.util.errorDisplay(
+                "An error occurred while saving the project. Please check the following:\n\n"
+                + "1. Ensure that there is sufficient disk space available.\n"
+                + "2. Verify that you have the necessary file writing permissions.\n\n"
+                + "For further details, please consult the GeoSlicer log file. If the problem persists, consider reaching out to support.",
                 "Failed to save project",
-                "A problem occurred during project's saving process. Please, check Geoslicer log file for more information.",
             )
+            failedProjectpath = Path(path)
+            if failedProjectpath.exists():
+                shutil.rmtree(failedProjectpath, ignore_errors=True)
+
+        return status
 
     def saveSceneDirectorySelected(self, directoryPath):
         self.directoryButton.text = directoryPath
@@ -609,7 +616,7 @@ class Customizer(LTracePlugin):
         if fileDialog.exec():
             paths = fileDialog.selectedFiles()
             projectFilePath = paths[0]
-            self.__project_manager.load(projectFilePath)
+            self.__projectManager.load(projectFilePath)
 
     def ltraceMonitor(self):
         slicer.util.selectModule("JobMonitor")
@@ -1548,11 +1555,16 @@ class Customizer(LTracePlugin):
         """Handle close scene event"""
 
         def wrapper(save=False):
-            if save and not self._saveScene():
-                return
+            if save:
+                status = self._saveScene()
+                if status != SaveStatus.SUCCEED:
+                    # _saveScene handles possible errors and warns the user
+                    return
 
-            slicer.mrmlScene.Clear(0)
-            slicer.mrmlScene.SetURL("")
+                if status == SaveStatus.IN_PROGRESS:
+                    logging.debug("Unexpected state from the saving process.")
+
+            self.__projectManager.close()
             self.__update_window_title()
 
         mainWindow = slicer.util.mainWindow()
@@ -1569,12 +1581,12 @@ class Customizer(LTracePlugin):
         dismissButton = messageBox.addButton("Close &without Saving", qt.QMessageBox.RejectRole)
         cancelButton = messageBox.addButton("&Cancel", qt.QMessageBox.ResetRole)
         messageBox.exec_()
-        if messageBox.clickedButton() == saveButton:
-            wrapper(save=True)
+
+        if messageBox.clickedButton() == cancelButton:
             return
-        elif messageBox.clickedButton() == dismissButton:
-            wrapper(save=False)
-            return
+
+        shouldSave = messageBox.clickedButton() == saveButton
+        wrapper(save=shouldSave)
 
     def __searchAction(self, menu, text):
         for action in menu.actions():

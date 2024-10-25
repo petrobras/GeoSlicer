@@ -2,6 +2,7 @@ import qt
 import slicer
 
 from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.constants import SaveStatus
 
 
 class CustomizerEventFilter(qt.QWidget):
@@ -40,15 +41,19 @@ class CustomizerEventFilter(qt.QWidget):
                 saveCallback = self.__kwarg.get("saveSceneCallback", None)
                 if saveCallback:
                     result = saveCallback()
-                    if result is True:
+                    if result == SaveStatus.SUCCEED:
                         event.accept()
                         appObservables.aboutToQuit.emit()
                         return False
-                    else:
-                        # Save process was cancelled or an error occurred
-                        qt.QMessageBox(qt.QMessageBox.Warning, "Error saving", "Try to save your data manually")
-                        appObservables.aboutToQuit.emit()
-                        return False
+                    elif result == SaveStatus.CANCELLED:
+                        event.ignore()
+                        return True
+                    else:  # SaveStatus.FAILED options and SaveStatus.IN_PROGRESS
+                        slicer.util.errorDisplay(
+                            "Failed to save the project. Please, check the application's logs and try again."
+                        )
+                        event.ignore()
+                        return True
             elif messageBox.clickedButton() == exitButton:
                 event.accept()
                 appObservables.aboutToQuit.emit()

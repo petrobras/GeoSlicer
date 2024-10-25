@@ -596,7 +596,7 @@ def make_archive(args, source_dir: Path, target_file_without_extension: Path) ->
         ext = ".exe" if sys.platform == "win32" else ".sfx"
         packager = "7zG" if sys.platform == "win32" else "7z"
         target = target_file_without_extension.parent / f"{target_file_without_extension.name}{ext}"
-        command = [packager, "a", target.as_posix(), "-mx5", "-sfx", source_dir.as_posix()]
+        command = [packager, "a", target.as_posix(), "-mx9", "-sfx", source_dir.as_posix()]
         subprocess.run(command, shell=False, capture_output=True)
 
     else:
