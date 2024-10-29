@@ -171,18 +171,22 @@ class ProjectManager(qt.QObject):
         if scene_path.is_file():
             slicer.util.errorDisplay(f'Cannot create project directory at "{scene_path}" because it is a file.')
             self.__set_project_modified(True)
+            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             return SaveStatus.FAILED_FILE_ALREADY_EXISTS
 
         try:
             scene_path.mkdir(parents=True, exist_ok=True)
         except Exception as error:
             logging.error("Failed during attempt to create new project directory.")
+            self.__set_project_modified(True)
+            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             return SaveStatus.FAILED
 
         status = self.save(str(scene_path), internal_call=True, *args, **kwargs)
 
         if status != SaveStatus.SUCCEED and status != SaveStatus.IN_PROGRESS:  # CANCELLED or FAILED options
             self.__set_project_modified(True)
+            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             return status
 
         self.__configure_project_folder(str(scene_path))
@@ -190,6 +194,7 @@ class ProjectManager(qt.QObject):
 
         if project_file is None:
             self.__set_project_modified(True)
+            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             return SaveStatus.FAILED
 
         slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
@@ -523,8 +528,8 @@ class ProjectManager(qt.QObject):
                     continue
 
                 file_path = str(file_path)
-                node_status = slicer.util.saveNode(node, file_path)
-                if not node_status:
+                status = slicer.util.saveNode(node, file_path)
+                if not status:
                     logging.error(
                         "Failed to save {} node's file at the location: {}\n{}".format(
                             node.GetName(), file_path, traceback.format_exc()
@@ -533,7 +538,6 @@ class ProjectManager(qt.QObject):
                     return False
                 else:
                     logging.debug("Node {} was saved succesfully at {}".format(node.GetName(), file_path))
-                status &= node_status
 
             for file_path in files_to_delete:
                 file_path.unlink()

@@ -169,6 +169,7 @@ def set_subresolution_conductance(sub_network, subresolution_function, save_tabl
     sub_network["throat.cap_radius"] = throat_capilar_radius.copy()
     sub_network["throat.sub_conductivity"] = throat_conductivity.copy()
     sub_network["pore.sub_conductivity"] = pore_conductivity.copy()
+    sub_network["throat.conductance"] = throat_conductance.copy()
     sub_network["throat.manual_valvatne_conductance_former"] = throat_conductance.copy()
     sub_network["throat.manual_valvatne_conductance"] = throat_conductance
     sub_network["throat.number_of_capilaries"] = throat_number_of_capilaries
@@ -287,41 +288,24 @@ def single_phase_permeability(
     for prop in sub_network.keys():
         np.nan_to_num(sub_network[prop], copy=False)
     manual_valvatne_blunt(sub_network)
-    if is_multiscale:
-        pass
     set_subresolution_conductance(sub_network, subresolution_function, save_tables=save_tables)
     sub_proj = openpnm.io.network_from_porespy(sub_network)
 
     ### Network clipping
     if clip_check:
-        cond = sub_network["throat.sub_conductivity"].astype(np.float64)
+        cond = sub_network["throat.conductance"].astype(np.float64)
         min_cond = cond.min()
         max_cond = cond.max()
         cond_range = max_cond / min_cond
         if cond_range > clip_value:
             max_clip = min_cond * clip_value
             cond = np.clip(cond, a_min=None, a_max=max_clip)
-            sub_network["throat.sub_conductivity"] = cond
+            sub_network["throat.conductance"][:] = cond
             sub_proj = openpnm.io.network_from_porespy(sub_network)
-    elif False:
-        cond = sub_network["throat.sub_conductivity"].astype(np.float64)
-        min_cond = cond.min()
-        max_cond = cond.max()
-        cond_range = max_cond / min_cond
-        if cond_range > clip_value:
-            min_clip = max_cond / clip_value
-            relevant_throats = cond >= min_clip
-            preclipped_network = get_sub_spy(sub_network, sub_network["pore.all"], relevant_throats)
-            preclipped_proj = openpnm.io.network_from_porespy(preclipped_network)
-            connected_pores, connected_throats = get_connected_spy_network(preclipped_proj.network, in_face, out_face)
-            clipped_network = get_sub_spy(preclipped_network, connected_pores, connected_throats)
-            if clipped_network is False:
-                return 0, None, None
-            sub_proj = openpnm.io.network_from_porespy(clipped_network)
 
     water = openpnm.phase.Water(network=sub_proj.network)
     water.add_model_collection(openpnm.models.collections.physics.standard)
-    sub_proj["throat.hydraulic_conductance"] = sub_proj["throat.manual_valvatne_conductance"]
+    sub_proj["throat.hydraulic_conductance"] = sub_proj["throat.conductance"]
     sub_proj["pore.phase"][...] = 1
     perm = openpnm.algorithms.StokesFlow(
         network=sub_proj,
@@ -351,7 +335,7 @@ def single_phase_permeability(
         perm.network["throat.flow"] = perm.rate(throats=perm.network.throats("all"), mode="individual")
     elif solver == "pyflowsolver":
         conn = perm.network["throat.conns"].astype(np.int32)
-        cond = perm.network["throat.sub_conductivity"].astype(np.float64)
+        cond = perm.network["throat.conductance"].astype(np.float64)
         r = _get_sparse_system(conn, cond, inlets, outlets)
         sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes = r
         if preconditioner == "inverse_diagonal":
@@ -386,7 +370,7 @@ def single_phase_permeability(
                 pressure[i] = np.float64(0)
     elif solver == "pypardiso":
         conn = perm.network["throat.conns"].astype(np.int32)
-        cond = perm.network["throat.sub_conductivity"].astype(np.float64)
+        cond = perm.network["throat.conductance"].astype(np.float64)
         r = _get_sparse_system(conn, cond, inlets, outlets)
         sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes = r
         A = csr_matrix(
@@ -432,8 +416,6 @@ def single_phase_permeability(
         output = np.zeros(inlets.shape, dtype=np.float64)
         output[: x.size] = x
         pore_dict["pore.pressure"] = pressure
-
-        throat_dict["throat.cond"] = cond
 
     return (perm, pore_dict, throat_dict)
 
@@ -579,7 +561,7 @@ def get_flow_rate(pn_pores, pn_throats):
     for throat in range(pn_throats["throat.all"].size):
         p0 = pn_throats["throat.conns_0"][throat]
         p1 = pn_throats["throat.conns_1"][throat]
-        c = pn_throats["throat.sub_conductivity"][throat]
+        c = pn_throats["throat.conductance"][throat]
         delta_p[throat] = np.abs(p0 - p1)
         flow[throat] = delta_p[throat] * c
     pn_throats["throat.flow"] = flow
@@ -589,7 +571,7 @@ def get_flow_rate(pn_pores, pn_throats):
     for throat in range(pn_throats["throat.all"].size):
         p0 = pn_throats["throat.conns_0"][throat]
         p1 = pn_throats["throat.conns_1"][throat]
-        c = pn_throats["throat.sub_conductivity"][throat]
+        c = pn_throats["throat.conductance"][throat]
         if inlets[p0] and (not border_pore[p1]):
             inlet_flow_total += c * (np.float64(101325.0) - pn_pores["pore.pressure"][p1])
             inlet_flow[throat] = c * (np.float64(101325.0) - pn_pores["pore.pressure"][p1])
