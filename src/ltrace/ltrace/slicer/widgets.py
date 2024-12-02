@@ -15,6 +15,8 @@ from ltrace.slicer.widget.dimensions_label_group import DimensionsLabelGroup, DE
 
 from typing import Union, List, Tuple
 
+from ltrace.slicer_utils import getResourcePath
+
 
 def findSOISegmentID(segmentation):
     n_segments = segmentation.GetNumberOfSegments()
@@ -353,6 +355,12 @@ class SingleShotInputWidget(qt.QWidget):
 
         return selectedItems
 
+    def allSegmentsSelected(self):
+        return all(
+            self.segmentListGroup[1].item(nth).checkState() == qt.Qt.Checked
+            for nth in range(self.segmentListGroup[1].count)
+        )
+
     def _onAutoPoreCalcToggled(self, state):
         mainNode = self.mainInput.currentNode()
         if mainNode:
@@ -366,11 +374,8 @@ class SingleShotInputWidget(qt.QWidget):
             )
 
     def updateRefNode(self, node):
-        self.referenceInput.blockSignals(True)
         self.referenceInput.setCurrentNode(node)
-        self.referenceInput.blockSignals(False)
         self.referenceInput.setStyleSheet("")
-        self._onReferenceSelected(node)
 
     def _onMainSelected(self, item):
         try:
@@ -562,7 +567,7 @@ class SingleShotInputWidget(qt.QWidget):
         self.showEditTargetDialog(self.mainInput.currentNode())
 
     def showEditTargetDialog(self, segmentationNode):
-        dialogWidget = qt.QDialog(slicer.util.mainWindow())
+        dialogWidget = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
         dialogWidget.setModal(True)
         dialogWidget.setWindowTitle("Edit Target")
 
@@ -623,7 +628,9 @@ class SingleShotInputWidget(qt.QWidget):
         self.segmentListUpdated.emit((mainNode, soiNode, referenceNode), segments)
 
         # TODO check for overlaps
-        [s.show() for s in self.segmentListGroup]
+        for s in self.segmentListGroup:
+            s.show()
+
         self.dimensionsGroup.show()
 
 
@@ -932,12 +939,10 @@ class ShowHideButton(qt.QPushButton):
         self.setChecked(True)
 
     def update(self):
-        from Customizer import Customizer
-
         if self.checked:
-            self.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+            self.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
         else:
-            self.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+            self.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
 
     def isOpen(self):
         return self.checked == 1

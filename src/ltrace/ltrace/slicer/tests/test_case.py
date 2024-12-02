@@ -42,6 +42,11 @@ class TestCase:
     def __call__(self, *args, **kwargs) -> None:
         self.run()
 
+    def reset(self):
+        self.status = TestState.NOT_INITIALIZED
+        self.reason = ""
+        self.elapsed_time_sec = 0
+
     def run(self) -> None:
         self.status = TestState.RUNNING
         with self.__exception_hook_patch:

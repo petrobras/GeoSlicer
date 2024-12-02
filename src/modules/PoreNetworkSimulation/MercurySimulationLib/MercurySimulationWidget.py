@@ -18,10 +18,8 @@ from ltrace.slicer.ui import (
     DirOrFileWidget,
     floatParam,
 )
-from ltrace.slicer_utils import dataframeFromTable
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
-from MercurySimulationLib.SubscaleModelWidget import SubscaleModelWidget
+from .SubscaleModelWidget import SubscaleModelWidget
 from PoreNetworkSimulationLib.constants import *
 
 

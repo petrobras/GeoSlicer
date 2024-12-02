@@ -4,9 +4,10 @@ import slicer
 
 from ltrace.algorithms import stops
 from ltrace.slicer.ui import hierarchyVolumeInput
+from .model import ModelLogic, ModelWidget
 
 
-class StopsWidget(qt.QWidget):
+class StopsWidget(ModelWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setup()
@@ -24,8 +25,9 @@ class StopsWidget(qt.QWidget):
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        self.ttStopsBox = hierarchyVolumeInput(nodeTypes=["vtkMRMLScalarVolumeNode"])
-        self.ttStopsBox.setToolTip("Select the transit time image.")
+        self.ttStopsBox = hierarchyVolumeInput(
+            nodeTypes=["vtkMRMLScalarVolumeNode"], tooltip="Select the transit time image.", hasNone=True
+        )
         inputFormLayout.addRow("Transit time image:", self.ttStopsBox)
         inputFormLayout.addRow(" ", None)
 

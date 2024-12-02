@@ -1,6 +1,7 @@
 import qt
 import slicer
-from Customizer import Customizer
+
+from ltrace.slicer_utils import getResourcePath
 
 
 class TableWidget(qt.QWidget):
@@ -28,15 +29,15 @@ class TableWidget(qt.QWidget):
         self.layout().addRow(self.tableView)
 
         self.previousButton = qt.QPushButton("Previous")
-        self.previousButton.setIcon(qt.QIcon(str(Customizer.UNDO_ICON_PATH)))
+        self.previousButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
         self.previousButton.clicked.connect(self.onPreviousButtonClicked)
 
         self.nextButton = qt.QPushButton("Next")
-        self.nextButton.setIcon(qt.QIcon(str(Customizer.REDO_ICON_PATH)))
+        self.nextButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
         self.nextButton.clicked.connect(self.onNextButtonClicked)
 
         self.resetFiltersButton = qt.QPushButton("Reset filters")
-        self.resetFiltersButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
+        self.resetFiltersButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         self.resetFiltersButton.clicked.connect(lambda: self.setAllRangeWidgetValues(resetValues=True))
 
         buttonsLayout = qt.QHBoxLayout()

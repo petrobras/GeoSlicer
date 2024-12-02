@@ -8,12 +8,10 @@ import numpy as np
 import qt
 import slicer
 import vtk
-from Customizer import Customizer
 
-from Multicore import MulticoreLogic
 from ltrace.slicer.helpers import triggerNodeModified
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 
@@ -26,7 +24,7 @@ class UnwrapRegistration(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Unwrap Registration"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "ImageLog"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = UnwrapRegistration.help()
@@ -114,19 +112,19 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         parametersFormLayout.addRow(" ", None)
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         self.applyButton.setToolTip("Apply the current changes. These changes can be undone, unless you click Save.")
         self.applyButton.enabled = False
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         self.cancelButton.setToolTip("Cancel the current changes.")
         self.cancelButton.enabled = False
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(str(Customizer.UNDO_ICON_PATH)))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo the applied changes. The earliest undo is where the volume was loaded or saved."
         )
@@ -134,7 +132,7 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(str(Customizer.REDO_ICON_PATH)))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
         self.redoButton.setToolTip("Redo the applied changes.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)
@@ -147,13 +145,13 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         formLayout.addRow(buttonsHBoxLayout)
 
         self.saveButton = qt.QPushButton("Save")
-        self.saveButton.setIcon(qt.QIcon(str(Customizer.SAVE_ICON_PATH)))
+        self.saveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Save.png"))
         self.saveButton.setToolTip("Save the applied changes. This action cannot be undone.")
         self.saveButton.enabled = False
         self.saveButton.clicked.connect(self.onSaveButtonClicked)
 
         self.resetButton = qt.QPushButton("Reset")
-        self.resetButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
+        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         self.resetButton.setToolTip("Reset the applied changes to the last saved state.")
         self.resetButton.enabled = False
         self.resetButton.clicked.connect(self.onResetButtonClicked)
@@ -338,6 +336,8 @@ class UnwrapRegistrationLogic(LTracePluginLogic):
         LTracePluginLogic.__init__(self)
 
     def save(self, imageNode, depthIncrement, orientationIncrement):
+        from Multicore import MulticoreLogic
+
         imageNode.HardenTransform()
 
         transformArray = self.getRegistrationTransformArray(depthIncrement, orientationIncrement)

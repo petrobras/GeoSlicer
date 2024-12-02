@@ -4,6 +4,7 @@ import qt
 import slicer
 import json
 
+from ltrace.slicer.app import getApplicationVersion
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer import helpers
@@ -18,8 +19,8 @@ class MultipleThresholdBigImage(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multiple Threshold Big Image"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Multiple Threshold for Big Image"
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MultipleThresholdBigImage.help()
 
@@ -42,7 +43,7 @@ class MultipleThresholdBigImageWidget(LTracePluginWidget):
             nodeTypes=["vtkMRMLTextNode"],
             tooltip="Select the image within the NetCDF dataset to preview.",
         )
-        self.volumeSelector.addNodeAttributeFilter("LazyNode", "1")
+        self.volumeSelector.selectorWidget.addNodeAttributeFilter("LazyNode", "1")
 
         self.exportPathEdit = ctk.ctkPathLineEdit()
         self.exportPathEdit.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Writable
@@ -97,7 +98,7 @@ class MultipleThresholdBigImageLogic(LTracePluginLogic):
             "threshs": self.thresholds,
             "colors": self.colors,
             "names": self.names,
-            "geoslicer_version": slicer.app.applicationVersion,
+            "geoslicerVersion": getApplicationVersion(),
             "lazyDataNodeHost": lazyDataNodeHost.to_dict(),
         }
         cli_config = {

@@ -95,8 +95,15 @@ class ModulesHelpMenu(qt.QMenu):
                 clsObject=None,
                 modules=[],
             )
+            multiScale = EnvModule(
+                cls=slicer.modules.multiscaleenv,
+                name=slicer.modules.multiscaleenv.title,
+                tag="Multiscale",
+                clsObject=None,
+                modules=[],
+            )
 
-            return [core, imageLog, microCt, thinSection]
+            return [core, imageLog, microCt, thinSection, multiScale]
 
         except AttributeError:
             return []

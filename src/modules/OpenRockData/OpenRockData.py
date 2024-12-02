@@ -1,15 +1,17 @@
 import os
+import subprocess
+import sys
+from pathlib import Path
+
+import drd
 import qt
 import slicer
 import xarray as xr
-import drd
-import sys
-import subprocess
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer import netcdf
-from pathlib import Path
 from Libs.drd_wrapper import Source
+from ltrace.slicer import netcdf
+from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
 
 try:
     from Test.OpenRockDataTest import OpenRockDataTest
@@ -24,9 +26,9 @@ class OpenRockData(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Digital Rocks Portal"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "OpenRockData", "MicroCT", "Thin Section", "Image Log", "Core", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = OpenRockData.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Volumes/OpenRockData.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -40,6 +42,25 @@ class OpenRockDataWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
+        helpLayout = qt.QFormLayout()
+        helpButton = HelpButton(
+            message="""
+This module uses the <a href="https://github.com/LukasMosser/digital_rocks_data">drd</a>
+library by Lukas-Mosser to access microtomography data from various sources.
+
+<h2>Data Sources</h2>
+<ul>
+<li>
+    <a href="https://www.digitalrocksportal.org/">Digital Rocks Portal</a>:
+    <a href="https://www.digitalrocksportal.org/projects/317">Eleven Sandstones</a>
+</li>
+<li>
+    <a href="https://www.imperial.ac.uk/earth-science/research/research-groups/pore-scale-modelling/micro-ct-images-and-networks/">Imperial College London</a>:
+    <a href="https://figshare.com/projects/micro-CT_Images_-_2009/2275">ICL Sandstone Carbonates 2009</a>
+</li>
+"""
+        )
+        helpLayout.addRow("Data Sources && References:", helpButton)
         self.treeView = qt.QTreeView()
 
         self.tree = qt.QTreeWidget()
@@ -82,6 +103,7 @@ class OpenRockDataWidget(LTracePluginWidget):
 
         self.onSelectionChanged()
 
+        self.layout.addLayout(helpLayout)
         self.layout.addWidget(self.tree, 5)
         self.layout.addWidget(self.downloadButton)
         self.layout.addWidget(self.stdoutTextArea, 1)

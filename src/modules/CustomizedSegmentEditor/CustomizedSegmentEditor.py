@@ -1,18 +1,16 @@
 import os
 from pathlib import Path
 
-import qt
-import slicer
-from slicer.util import VTKObservationMixin
 import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
-
+import qt
+import slicer
 from distinctipy import distinctipy
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from slicer.util import VTKObservationMixin
+
 from CustomizedEffects.Margin import SegmentEditorMarginEffect
 from CustomizedEffects.Threshold import SegmentEditorThresholdEffect
-
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
 
 # Checks if closed source code is available
 try:
@@ -30,10 +28,12 @@ class CustomizedSegmentEditor(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Manual Segmentation"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "Segmentation", "Thin Section", "ImageLog", "Core", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = CustomizedSegmentEditor.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/SegmentEditor.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):
@@ -114,15 +114,10 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.configureEffects()
 
-        ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
-
-    def __onApplicationLoadFinished(self):
-        # Connect observers to scene events
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndImportEvent, self.onSceneEndImport)
         self.activateEditorRegisteredCallback()
-        ApplicationObservables().applicationLoadFinished.disconnect()
 
     def activateEditorRegisteredCallback(self):
         self.effectFactorySingleton.effectRegistered.connect(self.editorEffectRegistered)
@@ -148,6 +143,8 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.configureColorSupport(color_support=color_support)
 
     def configureEffectsForThinSectionEnvironment(self):
+        self.selectParameterNodeByTag("ThinSectionEnv")
+
         self.editor.setEffectNameOrder(
             [
                 "Paint",
@@ -162,7 +159,9 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
                 "Mask Image",
                 "Connectivity",
                 "Level tracing",
+                "Smart foreground",
                 "Color threshold",
+                "Boundary removal",
             ]
         )
         self.editor.unorderedEffectsVisible = False
@@ -188,6 +187,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             "Boundary removal",
             "Expand segments",
             "Sample segmentation",
+            "Smart foreground",
         ]
         if color_support:
             effects.append("Color threshold")
@@ -282,4 +282,3 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         super().cleanup()
         self.removeObservers()
         self.deactivateEditorRegisteredCallback()
-        self.__applicationObservables.applicationLoadFinished.disconnect()

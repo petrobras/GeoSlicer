@@ -11,8 +11,12 @@ import os
 import shutil
 from pathlib import Path
 
-from ltrace.pore_networks.functions import geo2spy
-from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
+from ltrace.pore_networks.functions import geo2spy, spy2geo
+from ltrace.slicer_utils import (
+    LTracePluginLogic,
+    dataFrameToTableNode,
+    slicer_is_in_developer_mode,
+)
 
 HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
 HG_CONTACT_ANGLE = 140  # º
@@ -121,12 +125,30 @@ class MercurySimulationLogic(LTracePluginLogic):
         micp_results = pd.DataFrame({"pc": pc.pc, "snwp": pc.snwp, "dsn": delta_saturation, "radii": throat_radii})
 
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
+
         micpTableName = slicer.mrmlScene.GenerateUniqueName("MICP")
         micpTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", micpTableName)
         micpTable.SetAttribute("table_type", "micp")
         self.results_node_id = micpTable.GetID()
         _ = dataFrameToTableNode(micp_results, micpTable)
         _ = folderTree.CreateItem(self.rootDir, micpTable)
+
+        with open(str(self.cwd / "net_flow_props.dict"), "rb") as file:
+            net_flow_props = pickle.load(file)
+        spy2geo(net_flow_props)
+
+        flowPropsPoreTableName = slicer.mrmlScene.GenerateUniqueName("Flow properties Pore network")
+        flowPropsPoreTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", flowPropsPoreTableName)
+        flowPropsThroatTableName = slicer.mrmlScene.GenerateUniqueName("Flow properties Throat network")
+        flowPropsThroatTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", flowPropsThroatTableName)
+        self.flow_props_pore_id = flowPropsPoreTable.GetID()
+        self.flow_props_throat_id = flowPropsThroatTable.GetID()
+        net_pore_flow_props = {k: v for k, v in net_flow_props.items() if k.startswith("pore.")}
+        _ = dataFrameToTableNode(pd.DataFrame(net_pore_flow_props), flowPropsPoreTable)
+        _ = folderTree.CreateItem(self.rootDir, flowPropsPoreTable)
+        net_throat_flow_props = {k: v for k, v in net_flow_props.items() if k.startswith("throat.")}
+        _ = dataFrameToTableNode(pd.DataFrame(net_throat_flow_props), flowPropsThroatTable)
+        _ = folderTree.CreateItem(self.rootDir, flowPropsThroatTable)
 
         self.setChartNodes(micpTable, self.rootDir)
 

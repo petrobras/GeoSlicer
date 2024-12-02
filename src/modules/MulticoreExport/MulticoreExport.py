@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -7,11 +8,9 @@ import numpy as np
 import qt
 import slicer
 import vtk
-from Export import ExportLogic
-from Export import checkUniqueNames
-
 from MulticoreExportLib import MulticoreCSV
-from ltrace.slicer.helpers import getNodeDataPath
+from ltrace.slicer import export
+from ltrace.slicer.helpers import getNodeDataPath, checkUniqueNames
 from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 from ltrace.transforms import getRoundedInteger, transformPoints
 from ltrace.units import global_unit_registry as ureg
@@ -33,7 +32,7 @@ class MulticoreExport(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Multicore Export"
-        self.parent.categories = ["Core"]
+        self.parent.categories = ["Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MulticoreExport.help()
@@ -82,6 +81,7 @@ class MulticoreExportWidget(LTracePluginWidget):
         )
 
         self.directorySelector = ctk.ctkDirectoryButton()
+        self.directorySelector.setMaximumWidth(374)
         self.directorySelector.caption = "Export directory"
         self.directorySelector.directory = MulticoreExport.get_setting(
             self.EXPORT_DIR, Path(slicer.mrmlScene.GetRootDirectory()).parent
@@ -143,7 +143,7 @@ class MulticoreExportWidget(LTracePluginWidget):
     def _updateNodesAndExportButton(self):
         items = vtk.vtkIdList()
         self.subjectHierarchyTreeView.currentItems(items)
-        self.nodes = ExportLogic().getDataNodes(items, self.EXPORTABLE_TYPES)
+        self.nodes = export.getDataNodes(items, self.EXPORTABLE_TYPES)
 
         format = self.formatComboBox.currentText
 
@@ -184,16 +184,21 @@ class MulticoreExportWidget(LTracePluginWidget):
 
         self._startExport()
 
-        if format == MulticoreExport.FORMAT_TECHLOG_CSV or format == MulticoreExport.FORMAT_MATRIX_CSV:
-            self.exportCSV(format, outputDir, ignoreDirStructure)
-        elif format == MulticoreExport.FORMAT_SUMMARY:
-            self.exportSummary(outputDir, ignoreDirStructure)
-        elif format == MulticoreExport.FORMAT_TIF or format == MulticoreExport.FORMAT_PNG:
-            self.exportImages(format, outputDir, ignoreDirStructure)
+        processFailed = False
+        try:
+            if format == MulticoreExport.FORMAT_TECHLOG_CSV or format == MulticoreExport.FORMAT_MATRIX_CSV:
+                self.exportCSV(format, outputDir, ignoreDirStructure)
+            elif format == MulticoreExport.FORMAT_SUMMARY:
+                self.exportSummary(outputDir, ignoreDirStructure)
+            elif format == MulticoreExport.FORMAT_TIF or format == MulticoreExport.FORMAT_PNG:
+                self.exportImages(format, outputDir, ignoreDirStructure)
+        except Exception as error:
+            slicer.util.errorDisplay(f"Failed to export:\n{error}")
+            processFailed = True
 
         self._stopExport()
         self.progressBar.setValue(100)
-        self.currentStatusLabel.text = "Export completed."
+        self.currentStatusLabel.text = "Export completed." if not processFailed else "Export completed with errors."
 
     def exportImages(self, format, outputDir, ignoreDirStructure):
         for i, node in enumerate(self.nodes):
@@ -258,6 +263,8 @@ class MultiCoreExportLogic(LTracePluginLogic):
     # Keys
     BASE_NAME = "Base name"
     WELL_DIAMETER = "Well diameter"
+
+    processFinished = qt.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

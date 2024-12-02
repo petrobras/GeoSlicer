@@ -27,7 +27,7 @@ class ResampleVectorVolume(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Resample Vector Volume"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ResampleVectorVolume.help()

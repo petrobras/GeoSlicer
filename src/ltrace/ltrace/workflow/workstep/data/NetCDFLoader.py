@@ -107,6 +107,7 @@ class NetCDFLoaderWidget(WorkstepWidget):
         self.layout().addLayout(self.form_layout)
 
         self.input_directory_button = ctk.ctkDirectoryButton()
+        self.input_directory_button.setMaximumWidth(374)
         self.input_directory_button.setToolTip("Load all images from all NetCDF files in this directory.")
 
         self.form_layout.addRow("Input directory:", self.input_directory_button)

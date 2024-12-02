@@ -1,6 +1,5 @@
 import os
 
-import slicer
 from ltrace.slicer_utils import LTracePlugin
 
 

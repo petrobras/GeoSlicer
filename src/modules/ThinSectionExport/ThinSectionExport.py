@@ -1,12 +1,15 @@
 import os
+from pathlib import Path
+
+import ctk
 import qt
 import slicer
-import ctk
 import vtk
+
+from ltrace.slicer import export
+from ltrace.slicer import ui
 from ltrace.slicer.helpers import getNodeDataPath
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from pathlib import Path
-from Export import ExportLogic, checkUniqueNames
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 
 
 class ThinSectionExport(LTracePlugin):
@@ -21,10 +24,10 @@ class ThinSectionExport(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Thin Section Export"
+        self.parent.title = "Export"
         self.parent.categories = ["Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = ThinSectionExport.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Export.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -74,6 +77,7 @@ class ThinSectionExportWidget(LTracePluginWidget):
         )
 
         self.directorySelector = ctk.ctkDirectoryButton()
+        self.directorySelector.setMaximumWidth(374)
         self.directorySelector.caption = "Export directory"
         self.directorySelector.directory = ThinSectionExport.get_setting(
             self.EXPORT_DIR, Path(slicer.mrmlScene.GetRootDirectory()).parent
@@ -83,21 +87,28 @@ class ThinSectionExportWidget(LTracePluginWidget):
         self.progressBar.setValue(0)
         self.progressBar.hide()
 
-        self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.hide()
-
-        progressLayout = qt.QHBoxLayout()
+        progressLayout = qt.QVBoxLayout()
         progressLayout.addWidget(self.progressBar)
-        progressLayout.addWidget(self.cancelButton)
 
+        statusLayout = qt.QHBoxLayout()
         self.statusLabel = qt.QLabel()
+        statusLayout.addStretch()
+        statusLayout.addWidget(self.statusLabel)
+        progressLayout.addLayout(statusLayout)
 
-        self.exportButton = qt.QPushButton("Export")
-        self.exportButton.setFixedHeight(40)
-        self.exportButton.enabled = False
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onExportClicked,
+            onCancelClick=self.onCancelClicked,
+            applyTooltip="Export",
+            cancelTooltip="Cancel",
+            applyText="Export",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName=None,
+            cancelObjectName=None,
+        )
+        self.applyCancelButtons.applyBtn.setEnabled(False)
 
-        self.exportButton.clicked.connect(self.onExportClicked)
-        self.cancelButton.clicked.connect(self.onCancelClicked)
         self.subjectHierarchyTreeView.currentItemChanged.connect(self.onSelectionChanged)
 
         formatGroup = qt.QGroupBox()
@@ -110,33 +121,31 @@ class ThinSectionExportWidget(LTracePluginWidget):
         formLayout.addRow("Ignore directory structure:", self.ignoreDirStructureCheckbox)
         formLayout.addRow("Export directory:", self.directorySelector)
         formLayout.addRow("Export format:", formatGroup)
-        formLayout.addRow(progressLayout)
-        formLayout.addRow(self.statusLabel)
-        formLayout.addRow(self.exportButton)
 
         self.layout.addLayout(formLayout)
+        self.layout.addWidget(self.applyCancelButtons)
+        self.layout.addLayout(progressLayout)
         self.layout.addStretch(1)
 
     def _startExport(self):
         self.progressBar.setValue(0)
         self.progressBar.show()
-        self.cancelButton.show()
         self.cancel = False
-        self.cancelButton.enabled = True
-        self.exportButton.enabled = False
+        self.applyCancelButtons.cancelBtn.setEnabled(True)
+        self.applyCancelButtons.applyBtn.setEnabled(False)
 
     def _stopExport(self):
-        self.cancelButton.enabled = False
+        self.applyCancelButtons.cancelBtn.setEnabled(False)
         self._updateNodesAndExportButton()
 
     def _updateNodesAndExportButton(self):
         items = vtk.vtkIdList()
         self.subjectHierarchyTreeView.currentItems(items)
-        self.nodes = ExportLogic().getDataNodes(items, self.EXPORTABLE_TYPES)
-        self.exportButton.enabled = self.nodes
+        self.nodes = export.getDataNodes(items, self.EXPORTABLE_TYPES)
+        self.applyCancelButtons.applyBtn.setEnabled(self.nodes)
 
     def onExportClicked(self):
-        checkUniqueNames(self.nodes)
+        export.checkUniqueNames(self.nodes)
         outputDir = self.directorySelector.directory
         ignoreDirStructure = self.ignoreDirStructureCheckbox.checked
         imageFormat = self.imageFormatBox.currentText
@@ -185,29 +194,28 @@ class ThinSectionExportLogic(LTracePluginLogic):
         LTracePluginLogic.__init__(self)
 
     def export(self, node, outputDir, ignoreDirStructure, imageFormat, tableFormat):
-        logic = ExportLogic()
         nodeDir = Path(outputDir) if ignoreDirStructure else Path(outputDir) / getNodeDataPath(node).parent
         if isinstance(node, slicer.vtkMRMLSegmentationNode):
             format_ = {
-                ThinSectionExport.FORMAT_PNG: ExportLogic.SEGMENTATION_FORMAT_PNG,
-                ThinSectionExport.FORMAT_TIF: ExportLogic.SEGMENTATION_FORMAT_TIF,
+                ThinSectionExport.FORMAT_PNG: export.SEGMENTATION_FORMAT_PNG,
+                ThinSectionExport.FORMAT_TIF: export.SEGMENTATION_FORMAT_TIF,
             }[imageFormat]
-            logic.exportSegmentation(node, outputDir, nodeDir, format_)
+            export.exportSegmentation(node, outputDir, nodeDir, format_)
         elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
             format_ = {
-                ThinSectionExport.FORMAT_PNG: ExportLogic.LABEL_MAP_FORMAT_PNG,
-                ThinSectionExport.FORMAT_TIF: ExportLogic.LABEL_MAP_FORMAT_TIF,
+                ThinSectionExport.FORMAT_PNG: export.LABEL_MAP_FORMAT_PNG,
+                ThinSectionExport.FORMAT_TIF: export.LABEL_MAP_FORMAT_TIF,
             }[imageFormat]
-            logic.exportLabelMap(node, outputDir, nodeDir, format_)
+            export.exportLabelMap(node, outputDir, nodeDir, format_)
         elif isinstance(node, slicer.vtkMRMLScalarVolumeNode):
             format_ = {
-                ThinSectionExport.FORMAT_PNG: ExportLogic.IMAGE_FORMAT_PNG,
-                ThinSectionExport.FORMAT_TIF: ExportLogic.IMAGE_FORMAT_TIF,
+                ThinSectionExport.FORMAT_PNG: export.IMAGE_FORMAT_PNG,
+                ThinSectionExport.FORMAT_TIF: export.IMAGE_FORMAT_TIF,
             }[imageFormat]
-            logic.exportImage(node, outputDir, nodeDir, format_)
+            export.exportImage(node, outputDir, nodeDir, format_)
         elif isinstance(node, slicer.vtkMRMLTableNode):
             format_ = {
-                ThinSectionExport.FORMAT_CSV: ExportLogic.TABLE_FORMAT_CSV,
-                ThinSectionExport.FORMAT_LAS: ExportLogic.TABLE_FORMAT_LAS,
+                ThinSectionExport.FORMAT_CSV: export.TABLE_FORMAT_CSV,
+                ThinSectionExport.FORMAT_LAS: export.TABLE_FORMAT_LAS,
             }[tableFormat]
-            logic.exportTable(node, outputDir, nodeDir, format_)
+            export.exportTable(node, outputDir, nodeDir, format_)

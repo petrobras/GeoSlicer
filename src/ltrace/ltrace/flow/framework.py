@@ -49,16 +49,10 @@ class NavWidget(qt.QGroupBox):
         flowLayout = qt.QHBoxLayout(self)
         self.backButton = qt.QPushButton("\u2190 Back")
         self.backButton.setFixedHeight(40)
-        self.skipButton = qt.QPushButton("Skip \u21e2")
+        self.skipButton = qt.QPushButton("Skip \u21d2")
         self.skipButton.setFixedHeight(40)
         self.nextButton = qt.QPushButton("Next \u2192")
-        self.nextButton.setStyleSheet(
-            f"""
-            QPushButton:enabled {{
-                background-color: {"#003265" if helpers.themeIsDark() else "#8eb3ff"};
-            }}
-        """
-        )
+        self.nextButton.setProperty("class", "actionButtonBackground")
         self.nextButton.setFixedHeight(40)
 
         flowLayout.addWidget(self.backButton, 1)
@@ -89,12 +83,12 @@ class OverviewSection(ctk.ctkCollapsibleButton):
             QListWidget::item:selected {{
                 padding-left: 10px;
                 font-weight: bold;
-                background-color: {'#242e38' if isDark else '#d9ebff'};
-                border-left: 6px solid #36a0fe;
+                background-color: {'#37403A' if isDark else '#d9ebff'};
+                border-left: 6px solid #26C252;
                 color: {'#ffffff' if isDark else '#000000'};
             }}
             QListWidget::item:hover {{
-                background-color: {'#242e38' if isDark else '#d9ebff'};
+                background-color: {'#26C252' if isDark else '#d9ebff'};
             }}
         """
         )

@@ -15,11 +15,9 @@ class ModuleToolBarCustomizer(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Module ToolBar Customizer"
-        if not slicer.app.commandOptions().noMainWindow:
-            slicer.app.connect("startupCompleted()", self.customize)
 
     def customize(self):
-        moduleToolBar = slicer.util.findChild(slicer.util.mainWindow(), "ModuleToolBar")
+        moduleToolBar = slicer.util.findChild(slicer.modules.AppContextInstance.mainWindow, "ModuleToolBar")
 
         # Actions black-list
         actionBlackList = ["Customized Data", "Segmentation Tools"]

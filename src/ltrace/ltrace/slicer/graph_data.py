@@ -13,7 +13,7 @@ from ltrace.algorithms.measurements import (
 from ltrace.slicer.helpers import tryGetNode
 from pyqtgraph import QtCore
 from ltrace.slicer import data_utils as dutils
-from ltrace.slicer_utils import DebounceSignal
+from ltrace.slicer.debounce_caller import DebounceCaller
 
 TEXT_SYMBOLS = {
     "● Circle": "o",
@@ -236,7 +236,7 @@ class GraphData(QtCore.QObject):
 
         # destroyed signal only works with a lambda
         self.destroyed.connect(lambda: self._cleanUp())
-        self.signalModifiedDebouncer = DebounceSignal(parent=self, signal=self.signalModified, qtTimer=QtCore.QTimer)
+        self.signalModifiedDebouncer = DebounceCaller(parent=self, signal=self.signalModified, qtTimer=QtCore.QTimer)
 
     def __eq__(self, other):
         if not isinstance(other, GraphData):
@@ -318,11 +318,7 @@ class GraphData(QtCore.QObject):
             return columns[idx], None
         except ValueError:
             labelColumnName = f"pore_size_class[label]"
-            newLabelColumnData = columnData.replace(
-                PORE_SIZE_CATEGORIES,
-                np.arange(0, len(PORE_SIZE_CATEGORIES), 1),
-                inplace=False,
-            )
+            newLabelColumnData = columnData.replace(PORE_SIZE_CATEGORIES, np.arange(0, len(PORE_SIZE_CATEGORIES), 1))
 
             return labelColumnName, newLabelColumnData
 
@@ -376,7 +372,7 @@ class NodeGraphData(GraphData):
 
     @property
     def node(self):
-        return tryGetNode(self.__node)
+        return tryGetNode(self.__nodeId)
 
     def __parseData(self, dataNode: slicer.vtkMRMLNode):
         """Internal parser function. Currently only supporting Table's nodes.

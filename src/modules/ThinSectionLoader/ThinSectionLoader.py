@@ -1,30 +1,27 @@
+import logging
 import os
 import re
-from collections import namedtuple
+from dataclasses import dataclass
 from pathlib import Path
 
 import ctk
 import cv2
-import logging
 import numpy as np
 import pytesseract
 import qt
 import slicer
-from Customizer import Customizer
-
-from dataclasses import dataclass
-from ltrace.image.io import volume_from_image
-from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
-from ltrace.slicer.helpers import getTesseractCmd, save_path, isImageFile, tryGetNode
-from ltrace.slicer.widget.status_panel import StatusPanel
-from ltrace.slicer_utils import *
-from ltrace.slicer import loader
-from ltrace.slicer.node_observer import NodeObserver
-from ltrace.utils.Markup import MarkupLine
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT  # ureg comes from pint library
-from ltrace.slicer.node_attributes import LosslessAttribute
 
 from Libs.scale_detect_rect import detect_scale, image_corners
+from ltrace.image.io import volume_from_image
+from ltrace.slicer import loader, ui
+from ltrace.slicer.helpers import getTesseractCmd, save_path, isImageFile, tryGetNode
+from ltrace.slicer.node_attributes import LosslessAttribute
+from ltrace.slicer.node_observer import NodeObserver
+from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
+from ltrace.slicer.widget.status_panel import StatusPanel
+from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
+from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT  # ureg comes from pint library
 
 # Checks if closed source code is available
 try:
@@ -32,7 +29,6 @@ try:
 except ImportError:
     ThinSectionLoaderTest = None
 
-os.environ["TESSDATA_PREFIX"] = f"{slicer.app.slicerHome}/bin/Tesseract-OCR/tessdata/"
 pytesseract.pytesseract.tesseract_cmd = getTesseractCmd()
 
 from PIL import Image
@@ -53,10 +49,10 @@ class ThinSectionLoader(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Thin Section Loader"
-        self.parent.categories = ["Thin Section"]
+        self.parent.categories = ["Thin Section", "Loader"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ThinSectionLoader.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Loader.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -122,6 +118,7 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
         self.inputFileSelector.currentPathChanged.connect(self.__on_file_selected)
         self.inputFileSelector.settingKey = "ThinSectionLoader/InputFile"
         self.inputFileSelector.objectName = "Input File Selector"
+
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
         inputFormLayout.addRow(self.__getFormattedLabel("Input file:"), self.inputFileSelector)
@@ -149,12 +146,18 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
         self.advancedFormLayout.addRow(self.__getFormattedLabel(""), self.losslessCheckBox)
         self.loadFormLayout.addRow(self.advancedCollapsibleButton)
 
-        # Load button
-        self.loadButton = qt.QPushButton("Load thin section")
-        self.loadButton.objectName = "Load Thin Section Button"
-        self.loadButton.setFixedHeight(40)
-        self.loadButton.clicked.connect(self.onLoadButtonClicked)
-
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onLoadButtonClicked,
+            onCancelClick=self.onCancelButtonClicked,
+            applyTooltip="Load thin section",
+            cancelTooltip="Cancel",
+            applyText="Load thin section",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName="Load Thin Section Button",
+            cancelObjectName=None,
+        )
+        self.loadFormLayout.addWidget(self.applyCancelButtons)
         self.pixelSizeEditor = PixelSizeEditor()
         self.layout.addWidget(self.pixelSizeEditor)
         self.pixelSizeEditor.scaleSizeInputChanged.connect(
@@ -163,7 +166,6 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
         self.pixelSizeEditor.imageSpacingSet.connect(
             lambda: self.status_panel.set_instruction("Thin section updated successfully")
         )
-        self.loadFormLayout.addRow(self.loadButton)
 
         # Parameters section
         self.parametersCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -189,7 +191,14 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
         self.__update_scalesize_parameters_visibility()
         self.__on_file_selected()
 
+    def onCancelButtonClicked(self):
+        self.logic.onCancel()
+        self.cancel = True
+
     def onLoadButtonClicked(self):
+        self.applyCancelButtons.applyBtn.setEnabled(False)
+        self.applyCancelButtons.cancelBtn.setEnabled(True)
+        self.cancel = False
         if not self.inputFileSelector.currentPath:
             self.status_panel.set_instruction("Select an input file first", True)
             return
@@ -210,6 +219,9 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
             )
             self.updateStatus(f"Loading {Path(path).name}...")
             detection_data = self.logic.load(loadParameters)
+            if self.cancel:
+                slicer.mrmlScene.RemoveNode(self.logic.getCurrentNode())
+                return
             self.logic.loaded = True
             self.pixelSizeEditor.currentNode = self.logic.getCurrentNode()
             failed_detection = "scale_size_mm" not in detection_data
@@ -224,6 +236,11 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
             slicer.util.infoDisplay(str(e))
             return
         finally:
+            if self.cancel:
+                self.updateStatus("Cancelled")
+                self.applyCancelButtons.applyBtn.setEnabled(True)
+                self.applyCancelButtons.cancelBtn.setEnabled(False)
+                pass
             self.updateStatus("")
         if failed_detection:
             slicer.util.warningDisplay("Failed to detect scale in the selected image")
@@ -234,12 +251,15 @@ class ThinSectionLoaderWidget(LTracePluginWidget):
             else:
                 self.status_panel.set_instruction("Manually define scale in px and mm")
         self.__update_scalesize_parameters_visibility()
+        self.applyCancelButtons.applyBtn.setEnabled(True)
+        self.applyCancelButtons.cancelBtn.setEnabled(False)
 
     def updateStatus(self, message):
         self.currentStatusLabel.text = message
         slicer.app.processEvents()
 
     def __on_file_selected(self):
+        self.applyCancelButtons.setEnabled(True)
         self.logic.loaded = False
         self.logic.reset()
         self.pixelSizeEditor.currentNode = self.logic.getCurrentNode()
@@ -288,12 +308,16 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
         self.loaded = False
         self.reset()
 
+    def onCancel(self):
+        self.cancel = True
+
     def load(self, p, baseName=None):
         path = Path(p.path)
         baseName = baseName or path.parent.name
         return self.loadImage(path, p, baseName)
 
     def loadImage(self, file, p, baseName):
+        self.cancel = False
         node = volume_from_image(str(file))
         self.nodeObserver = NodeObserver(node=node, parent=None)
         self.nodeObserver.removedSignal.connect(self.onNodeRemoved)
@@ -322,6 +346,12 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
             lossless = file.suffix.lower() not in [".jpg", ".jpeg"]
         else:
             lossless = p.lossless
+        if self.cancel:
+            nodeId = self.getCurrentNode()
+            slicer.mrmlScene.RemoveNode(nodeId)
+            self.onNodeRemoved()
+            slicer.util.resetSliceViews()
+            return
         losslessAttributeValue = LosslessAttribute.TRUE.value if lossless is True else LosslessAttribute.FALSE.value
         node.SetAttribute(LosslessAttribute.name(), losslessAttributeValue)
         image_info["node"] = node
@@ -329,6 +359,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
 
         loader.configureInitialNodeMetadata(self.ROOT_DATASET_DIRECTORY_NAME, baseName, node)
         slicer.util.resetSliceViews()
+
         return image_info
 
     def parse_tesseract_result(self, results, tolerance=-0.1):
@@ -461,7 +492,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
             gray_view = cv2.cvtColor(gray_view, cv2.COLOR_BGR2GRAY)
         if not using_rect_detection:
             left, top, right, bottom = parsed_scale["extended_bbox"]
-            gray_view = gray_view[top : min(w, bottom), left : min(h, right)]
+            gray_view = gray_view[top : min(w, bottom), left : min(h, right)].astype("uint8")
 
         edge_view = cv2.Canny(gray_view, 100, 200)
         edge_view = cv2.dilate(edge_view, np.ones((3, 3)))

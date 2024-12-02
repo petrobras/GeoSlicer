@@ -71,6 +71,12 @@ PARAMETERS = {
         "false_value": "F",
         "default_values": {"left": False, "right": True},
     },
+    "seed": {
+        "display_name": "Simulation seed",
+        "layout": "options",
+        "dtype": "singleint",
+        "default_value": 0,
+    },
     "calc_box_lower_boundary": {
         "display_name": "Lower box boundary",
         "layout": "options",
@@ -167,6 +173,14 @@ PARAMETERS = {
     },
     "create_sequence": {
         "display_name": "Create animation node",
+        "layout": "options",
+        "dtype": "singlecheckbox",
+        "true_value": "T",
+        "false_value": "F",
+        "default_value": False,
+    },
+    "create_ca_distributions": {
+        "display_name": "Create CA distribution nodes",
         "layout": "options",
         "dtype": "singlecheckbox",
         "true_value": "T",

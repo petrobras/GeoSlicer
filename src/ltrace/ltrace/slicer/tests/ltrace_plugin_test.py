@@ -214,6 +214,8 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             if self.__test_state == TestState.CANCELLED and idx != len(test_cases) - 1:
                 break
 
+            test.reset()
+
             self.setUp(test)
 
             log(
@@ -445,7 +447,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             return
 
         # Clear possible message boxes freezing the operation
-        message_boxes = slicer.util.mainWindow().findChildren(qt.QMessageBox)
+        message_boxes = slicer.modules.AppContextInstance.mainWindow.findChildren(qt.QMessageBox)
         message_from_boxes = []
         for message_box in message_boxes:
             if not message_box.visible:

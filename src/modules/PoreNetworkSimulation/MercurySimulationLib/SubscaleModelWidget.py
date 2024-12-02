@@ -12,6 +12,7 @@ from ltrace.slicer.ui import (
 )
 from ltrace.slicer_utils import dataframeFromTable
 from ltrace.file_utils import read_csv
+
 from MercurySimulationLib import MercurySimulationLogic
 
 

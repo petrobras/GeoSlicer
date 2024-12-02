@@ -5,7 +5,7 @@ import shiboken2
 import slicer
 
 from .base_view_widget import BaseViewWidget
-from ImageLogDataLib.view.View import CurvePlot
+from ImageLogDataLib.view.View import CurvePlot, SECONDARY_VIEW_BOX
 from ltrace.slicer.graph_data import LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from ltrace.slicer_utils import tableNodeToDict
 
@@ -22,9 +22,11 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
         self.curve_plot._plot_item.setContentsMargins(-7, -7, -6, -6)
         self.curve_plot._plot_item.hideButtons()
         self.curve_plot._plot_item.hideAxis("left")
-        self.curve_plot._plot_item.getAxis("bottom").setPen(color=(0, 0, 0))
-        self.curve_plot._plot_item.getAxis("bottom").setTextPen(color=(0, 0, 0))
-        # self.curve_plot._plot_item.signalLogMode.connect(self.curve_plot.logMode)
+        self.curve_plot._plot_item.hideAxis("bottom")
+        self.curve_plot._plot_item.showAxis("top")
+        self.curve_plot._plot_item.getAxis("top").setPen(color=(0, 0, 0))
+        self.curve_plot._plot_item.getAxis("top").setTextPen(color=(0, 0, 0))
+        self.curve_plot._plot_item.ctrlMenu.actions()[0].setVisible(False)
         self.__primary_table_dict = tableNodeToDict(primary_node)
 
         if view_data.primaryTableNodeColumn != "":
@@ -35,24 +37,39 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
                 primary_plot_type = SCATTER_PLOT_TYPE
                 primary_plot_symbol = view_data.primaryTableNodePlotType
 
+            column_List = view_data.primaryTableNodeColumnList.copy()
+
             self.curve_plot.add_data(
                 data_node=primary_node,
-                x_parameter=view_data.primaryTableNodeColumnList,
+                x_parameter=view_data.primaryTableNodeColumn,
                 y_parameter="DEPTH",
                 plot_type=primary_plot_type,
                 color=view_data.primaryTableNodePlotColor,
                 symbol=primary_plot_symbol,
+                size=10,
             )
+            column_List.remove(view_data.primaryTableNodeColumn)
 
-            if view_data.primaryTableNodeColumn == "TI":
+            if "TI" in column_List:
                 self.curve_plot.add_data(
                     data_node=primary_node,
-                    x_parameter=view_data.primaryTableNodeColumn,
+                    x_parameter="TI",
                     y_parameter="DEPTH",
                     plot_type=primary_plot_type,
-                    color="#ff0000",
+                    color="#0000FF",
                     symbol=primary_plot_symbol,
                     size=10,
+                )
+                column_List.remove("TI")
+
+            if column_List:
+                self.curve_plot.add_data(
+                    data_node=primary_node,
+                    x_parameter=column_List,
+                    y_parameter="DEPTH",
+                    plot_type=primary_plot_type,
+                    color="#000000",
+                    symbol=primary_plot_symbol,
                 )
 
         # Secondary table node
@@ -72,12 +89,8 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
                 plot_type=secondary_plot_type,
                 color=view_data.secondaryTableNodePlotColor,
                 symbol=secondary_plot_symbol,
+                view_box=SECONDARY_VIEW_BOX,
             )
-
-        if view_data.logMode:
-            self.curve_plot._plot_item.ctrl.logXCheck.setCheckState(PySide2.QtCore.Qt.Checked)
-
-        self.curve_plot._plot_item.signalLogMode.connect(self.__on_logmode_changed)
 
         pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
         graphics_layout_widget = self.curve_plot._graphics_layout_widget

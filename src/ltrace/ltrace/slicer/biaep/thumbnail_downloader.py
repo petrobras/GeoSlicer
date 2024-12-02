@@ -151,7 +151,7 @@ class ThumbnailDownloader:
             end = idx + self._batch_size
             batch_df = input_df[start:end].reset_index(drop=True)
             batch_df_with_cache = self.get_thumbnails_from_cache(df=batch_df)
-            batch_df_with_cache.dropna(inplace=True, subset=[THUMBNAIL_FILE_PATH_LABEL])
+            batch_df_with_cache = batch_df_with_cache.dropna(subset=[THUMBNAIL_FILE_PATH_LABEL])
             batch_df_without_cache = (
                 pd.merge(batch_df, batch_df_with_cache, on=list(batch_df.columns), how="outer", indicator=True)
                 .query("_merge != 'both'")
@@ -270,7 +270,6 @@ class ThumbnailDownloader:
         data_df = pd.DataFrame.from_dict(data)
         # join data to related columns from the input DataFrame
         output_df = pd.merge(df, data_df, on="name", how="left")
-        # output_df.dropna(inplace=True, subset=[THUMBNAIL_FILE_PATH_LABEL])
         return output_df
 
     def _get_thumbnail_file_name_pattern(self, name: str, extension: str = None) -> str:

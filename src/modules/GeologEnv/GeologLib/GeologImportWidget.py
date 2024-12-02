@@ -1,13 +1,15 @@
 import logging
 import shutil
 import subprocess
-from pathlib import Path
 
 import qt, slicer
 import numpy as np
 import pandas as pd
-import DLISImportLib
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUE, handle_null_values
+
+from ltrace.slicer.image_log.import_logic import ChannelMetadata
+from ltrace.slicer.image_log.table_viewer_widget import ImageLogTableViewer
+from pathlib import Path
+from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES, handle_null_values
 from ltrace.slicer import ui
 from ltrace.slicer.helpers import highlight_error, remove_highlight
 from ltrace.slicer.node_attributes import (
@@ -52,13 +54,13 @@ class GeologImportWidget(qt.QWidget):
         )
 
         self.nullValuesListText = qt.QLineEdit()
-        self.nullValuesListText.text = str(DEFAULT_NULL_VALUE)[1:-1]
+        self.nullValuesListText.text = str(DEFAULT_NULL_VALUES)[1:-1]
         self.nullValuesListText.objectName = "Import Null Values LineEdit"
         self.nullValuesListText.setToolTip(
             "Values that represent null values. They will be changed to nan values during import."
         )
 
-        self.tableView = DLISImportLib.DLISTableViewer()
+        self.tableView = ImageLogTableViewer()
         self.tableView.setMinimumHeight(500)
         self.tableView.loadClicked = self._onLoadClicked
         self.tableView.objectName = "dataTableView"
@@ -161,7 +163,7 @@ class GeologImportWidget(qt.QWidget):
                 if logs:
                     for logName, attributes in logs.items():
                         tableData.append(
-                            DLISImportLib.DLISImportLogic.ChannelMetadata(
+                            ChannelMetadata(
                                 logName,
                                 attributes["comment"],
                                 attributes["unit"],

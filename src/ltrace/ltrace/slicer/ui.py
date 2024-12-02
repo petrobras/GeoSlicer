@@ -1,4 +1,3 @@
-import random
 import textwrap
 from functools import reduce
 from pathlib import Path
@@ -11,13 +10,6 @@ from natsort import natsorted
 
 from ltrace.slicer.helpers import getSegmentList, createLabelmapInput
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-
-from pathlib import Path
-
-import ctk
-import numpy as np
-
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 
 
 def volumeInput(onChange=None, hasNone=False, nodeTypes=None, onActivation=None):
@@ -68,15 +60,22 @@ def hierarchyVolumeInput(
     tooltip=None,
     defaultText=None,
     showSegments=False,
+    allowFolders=False,
 ):
     from ltrace.slicer.widget.hierarchy_volume_input import HierarchyVolumeInput
 
-    widget = HierarchyVolumeInput(onChange or onActivation, hasNone, nodeTypes, defaultText)
+    widget = HierarchyVolumeInput(hasNone, nodeTypes, defaultText, allowFolders)
     if tooltip:
         widget.setToolTip(tooltip)
 
     if not showSegments:
-        widget.setExcludeItemAttributeNamesFilter(("segmentID",))
+        widget.selectorWidget.setExcludeItemAttributeNamesFilter(("segmentID",))
+
+    if onChange is not None:
+        widget.currentItemChanged.connect(onChange)
+
+    if onActivation is not None:  # Not implemented
+        pass
 
     return widget
 
@@ -277,6 +276,47 @@ def ApplyButton(onClick=None, tooltip="", text="Apply", enabled=True, object_nam
     btn.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 0px}")
     btn.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
     return btn
+
+
+class ApplyCancelButtons(qt.QWidget):
+    def __init__(
+        self,
+        onApplyClick=None,
+        onCancelClick=None,
+        applyTooltip="Apply",
+        cancelTooltip="Cancel",
+        applyText="Apply",
+        cancelText="Cancel",
+        enabled=True,
+        applyObjectName="Apply Button",
+        cancelObjectName="Cancel Button",
+        parent=None,
+    ):
+        super().__init__(parent)
+
+        # Create Apply button
+        self.applyBtn = ButtonWidget(onApplyClick, applyText, applyTooltip, enabled, applyObjectName)
+        self.applyBtn.setProperty("class", "actionButtonBackground")
+        self.applyBtn.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
+
+        # Create Cancel button
+        self.cancelBtn = ButtonWidget(onCancelClick, cancelText, cancelTooltip, enabled, cancelObjectName)
+        self.cancelBtn.setStyleSheet("QPushButton {font-size: 11px; padding: 8px; margin: 0px}")
+        self.cancelBtn.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
+
+        # Create layout and add buttons
+        self.buttonLayout = qt.QHBoxLayout(self)
+        self.buttonLayout.addWidget(self.applyBtn)
+        self.buttonLayout.addWidget(self.cancelBtn)
+
+    # Method to enable/disable both buttons at once
+    def setEnabled(self, enabled):
+        self.applyBtn.setEnabled(enabled)
+        self.cancelBtn.setEnabled(enabled)
+
+    @property
+    def text(self):
+        return f"ApplyCancelButtons"
 
 
 def CheckBoxLayout(text="", tooltip="", onToggle=None):
@@ -690,6 +730,8 @@ class MultiplePathsWidget(qt.QWidget):
                 if len(path):
                     self.directoryListView.addDirectory(path)
             self.addCallback(lastPathString)
+
+        fileDialog.delete()
 
 
 def numberParam(vrange, value=0.1, step=0.1, decimals=1):

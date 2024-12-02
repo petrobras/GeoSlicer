@@ -23,8 +23,8 @@ class ImageLogCropVolume(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Crop Volume"
-        self.parent.categories = ["Image Log"]
+        self.parent.title = "Image Log Crop"
+        self.parent.categories = ["ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogCropVolume.help()
 
@@ -57,9 +57,8 @@ class ImageLogCropVolumeWidget(LTracePluginWidget):
                 "vtkMRMLVectorVolumeNode",
                 "vtkMRMLLabelMapVolumeNode",
             ],
+            tooltip="Pick a volume node to be cropped",
         )
-        self.InputSelector.setMRMLScene(slicer.mrmlScene)
-        self.InputSelector.setToolTip("Pick a volume node to be cropped")
         self.InputSelector.objectName = "Input combobox"
 
         self.volumeResolution = qt.QLabel("")
@@ -205,7 +204,6 @@ class ImageLogCropVolumeWidget(LTracePluginWidget):
         return self.origins[2] + self.spacing[2] * index
 
     def __calculateIndexFromDepth(self, depth, isFloor):
-        print("floor:", math.floor((depth - self.origins[2]) / self.spacing[2]))
         if isFloor:
             return math.floor((depth - self.origins[2]) / self.spacing[2])
         else:

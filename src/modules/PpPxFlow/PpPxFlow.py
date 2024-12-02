@@ -1,5 +1,6 @@
 from ltrace.flow.thin_section import ppPxFlowWidget
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from ltrace.slicer_utils import getResourcePath
 from pathlib import Path
 import os
 
@@ -11,9 +12,11 @@ class PpPxFlow(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "PP/PX Flow"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PpPxFlow.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Fluxo%20PP%20PX.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):

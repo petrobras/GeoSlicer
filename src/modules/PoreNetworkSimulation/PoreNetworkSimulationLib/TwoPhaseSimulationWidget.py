@@ -1,14 +1,15 @@
 import ctk
 import qt
 import slicer
-
-from Customizer import Customizer
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
-from PoreNetworkSimulationLib.widgets import *
-from ltrace.slicer import ui
-from ltrace.slicer.node_attributes import TableType
+
+from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
+from ltrace.slicer import ui, helpers
+from ltrace.slicer.node_attributes import TableType
+from ltrace.slicer_utils import getResourcePath
+from ltrace.slicer.widget.simulation import *
 
 
 class TwoPhaseParametersEditDialog:
@@ -16,7 +17,7 @@ class TwoPhaseParametersEditDialog:
         self.node = node
 
     def show(self):
-        dialog = qt.QDialog(slicer.util.mainWindow())
+        dialog = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
         dialog.setWindowTitle("Sensibility Parameters Edit")
         dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
 
@@ -90,6 +91,17 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         layout = qt.QFormLayout(self)
         self.widgets = {}
 
+        self.simulator_combo_box = qt.QComboBox()
+        self.simulator_combo_box.objectName = "Simulator Selector"
+        self.simulator_combo_box.addItem("pnflow")
+        self.simulator_combo_box.addItem("py_pore_flow")
+        self.simulator_combo_box.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+        simulator_label = qt.QLabel("Simulator:")
+        simulator_layout = qt.QHBoxLayout()
+        simulator_layout.addWidget(simulator_label)
+        simulator_layout.addWidget(self.simulator_combo_box)
+        layout.addRow(simulator_layout)
+
         self.parameterInputLoadCollapsible = ctk.ctkCollapsibleButton()
         self.parameterInputLoadCollapsible.text = "Load parameters"
         self.parameterInputLoadCollapsible.collapsed = True
@@ -107,7 +119,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameterInputLayout.addRow("Input parameter node:", self.parameterInputWidget)
         parameterInputLayout.addRow(parameterInputLoadButton)
         parameterInputLoadIcon = qt.QLabel()
-        parameterInputLoadIcon.setPixmap(qt.QIcon(str(Customizer.LOAD_ICON_PATH)).pixmap(qt.QSize(13, 13)))
+        parameterInputLoadIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Load.png").pixmap(qt.QSize(13, 13)))
         if not hide_parameters_io:
             layout.addRow(parameterInputLoadIcon, self.parameterInputLoadCollapsible)
 
@@ -115,7 +127,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         # Fluid Properties
         fluidPropertiesBox = qt.QGroupBox()
-        fluidPropertiesBox.setTitle("Fluid properties")
+        fluidPropertiesBox.setTitle("Fluid properties      ")
+        help_button = HelpButton(
+            f"### [Fluid properties](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#fluid-properties) section of GeoSlicer Manual."
+        )
+        help_button.setFixedSize(20, 20)
+        help_button.setParent(fluidPropertiesBox)
+        help_button.move(103, 0)
+
         fluidPropertiesLayout = qt.QFormLayout(fluidPropertiesBox)
         fluidPropertiesLayout.setContentsMargins(11, 9, 11, 5)
         layout.addRow(fluidPropertiesBox)
@@ -146,9 +165,15 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         # contact angle
         self.contactAngleBox = qt.QGroupBox()
-        self.contactAngleBox.setTitle("Contact angle options")
+        self.contactAngleBox.setTitle("Contact angle options      ")
         self.contactAngleLayout = qt.QFormLayout(self.contactAngleBox)
         self.contactAngleLayout.setContentsMargins(11, 9, 11, 5)
+        help_button = HelpButton(
+            f"### [Contact angle options](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#contact-angle-options) section of GeoSlicer Manual."
+        )
+        help_button.setFixedSize(20, 20)
+        help_button.setParent(self.contactAngleBox)
+        help_button.move(142, 0)
         layout.addRow(self.contactAngleBox)
 
         for layout_name, display_string in (
@@ -182,9 +207,15 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         # simulation options
         self.simulationOptionsBox = qt.QGroupBox()
-        self.simulationOptionsBox.setTitle("Simulation options")
+        self.simulationOptionsBox.setTitle("Simulation options      ")
         self.simulationOptionsLayout = qt.QFormLayout(self.simulationOptionsBox)
         self.simulationOptionsLayout.setContentsMargins(11, 9, 11, 5)
+        help_button = HelpButton(
+            f"### [Simulation options](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#simulation-options) section of GeoSlicer Manual."
+        )
+        help_button.setFixedSize(20, 20)
+        help_button.setParent(self.simulationOptionsBox)
+        help_button.move(122, 0)
         layout.addRow(self.simulationOptionsBox)
         for layout_name, display_string in (
             ("cycle_1", "Drainage"),
@@ -245,7 +276,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameterInputLayout.addRow("Output parameter node name:", self.parameterInputLineEdit)
         parameterInputLayout.addRow(parameterInputSaveButton)
         parameterInputSaveIcon = qt.QLabel()
-        parameterInputSaveIcon.setPixmap(qt.QIcon(str(Customizer.SAVE_ICON_PATH)).pixmap(qt.QSize(13, 13)))
+        parameterInputSaveIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Save.png").pixmap(qt.QSize(13, 13)))
         if not hide_parameters_io:
             layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
 
@@ -356,6 +387,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             subres_params = {
                 i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
             }
+        params["simulator"] = self.simulator_combo_box.currentText
 
         for widget in self.widgets.values():
             params.update(widget.get_values())

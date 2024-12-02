@@ -80,7 +80,14 @@
       <channel>input</channel>
       <default>0.02</default>
     </double>     
-    
+    <double>
+      <name>filtered_diff</name>
+      <label>Filtered difference</label>
+      <description><![CDATA[.....]]></description>
+      <channel>output</channel>
+      <default></default>
+    </double>	
+
   </parameters>
 
 

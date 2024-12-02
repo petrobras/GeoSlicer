@@ -1,34 +1,28 @@
-import csv
+import json
 import logging
 import os
-import subprocess
-import time
-import traceback
+import shutil
 from pathlib import Path
 from typing import Tuple, Union
 
 import ctk
-import numpy as np
 import pandas as pd
 import qt
 import slicer
 import slicer.util
 import vtk
-import json
-import shutil
 
 import ltrace.pore_networks.functions as pn
-from ltrace.image import optimized_transforms
 from ltrace.slicer import ui
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
     slicer_is_in_developer_mode,
     dataFrameToTableNode,
+    getResourcePath,
 )
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.PoreNetworkExtractorTest import PoreNetworkExtractorTest
@@ -49,11 +43,11 @@ class PoreNetworkExtractor(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "PoreNetworkExtractor"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "PNM Extraction"
+        self.parent.categories = ["MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PoreNetworkExtractor.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/PNExtraction.html').as_posix()}"
         self.parent.acknowledgementText = ""
 
     @classmethod

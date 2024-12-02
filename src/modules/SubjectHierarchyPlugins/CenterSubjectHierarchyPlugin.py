@@ -2,6 +2,8 @@ import vtk, qt, ctk, slicer
 import logging
 from AbstractScriptedSubjectHierarchyPlugin import *
 import numpy as np
+from ltrace.slicer import helpers
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.vtk_utils.well_model.well_model import create_well_model_from_node
 
@@ -95,7 +97,7 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             self.folderToSequenceAction,
             self.sequenceToFolderAction,
         ]
-        if slicer.util.selectedModule() != "ImageLogEnv":
+        if helpers.getCurrentEnvironment() != NodeEnvironment.IMAGE_LOG:
             actions.append(self.centerVolumeAction)
             actions.append(self.createWellModelAction)
         return actions
@@ -141,7 +143,7 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         markupsLogic = slicer.modules.markups.logic()
 
         segmentCenterRAS = segmentationNode.GetSegmentCenterRAS(segmentID)
-        if slicer.util.selectedModule() != "ImageLogEnv":
+        if helpers.getCurrentEnvironment() != NodeEnvironment.IMAGE_LOG:
             markupsLogic.JumpSlicesToLocation(*segmentCenterRAS, True)
         else:
             markupsLogic.JumpSlicesToLocation(0, 0, segmentCenterRAS[2], True)

@@ -23,7 +23,7 @@ class AzimuthShiftTool(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Azimuth Shift Tool"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = AzimuthShiftTool.help()
 

@@ -119,11 +119,11 @@ class SecondOrderInteraction(PlotBase):
 
         for i in anova.index:
             if ":" not in i and i != "Intercept" and i != "Residual":
-                anova_df.loc[i][i] = anova.loc[i]["PR(>F)"]
+                anova_df.loc[i, i] = anova.loc[i]["PR(>F)"]
             elif i != "Intercept" and i != "Residual":
                 j, k = i.split(":")
-                anova_df.loc[j][k] = anova.loc[i]["PR(>F)"]
-                anova_df.loc[k][j] = anova.loc[i]["PR(>F)"]
+                anova_df.loc[j, k] = anova.loc[i]["PR(>F)"]
+                anova_df.loc[k, j] = anova.loc[i]["PR(>F)"]
 
         for i in anova_df:
             anova_df[i] = anova_df[i].astype(float)

@@ -15,9 +15,9 @@ class ThinSectionLoader:
 
     # A imagem PP/c1 é carregada e salva em formato NRRD compatível com as aplicações em CLI executadas nas etapas
     # posteriores. O cabeçalho do arquivo é diferente de acordo com o modelo de segmentação de poro escolhido
-    # (Bayesiano ou neural), visto que são administrados por diferentes CLI's. A menos que o nome da imagem
-    # conste no arquivo `not_use_px.csv`, a versão PX/c2 também é carregada para uso posterior, porém é mantida
-    # apenas em memória em vez de salva em disco.
+    # (Bayesiano ou neural), visto que são administrados por diferentes CLI's. Opcionalmente, a versão PP/c2 também
+    # pode ser carregada para uso posterior, mais especificamente para incorporação de bolhas e resíduos na resina
+    # de poro através do módulo PoreCleaner.
 
     THIN_SECTION_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg"]
 
@@ -46,7 +46,7 @@ class ThinSectionLoader:
         if self.do_resize:
             image = cv2.resize(image, (0, 0), fx=0.1, fy=0.1)
 
-        # Apenas a imagem PP tem o NRRD salvo. A PX é carregada apenas em memória.
+        # Fornecer o caminho do diretório temporário faz com que o NRRD seja salvo. Caso contrário, a imagem é carregada apenas em memória.
         if tmp_nrrd_dir is not None:
             image_name = os.path.splitext(os.path.basename(image_path))[0]
             output_file_path = os.path.join(tmp_nrrd_dir, f"{image_name}.nrrd")

@@ -302,6 +302,7 @@ class ExportWidget(WorkstepWidget):
         self.layout().addLayout(self.formLayout)
 
         self.exportDirectoryButton = ctk.ctkDirectoryButton()
+        self.exportDirectoryButton.setMaximumWidth(374)
         self.exportDirectoryButton.caption = "Export directory"
         self.formLayout.addRow("Export directory:", self.exportDirectoryButton)
         self.formLayout.addRow(" ", None)

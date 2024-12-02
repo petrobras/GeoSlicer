@@ -20,8 +20,8 @@ class MicroCTLoader(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Micro CT Loader"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "Micro CT Import"
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = MicroCTLoader.help()

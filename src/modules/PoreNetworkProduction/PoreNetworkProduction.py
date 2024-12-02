@@ -20,7 +20,7 @@ from ltrace.slicer import ui
 from ltrace.slicer.helpers import highlight_error
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataframeFromTable
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataframeFromTable, getResourcePath
 from ltrace.slicer_utils import tableNodeToDict, dataFrameToTableNode
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 
@@ -40,11 +40,11 @@ class PoreNetworkProduction(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "PoreNetworkProduction"
-        self.parent.categories = ["Tutorials/Examples"]
+        self.parent.title = "PNM Production Prediction"
+        self.parent.categories = ["Tutorials/Examples", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PoreNetworkProduction.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/production.html').as_posix()}"
         self.parent.acknowledgementText = ""
 
     @classmethod
@@ -235,6 +235,34 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         )
         self.sensitivityPlotItem.addLegend()
         visualizationPlotForm.addRow(self.SensitivityVisualizationGraphicsLayout)
+
+        self.pessimisticNpD = self.sensitivityPlotItem.plot(
+            name="Pessimistic NpD",
+            pen=pg.mkPen((200, 0, 0, 255), width=4),
+            symbol=None,
+            symbolPen=None,
+            symbolSize=None,
+            symbolBrush=None,
+        )
+
+        self.realisticNpD = self.sensitivityPlotItem.plot(
+            name="Realistic NpD",
+            pen=pg.mkPen((230, 100, 0, 255), width=4),
+            symbol=None,
+            symbolPen=None,
+            symbolSize=None,
+            symbolBrush=None,
+        )
+
+        self.optimisticNpD = self.sensitivityPlotItem.plot(
+            name="Optimistic NpD",
+            pen=pg.mkPen((0, 200, 0, 255), width=4),
+            symbol=None,
+            symbolPen=None,
+            symbolSize=None,
+            symbolBrush=None,
+        )
+
         self.SensitivityVisualizationGraphicsLayout.hide()
 
         #
@@ -369,7 +397,6 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         elif production_node.GetAttribute("table_type") == "production_sensitivity":
             self.SensitivityVisualizationGraphicsLayout.show()
             self.visualizationGraphicsLayout.hide()
-            self.sensitivityPlotItem.clear()
             self.sensitivityPlotItem.setXRange(0, 2)
             self.sensitivityPlotItem.setYRange(0, 1)
 
@@ -394,41 +421,20 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
                 NpD_arrays_list.append(vtk.util.numpy_support.vtk_to_numpy(npd_points_vtk_array))
                 series_list[-1].setData(self.td_values, NpD_arrays_list[-1])
 
-            self.pessimisticNpD = self.sensitivityPlotItem.plot(
-                name="Pessimistic NpD",
-                pen=pg.mkPen((200, 0, 0, 255), width=4),
-                symbol=None,
-                symbolPen=None,
-                symbolSize=None,
-                symbolBrush=None,
-            )
             npd_points_vtk_array = production_node.GetTable().GetColumnByName("pessimistic_NpD")
             pessimistic_NpD_numpy = vtk.util.numpy_support.vtk_to_numpy(npd_points_vtk_array)
             self.pessimisticNpD.setData(self.td_values, pessimistic_NpD_numpy)
+            self.pessimisticNpD.setZValue(1)
 
-            self.realisticNpD = self.sensitivityPlotItem.plot(
-                name="Realistic NpD",
-                pen=pg.mkPen((230, 100, 0, 255), width=4),
-                symbol=None,
-                symbolPen=None,
-                symbolSize=None,
-                symbolBrush=None,
-            )
             npd_points_vtk_array = production_node.GetTable().GetColumnByName("realistic_NpD")
             realistic_NpD_numpy = vtk.util.numpy_support.vtk_to_numpy(npd_points_vtk_array)
             self.realisticNpD.setData(self.td_values, realistic_NpD_numpy)
+            self.realisticNpD.setZValue(1)
 
-            self.optimisticNpD = self.sensitivityPlotItem.plot(
-                name="Optimistic NpD",
-                pen=pg.mkPen((0, 200, 0, 255), width=4),
-                symbol=None,
-                symbolPen=None,
-                symbolSize=None,
-                symbolBrush=None,
-            )
             npd_points_vtk_array = production_node.GetTable().GetColumnByName("optimistic_NpD")
             optimistic_NpD_numpy = vtk.util.numpy_support.vtk_to_numpy(npd_points_vtk_array)
             self.optimisticNpD.setData(self.td_values, optimistic_NpD_numpy)
+            self.optimisticNpD.setZValue(1)
 
 
 #

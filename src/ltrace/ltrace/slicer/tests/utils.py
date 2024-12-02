@@ -8,10 +8,11 @@ import time
 from ltrace.constants import SaveStatus
 from ltrace.slicer.project_manager import ProjectManager
 from ltrace.slicer.helpers import make_directory_writable, WatchSignal
+from ltrace.slicer.module_utils import loadModules
 from ltrace.utils.string_comparison import StringComparison
 from pathlib import Path
 from stopit import TimeoutException
-from typing import Union
+from typing import Callable, List, Union
 
 TEST_LOG_FILE_PATH = Path(slicer.app.temporaryPath) / "tests.log"
 
@@ -62,27 +63,27 @@ def wait(seconds: float) -> None:
         raise TimeoutError("Test timeout reached!")
 
 
-def wait_cli_to_finish(cli_node, timeout_sec: int = 3600) -> None:
-    """Lock thread until respective CLI node is not busy anymore.
+def wait_cli_to_finish(cli_entity, timeout_sec: int = 3600) -> None:
+    """Lock thread until respective CLI node or queue is not busy anymore.
 
     Args:
-        cli_node (vtkMRMLCommandLineModuleNode): the CLI node object,
+        cli_entity (slicer.vtkMRMLCommandLineModuleNode or ltrace.slicer.CliQueue): the CLI entity object,
         timeout_sec (int, optional): the timeout in seconds. Defaults to 3600 seconds.
     """
-    if cli_node is None:
+    if cli_entity is None:
         return
 
     start = time.perf_counter()
     try:
-        while cli_node.IsBusy():
+        while cli_entity.IsBusy():
             time.sleep(0.200)
             process_events()
 
             if time.perf_counter() - start >= timeout_sec:
-                cli_node.Cancel()
+                cli_entity.Cancel()
                 raise TimeoutError("CLI timeout reached!")
     except TimeoutException:
-        cli_node.Cancel()
+        cli_entity.Cancel()
         raise TimeoutError("Test timeout reached!")
 
 
@@ -126,22 +127,27 @@ def load_project(project_file_path, timeout_ms=300000):
     if not path.exists():
         raise ValueError("Project file not found!")
 
+    status = False
     with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=timeout_ms):
-        try:
-            slicer.util.loadScene(path.as_posix())
-        except Exception:
-            raise RuntimeError(f"Timeout! Failed to load {path.as_posix()} project file!")
+        status = ProjectManager().load(path)
+
+    return status
 
 
 @contextlib.contextmanager
-def check_for_message_box(message, should_accept=True, timeout_sec=2, buttonTextToClick=None):
+def check_for_message_box(
+    message, should_accept: bool = True, timeout_sec: int = 2, buttonTextToClick: bool = None, closeOthers: bool = True
+):
     """Context manager to handle the displaying of a QMessageBox during a test scenario
 
     Args:
         message (str): the expected QMessageBox text
         should_accept (bool, optional): Accept if True, otherwise Reject the message box action. Defaults to True.
         timeout_sec (int, optional): Timeout to wait for the message box to appear, in seconds. Defaults to 2.
-        buttonTextToClick (_type_, optional): The button text to click. Defaults to None.
+        buttonTextToClick (bool, optional): The button text to click. Defaults to None.
+        closeOthers (:bool, optional): Close other visible message boxes.
+                                       It might help to disable it when chaining multiple contexts to check
+                                       for a message box. Defaults to True.
 
     Raises:
         AttributeError: When the QMessageBox isn't identified.
@@ -156,7 +162,7 @@ def check_for_message_box(message, should_accept=True, timeout_sec=2, buttonText
         if result[0] is True:
             return
 
-        mw = slicer.util.mainWindow()
+        mw = slicer.modules.AppContextInstance.mainWindow
         message_boxes = mw.findChildren(qt.QMessageBox)
         the_message_box = None
 
@@ -168,7 +174,9 @@ def check_for_message_box(message, should_accept=True, timeout_sec=2, buttonText
             # Find possible visible QMessageBox and close it to avoid freezing the test process
             other_message_boxes = [msg_box for msg_box in message_boxes if msg_box.visible == True]
             for message_box in other_message_boxes:
-                message_box.close()
+                logging.debug(f"A different message box had appeared with the text: '{message_box.text}'")
+                if closeOthers:
+                    message_box.close()
 
             if time.perf_counter() - start_time < timeout_sec:
                 timer.start()
@@ -190,6 +198,7 @@ def check_for_message_box(message, should_accept=True, timeout_sec=2, buttonText
                 the_button = button
 
             if the_button is None:
+                logging.error(f"The message box button {buttonTextToClick} doesn't exist in the current context.")
                 the_message_box.reject()
             else:
                 the_button.click()
@@ -235,10 +244,11 @@ def save_project(project_path: Union[str, Path], timeout_ms=300000, properties=N
     elif project_path.is_dir():
         shutil.rmtree(project_path, onerror=make_directory_writable)
 
-    project_manager = ProjectManager(folder_icon_path="")
-
+    status = False
     with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=timeout_ms):
-        return project_manager.save_as(project_path.parent, properties=properties) == SaveStatus.SUCCEED
+        status = ProjectManager().saveAs(project_path.parent, properties=properties) == SaveStatus.SUCCEED
+
+    return status
 
 
 def save_current_project(timeout_ms=300000, properties=None) -> bool:
@@ -257,17 +267,17 @@ def save_current_project(timeout_ms=300000, properties=None) -> bool:
     if properties is None or not isinstance(properties, dict):
         properties = {}
 
-    project_manager = ProjectManager(folder_icon_path="")
-
+    status = False
     with WatchSignal(signal=slicer.mrmlScene.EndSaveEvent, timeout_ms=timeout_ms):
-        return project_manager.save(url, properties=properties) == SaveStatus.SUCCEED
+        status = ProjectManager().save(url, properties=properties) == SaveStatus.SUCCEED
+
+    return status
 
 
 def close_project(timeout_ms: int = 300000) -> None:
     with WatchSignal(signal=slicer.mrmlScene.EndCloseEvent, timeout_ms=timeout_ms):
-        slicer.mrmlScene.Clear(0)
+        ProjectManager().close()
 
-    slicer.mrmlScene.EndState(slicer.mrmlScene.CloseState)
     process_events()
 
 
@@ -275,3 +285,58 @@ def compare_ignore_line_endings(file1, file2):
     with open(file1, "r") as f1:
         with open(file2, "r") as f2:
             return f1.read().replace("\r\n", "\n") == f2.read().replace("\r\n", "\n")
+
+
+def handleFileDialog(accept: bool = True, directory: Path = None, projectName: str = None) -> None:
+    fileDialog = None
+
+    existentFileDialogs = [widget for widget in slicer.app.topLevelWidgets() if isinstance(widget, qt.QFileDialog)]
+    if len(existentFileDialogs) == 0:
+        raise RuntimeError("File dialog wasn't detected.")
+    elif len(existentFileDialogs) > 1:
+        logging.warning(f"Found {len(existentFileDialogs)} file dialogs. Check if this is the expected behavior.")
+
+    visibleFileDialogs = [widget for widget in existentFileDialogs if widget.visible is True]
+
+    if len(visibleFileDialogs) == 0:
+        raise RuntimeError("A file dialog is instancied but wasn't visible.")
+
+    fileDialog = visibleFileDialogs[0]
+
+    if not accept:
+        fileDialog.reject()
+        return
+
+    wait(1)
+    fileDialog.setDirectory(qt.QDir(directory.as_posix()))
+    fileNameEdit = fileDialog.findChild("QLineEdit")
+    fileNameEdit.setText(projectName)
+    wait(0.2)
+    fileDialog.accept()
+    wait(0.2)
+
+
+def loadEnvironmentByName(displayName):
+    slicer.modules.AppContextInstance.modules.loadEnvironmentByName(
+        slicer.util.mainWindow().findChild("QToolBar", "ModuleToolBar"), displayName
+    )
+
+
+def loadAllModules():
+    groups = slicer.modules.AppContextInstance.modules.groups
+    modules = {obj.key: obj for sublist in groups.values() for obj in sublist}
+    modules = list(modules.values())
+    loadModules(modules, permanent=False, favorite=False)
+
+
+def waitCondition(condition: Callable, timeoutSec: int = 5) -> None:
+    """Sleeps until a condition is met.
+
+    Args:
+        condition (Callable): A function that returns True when the process is finished, otherwise it should returns False
+        timeoutSec (int): The time limit to wait for the condition to happen.
+    """
+    start = time.perf_counter()
+    while time.perf_counter() - start < timeoutSec and not condition():
+        time.sleep(0.2)
+        process_events()

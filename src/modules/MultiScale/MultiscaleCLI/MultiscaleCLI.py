@@ -8,33 +8,16 @@ from __future__ import print_function
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
 import vtk, slicer, slicer.util, mrml
-import json
-import logging
-import numpy as np
 import os
-import sys
-from multiprocessing import cpu_count
-
-from pathlib import Path
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
+import json
 
 import mpslib as mps
-from tifffile import tifffile
+import numpy as np
 
 MRML_TYPES = {
     "vtkMRMLScalarVolumeNode": mrml.vtkMRMLScalarVolumeNode,
     "vtkMRMLLabelMapVolumeNode": mrml.vtkMRMLLabelMapVolumeNode,
 }
-
-
-def saveRealizationFiles(image, grid_cell_size, filePath):
-    tifffile.imwrite(
-        filePath,
-        np.flip(np.transpose(image), axis=0).astype("float32"),
-        imagej=True,
-        resolution=(1 / grid_cell_size[0], 1 / grid_cell_size[1]),
-        metadata={"spacing": grid_cell_size[2], "unit": "microns"},
-    )
 
 
 def MPS(args):
@@ -62,6 +45,9 @@ def MPS(args):
 
     for realization in range(args.nreal):
         np.save(os.path.join(temporaryPath, f"sim_data_{realization}.npy"), mpslib.sim[realization])
+
+    with open(args.returnparameterfile, "a") as returnFile:
+        returnFile.write("mpsTime=" + str(mpslib.time) + "\n")
 
 
 if __name__ == "__main__":
@@ -114,6 +100,14 @@ if __name__ == "__main__":
         type=int,
         dest="distanceMeasure",
         required=True,
+        help="Set if data is continuous or discrete.",
+    )
+    parser.add_argument(
+        "--mpsTime",
+        type=float,
+        dest="mpsTime",
+        default=0.0,
+        required=False,
         help="Set if data is continuous or discrete.",
     )
 

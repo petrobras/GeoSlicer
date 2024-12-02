@@ -8,12 +8,13 @@ import ctk
 from slicer.util import VTKObservationMixin
 import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
-from ltrace.utils.ProgressBarProc import ProgressBarProc
 
+from ltrace.slicer.app import getApplicationVersion
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 from distinctipy import distinctipy
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer import helpers
@@ -34,10 +35,12 @@ class StreamlinedSegmentation(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Virtual Segmentation Flow"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = StreamlinedSegmentation.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Volumes/StreamlinedSegmentation.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):
@@ -149,7 +152,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
             nodeTypes=["vtkMRMLTextNode"],
             tooltip="Select the image within the NetCDF dataset to preview.",
         )
-        self.volumeSelector.addNodeAttributeFilter("LazyNode", "1")
+        self.volumeSelector.selectorWidget.addNodeAttributeFilter("LazyNode", "1")
 
         self.exportPathEdit = ctk.ctkPathLineEdit()
         self.exportPathEdit.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Writable
@@ -391,7 +394,7 @@ class StreamlinedSegmentationLogic(LTracePluginLogic):
             "boundary_thresholds": self.boundaryThresholds,
             "colors": self.segmentColors,
             "names": self.segmentNames,
-            "geoslicer_version": slicer.app.applicationVersion,
+            "geoslicer_version": getApplicationVersion(),
         }
         cli_config = {
             "params": json.dumps(params),

@@ -37,7 +37,7 @@ class ImageLogInpaint(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Image Log Inpaint"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogInpaint.help()
 
@@ -78,10 +78,10 @@ class ImageLogInpaintWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        self.customizedSegmentEditorWidget = slicer.modules.customizedsegmenteditor.createNewWidgetRepresentation()
-        self.customizedSegmentEditorWidget.self().selectParameterNodeByTag(ImageLogInpaint.SETTING_KEY)
+        self.customizedSegmentEditorWidget = slicer.util.getNewModuleWidget("CustomizedSegmentEditor")
+        self.customizedSegmentEditorWidget.selectParameterNodeByTag(ImageLogInpaint.SETTING_KEY)
 
-        self.segmentEditorWidget = self.customizedSegmentEditorWidget.self().editor
+        self.segmentEditorWidget = self.customizedSegmentEditorWidget.editor
         self.segmentEditorWidget.setEffectNameOrder(["Scissors"])
         self.segmentEditorWidget.unorderedEffectsVisible = False
         self.segmentEditorWidget.setAutoShowSourceVolumeNode(False)
@@ -191,8 +191,10 @@ class ImageLogInpaintWidget(LTracePluginWidget):
     def onSaveSceneStart(self, caller, event):
         # Clear the image log view config to not save the current state of the view.
         # Also prevents errors related to the temporary segmentation node.
-        if self.logic.imageLogDataLogic:
-            self.logic.imageLogDataLogic.configurationsNode.SetParameter("ImagLogViews", json.dumps([]))
+        if self.logic.imageLogDataLogic is not None:
+            if self.logic.imageLogDataLogic.configurationsNode is not None:
+                self.logic.imageLogDataLogic.configurationsNode.SetParameter("ImagLogViews", json.dumps([]))
+
             self.logic.imageLogDataLogic.cleanUp()
 
         self.clearViews()
@@ -536,7 +538,7 @@ class ImageLogInpaintWidget(LTracePluginWidget):
 
     def cleanup(self):
         super().cleanup()
-        self.customizedSegmentEditorWidget.self().cleanup()
+        self.customizedSegmentEditorWidget.cleanup()
         slicer.mrmlScene.RemoveObserver(self.saveConfigObserver)
         slicer.mrmlScene.RemoveObserver(self.importConfigObserver)
 
@@ -547,12 +549,13 @@ class ImageLogInpaintLogic(LTracePluginLogic):
         self.imageLogDataLogic = None
         self.isSingletonParameterNode = True
         self.moduleName = ImageLogInpaint.SETTING_KEY
+        self.setImageLogDataLogic()
 
     def getParameterNode(self):
         return ImageLogInpaintParameterNode(super().getParameterNode())
 
-    def setImageLogDataLogic(self, imageLogDataLogic):
+    def setImageLogDataLogic(self):
         """
         Allows Image Log Inpaint to perform changes in the Image Log Data views.
         """
-        self.imageLogDataLogic = imageLogDataLogic
+        self.imageLogDataLogic = slicer.util.getModuleLogic("ImageLogData")

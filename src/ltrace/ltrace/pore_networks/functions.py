@@ -496,7 +496,7 @@ def _get_paired_throats_table(geo_pore):
 
     if not geo_throat:
         qt.QMessageBox.information(
-            slicer.util.mainWindow(), "Table parsing failed", "No throats table found in pores table folder."
+            slicer.modules.AppContextInstance.mainWindow, "Table parsing failed", "No throats table found in pores table folder."
         )
         return False
     return geo_throat

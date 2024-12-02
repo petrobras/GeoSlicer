@@ -26,8 +26,8 @@ class CustomizedData(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Customized Data"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Explorer"
+        self.parent.categories = ["Project", "MicroCT", "Thin Section", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedData.help()
@@ -64,7 +64,12 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         self.subjectHierarchyTreeView = dataWidget.findChild(qt.QObject, "SubjectHierarchyTreeView")
         self.subjectHierarchyTreeView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
-        self.subjectHierarchyTreeView.hideColumn(3)
+
+        def showSearchPopup(current):
+            if current.column() == 0:
+                slicer.modules.AppContextInstance.fuzzySearch.exec_()
+
+        self.subjectHierarchyTreeView.doubleClicked.connect(showSearchPopup)
 
         # Adds confirmation step before delete action
         nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
@@ -92,7 +97,7 @@ class CustomizedDataWidget(LTracePluginWidget):
         )
 
         self.subjectHierarchyTreeView.setMinimumHeight(310)
-        self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
+        self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
         self.formLayout.addRow(self.subjectHierarchyTreeView)
 
         self.scalarVolumeWidget = ScalarVolumeWidget(isLabelMap=False)

@@ -24,8 +24,8 @@ class SegmentationModelling(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "SegmentationModelling"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Modelling"
+        self.parent.categories = ["Segmentation", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = SegmentationModelling.help()
 

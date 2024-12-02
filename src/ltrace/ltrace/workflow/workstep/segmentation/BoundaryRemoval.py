@@ -1,5 +1,4 @@
 import SimpleITK as sitk
-import qt
 import sitkUtils
 from SegmentEditorEffects import *
 from ltrace.workflow.workstep import Workstep, WorkstepWidget

@@ -1,5 +1,6 @@
 import qt
-from Customizer import Customizer
+
+from ltrace.slicer_utils import getResourcePath
 
 
 class RenameDialog(qt.QDialog):
@@ -11,11 +12,11 @@ class RenameDialog(qt.QDialog):
         self.newPlotWidgetLineEdit = qt.QLineEdit()
 
         okButton = qt.QPushButton("OK")
-        okButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        okButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         okButton.setIconSize(qt.QSize(12, 14))
 
         cancelButton = qt.QPushButton("Cancel")
-        cancelButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         cancelButton.setIconSize(qt.QSize(12, 14))
 
         okButton.clicked.connect(lambda checked: self.okButtonClicked())

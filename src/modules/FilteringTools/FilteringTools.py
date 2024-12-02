@@ -20,18 +20,11 @@ class FilteringTools(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Filtering Tools"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Filter"
+        self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = (
-            FilteringTools.help()
-            + CustomizedGradientAnisotropicDiffusion.help()
-            + CustomizedCurvatureAnisotropicDiffusion.help()
-            + CustomizedGaussianBlurImageFilter.help()
-            + CustomizedMedianImageFilter.help()
-            + ShadingCorrection.help()
-        )
+        self.parent.helpText = ""
 
     @classmethod
     def readme_path(cls):

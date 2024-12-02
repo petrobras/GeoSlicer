@@ -5,13 +5,13 @@ View controller related classes (view popup).
 import ctk
 import qt
 import slicer
-from Customizer import Customizer
 
 from ltrace.slicer.helpers import themeIsDark
 from ltrace.slicer.node_attributes import TableType, ImageLogDataSelectable, DataOrigin
 from ltrace.slicer.ui import filteredNodeComboBox
-from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer.widget.elided_label import ElidedLabel
+from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer_utils import getResourcePath
 
 
 class ViewControllerWidget(qt.QWidget):
@@ -38,9 +38,11 @@ class ViewControllerWidget(qt.QWidget):
         settingsToolButton.setObjectName("settingsToolButton" + str(self.identifier))
         settingsToolButton.setCheckable(True)
         settingsToolButton.setIconSize(qt.QSize(16, 16))
+
+        iconsRes = getResourcePath("Icons")
         settingsButtonIcon = qt.QIcon()
-        settingsButtonIcon.addFile(str(Customizer.PUSH_PIN_IN_ICON_PATH), qt.QSize(), qt.QIcon.Normal, qt.QIcon.On)
-        settingsButtonIcon.addFile(str(Customizer.PUSH_PIN_OUT_ICON_PATH), qt.QSize(), qt.QIcon.Normal, qt.QIcon.Off)
+        settingsButtonIcon.addFile(iconsRes / "PushPinIn.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.On)
+        settingsButtonIcon.addFile(iconsRes / "PushPinOut.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.Off)
         settingsToolButton.setIcon(settingsButtonIcon)
         controllerBarLayout.addWidget(settingsToolButton)
 
@@ -74,7 +76,7 @@ class ViewControllerWidget(qt.QWidget):
 
         removeViewButton = qt.QPushButton()
         removeViewButton.setToolTip("Remove this view.")
-        removeViewButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        removeViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         removeViewButton.setIconSize(qt.QSize(12, 14))
         removeViewButton.clicked.connect(lambda arg, identifier=self.identifier: self.logic.removeView(identifier))
         controllerBarLayout.addWidget(removeViewButton)
@@ -141,7 +143,7 @@ class SliceViewControllerWidget(ViewControllerWidget):
         showHidePrimaryNodeButton = qt.QPushButton()
         showHidePrimaryNodeButton.setCheckable(True)
         showHidePrimaryNodeButton.setObjectName("showHidePrimaryNodeButton" + str(self.identifier))
-        showHidePrimaryNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+        showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
         showHidePrimaryNodeButton.setIconSize(qt.QSize(14, 14))
         showHidePrimaryNodeButton.setFixedWidth(30)
         showHidePrimaryNodeButton.clicked.connect(
@@ -183,7 +185,7 @@ class SliceViewControllerWidget(ViewControllerWidget):
         showHideSegmentationNodeButton.setCheckable(True)
         showHideSegmentationNodeButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
         showHideSegmentationNodeButton.setObjectName("showHideSegmentationNodeButton" + str(self.identifier))
-        showHideSegmentationNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+        showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
         showHideSegmentationNodeButton.setIconSize(qt.QSize(14, 14))
         showHideSegmentationNodeButton.setFixedWidth(30)
         showHideSegmentationNodeButton.clicked.connect(
@@ -263,7 +265,9 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         )
         self.primaryNodeLayout.addWidget(primaryTableNodePlotTypeComboBox, 0)
         # Primary plot color
-        primaryTableNodePlotColorPicker = ColorPickerCell(self.identifier, self.logic.primaryTableNodePlotColorChanged)
+        primaryTableNodePlotColorPicker = ColorPickerCell(
+            self, self.identifier, self.logic.primaryTableNodePlotColorChanged
+        )
         primaryTableNodePlotColorPicker.setObjectName("primaryTableNodePlotColorPicker" + str(self.identifier))
         self.primaryNodeLayout.addWidget(primaryTableNodePlotColorPicker, 0)
 
@@ -279,6 +283,7 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
         secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
         secondaryTableNodeComboBox.addAttributeFilter(DataOrigin.name(), DataOrigin.IMAGE_LOG.value)
+        secondaryTableNodeComboBox.addAttributeFilter(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
         secondaryTableNodeComboBox.setObjectName("secondaryTableNodeComboBox" + str(self.identifier))
         secondaryTableNodeComboBox.view().setMinimumWidth(250)
         secondaryTableNodeComboBox.nodeAboutToBeRemoved.connect(
@@ -313,7 +318,7 @@ class GraphicViewControllerWidget(ViewControllerWidget):
 
         # Secondary plot color
         secondaryTableNodePlotColorPicker = ColorPickerCell(
-            self.identifier, self.logic.secondaryTableNodePlotColorChanged
+            self, self.identifier, self.logic.secondaryTableNodePlotColorChanged
         )
         secondaryTableNodePlotColorPicker.setObjectName("secondaryTableNodePlotColorPicker" + str(self.identifier))
         self.secondaryTableNodeLayout.addWidget(secondaryTableNodePlotColorPicker, 0)
@@ -322,8 +327,8 @@ class GraphicViewControllerWidget(ViewControllerWidget):
 
 
 class ColorPickerCell(qt.QWidget):
-    def __init__(self, identifier, callback, *args, color="#FFFFFF", **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent, identifier, callback, *args, color="#FFFFFF", **kwargs):
+        super().__init__(parent, *args, **kwargs)
         self.identifier = identifier
         self.callback = callback
         self.setLayout(qt.QVBoxLayout())
@@ -347,26 +352,25 @@ class ColorPickerCell(qt.QWidget):
 
         def onClicked():
             if self.histogramMode:
-                self.color_widget = qt.QWidget()
-                self.color_widget.setFixedSize(512, 430)
-                self.color_widget.setWindowTitle("Select Color")
-                layoutvert = qt.QVBoxLayout()
-                layoutvertgroup = qt.QVBoxLayout()
-                group_box = qt.QGroupBox("Histogram Scale")
-                layoutvert.addWidget(group_box)
-                self.spin_box = qt.QDoubleSpinBox()  # set SpinBox
-                self.spin_box.setDecimals(2)  # set 2 digits after comma
-                self.spin_box.setRange(0.01, 10000.0)  # set min max spinbox
-                self.spin_box.setValue(self.currentValue)  # set initial spinbox
-                layoutvertgroup.addWidget(self.spin_box)
-                group_box.setLayout(layoutvertgroup)
-                self.colordialog = qt.QColorDialog(qt.QColor(self.currentColor))  # set ColorDialog
+                self.colorWidget = qt.QWidget()
+                self.colorWidget.setWindowTitle("Select Color")
+                layoutVert = qt.QVBoxLayout()
+                layoutVertGroup = qt.QVBoxLayout()
+                groupBox = qt.QGroupBox("Histogram Scale")
+                layoutVert.addWidget(groupBox)
+                self.spinBox = qt.QDoubleSpinBox()
+                self.spinBox.setDecimals(2)
+                self.spinBox.setRange(0.01, 10000.0)
+                self.spinBox.setValue(self.currentValue)
+                layoutVertGroup.addWidget(self.spinBox)
+                groupBox.setLayout(layoutVertGroup)
+                self.colordialog = qt.QColorDialog(qt.QColor(self.currentColor))
                 self.colordialog.setOptions(qt.QColorDialog.DontUseNativeDialog)
-                layoutvert.addWidget(self.colordialog)
-                self.color_widget.setLayout(layoutvert)
-                self.color_widget.show()
-                self.colordialog.accepted.connect(self.okWindow)  # Conect ColorDialog OK buttom
-                self.colordialog.rejected.connect(self.cancelWindow)  # Conect ColorDialog OK buttom
+                layoutVert.addWidget(self.colordialog)
+                self.colorWidget.setLayout(layoutVert)
+                self.colorWidget.show()
+                self.colordialog.accepted.connect(self.okWindow)
+                self.colordialog.rejected.connect(self.cancelWindow)
             else:
                 color = qt.QColorDialog.getColor(qt.QColor(self.currentColor))
                 if color.isValid():
@@ -382,9 +386,9 @@ class ColorPickerCell(qt.QWidget):
         self.button.clicked.connect(onClicked)
 
     def okWindow(self):
-        self.color_widget.close()  # close widget
+        self.colorWidget.close()  # close widget
         color = self.colordialog.selectedColor()
-        self.currentValue = self.spin_box.value
+        self.currentValue = self.spinBox.value
         self.button.setStyleSheet(
             "QPushButton {"
             "font-size:11px;"
@@ -395,7 +399,7 @@ class ColorPickerCell(qt.QWidget):
         self.callback(self.identifier, color.name(), self.currentValue)
 
     def cancelWindow(self):
-        self.color_widget.close()  # close widget
+        self.colorWidget.close()  # close widget
 
     def setColor(self, color):
         self.button.setStyleSheet(

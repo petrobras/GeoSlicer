@@ -4,22 +4,25 @@ import qt
 import slicer
 import vtk
 import ctk
-import Export
 import xarray as xr
 import numpy as np
+
+from dataclasses import dataclass
+from ltrace.slicer.app import getApplicationVersion
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer import ui
+from ltrace.slicer import ui, export
 from pathlib import Path
-from scipy import ndimage
 from ltrace.slicer.helpers import (
     createTemporaryVolumeNode,
     removeTemporaryNodes,
     getSourceVolume,
     save_path,
     safe_convert_array,
+    checkUniqueNames,
 )
-from dataclasses import dataclass
-from typing import Tuple, List
+from ltrace.slicer import netcdf
+from ltrace.utils.callback import Callback
+from typing import List, Tuple
 
 
 class NetCDFExport(LTracePlugin):
@@ -29,7 +32,7 @@ class NetCDFExport(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "NetCDF Export"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = NetCDFExport.help()
 
@@ -129,7 +132,7 @@ class NetCDFExportWidget(LTracePluginWidget):
     def getItemsToExport(self):
         selected_items = vtk.vtkIdList()
         self.subjectHierarchyTreeView.currentItems(selected_items)
-        return Export.ExportLogic().getDataNodes(selected_items, self.EXPORTABLE_TYPES)
+        return export.getDataNodes(selected_items, self.EXPORTABLE_TYPES)
 
     def onSelectionChanged(self):
         selected_items = self.getItemsToExport()
@@ -153,7 +156,7 @@ class NetCDFExportWidget(LTracePluginWidget):
         self.netcdfReferenceNodeBox.setCurrentNode(ref_node)
 
     def onExportNetcdfButtonClicked(self):
-        callback = Export.Callback(on_update=lambda message, percent: self.updateStatus(message, progress=percent))
+        callback = Callback(on_update=lambda message, percent: self.updateStatus(message, progress=percent))
         try:
             exportPath = self.exportPathEdit.currentPath
             save_path(self.exportPathEdit)
@@ -164,16 +167,13 @@ class NetCDFExportWidget(LTracePluginWidget):
             useCompression = self.compressionCheckBox.checked
             singleCoords = self.singleCoordsCheckBox.checked
 
-            warnings = exportNetcdf(exportPath, dataNodes, referenceItem, singleCoords, useCompression, callback)
+            warnings = netcdf.exportNetcdf(exportPath, dataNodes, referenceItem, singleCoords, useCompression, callback)
             callback.on_update("", 100)
 
             if warnings:
                 slicer.util.warningDisplay("\n".join(warnings), windowTitle="NetCDF export warnings")
             else:
                 slicer.util.infoDisplay("Export completed.")
-        except Export.ExportInfo as e:
-            slicer.util.infoDisplay(str(e))
-            raise
         except Exception as e:
             slicer.util.errorDisplay(str(e))
             raise
@@ -225,7 +225,7 @@ def _node_to_data_array(
         raise ValueError(f"Unsupported node type: {type(node)}")
 
     if isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
-        attrs["labels"] = ["Name,Index,Color"] + Export.ExportLogic.getLabelMapLabelsCSV(node, withColor=True)
+        attrs["labels"] = ["Name,Index,Color"] + export.getLabelMapLabelsCSV(node, withColor=True)
 
     array = slicer.util.arrayFromVolume(node)
     if dtype:
@@ -335,7 +335,7 @@ def exportNetcdf(
         raise ValueError("No images selected.")
 
     if callback is None:
-        callback = Export.Callback(on_update=lambda *args, **kwargs: None)
+        callback = Callback(on_update=lambda *args, **kwargs: None)
 
     if single_coords and not save_in_place:
         if not referenceItem:
@@ -347,7 +347,7 @@ def exportNetcdf(
 
     callback.on_update("Starting…", 0)
     if not nodeNames:
-        Export.checkUniqueNames(dataNodes)
+        checkUniqueNames(dataNodes)
 
     arrays = {}
     coords = {}

@@ -1,13 +1,14 @@
 import qt
 import slicer
 from ltrace.slicer.helpers import getSourceVolume
-from Customizer import Customizer
+
+from ltrace.slicer_utils import getResourcePath
 
 
 class Workstep:
     NAME = None
-    CHECK_ICON_PATH = Customizer.CHECK_CIRCLE_ICON_PATH
-    ERROR_ICON_PATH = Customizer.ERROR_CIRCLE_ICON_PATH
+    CHECK_ICON_PATH = getResourcePath("Icons") / "GreenCheckCircle.png"
+    ERROR_ICON_PATH = getResourcePath("Icons") / "RedBangCircle.png"
 
     INPUT_TYPES = None
     OUTPUT_TYPE = None

@@ -20,7 +20,7 @@ class WidgetTracking(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Widget Tracking"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = WidgetTracking.help()
         # self.parent.hidden = True
@@ -269,6 +269,22 @@ class WidgetTrackingWidget(LTracePluginWidget):
 
         return mainWidget
 
+    def slidersWidget(self) -> qt.QWidget:
+        mainWidget = qt.QWidget()
+        mainLayout = qt.QFormLayout()
+        mainWidget.setLayout(mainLayout)
+
+        rangeWidget = ctk.ctkRangeWidget()
+        rangeWidget.objectName = "CTK Range Widget"
+
+        windowLevelWidget = slicer.qMRMLWindowLevelWidget()
+        windowLevelWidget.objectName = "Window Level Widget"
+
+        mainLayout.addRow("Window Level:", windowLevelWidget)
+        mainLayout.addRow("Range:", rangeWidget)
+
+        return mainWidget
+
     def setup(self):
         LTracePluginWidget.setup(self)
 
@@ -289,8 +305,12 @@ class WidgetTrackingWidget(LTracePluginWidget):
 
         self.listsWidgetTab = self.listsWidget()
         self.listsWidgetTab.objectName = "Lists Tab"
+
         self.tablesWidgetTab = self.tablesWidget()
         self.tablesWidgetTab.objectName = "Tables Tab"
+
+        self.slidersWidgetTab = self.slidersWidget()
+        self.slidersWidgetTab.objectName = "Sliders Tab"
 
         self.mainTab = qt.QTabWidget()
         self.mainTab.objectName = "Main Tab"
@@ -301,6 +321,7 @@ class WidgetTrackingWidget(LTracePluginWidget):
         self.mainTab.addTab(self.comboBoxesWidgetTab, "ComboBoxes")
         self.mainTab.addTab(self.listsWidgetTab, "Lists")
         self.mainTab.addTab(self.tablesWidgetTab, "Tables")
+        self.mainTab.addTab(self.slidersWidgetTab, "Sliders")
 
         # Update layout
         self.layout.addWidget(self.mainTab)

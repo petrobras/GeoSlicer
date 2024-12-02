@@ -24,6 +24,8 @@ from ltrace.algorithms.common import (
 )
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
 from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
+from PoreNetworkSimulationCLILib.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
+
 from ltrace.pore_networks.functions_simulation import (
     get_connected_spy_network,
     get_flow_rate,
@@ -32,9 +34,11 @@ from ltrace.pore_networks.functions_simulation import (
     set_subresolution_conductance,
     single_phase_permeability,
 )
+
+from PoreNetworkSimulationCLILib.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
 from PoreNetworkSimulationCLILib.vtk_utils import create_flow_model, create_permeability_sphere
 from PoreNetworkSimulationCLILib.subres_models import set_subres_model
-from PoreNetworkSimulationCLILib.pnflow.pnflow_parallel import PnFlow
+
 from ltrace.slicer.cli_utils import progressUpdate
 import shutil
 
@@ -71,6 +75,7 @@ def onePhase(args, params):
     permeability_array = np.zeros((3, 3), dtype="float")
 
     sizes = params["sizes"]
+    ijktoras = params["ijktoras"]
     sizes_product = sizes["x"] * sizes["y"] * sizes["z"]
 
     subres_func = set_subres_model(pore_network, params)
@@ -122,7 +127,7 @@ def onePhase(args, params):
 
         # pore_values = perm["pore.pressure"]
         pore_values = pn_pores["pore.pressure"]
-        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values)
+        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, sizes, ijktoras)
         writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
         writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
 
@@ -131,7 +136,9 @@ def onePhase(args, params):
         pore_values = perm.project.network[f"pore.{out_face}"].astype(int) - perm.project.network[
             f"pore.{in_face}"
         ].astype(int)
-        border_pores_model_node, null_throats_model_node = create_flow_model(perm.project, pore_values, throat_values)
+        border_pores_model_node, null_throats_model_node = create_flow_model(
+            perm.project, pore_values, throat_values, sizes, ijktoras
+        )
         del null_throats_model_node
         writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{inlet}_{outlet}.vtk")
 
@@ -255,7 +262,7 @@ def onePhaseMultiAngle(args, params):
             max_throat = np.inf
         minmax.append({"index": i, "min": min_throat, "max": max_throat})
         pore_values = pn_pores["pore.pressure"]
-        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values)
+        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, None)
 
         writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{i}.vtk")
         writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{i}.vtk")
@@ -263,7 +270,9 @@ def onePhaseMultiAngle(args, params):
         throat_values = perm.network.throats("all")
 
         pore_values = perm.project.network["pore.xmin"].astype(int) - perm.project.network["pore.xmax"].astype(int)
-        border_pores_model_node, null_throats_model_node = create_flow_model(perm.project, pore_values, throat_values)
+        border_pores_model_node, null_throats_model_node = create_flow_model(
+            perm.project, pore_values, throat_values, None
+        )
         del null_throats_model_node
         writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{i}.vtk")
 
@@ -303,14 +312,21 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
         raise RuntimeError("The network is invalid.")
         return
 
-    pnflow_parallel = PnFlow(
-        cwd=cwd, statoil_dict=statoil_dict, params=params, num_tests=num_tests, timeout_enabled=timeout_enabled
+    parallel = TwoPhaseSimulation(
+        cwd=cwd,
+        statoil_dict=statoil_dict,
+        params=params,
+        num_tests=num_tests,
+        timeout_enabled=timeout_enabled,
+        write_debug_files=keep_temporary,
     )
+
+    parallel.set_simulator(PNFLOW if params["simulator"] == "pnflow" else PORE_FLOW)
 
     saturation_steps_list = []
     krel_result = KrelResult()
-    for i, pnflow_result in enumerate(pnflow_parallel.run_pnflow(args.maxSubprocesses)):
-        krel_result.add_single_result(pnflow_result["input_params"], pnflow_result["pnflow_table"])
+    for i, result in enumerate(parallel.run(args.maxSubprocesses)):
+        krel_result.add_single_result(result["input_params"], result["table"])
 
         # Write results only every 10 new results
         krel_tables_len = len(krel_result.krel_tables)
@@ -327,13 +343,26 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
 
             if params["create_sequence"] == "T":
                 polydata, saturation_steps = generate_model_variable_scalar(
-                    Path(pnflow_result["cwd"]) / "Output_res", is_multiscale=is_multiscale
+                    Path(result["cwd"]) / "Output_res", is_multiscale=is_multiscale
                 )
                 writePolydata(polydata, f"{args.tempDir}/cycle_node_{i}.vtk")
                 saturation_steps_list.append(saturation_steps)
 
+            if params["create_ca_distributions"]:
+                try:
+                    with open(str(Path(result["cwd"]) / "ca_distribution.json"), "r") as fp:
+                        ca_distribution_dict = json.load(fp)
+                    ca_distribution_df = pd.DataFrame()
+                    ca_distribution_df["drainage-advancing"] = ca_distribution_dict["drainage"]["advancing_ca"]
+                    ca_distribution_df["drainage-receding"] = ca_distribution_dict["drainage"]["receding_ca"]
+                    ca_distribution_df["imbibition-advancing"] = ca_distribution_dict["imbibition"]["advancing_ca"]
+                    ca_distribution_df["imbibition-receding"] = ca_distribution_dict["imbibition"]["receding_ca"]
+                    writeDataFrame(ca_distribution_df, cwd / f"ca_distribution_{i}")
+                except FileNotFoundError:
+                    pass
+
             if not keep_temporary:
-                shutil.rmtree(pnflow_result["cwd"])
+                shutil.rmtree(result["cwd"])
 
     with open(args.returnparameterfile, "w") as returnFile:
         returnFile.write("saturation_steps=" + json.dumps(saturation_steps_list) + "\n")
@@ -358,6 +387,10 @@ def simulate_mercury(args, params):
 
     manual_valvatne_blunt(sub_network)
     set_subresolution_conductance(sub_network, subres_func, save_tables=params["save_tables"])
+
+    with open(str(cwd / "net_flow_props.dict"), "wb") as file:
+        pickle.dump(sub_network, file)
+
     net = openpnm.io.network_from_porespy(sub_network)
 
     hg = openpnm.phase.Mercury(network=net, name="mercury")

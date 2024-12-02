@@ -2,7 +2,6 @@
 {% block config %}
 {{ super() }}
 {% if "localsearch" in config["plugins"] %}
-<script type="text/javascript" src="{{ 'assets/javascripts/MathJax-2.7.7/MathJax.js?config=TeX-AMS-MML_SVG' | url }}"></script>
 <script src="{{ 'assets/javascripts/iframe-worker.js' | url }}"></script>
 <script src="{{ 'search/search_index.js' | url }}"></script>
 {% endif %}

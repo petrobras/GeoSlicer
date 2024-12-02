@@ -25,7 +25,7 @@ class ColorBarWidget(qt.QWidget):
 
     def setup(self):
         layout = qt.QGridLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 21, 0, 0)
         self.pixmapLabel = qt.QLabel()
         self.pixmapLabel.setSizePolicy(qt.QSizePolicy.Ignored, qt.QSizePolicy.Preferred)
         layout.addWidget(self.pixmapLabel, 0, 0, 1, 3)
@@ -55,6 +55,12 @@ class ColorBarWidget(qt.QWidget):
         self.pixmapLabel.setPixmap(self.pixmap.scaled(width, 20))
 
     def updateInformation(self, window, level):
+        if np.isnan(window):
+            window = 0
+
+        if np.isnan(level):
+            level = 0
+
         self.minLabel.setText(" " + str(int(np.around(level - window / 2))))
         self.maxLabel.setText(str(int(np.around(level + window / 2))) + " ")
 
@@ -95,9 +101,11 @@ class CustomAxisItem(pg.AxisItem):
         self.callback()
 
 
-PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter"])
+PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter", "view_box"])
 PLOT_UPDATE_TIMER_INTERVAL_MS = 50
 PLOT_MINIMUM_HEIGHT = 200
+PRIMARY_VIEW_BOX = "primary"
+SECONDARY_VIEW_BOX = "secondary"
 
 
 class CurvePlot(QtWidgets.QWidget):
@@ -115,6 +123,7 @@ class CurvePlot(QtWidgets.QWidget):
         self.__y_max_value_range = 0
         self.__create_plot_update_timer()
         self.__setup_widget()
+        self.__create_secondary_plot()
 
     def __del__(self):
         if self.plot_update_timer.isActive():
@@ -149,17 +158,42 @@ class CurvePlot(QtWidgets.QWidget):
         layout.addWidget(self._graphics_layout_widget, 10)
         self.setLayout(layout)
 
-    def logMode(self, activated):
+    def __create_secondary_plot(self):
+        self.secondary_view_box = pg.ViewBox()
+        self.secondary_view_box.invertY()
+        self.secondary_view_box.setYLink(self._plot_item)
+        self.secondary_view_box.enableAutoRange()
+
+        self.secondary_axis = pg.AxisItem("top")
+        self.secondary_axis.linkToView(self.secondary_view_box)
+        self.secondary_axis.setZValue(-10000)
+
+        log_x_action = QtGui.QAction("Log X", self.secondary_view_box.menu)
+        log_x_action.setCheckable(True)
+        log_x_action.triggered.connect(self.__set_secondary_log_mode)
+
+        self.secondary_view_box.menu.addAction(log_x_action)
+
+    def __set_secondary_log_mode(self, state):
+        self.secondary_axis.setLogMode(state)
         for plot_info in self.__plots:
-            data = plot_info.graph_data.data
-            for key, value in data.items():
-                if list(data.df).index(key) > 0:  # Do not change the first column
-                    if activated:
-                        with np.errstate(divide="ignore"):
-                            data.df[key] = np.log10(value)
-                    else:
-                        data.df[key] = 10**value
+            if plot_info.view_box == SECONDARY_VIEW_BOX:
+                self.__logMode(plot_info.graph_data.data, state)
+
+    def __logMode(self, data, activated):
+        for key, value in data.items():
+            if list(data.df).index(key) > 0:  # Do not change the first column
+                if activated:
+                    with np.errstate(divide="ignore"):
+                        data.df[key] = np.log10(value)
+                else:
+                    data.df[key] = 10**value
         self.update_plot()
+
+    def set_primary_logMode(self, activated):
+        for plot_info in self.__plots:
+            if plot_info.view_box == PRIMARY_VIEW_BOX:
+                self.__logMode(plot_info.graph_data.data, activated)
 
     def add_data(
         self,
@@ -170,6 +204,7 @@ class CurvePlot(QtWidgets.QWidget):
         color=None,
         symbol=None,
         size=None,
+        view_box=PRIMARY_VIEW_BOX,
     ):
         """Store and parse node's data. Each data will be available at the table's widget as well.
 
@@ -190,7 +225,9 @@ class CurvePlot(QtWidgets.QWidget):
         graph_data.signalModified.connect(self.update_plot)
 
         for parameter in x_parameter if type(x_parameter) is list else [x_parameter]:
-            plot_info = PlotInformation(graph_data=graph_data, x_parameter=parameter, y_parameter=y_parameter)
+            plot_info = PlotInformation(
+                graph_data=graph_data, x_parameter=parameter, y_parameter=y_parameter, view_box=view_box
+            )
             graph_data.signalRemoved.connect(lambda: self.remove_plot(plot_info))
             self.__plots.append(plot_info)
         self.update_plot()
@@ -200,6 +237,7 @@ class CurvePlot(QtWidgets.QWidget):
     def __clear_plot(self):
         """Handles plot clearing"""
         self._plot_item.clear()
+        self.secondary_view_box.clear()
 
     def __create_plot_update_timer(self):
         """Initialize timer object that process data to plot"""
@@ -279,14 +317,29 @@ class CurvePlot(QtWidgets.QWidget):
                     brush=brush,
                 )
 
-                self._plot_item.addItem(plot)
-
                 y_min = self.__update_min_limit(y_min, y_data)
                 y_max = self.__update_max_limit(y_max, y_data)
                 x_min = self.__update_min_limit(x_min, x_data)
                 x_max = self.__update_max_limit(x_max, x_data)
 
-                self._plot_item.invertY()
+                if plot_info.view_box == PRIMARY_VIEW_BOX:
+                    self._plot_item.addItem(plot)
+                    self._plot_item.invertY()
+                    self._plot_item.getAxis("top").setPen(color=color, width=2)
+
+                else:
+                    self.secondary_axis.setPen(color=color, width=2)
+
+                    self._plot_item.layout.removeItem(self._plot_item.layout.itemAt(0, 1))
+                    self._plot_item.layout.addItem(self.secondary_axis, 0, 1)
+                    self._plot_item.scene().addItem(self.secondary_view_box)
+
+                    def update_views():
+                        self.secondary_view_box.setGeometry(self._plot_item.vb.sceneBoundingRect())
+
+                    update_views()
+                    self._plot_item.vb.sigResized.connect(update_views)
+                    self.secondary_view_box.addItem(plot)
 
             self._plot_item.getViewBox().enableAutoRange()
 
@@ -406,6 +459,9 @@ class CurvePlot(QtWidgets.QWidget):
             x_max = self.__update_max_limit(x_max, x_data)
 
         return ((x_min, x_max), (y_min, y_max))
+
+    def get_plot_item(self):
+        return self._plot_item
 
     @staticmethod
     def __update_max_limit(value, array):

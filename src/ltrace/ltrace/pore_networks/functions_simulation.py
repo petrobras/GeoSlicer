@@ -1,11 +1,12 @@
 import os
 import csv
-
 import numpy as np
 import openpnm
+
 from pypardiso import spsolve
 from scipy.sparse import csr_matrix
 from numba import njit, prange
+from pyflowsolver import NetworkManager, DarcySolver
 
 
 def manual_valvatne_blunt(pore_network):
@@ -336,66 +337,48 @@ def single_phase_permeability(
     elif solver == "pyflowsolver":
         conn = perm.network["throat.conns"].astype(np.int32)
         cond = perm.network["throat.conductance"].astype(np.float64)
-        r = _get_sparse_system(conn, cond, inlets, outlets)
-        sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes = r
-        if preconditioner == "inverse_diagonal":
-            P_val, P_col_idx, P_row_ptr = _get_diagonal_preconditioner(
-                A_val=sparse_val,
-                A_col_idx=sparse_col_idx,
-                A_row_ptr=sparse_row_ptr,
-                threads=1,
-            )
-        else:
-            raise Exception
-        x, error, iterations = _solve_pcg(
-            sparse_val,
-            sparse_col_idx,
-            sparse_row_ptr,
-            P_val,
-            P_col_idx,
-            P_row_ptr,
-            b,
-            max_iterations=sparse_val.size**2,  # sqrt(n) for n x n system
-            target_error=target_error,  # 1.0e-6
-            X0=np.zeros(b.size, dtype=np.float64),
-            threads=1,
+        network_manager = NetworkManager(
+            conn=conn,
+            cond=cond,
+            inlets=inlets,
+            outlets=outlets,
         )
+        network_manager.generate_sparse_system()
+        a_sparse_array, b_array = network_manager.get_sparse_system()
 
-        pressure = np.zeros(inlets.size, dtype=np.float64)
-        pressure[mid_to_total_indexes] = x * np.float64(101325)
-        for i in range(inlets.size):
-            if inlets[i] == 1:
-                pressure[i] = np.float64(101325)
-            elif outlets[i] == 1:
-                pressure[i] = np.float64(0)
+        darcy_solver = DarcySolver()
+        darcy_solver.set_linear_system(a_sparse_array, b_array)
+        darcy_solver.generate_preconditioner(preconditioner)
+        x, error, iterations = darcy_solver.solve_pcg()
+
+        pressure = network_manager.get_pressure_list(x)
+
     elif solver == "pypardiso":
         conn = perm.network["throat.conns"].astype(np.int32)
         cond = perm.network["throat.conductance"].astype(np.float64)
-        r = _get_sparse_system(conn, cond, inlets, outlets)
-        sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes = r
-        A = csr_matrix(
+        network_manager = NetworkManager(
+            conn=conn,
+            cond=cond,
+            inlets=inlets,
+            outlets=outlets,
+        )
+        network_manager.generate_sparse_system()
+        a_sparse_array, b_array = network_manager.get_sparse_system()
+        A_csr = csr_matrix(
             (
-                sparse_val,
-                sparse_col_idx,
-                np.append(sparse_row_ptr, sparse_val.size),
+                a_sparse_array["val"],
+                a_sparse_array["col_idx"],
+                np.append(a_sparse_array["row_ptr"], a_sparse_array["val"].size),
             )
         )
-        x = spsolve(A, b)
-        pressure = np.zeros(inlets.size, dtype=np.float64)
-        pressure[mid_to_total_indexes] = x * np.float64(101325)
-        for i in range(inlets.size):
-            if inlets[i] == 1:
-                pressure[i] = np.float64(101325)
-            elif outlets[i] == 1:
-                pressure[i] = np.float64(0)
+        x = spsolve(A_csr, b_array)
+        pressure = network_manager.get_pressure_list(x)
 
     project = perm.project
     pore_dict = {}
     throat_dict = {}
     for l in range(len(project)):
         for p in project[l].props():
-            # if slicer_is_in_developer_mode():
-            #    print(p, type(project[l][p]), project[l][p])
             prop_array = project[l][p]
             if prop_array.ndim == 1:
                 if p[:4] == "pore":
@@ -418,133 +401,6 @@ def single_phase_permeability(
         pore_dict["pore.pressure"] = pressure
 
     return (perm, pore_dict, throat_dict)
-
-
-@njit
-def _get_sparse_system(conn, cond, inlets, outlets):
-    # network must have only connected pores
-    # conn array(n, 2)
-
-    inlets *= np.int32(1) - outlets
-    border = inlets + outlets
-
-    n_p_total = inlets.size
-    n_p_in = inlets.sum()
-    n_p_out = outlets.sum()
-    n_p_mid = n_p_total - n_p_in - n_p_out
-    n_t = cond.size
-
-    mid_to_total_indexes = np.zeros((n_p_mid), dtype=np.int32)
-    total_to_mid_indexes = np.zeros((n_p_total), dtype=np.int32)
-
-    pore_index_filled = 0
-    for p in range(n_p_total):
-        if border[p] == 0:
-            mid_to_total_indexes[pore_index_filled] = p
-            total_to_mid_indexes[p] = pore_index_filled
-            pore_index_filled += 1
-    if pore_index_filled != mid_to_total_indexes.size:
-        raise Exception
-
-    sparse_row_counter = np.zeros((n_p_mid), dtype=np.int32)
-    n_mid_t = 0
-    for t in range(n_t):
-        i = conn[t, 0]
-        j = conn[t, 1]
-        if (border[i] == 0) and (border[j] == 0):
-            n_mid_t += 1
-            sparse_row_counter[total_to_mid_indexes[i]] += 1
-            sparse_row_counter[total_to_mid_indexes[j]] += 1
-
-    sparse_val = np.zeros((n_p_mid + 2 * n_mid_t), dtype=np.float64)
-    sparse_col_idx = np.ones((sparse_val.size), dtype=np.int32) * -1
-    sparse_row_ptr = np.zeros((n_p_mid), dtype=np.int32)
-    sparse_col_idx[0] = 0
-    for i in range(1, n_p_mid):
-        sparse_row_ptr[i] = sparse_row_ptr[i - 1] + sparse_row_counter[i - 1] + 1
-        sparse_col_idx[sparse_row_ptr[i]] = i
-
-    b = np.zeros(n_p_mid, dtype=np.float64)
-
-    for t in range(n_t):
-        conn_0 = conn[t, 0]
-        conn_1 = conn[t, 1]
-        conductance = cond[t]
-
-        for i, j in ((conn_0, conn_1), (conn_1, conn_0)):
-            if border[i] == 1:
-                continue
-            i_mid = total_to_mid_indexes[i]
-            row_ptr_start = sparse_row_ptr[i_mid]
-            sparse_val[row_ptr_start] -= conductance
-            # print(i, j)
-
-            if inlets[j] == 1:
-                b[i_mid] -= conductance
-            elif border[j] == 0:
-                j_mid = total_to_mid_indexes[j]
-                # print("mid: ", i_mid, j_mid)
-                # target column is j_mid
-                # first check if column is already occupied
-                if (i_mid + 1) < sparse_row_ptr.size:
-                    row_ptr_end = sparse_row_ptr[i_mid + 1]
-                else:
-                    row_ptr_end = sparse_val.size
-
-                found = False
-                for linear_index in range(row_ptr_start, row_ptr_end):
-                    if sparse_col_idx[linear_index] == j_mid:
-                        sparse_val[linear_index] += conductance
-                        found = True
-                        break
-                if not found:
-                    local_index = sparse_row_counter[i_mid]
-                    linear_index = row_ptr_start + local_index
-                    if (local_index <= 0) or (sparse_val[linear_index] != 0):
-                        raise Exception
-                    sparse_col_idx[linear_index] = j_mid
-                    sparse_val[linear_index] = conductance
-                    sparse_row_counter[i_mid] -= 1
-                    found = True
-                # print(found, linear_index, sparse_val[linear_index])
-                if not found:
-                    raise Exception
-
-    # print(sparse_val.sum())
-    # sparse cleanup
-
-    sparse_val_dirty = sparse_val.copy()
-    sparse_col_idx_dirty = sparse_col_idx.copy()
-    sparse_row_ptr_dirty = sparse_row_ptr.copy()
-
-    nulls_counter = 0
-    for i in range(sparse_row_ptr.size):
-        row_ptr_start = sparse_row_ptr[i]
-        if (i + 1) < sparse_row_ptr.size:
-            row_ptr_stop = sparse_row_ptr[i + 1]
-        else:
-            row_ptr_stop = sparse_val.size
-        nulls = (sparse_col_idx[row_ptr_start:row_ptr_stop] == -1).sum()
-        filled = row_ptr_stop - row_ptr_start - nulls
-        sort_index = np.argsort(sparse_col_idx[row_ptr_start:row_ptr_stop])
-        sorted_vals = sparse_val[row_ptr_start:row_ptr_stop][sort_index]
-        sorted_col_idx = sparse_col_idx[row_ptr_start:row_ptr_stop][sort_index]
-        compacted_start = row_ptr_start - nulls_counter
-        compacted_end = compacted_start + filled
-        sparse_val[compacted_start:compacted_end] = sorted_vals[nulls:]
-        sparse_col_idx[compacted_start:compacted_end] = sorted_col_idx[nulls:]
-        nulls_counter += nulls
-        sparse_row_ptr[i] -= nulls_counter
-        # print()
-        # print(sorted_vals)
-        # print(sparse_col_idx)
-        # print(sparse_row_ptr)
-    if nulls > 0:
-        sparse_val = sparse_val[:-nulls_counter]
-        sparse_col_idx = sparse_col_idx[:-nulls_counter]
-
-    # return sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes, sparse_val_dirty, sparse_col_idx_dirty, sparse_row_ptr_dirty
-    return sparse_val, sparse_col_idx, sparse_row_ptr, b, mid_to_total_indexes
 
 
 def get_flow_rate(pn_pores, pn_throats):
@@ -591,323 +447,3 @@ def get_flow_rate(pn_pores, pn_throats):
 
     flow_rate = (outlet_flow_total + inlet_flow_total) / 2
     return flow_rate
-
-
-##### Temporary, delete later and import module
-
-
-@njit
-def _solve_cg(
-    A_val,
-    A_col_idx,
-    A_row_ptr,
-    b,
-    max_iterations,  # sqrt(n) for n x n system
-    target_error,  # 1.0e-6
-    X0,
-    threads,
-):
-    # Reference: https://repository.lsu.edu/cgi/viewcontent.cgi?article=1254&context=honors_etd
-
-    x = X0.copy()
-    r = b.copy()
-    m = np.empty(1, dtype=np.float64)
-    m[0] = _square_sum_vector(r, threads)  # f(x:vector) = x'*x
-    m_last = np.empty(1, dtype=np.float64)
-    p = r.copy()
-    alpha = np.empty(1, dtype=np.float64)
-    beta = np.empty(1, dtype=np.float64)
-    iteration = 0
-    for _ in range(max_iterations):
-        iteration += 1
-        alpha[0] = m[0] / _scalar_product(
-            p,
-            A_val,
-            A_col_idx,
-            A_row_ptr,
-            threads,
-        )  # scalar_product = p'*A*p
-        _add_product(x, alpha[0], p, threads)  # f(x: vector, y: scalar, z:vector): x += y * z
-        # _subtract_product_of_product(
-        #    r,
-        #    alpha[0],
-        #    A_val,
-        #    A_col_idx,
-        #    A_row_ptr,
-        #    p,
-        #    threads,
-        # ) # f(x:vector, y:scalar, z:array, k:vector): x -= y * z * k
-        r[:] = _recalc_residuals_jit(A_val, A_col_idx, A_row_ptr, b, x)
-        m_last[0] = m[0]
-        m[0] = _square_sum_vector(r, threads)
-        beta[0] = m[0] / m_last[0]
-        _multiply_and_add(
-            p,
-            r,
-            beta[0],
-            threads,
-        )  # f(x:vector, y:vector, z:scalar): x = y + z * x
-        error = np.sqrt(_square_sum_vector(r, threads) / _square_sum_vector(b, threads))
-        if error <= target_error:
-            return x, error, iteration
-
-    return x, error, iteration
-
-
-@njit(parallel=True)
-def _square_sum_vector(v, threads):
-    # f(v:vector) = v'*v
-    partial_sum = np.zeros(threads, dtype=np.float64)
-    n = v.size
-
-    for w in prange(threads):
-        thread_start = w * n // threads
-        thread_end = (w + 1) * n // threads
-        for i in range(thread_start, thread_end):
-            partial_sum[w] += v[i] ** 2
-    return partial_sum.sum()
-
-
-@njit(parallel=True)
-def _scalar_product(
-    v,
-    A_val,
-    A_col_idx,
-    A_row_ptr,
-    threads,
-):
-    # f(v: vector[n], A:array[n, n]) = x'*A*x
-    partial_sum = np.zeros(threads, dtype=np.float64)
-    n = v.size
-
-    for w in prange(threads):
-        thread_start = w * n // threads
-        thread_end = (w + 1) * n // threads
-        for i in range(thread_start, thread_end):
-            A_start = A_row_ptr[i]
-            if (i + 1) < n:
-                A_stop = A_row_ptr[i + 1]
-            else:
-                A_stop = A_val.size
-            for A_linear_index in range(A_start, A_stop):
-                j = A_col_idx[A_linear_index]
-                partial_sum[w] += v[i] * A_val[A_linear_index] * v[j]
-    return partial_sum.sum()
-
-
-@njit(parallel=True)
-def _add_product(v, x, u, threads):
-    # f(v: vector, x: scalar, u:vector): v += x * u
-    n = v.size
-
-    for w in prange(threads):
-        thread_start = w * n // threads
-        thread_end = (w + 1) * n // threads
-        for i in range(thread_start, thread_end):
-            v[i] += x * u[i]
-
-
-@njit(parallel=True)
-def _recalc_residuals_jit(r, val, col_idx, row_ptr, condensed_b, X):
-    # residuals = np.zeros(condensed_b.size, dtype=np.float64)
-    r[:] = condensed_b
-
-    for row in range(row_ptr.size):
-        start = row_ptr[row]
-        if row < (row_ptr.size - 1):
-            stop = row_ptr[row + 1]
-        else:
-            stop = val.size
-
-        for index in range(start, stop):
-            v = val[index]
-            column = col_idx[index]
-            r[row] -= v * X[column]
-
-
-@njit(parallel=True)
-def _subtract_product_of_product(
-    v,
-    x,
-    A_val,
-    A_col_idx,
-    A_row_ptr,
-    u,
-    threads,
-):
-    # f(v:vector, x:scalar, A:array, u:vector): v -= x * A * u
-    n = v.size
-
-    for w in prange(threads):
-        thread_start = w * n // threads
-        thread_end = (w + 1) * n // threads
-        for i in range(thread_start, thread_end):
-            A_start = A_row_ptr[i]
-            if (i + 1) < n:
-                A_stop = A_row_ptr[i + 1]
-            else:
-                A_stop = A_val.size
-            for A_linear_index in range(A_start, A_stop):
-                j = A_col_idx[A_linear_index]
-                v[i] -= x * A_val[A_linear_index] * u[j]
-
-
-@njit(parallel=True)
-def _multiply_and_add(
-    v,
-    u,
-    x,
-    threads,
-):
-    # f(v:vector, u:vector, x:scalar): v = u + x * v
-    n = v.size
-
-    for w in prange(threads):
-        thread_start = w * n // threads
-        thread_end = (w + 1) * n // threads
-        for i in range(thread_start, thread_end):
-            v[i] = u[i] + x * v[i]
-
-
-@njit
-def _get_diagonal_preconditioner(
-    A_val,
-    A_col_idx,
-    A_row_ptr,
-    threads,
-):  # f(v, A): v = A*v
-    diagonal_n = A_row_ptr.size
-    P_val = np.empty(diagonal_n, dtype=np.float64)
-    P_col_idx = np.arange(diagonal_n, dtype=np.int32)
-    P_row_ptr = np.arange(diagonal_n, dtype=np.int32)
-    for row in range(diagonal_n):
-        start = A_row_ptr[row]
-        if row < (A_row_ptr.size - 1):
-            stop = A_row_ptr[row + 1]
-        else:
-            stop = A_val.size
-
-        for linear_index in range(start, stop):
-            column = A_col_idx[linear_index]
-            if column == row:
-                v = A_val[linear_index]
-                P_val[row] = 1 / v
-    return P_val, P_col_idx, P_row_ptr
-
-
-@njit
-def _solve_pcg(
-    A_val,
-    A_col_idx,
-    A_row_ptr,
-    P_val,
-    P_col_idx,
-    P_row_ptr,
-    b,
-    max_iterations,  # sqrt(n) for n x n system
-    target_error,  # 1.0e-6
-    X0,
-    threads,
-):
-    # Reference: https://repository.lsu.edu/cgi/viewcontent.cgi?article=1254&context=honors_etd
-
-    x = X0.copy()
-    r = b.copy()
-    m = np.empty(1, dtype=np.float64)
-    m[0] = _scalar_product(
-        r,
-        P_val,
-        P_col_idx,
-        P_row_ptr,
-        threads,
-    )  # scalar_product = p'*A*p
-    m_last = np.empty(1, dtype=np.float64)
-    p = r.copy()
-    p[:] = _vector_array_multiply(
-        p,
-        P_val,
-        P_col_idx,
-        P_row_ptr,
-        threads,
-    )  # f(v, A): v = A*v
-    alpha = np.empty(1, dtype=np.float64)
-    beta = np.empty(1, dtype=np.float64)
-    iteration = 0
-    for _ in range(max_iterations):
-        iteration += 1
-        alpha[0] = m[0] / _scalar_product(
-            p,
-            A_val,
-            A_col_idx,
-            A_row_ptr,
-            threads,
-        )  # scalar_product = p'*A*p
-        _add_product(x, alpha[0], p, threads)  # f(x: vector, y: scalar, z:vector): x += y * z
-        _recalc_residuals_jit(r, A_val, A_col_idx, A_row_ptr, b, x)
-        m_last[0] = m[0]
-        m[0] = _scalar_product(
-            r,
-            P_val,
-            P_col_idx,
-            P_row_ptr,
-            threads,
-        )  # scalar_product = p'*A*p
-        beta[0] = m[0] / m_last[0]
-        p[:] = _multiply_array_and_add(
-            p,
-            r,
-            beta[0],
-            P_val,
-            P_col_idx,
-            P_row_ptr,
-            threads,
-        )  # f(x:vector, y:vector, z:scalar, A:array): x = A * y + z * x
-        error = np.sqrt(_square_sum_vector(r, threads) / _square_sum_vector(b, threads))
-        if error <= target_error:
-            return x, error, iteration
-
-    return x, error, iteration
-
-
-@njit  #
-def _vector_array_multiply(
-    p,
-    val,
-    col_idx,
-    row_ptr,
-    threads,
-):  # f(v, A): v = A*v
-    new_p = np.zeros_like(p)
-    for row in range(row_ptr.size):
-        start = row_ptr[row]
-        if row < (row_ptr.size - 1):
-            stop = row_ptr[row + 1]
-        else:
-            stop = val.size
-
-        for index in range(start, stop):
-            v = val[index]
-            column = col_idx[index]
-            new_p[row] += v * p[column]
-    return new_p
-
-
-@njit(parallel=True)
-def _multiply_array_and_add(
-    u,
-    v,
-    x,
-    val,
-    col_idx,
-    row_ptr,
-    threads,
-):  # f(u:vector, v:vector, x:scalar, A:array): x = A * v + x * u
-    new_p = _vector_array_multiply(
-        v,
-        val,
-        col_idx,
-        row_ptr,
-        threads,
-    )
-    new_p += x * u
-    return new_p

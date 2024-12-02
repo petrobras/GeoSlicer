@@ -7,4 +7,4 @@ subprocess.check_call([sys.executable, "-m", "mkdocs", "build", "--site-dir", "s
 
 import webbrowser
 
-webbrowser.open(Path(os.getcwd()) / "site" / "index.html")
+webbrowser.open(str(Path(os.getcwd()) / "site" / "index.html"))

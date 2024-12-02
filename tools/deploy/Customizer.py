@@ -17,7 +17,7 @@ from ltrace.constants import SaveStatus
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.helpers import themeIsDark, BlockSignals
 from ltrace.slicer.modules_help_menu import ModulesHelpMenu
-from ltrace.slicer.project_manager import ProjectManager, BUGFIX_handle_copy_suffix_on_cloned_nodes
+from ltrace.slicer.project_manager import ProjectManager, handleCopySuffixOnClonedNodes
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
 from ltrace.slicer.custom_export_to_file import customize_export_to_file
@@ -165,7 +165,7 @@ class Customizer(LTracePlugin):
         self.parent.helpText = ""
         self.parent.acknowledgementText = ""
         self.ltraceBugReportDialog = None
-        self.__projectManager = ProjectManager(folder_icon_path=self.FOLDER_ICON_PATH)
+        self.__projectManager = ProjectManager(folderIconPath=self.FOLDER_ICON_PATH)
         self.__layout_menu = None
 
         self.popup_widget = None
@@ -193,6 +193,7 @@ class Customizer(LTracePlugin):
         slicer.modules.MaskVolumeEffectInstance.registerEditorEffect()
         slicer.modules.MultiThresholdEffectInstance.registerEditorEffect()
         slicer.modules.SampleSegmentationEffectInstance.registerEditorEffect()
+        slicer.modules.SmartForegroundEffectInstance.registerEditorEffect()
 
     def on_load_finished(self):
         slicer.app.setRenderPaused(True)
@@ -337,7 +338,7 @@ class Customizer(LTracePlugin):
         self.noInterpolate()
 
         if callData and callData.IsA("vtkMRMLVolumeArchetypeStorageNode"):
-            BUGFIX_handle_copy_suffix_on_cloned_nodes(callData)
+            handleCopySuffixOnClonedNodes(callData)
 
     # disable interpolation of the volumes by default
     def noInterpolate(self, *args):
@@ -579,7 +580,7 @@ class Customizer(LTracePlugin):
         if not path:
             return SaveStatus.CANCELLED  # Nothing to do
 
-        status = self.__projectManager.save_as(path)
+        status = self.__projectManager.saveAs(path)
 
         if status == SaveStatus.FAILED:
             slicer.util.errorDisplay(
@@ -650,6 +651,7 @@ class Customizer(LTracePlugin):
             layout.addRow(" ", None)
 
             self.ltraceBugReportDirectoryButton = ctk.ctkDirectoryButton()
+            self.ltraceBugReportDirectoryButton.setMaximumWidth(374)
             self.ltraceBugReportDirectoryButton.caption = "Select a directory to save the report"
             layout.addRow("Report destination directory:", None)
             layout.addRow(self.ltraceBugReportDirectoryButton)

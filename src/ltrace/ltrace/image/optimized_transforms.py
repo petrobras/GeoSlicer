@@ -7,11 +7,12 @@ from scipy import ndimage
 
 import porespy
 
-DEFAULT_NULL_VALUE = set((-999.25, -9999.00, -9999.25))
+DEFAULT_NULL_VALUES = set((-999.25, -9999.00, -9999.25))
+ANP_880_2022_DEFAULT_NULL_VALUE = -999.25
 
 
 @nb.jit(nopython=True)
-def trimPointSearch(data, nullvalue=DEFAULT_NULL_VALUE, reverse=False):
+def trimPointSearch(data, nullvalue=DEFAULT_NULL_VALUES, reverse=False):
     end_ptr = len(data)
     indexing = range(end_ptr) if not reverse else range(end_ptr - 1, 0, -1)
     for i in indexing:
@@ -22,7 +23,7 @@ def trimPointSearch(data, nullvalue=DEFAULT_NULL_VALUE, reverse=False):
 
 
 @nb.jit(nopython=True)
-def trimPointSearch2d(data, nullvalue=DEFAULT_NULL_VALUE, reverse=False):
+def trimPointSearch2d(data, nullvalue=DEFAULT_NULL_VALUES, reverse=False):
     end_ptr = len(data)
     rows = range(end_ptr) if not reverse else range(end_ptr - 1, 0, -1)
     for row in rows:
@@ -160,21 +161,21 @@ def min_max(arr):
     return local_min, local_max
 
 
-def handle_null_values(image, nullValue: set):
+def handle_null_values(image, nullValues: set):
     offset = 0.000001
 
     # for each null value in null value set, replace it with nan
     working_image = image.astype(np.float32)
 
-    for v in nullValue:
+    for v in nullValues:
         working_image[working_image == v] = np.nan
-    # if no values were replaced, return a dummy null value
+    # if no values were replaced, return our standard invalid value
     if not np.isnan(np.min(working_image)):
-        return list(nullValue)[0]
+        return ANP_880_2022_DEFAULT_NULL_VALUE
 
     tempArrayMaxValue = np.nan
     tempArrayMinValue = np.nan
-    newNullValue = list(nullValue)[0]
+    newNullValue = ANP_880_2022_DEFAULT_NULL_VALUE
     try:
         tempArrayMaxValue = np.nanmax(working_image)
         tempArrayMinValue = np.nanmin(working_image)

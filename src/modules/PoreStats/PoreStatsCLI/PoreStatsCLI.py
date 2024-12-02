@@ -4,13 +4,14 @@
 from __future__ import print_function
 
 import json
+import numpy as np
 import os
 import re
 import subprocess
 import sys
 
+from pathlib import Path
 from ltrace.slicer.cli_utils import progressUpdate
-import numpy as np
 
 
 def getProgress(bufferedLine):
@@ -33,9 +34,22 @@ def capitalizedToHyphenated(arg):
 
 def runcli(args):
     python_executable = sys.executable
-    script_path = os.path.join(__file__, "..", "Libs", "pore_stats", "pore_stats.py")
+    script_path = (Path(__file__).parent / "Libs" / "pore_stats" / "pore_stats.py").as_posix()
     required_args = [args.inputDir, args.outputDir]
-    optional_paths = ["--pore-model", args.poreModel, "--seg-cli", args.segCLI, "--inspector-cli", args.inspectorCLI]
+    optional_paths = [
+        "--pore-model",
+        args.poreModel,
+        "--seg-cli",
+        args.segCLI,
+        "--inspector-cli",
+        args.inspectorCLI,
+        "--foreground-cli",
+        args.foregroundCLI,
+        "--remove-spurious-cli",
+        args.removeSpuriousCLI,
+        "--clean-resin-cli",
+        args.cleanResinCLI,
+    ]
     optional_params = (
         np.array([[capitalizedToHyphenated(param), value] for param, value in json.loads(args.params).items()])
         .flatten()
@@ -57,7 +71,7 @@ def runcli(args):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        shell=True,
+        shell=True if sys.platform.startswith("win32") else False,
     )
 
     progress = 0
@@ -92,6 +106,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--inspectorcli", dest="inspectorCLI", type=str, default=None, help="Path to the segment inspector CLI to use"
+    )
+    parser.add_argument(
+        "--foregroundcli", dest="foregroundCLI", type=str, default=None, help="Path to the smart foreground CLI to use"
+    )
+    parser.add_argument(
+        "--removespuriouscli",
+        dest="removeSpuriousCLI",
+        type=str,
+        default=None,
+        help="Path to the spurious removal CLI to use",
+    )
+    parser.add_argument(
+        "--cleanresincli", dest="cleanResinCLI", type=str, default=None, help="Path to the resin cleaning CLI to use"
     )
 
     args = parser.parse_args()

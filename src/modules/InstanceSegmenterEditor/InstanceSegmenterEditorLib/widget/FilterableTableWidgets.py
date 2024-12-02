@@ -121,8 +121,8 @@ class PandasTableModel(qt.QAbstractTableModel):
 
     def removeRows(self, row, count, parent=None):
         self.beginRemoveRows(parent, row, row + count - 1)
-        self._data.drop(index=[i for i in range(row, row + count)], inplace=True)
-        self._data.reset_index(drop=True, inplace=True)
+        self._data = self._data.drop(index=[i for i in range(row, row + count)])
+        self._data = self._data.reset_index(drop=True)
         self.calculateConflictedLabels()
         self.endRemoveRows()
         return True
@@ -155,8 +155,8 @@ class PandasTableModel(qt.QAbstractTableModel):
         return int(label)
 
     def sort(self, column, descending):
-        self._data.sort_values(by=self._data.columns[column], inplace=True, ascending=not descending)
-        self._data.reset_index(drop=True, inplace=True)
+        self._data = self._data.sort_values(by=self._data.columns[column], ascending=not descending)
+        self._data = self._data.reset_index(drop=True)
         self.sortingColumn = [column, descending]
         self.dataChanged.emit(qt.QModelIndex(), qt.QModelIndex())
 
@@ -164,8 +164,8 @@ class PandasTableModel(qt.QAbstractTableModel):
         self.sort(self.sortingColumn[0], self.sortingColumn[1])
 
     def sortByMultipleColumns(self, columnIds, ascending=True):
-        self._data.sort_values(by=columnIds, inplace=True, ascending=ascending)
-        self._data.reset_index(drop=True, inplace=True)
+        self._data = self._data.sort_values(by=columnIds, ascending=ascending)
+        self._data = self._data.reset_index(drop=True)
         self.dataChanged.emit(qt.QModelIndex(), qt.QModelIndex())
 
     def setFilteredLabels(self, filteredLabels):

@@ -29,6 +29,8 @@ class HistogramInDepthViewWidget(BaseViewWidget):
         self.curve_plot._plotItem.setContentsMargins(-7, -7, -6, -6)
         self.curve_plot._plotItem.hideButtons()
         self.curve_plot._plotItem.hideAxis("left")
+        self.curve_plot._plotItem.hideAxis("bottom")
+        self.curve_plot._plotItem.showAxis("top")
 
         # Primary table node
         if view_data.primaryTableNodeColumn != "":
@@ -422,6 +424,9 @@ class PlotWidget(QtWidgets.QWidget):
         if graph_data.data.get("X", None) is None:
             scale = 0.001
         return scale
+
+    def get_plot_item(self):
+        return self._plotItem
 
     def build_plot_generator(self, plot_type: str = LINE_PLOT_TYPE):
         function = lambda: None

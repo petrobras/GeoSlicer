@@ -26,6 +26,7 @@ RUN python -m pip install -r c:/slicerltrace/src/modules/MicrotomRemote/Libs/mic
 COPY ./src/submodules/ c:/slicerltrace/src/submodules/
 RUN python -m pip install -e c:/slicerltrace/src/submodules/porespy
 RUN python -m pip install -e c:/slicerltrace/src/submodules/biaep
+RUN python -m pip install -e c:/slicerltrace/src/submodules/py_pore_flow
 
 COPY ./tests/ c:/slicerltrace/tests/
 

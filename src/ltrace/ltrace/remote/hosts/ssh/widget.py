@@ -124,6 +124,8 @@ class SshConfigWidget(qt.QWidget):
             self.rsa_key = Path(fileDialog.selectedFiles()[0])
             self.keyLabel.setText(f" - {self.rsa_key}")
 
+        fileDialog.deleteLater()
+
     def getRSAKeyPathString(self) -> str:
         return str(self.rsa_key) if self.rsa_key else None
 

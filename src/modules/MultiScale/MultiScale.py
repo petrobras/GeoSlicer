@@ -1,24 +1,22 @@
-import os
-from multiprocessing import cpu_count
-import shutil
-from pathlib import Path
 import json
 import math
+import os
+import shutil
+from multiprocessing import cpu_count
+from pathlib import Path
 
-from ltrace.slicer.node_attributes import NodeEnvironment
 import ctk
-from Customizer import Customizer
-import qt
-import slicer
 import mpslib as mps
 import numpy as np
+import qt
+import slicer
 from tifffile import tifffile
-from ltrace.slicer import widgets
 
-from ltrace.slicer import ui
 from ltrace.slicer import helpers
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer import ui
+from ltrace.slicer import widgets
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
@@ -40,8 +38,8 @@ class MultiScale(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multi Scale"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "Multi-Scale Image Generation"
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MultiScale.help()
@@ -73,79 +71,52 @@ class MultiScaleWidget(LTracePluginWidget):
             hideSoi=True,
             hideCalcProp=False,
             allowedInputNodes=[
-                "vtkMRMLVectorVolumeNode",
                 "vtkMRMLScalarVolumeNode",
                 "vtkMRMLSegmentationNode",
                 "vtkMRMLLabelMapVolumeNode",
             ],
             mainName="Training Image",
-            referenceName="Reference",
+            referenceName="TI Reference",
             setDefaultMargins=False,
+            objectNamePrefix="Training Image",
         )
 
         self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 0)
-        self.trainingImageWidget.mainInput.currentItemChanged.connect(self.setTrainingImageListChecked)
+        self.trainingImageWidget.mainInput.currentItemChanged.connect(self.onTrainingImageChange)
         self.trainingImageWidget.onReferenceSelectedSignal.connect(self.updateFinalImageWidgets)
         self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(lambda: self.listItemChange())
-        self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.setTrainingImageListChecked)
+        self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.onTrainingImageChange)
 
-        self.hardDataComboBox = ui.hierarchyVolumeInput(
-            hasNone=True,
-            nodeTypes=[
-                "vtkMRMLVectorVolumeNode",
+        self.hardDataWidget = widgets.SingleShotInputWidget(
+            hideSoi=True,
+            allowedInputNodes=[
                 "vtkMRMLScalarVolumeNode",
                 "vtkMRMLSegmentationNode",
                 "vtkMRMLLabelMapVolumeNode",
             ],
-            onChange=self.onHardDataChange,
-            tooltip="Select the hard data image",
+            mainName="Hard Data Image",
+            referenceName="HD Reference",
+            setDefaultMargins=False,
+            objectNamePrefix="Hard Data",
         )
-        self.hardDataComboBox.objectName = "hardDataInput"
 
-        self.HardDataWidgetLabel = qt.QLabel("Hard data image:")
-
-        self.referenceComboBox = ui.hierarchyVolumeInput(
-            hasNone=True,
-            nodeTypes=[
-                "vtkMRMLVectorVolumeNode",
-                "vtkMRMLScalarVolumeNode",
-                "vtkMRMLLabelMapVolumeNode",
-            ],
-            onChange=self.onReferenceChange,
-            tooltip="Segmentation node reference volume. This is used as reference for the hard data resolution and imagelog depth",
+        self.hardDataWidget.formLayout.setContentsMargins(0, 0, 0, 0)
+        self.hardDataWidget.mainInput.currentItemChanged.connect(self.onHardDataChange)
+        self.hardDataWidget.onReferenceSelectedSignal.connect(self.onReferenceChange)
+        self.hardDataWidget.segmentListGroup[1].itemChanged.connect(self.listItemChange)
+        self.hardDataWidget.autoPorosityCalcCb.stateChanged.connect(
+            lambda: self.checkListItems(self.hardDataWidget.segmentListGroup[1])
         )
-        self.referenceComboBox.objectName = "referenceComboBox"
-        self.referenceComboBox.hide()
-
-        self.referenceLabel = qt.QLabel("Reference:")
-        self.referenceLabel.objectName = "hardDataLabel"
-        self.referenceLabel.hide()
-
-        self.segmentListWidget = qt.QListWidget()
-        self.segmentListWidget.setFixedHeight(120)
-        self.segmentListWidget.hide()
-        self.segmentListWidget.objectName = "hardDataSegmentList"
-        self.segmentListWidget.itemChanged.connect(self.listItemChange)
-        self.segmentListWidget.setToolTip("Select the values of the volume to act as Hard Data for the algorithm")
-
-        self.segmentsContainerLabel = qt.QLabel("Hard data values:")
-        self.segmentsContainerLabel.hide()
-        self.segmentsContainerWidget = qt.QWidget()
-        segmentsLayout = qt.QFormLayout(self.segmentsContainerWidget)
-        segmentsLayout.addRow(self.segmentListWidget)
-        segmentsLayout.setContentsMargins(0, 0, 0, 0)
-        self.segmentsContainerWidget.hide()
-        self.segmentsContainerWidget.objectName = "segmentContainer"
 
         self.hardDataResolution = []
         self.hardDataResolutionText = qt.QLabel("0 x 0 x 0 (mm)")
         self.hardDataResolutionText.setToolTip(
             "Resolution of the hard data voxel in mm. For the multiscale simulations, the units are converted to micrometers"
         )
-        self.hardDataResolutionText.objectName = "hardDataText"
+        self.hardDataResolutionText.objectName = "Hard Data Resolution Label"
         self.hardDataResolutionText.hide()
 
-        self.hardDataResolutionLabel = qt.QLabel("Hard Data resolution:")
+        self.hardDataResolutionLabel = qt.QLabel("HD resolution:")
         self.hardDataResolutionLabel.objectName = "hardDataLabel"
         self.hardDataResolutionLabel.hide()
 
@@ -172,7 +143,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.previewDimensionSpinBox.objectName = "previewDimensionSpinBox"
 
         self.previewButton = qt.QPushButton()
-        self.previewButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+        self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
         self.previewButton.setFixedWidth(30)
         self.previewButton.enabled = False
         self.previewButton.clicked.connect(self.onViewPreviewToggle)
@@ -254,9 +225,7 @@ class MultiScaleWidget(LTracePluginWidget):
         inputFormLayout = qt.QFormLayout(inputSection)
         inputFormLayout.addRow(self.trainingImageWidget)
         inputFormLayout.addRow("", None)
-        inputFormLayout.addRow(self.HardDataWidgetLabel, self.hardDataComboBox)
-        inputFormLayout.addRow(self.referenceLabel, self.referenceComboBox)
-        inputFormLayout.addRow(self.segmentsContainerLabel, self.segmentsContainerWidget)
+        inputFormLayout.addRow(self.hardDataWidget)
         inputFormLayout.addRow(self.hardDataResolutionLabel, self.hardDataResolutionText)
         inputFormLayout.addRow(self.previewLabel, self.previewWidget)
         inputFormLayout.addRow("", None)
@@ -270,7 +239,7 @@ class MultiScaleWidget(LTracePluginWidget):
         parametersSection.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
         parametersLayout = qt.QFormLayout(parametersSection)
 
-        self.imageSpacingValidator = qt.QRegExpValidator(qt.QRegExp("[+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?"))
+        self.imageSpacingValidator = qt.QRegExpValidator(qt.QRegExp("[+]?[0-9]*\\.?[0-9]{0,5}([eE][-+]?[0-9]+)?"))
 
         self.finalImageResolution = []
         self.finalImageSize = []
@@ -459,6 +428,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.saveOptionsWidgets.setLayout(saveOptionsLayout)
 
         self.exportDirectoryButton = ctk.ctkDirectoryButton()
+        self.exportDirectoryButton.setMaximumWidth(374)
         self.exportDirectoryButton.caption = "Export directory"
         self.exportDirectoryButton.setDisabled(True)
         self.exportDirectoryButton.objectName = "fileDirectory"
@@ -497,11 +467,18 @@ class MultiScaleWidget(LTracePluginWidget):
         buttonsHBoxLayout.addWidget(self.cancelButton)
 
         self.localProgressBar = LocalProgressBar()
+        self.localProgressBar.progressBar.setStatusVisibility(0)
+
+        self.statusLabel = qt.QLabel("Status: Idle")
+        self.statusLabel.setVisible(False)
+        self.statusLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
+        self.statusLabel.objectName = "MPS Time QLabel"
 
         self.layout.addWidget(inputSection)
         self.layout.addWidget(parametersSection)
         self.layout.addWidget(outputSection)
         self.layout.addLayout(buttonsHBoxLayout)
+        self.layout.addWidget(self.statusLabel)
         self.layout.addWidget(self.localProgressBar)
         self.layout.addStretch(1)
 
@@ -540,68 +517,46 @@ class MultiScaleWidget(LTracePluginWidget):
         if node is not None:
             spacing = node.GetSpacing()
             dimensions = node.GetImageData().GetDimensions()
-            rseedMax = dimensions[0] * dimensions[1] * dimensions[2]
+            rseedMax = min(dimensions[0] * dimensions[1] * dimensions[2], 2147483647)
 
         for dim in range(3):
-            self.finalImageResolution[dim].setText(spacing[dim])
+            self.finalImageResolution[dim].setText(round(spacing[dim], 5))
             self.finalImageResolution[dim].enabled = enableWidgets
             self.finalImageSize[dim].setValue(dimensions[dim])
             self.finalImageSize[dim].enabled = enableWidgets
             self.rseedSpinBox.setRange(0, rseedMax)
 
-    def onReferenceChange(self, nodeId: int = None, node=None):
+    def onReferenceChange(self, node=None):
         self.enableWrapCheckBox.enabled = False
         self.enableWrapCheckBox.setChecked(qt.Qt.Unchecked)
-        if nodeId:
-            node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene).GetItemDataNode(nodeId)
+        self.updateHardDataResolution(None)
+        self.setPreviewValues()
         if node:
+            self.hardDataResolution = np.array(node.GetSpacing())
+            self.updateHardDataResolution(self.hardDataResolution)
             if node.GetImageData().GetDimensions()[1] == 1:
                 self.setPreviewValues(True, node)
                 self.enableWrapCheckBox.enabled = True
             else:
-                self.hardDataResolution = np.array(node.GetSpacing())
                 self.setPreviewValues(False, node)
-                self.updateHardDataResolution(self.hardDataResolution)
-        else:
-            self.updateHardDataResolution(None)
         self.checkRunButtonState()
 
     def onHardDataChange(self, nodeID):
-        self.valuesList = []
-        self.segmentListWidget.hide()
-        self.segmentsContainerLabel.hide()
-        self.segmentsContainerWidget.hide()
-        self.updateHardDataResolution(None)
         self.changePreviewOptionsVisibility()
-        self.setPreviewValues()
-        self.updateContinuousCheckBoxState()
-        self.referenceLabel.hide()
-        self.referenceComboBox.hide()
-        self.referenceComboBox.setCurrentNode(None)
+        self.checkListItems(self.hardDataWidget.segmentListGroup[1])
 
-        node = self.hardDataComboBox.currentNode()
+        node = self.hardDataWidget.mainInput.currentNode()
         if node:
             if isinstance(node, slicer.vtkMRMLLabelMapVolumeNode) or isinstance(node, slicer.vtkMRMLSegmentationNode):
-                segments = helpers.getSegmentList(node)
                 self.changePreviewOptionsVisibility(True)
-            elif isinstance(node, slicer.vtkMRMLScalarVolumeNode):
-                segments = self.getSegmentsFromScalar(node)
-
-            self.newUpdateSegmentList(segments)
-            self.segmentsContainerLabel.show()
-            self.segmentsContainerWidget.show()
 
             background = None
-            if isinstance(node, slicer.vtkMRMLLabelMapVolumeNode) or isinstance(node, slicer.vtkMRMLScalarVolumeNode):
-                background = node if isinstance(node, slicer.vtkMRMLScalarVolumeNode) else None
-                sourceVolumeNode = helpers.getSourceVolume(self.hardDataComboBox.currentNode())
-                self.referenceComboBox.setCurrentNode(node)
+            if isinstance(node, slicer.vtkMRMLScalarVolumeNode):
+                background = node
+
             elif isinstance(node, slicer.vtkMRMLSegmentationNode):
-                self.referenceLabel.show()
-                self.referenceComboBox.show()
-                sourceVolumeNode = helpers.getSourceVolume(self.hardDataComboBox.currentNode())
+                sourceVolumeNode = helpers.getSourceVolume(self.hardDataWidget.mainInput.currentNode())
                 if sourceVolumeNode:
-                    self.referenceComboBox.setCurrentNode(sourceVolumeNode)
                     background = sourceVolumeNode
 
             slicer.util.setSliceViewerLayers(
@@ -626,22 +581,21 @@ class MultiScaleWidget(LTracePluginWidget):
         showHardData = True
         showMask = True
 
-        if self.hardDataComboBox.currentNode() is not None:
+        if self.hardDataWidget.mainInput.currentNode() is not None:
             showMask = False
         else:
             if self.maskWidget.mainInput.currentNode() is not None:
                 showHardData = False
 
-        self.hardDataComboBox.setVisible(showHardData)
-        self.hardDataComboBox.enabled = showHardData
-        self.HardDataWidgetLabel.setVisible(showHardData)
+        self.hardDataWidget.setVisible(showHardData)
+        self.hardDataWidget.enabled = showHardData
         self.maskWidget.setVisible(showMask)
         self.maskWidget.enabled = showMask
 
     def updateOutputPrefix(self):
         text = ""
-        if self.hardDataComboBox.currentNode() is not None:
-            text = f"{self.hardDataComboBox.currentNode().GetName()}_multiscale"
+        if self.hardDataWidget.mainInput.currentNode() is not None:
+            text = f"{self.hardDataWidget.mainInput.currentNode().GetName()}_multiscale"
         elif self.maskWidget.mainInput.currentNode() is not None:
             text = f"{self.maskWidget.mainInput.currentNode().GetName()}_multiscale"
         elif self.trainingImageWidget.mainInput.currentNode() is not None:
@@ -649,46 +603,13 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.outputPrefix.text = text
 
-    def newUpdateSegmentList(self, segments):
-        self.segmentListWidget.clear()
-        self.valuesList = np.empty(len(segments))
-        index = 0
-        for label in segments:
-            item = qt.QListWidgetItem()
-            item.setText(segments[label]["name"])
-            if len(segments[label]["color"]) > 0:
-                icon = self.ColoredIcon(*[int(c * 255) for c in segments[label]["color"][:3]])
-                item.setIcon(icon)
-            item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)
-            item.setCheckState(qt.Qt.Checked)
-            self.segmentListWidget.addItem(item)
-            self.valuesList[index] = label
-            index += 1
-        self.segmentListWidget.show()
+    def onTrainingImageChange(self):
+        self.checkListItems(self.trainingImageWidget.segmentListGroup[1])
 
-    def ColoredIcon(self, r, g, b):
-        img = qt.QImage(16, 16, qt.QImage.Format_RGB32)
-        p = qt.QPainter(img)
-        p.fillRect(img.rect(), qt.QColor(r, g, b))
-        p.end()
-        return qt.QIcon(qt.QPixmap.fromImage(img))
-
-    def getSegmentsFromScalar(self, volume):
-        segments = {}
-        for value in self.logic.getScalarVolumeValues(volume):
-            segments[value] = {"name": str(value), "color": []}
-        return segments
-
-    def getCheckedItems(self, list):
-        items = np.full(list.count, True)
-        for n in range(list.count):
-            items[n] = list.item(n).checkState() == qt.Qt.Checked
-        return items
-
-    def setTrainingImageListChecked(self):
-        if self.trainingImageWidget.segmentListGroup[1].visible:
-            for item in range(self.trainingImageWidget.segmentListGroup[1].count):
-                self.trainingImageWidget.segmentListGroup[1].item(item).setCheckState(qt.Qt.Checked)
+    def checkListItems(self, segmentList):
+        if segmentList.visible:
+            for item in range(segmentList.count):
+                segmentList.item(item).setCheckState(qt.Qt.Checked)
         self.updateContinuousCheckBoxState()
         self.checkRunButtonState()
 
@@ -709,9 +630,10 @@ class MultiScaleWidget(LTracePluginWidget):
         )
 
         hardDataIsValid = True
-        if self.hardDataComboBox.currentNode() is not None:
-            hardDataIsValid = self.referenceComboBox.currentNode() is not None and not np.all(
-                self.getCheckedItems(self.segmentListWidget) == False
+        if self.hardDataWidget.mainInput.currentNode() is not None:
+            hardDataIsValid = self.hardDataWidget.referenceInput.currentNode() is not None and (
+                type(self.hardDataWidget.mainInput.currentNode()) is slicer.vtkMRMLScalarVolumeNode
+                or len(self.trainingImageWidget.getSelectedSegments()) > 0
             )
 
         maskIsValid = True
@@ -750,9 +672,9 @@ class MultiScaleWidget(LTracePluginWidget):
                     self.trainingImageWidget.mainInput.currentNode(), "_TI"
                 )
 
-            if isinstance(self.hardDataComboBox.currentNode(), slicer.vtkMRMLSegmentationNode):
+            if isinstance(self.hardDataWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
                 hardDataSegmentation = True
-                hardDataLabelMap = self.segmentationInputToLabelmap(self.hardDataComboBox.currentNode(), "_HD")
+                hardDataLabelMap = self.segmentationInputToLabelmap(self.hardDataWidget.mainInput.currentNode(), "_HD")
                 self.hardDataResolution = np.array(hardDataLabelMap.GetSpacing())
 
             if isinstance(self.maskWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
@@ -763,25 +685,30 @@ class MultiScaleWidget(LTracePluginWidget):
                 self.changeRunButtonsState(False)
 
                 preprocessing = {
-                    "trainingDataVolume": trainingImageLabelMap
-                    if TISegmentation
-                    else self.trainingImageWidget.mainInput.currentNode(),
-                    "trainingReference": self.trainingImageWidget.referenceInput.currentNode()
-                    if self.continuousDataCheckBox.isChecked()
-                    else None,
+                    "trainingDataVolume": (
+                        trainingImageLabelMap if TISegmentation else self.trainingImageWidget.mainInput.currentNode()
+                    ),
+                    "trainingReference": (
+                        self.trainingImageWidget.referenceInput.currentNode()
+                        if self.continuousDataCheckBox.isChecked()
+                        else None
+                    ),
                     "trainingDataSegments": [segment + 1 for segment in self.trainingImageWidget.getSelectedSegments()],
                     "wrapCylinder": self.enableWrapCheckBox.isChecked(),
                 }
-                if self.hardDataComboBox.currentNode() is not None:
+
+                if self.hardDataWidget.mainInput.currentNode() is not None:
                     preprocessing["hardDataVolume"] = (
-                        hardDataLabelMap if hardDataSegmentation else self.hardDataComboBox.currentNode()
+                        hardDataLabelMap if hardDataSegmentation else self.hardDataWidget.mainInput.currentNode()
                     )
                     preprocessing["hardDataReference"] = (
-                        self.referenceComboBox.currentNode() if self.continuousDataCheckBox.isChecked() else None
+                        self.hardDataWidget.referenceInput.currentNode()
+                        if self.continuousDataCheckBox.isChecked()
+                        else None
                     )
-                    preprocessing["hardDataValues"] = self.valuesList[
-                        self.getCheckedItems(self.segmentListWidget)
-                    ].tolist()
+                    preprocessing["hardDataValues"] = [
+                        segment + 1 for segment in self.hardDataWidget.getSelectedSegments()
+                    ]
                     preprocessing["hardDataResolution"] = self.hardDataResolution
 
                 if self.maskWidget.mainInput.currentNode() is not None:
@@ -888,7 +815,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def updateHardDataResolution(self, spacing):
         if spacing is not None:
-            self.hardDataResolutionText.setText(f"{spacing[0]:.9f} x {spacing[1]:.9f} x {spacing[2]:.9f} (mm)")
+            self.hardDataResolutionText.setText(f"{spacing[0]:.3f} x {spacing[1]:.3f} x {spacing[2]:.3f} (mm)")
             self.hardDataResolutionText.show()
             self.hardDataResolutionLabel.show()
         else:
@@ -897,8 +824,9 @@ class MultiScaleWidget(LTracePluginWidget):
             self.hardDataResolutionLabel.hide()
 
     def getPreviewSegmentationNode(self):
-        if isinstance(self.hardDataComboBox.currentNode(), slicer.vtkMRMLSegmentationNode):
-            hardDataLabelMap, _ = helpers.createLabelmapInput(self.hardDataComboBox.currentNode(), "previewLabelmap")
+        node = self.hardDataWidget.mainInput.currentNode()
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            hardDataLabelMap, _ = helpers.createLabelmapInput(node, "previewLabelmap")
             if hardDataLabelMap.GetImageData().GetDimensions()[1] == 1:
                 self.previewSegmentationNode = self.logic.generatePreview(
                     hardDataLabelMap,
@@ -915,19 +843,19 @@ class MultiScaleWidget(LTracePluginWidget):
                 self.previewSegmentationNode.SetName("previewSegmentation")
                 helpers.makeNodeTemporary(self.previewSegmentationNode, hide=True)
 
-        elif isinstance(self.hardDataComboBox.currentNode(), slicer.vtkMRMLLabelMapVolumeNode):
-            if self.hardDataComboBox.currentNode().GetImageData().GetDimensions()[1] == 1:
+        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            if node.GetImageData().GetDimensions()[1] == 1:
                 self.previewSegmentationNode = self.logic.generatePreview(
-                    self.hardDataComboBox.currentNode(),
+                    node,
                     self.previewDimensionSpinBox.value,
                     self.depthTopSpinBox.value,
                     self.depthBottomSpinBox.value,
                 )
             else:
-                slicer.util.setSliceViewerLayers(background=None, label=self.hardDataComboBox.currentNode(), fit=True)
+                slicer.util.setSliceViewerLayers(background=None, label=node, fit=True)
                 self.previewSegmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
                 slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-                    self.hardDataComboBox.currentNode(), self.previewSegmentationNode
+                    node, self.previewSegmentationNode
                 )
                 self.previewSegmentationNode.SetName("previewSegmentation")
                 helpers.makeNodeTemporary(self.previewSegmentationNode, hide=True)
@@ -955,20 +883,20 @@ class MultiScaleWidget(LTracePluginWidget):
 
             self.previewSegmentationNode.CreateClosedSurfaceRepresentation()
 
-            self.previewButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
             self.isViewOn = True
 
         elif self.isViewOn:
             progressBar.setMessage("Removing preview")
             self.previewSegmentationNode.RemoveClosedSurfaceRepresentation()
             helpers.removeTemporaryNodes()
-            self.previewButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
             self.isViewOn = False
 
     def checkSegmentsVisibility(self, displayNode):
-        for n in range(self.segmentListWidget.count):
-            if not self.segmentListWidget.item(n).checkState() == qt.Qt.Checked:
-                displayNode.SetSegmentOpacity(self.segmentListWidget.item(n).text(), 0)
+        for n in range(self.hardDataWidget.segmentListGroup[1].count):
+            if not self.hardDataWidget.segmentListGroup[1].item(n).checkState() == qt.Qt.Checked:
+                displayNode.SetSegmentOpacity(self.hardDataWidget.segmentListGroup[1].item(n).text(), 0)
 
     def onSegmentVisibilityChange(self, id, isVisible):
         if self.isViewOn:
@@ -991,8 +919,8 @@ class MultiScaleWidget(LTracePluginWidget):
         hardDataScalar = False
         if self.trainingImageWidget.mainInput.currentNode() is not None:
             tiScalar = self.trainingImageWidget.mainInput.currentNode().GetClassName() == "vtkMRMLScalarVolumeNode"
-        if self.hardDataComboBox.currentNode() is not None:
-            hardDataScalar = self.hardDataComboBox.currentNode().GetClassName() == "vtkMRMLScalarVolumeNode"
+        if self.hardDataWidget.mainInput.currentNode() is not None:
+            hardDataScalar = self.hardDataWidget.mainInput.currentNode().GetClassName() == "vtkMRMLScalarVolumeNode"
 
         isScalar = tiScalar or hardDataScalar
 
@@ -1033,17 +961,26 @@ class MultiScaleWidget(LTracePluginWidget):
         self.cancelButton.enabled = False
         self.changeRunButtonsState(True)
 
+    def updateTime(self, time):
+        self.statusLabel.setVisible(True)
+        self.updateStatusLabel("Completed", f" (MPSlib execution took {time:.2f} seconds)")
+
+    def updateStatusLabel(self, status, text=""):
+        self.statusLabel.text = f"Status: {status}{text}"
+
 
 class MultiScaleLogic(LTracePluginLogic):
     def __init__(self, widget):
         LTracePluginLogic.__init__(self)
         self.image = []
+        self.time = 0
         self.cliNode = None
         self.widget = widget
         self.outputName = ""
         self.outputDir = 0
         self.save_options = {}
         self.mask_options = {}
+        self.cliObserver = None
 
     def configureOutput(self, outputPrefix):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -1075,18 +1012,43 @@ class MultiScaleLogic(LTracePluginLogic):
         """
         sequentialProgressBar.setMessage("Writing TI data file")
 
+        invertHDSelectedSegments = False
+        invertTISelectedSegments = False
+        nullValueHD = 0
+        selectedSegmentsTI = data["trainingDataSegments"]
+
         if isContinuous:
             simulationTI = slicer.util.arrayFromVolume(data["trainingReference"])
             if "hardDataVolume" in data:
                 SimulationHD = data["hardDataReference"]
+
+                if (
+                    type(data["hardDataVolume"]) is slicer.vtkMRMLScalarVolumeNode
+                    and data["hardDataVolume"] == data["hardDataReference"]
+                ):
+                    nullValueHD = helpers.getVolumeNullValue(SimulationHD)
+                    if nullValueHD:
+                        invertHDSelectedSegments = True
+
+            if (
+                type(data["trainingDataVolume"]) is slicer.vtkMRMLScalarVolumeNode
+                and data["trainingDataVolume"] == data["trainingReference"]
+            ):
+                nullValueTI = helpers.getVolumeNullValue(data["trainingReference"])
+                if nullValueTI:
+                    invertTISelectedSegments = True
+                    selectedSegmentsTI = [nullValueTI]
+
         else:
             simulationTI = slicer.util.arrayFromVolume(data["trainingDataVolume"])
             if "hardDataVolume" in data:
                 SimulationHD = data["hardDataVolume"]
 
-        if data["trainingDataSegments"]:
+        if selectedSegmentsTI:
             mask = slicer.util.arrayFromVolume(data["trainingDataVolume"])
-            filteredArray = np.where(np.isin(mask, data["trainingDataSegments"]), simulationTI, np.nan)
+            filteredArray = np.where(
+                np.isin(mask, selectedSegmentsTI, invert=invertTISelectedSegments), simulationTI, np.nan
+            )
             self.createTrainingImagefile(filteredArray, self.temporaryPath)
         else:
             self.createTrainingImagefile(simulationTI, self.temporaryPath)
@@ -1101,11 +1063,14 @@ class MultiScaleLogic(LTracePluginLogic):
                     CONVERSION_FACTOR,
                 )
             else:
+                hardDataSelectedSegments = [nullValueHD] if invertHDSelectedSegments else data["hardDataValues"]
+
                 self.createHardDataFile(
                     slicer.util.arrayFromVolume(SimulationHD),
                     slicer.util.arrayFromVolume(data["hardDataVolume"]),
                     np.around(np.array(data["hardDataResolution"]) * CONVERSION_FACTOR, 2),
-                    data["hardDataValues"],
+                    hardDataSelectedSegments,
+                    invertHDSelectedSegments,
                 )
 
         if "maskVolume" in data and "maskSegments" in data:
@@ -1153,6 +1118,8 @@ class MultiScaleLogic(LTracePluginLogic):
 
         if progressBar is not None:
             progressBar.setCommandLineModuleNode(self.cliNode)
+
+        self.widget.updateStatusLabel("Running")
 
     def run_sequential(self, run_data: dict, reference_volume, progress_bar):
         """
@@ -1260,6 +1227,8 @@ class MultiScaleLogic(LTracePluginLogic):
                 run_data["finalImageResolution"], run_data["nreal"], self.save_options["directory"], self.outputName
             )
 
+        self.widget.updateTime(self.time)
+
         self.cleanUp(self.temporaryPath)
 
     def runMultiscale(
@@ -1339,6 +1308,8 @@ class MultiScaleLogic(LTracePluginLogic):
             return
 
         if caller.GetStatusString() == "Completed":
+            self.time = float(caller.GetParameterAsString("mpsTime"))
+
             for realization in range(info["nreal"]):
                 self.image.append(np.load(os.path.join(self.temporaryPath, f"sim_data_{realization}.npy")))
 
@@ -1371,13 +1342,14 @@ class MultiScaleLogic(LTracePluginLogic):
                 os.remove("hard.dat")
 
         self.image = []
-        self.time = []
+        self.time = 0
         self.save_options = {}
         self.mask_options = {}
 
     def cancelCLI(self):
         if self.cliNode:
             self.cliNode.Cancel()
+            self.widget.updateStatusLabel("Canceled")
 
     def createTrainingImagefile(self, array, temporaryPath, filename="ti.dat"):
         flipAxis = self.save_options["flipAxis"]
@@ -1391,9 +1363,11 @@ class MultiScaleLogic(LTracePluginLogic):
             f.write("\n".join([str(num) for num in flatList]))
             f.write("\n")
 
-    def createHardDataFile(self, hardDataValues, hardDataMask, hardDataResolution, selectedSegments):
+    def createHardDataFile(
+        self, hardDataValues, hardDataMask, hardDataResolution, selectedSegments, invertSelected=False
+    ):
         if selectedSegments:
-            indicesz, indicesy, indicesx = np.where(np.isin(hardDataMask, selectedSegments))
+            indicesz, indicesy, indicesx = np.where(np.isin(hardDataMask, selectedSegments, invert=invertSelected))
         else:
             indicesz, indicesy, indicesx = np.where(hardDataMask)
 
@@ -1555,7 +1529,7 @@ class MultiScaleLogic(LTracePluginLogic):
                 outputSpacing = np.around(np.array(spacing), 5)
 
             if not self.mask_options:
-                slicer.util.updateVolumeFromArray(labelmapNode, outputArray)
+                slicer.util.updateVolumeFromArray(labelmapNode, outputArray.astype(np.int32))
             else:
                 new_colors = {}
 
@@ -1572,7 +1546,7 @@ class MultiScaleLogic(LTracePluginLogic):
                     outputArray[slicer.util.arrayFromVolume(refVolume) == old_color_num] = new_color_num
                     new_colors[new_color_num] = self.mask_options["maskSegmentList"][old_color_num]
 
-                slicer.util.updateVolumeFromArray(labelmapNode, outputArray)
+                slicer.util.updateVolumeFromArray(labelmapNode, outputArray.astype(np.int32))
 
                 if "maskColorNode" in self.mask_options:
                     colorNode = self.mask_options["maskColorNode"]

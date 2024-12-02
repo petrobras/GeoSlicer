@@ -11,6 +11,14 @@
   <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
 
   <parameters>
+    <image type="any">
+      <name>inputVolume</name>
+      <longflag>master</longflag>
+      <label>Input Volume</label>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </image>
 
     <image type="any">
       <name>inputVolume1</name>

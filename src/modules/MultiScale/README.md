@@ -1,6 +1,6 @@
 # Multi Scale
 
-This module provides _GeoSlicer_ an interface for the MPSLib Library, a set of algorithms based on a multiple point statistical (MPS) models inferred from a training image.
+This module provides _GeoSlicer_ an interface for the MPSlib Library, a set of algorithms based on a multiple point statistical (MPS) models inferred from a training image.
 
 ## Methods
 Currently only the Generalized ENESIM algorithm with direct sampling mode (DS) is available

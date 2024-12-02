@@ -1,16 +1,11 @@
 import os
 from pathlib import Path
 
-import qt
 import slicer
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
 
-from CTAutoRegistration import CTAutoRegistration
-from CustomizedCropVolume import CustomizedCropVolume
-from CustomizedData import CustomizedData
-from Multicore import Multicore
-from MulticoreTransforms import MulticoreTransforms
-from SegmentationEnv import SegmentationEnv
+from ltrace.slicer.helpers import svgToQIcon
+from ltrace.slicer.widget.custom_toolbar_buttons import addAction, addMenu
+from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTraceEnvironmentMixin, getResourcePath
 
 
 class CoreEnv(LTracePlugin):
@@ -21,70 +16,63 @@ class CoreEnv(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Core Environment"
-        self.parent.categories = ["Environments"]
+        self.parent.categories = ["Environment", "Core"]
         self.parent.dependencies = []
+        self.parent.hidden = True
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = (
-            CoreEnv.help()
-            + CustomizedData.help()
-            + Multicore.help()
-            + MulticoreTransforms.help()
-            + CustomizedCropVolume.help()
-            + SegmentationEnv.help()
-        )
+        self.parent.helpText = ""
+        self.environment = CoreEnvLogic()
 
     @classmethod
     def readme_path(cls):
         return str(cls.MODULE_DIR / "README.md")
 
 
-class CoreEnvWidget(LTracePluginWidget):
-    def __init__(self, parent) -> None:
-        super().__init__(parent)
-        self.lastAccessedWidget = None
+class CoreEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
+    def __init__(self):
+        super().__init__()
+        self.__modulesToolbar = None
 
-    def setup(self):
-        LTracePluginWidget.setup(self)
-        self.mainTab = qt.QTabWidget()
-        self.layout.addWidget(self.mainTab)
+    @property
+    def modulesToolbar(self):
+        if not self.__modulesToolbar:
+            raise AttributeError("Modules toolbar not set")
+        return self.__modulesToolbar
 
-        # Data tab
-        dataTab = qt.QTabWidget()
-        dataTab.addTab(slicer.modules.customizeddata.createNewWidgetRepresentation(), "Explorer")
-        dataTab.addTab(slicer.modules.multicore.createNewWidgetRepresentation(), "CT Import")
-        dataTab.addTab(slicer.modules.corephotographloader.createNewWidgetRepresentation(), "Photo Import (beta)")
-        dataTab.addTab(slicer.modules.multicoreexport.createNewWidgetRepresentation(), "Export")
+    @modulesToolbar.setter
+    def modulesToolbar(self, value):
+        self.__modulesToolbar = value
 
-        self.mainTab.addTab(dataTab, "Data")
-        self.mainTab.addTab(slicer.modules.multicoretransforms.createNewWidgetRepresentation(), "Transforms")
-        self.mainTab.addTab(slicer.modules.customizedcropvolume.createNewWidgetRepresentation(), "Crop")
-        self.segmentationEnv = slicer.modules.segmentationenv.createNewWidgetRepresentation()
-        self.mainTab.addTab(self.segmentationEnv, "Segmentation")
-        self.mainTab.addTab(slicer.modules.coreinpaint.createNewWidgetRepresentation(), "Inpaint")
+    def setupEnvironment(self):
+        relatedModules = self.getModuleManager().fetchByCategory([self.category])
 
-        self.lastAccessedWidget = dataTab.widget(0)
+        addAction(relatedModules["CustomizedData"], self.modulesToolbar)
+        addAction(relatedModules["Multicore"], self.modulesToolbar)
+        addAction(relatedModules["CorePhotographLoader"], self.modulesToolbar)
+        addAction(relatedModules["CustomizedCropVolume"], self.modulesToolbar)
 
-        self.segmentationEnv.self().segmentEditorWidget.self().selectParameterNodeByTag(CoreEnv.SETTING_KEY)
+        addAction(relatedModules["MulticoreTransforms"], self.modulesToolbar)
+        self.setupSegmentation()
+        addAction(relatedModules["CoreInpaint"], self.modulesToolbar)
+        addAction(relatedModules["MulticoreExport"], self.modulesToolbar)
 
-        # Start connections
-        self.mainTab.tabBarClicked.connect(self.onMainTabClicked)
+        self.getModuleManager().setEnvironment(("Core", "CoreEnv"))
 
-    def onMainTabClicked(self, index):
-        self.lastAccessedWidget.exit()
-        self.lastAccessedWidget = self.mainTab.widget(index)
-        if type(self.lastAccessedWidget) is qt.QTabWidget:
-            self.lastAccessedWidget = self.lastAccessedWidget.currentWidget()
-        self.lastAccessedWidget.enter()
+    def setupSegmentation(self):
+        modules = self.getModuleManager().fetchByCategory(("Core",), intersectWith="Segmentation")
 
-    def enter(self) -> None:
-        super().enter()
-        if self.lastAccessedWidget is None:
-            return
+        addMenu(
+            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            "Segmentation",
+            [
+                modules["CustomizedSegmentEditor"],
+                modules["Segmenter"],
+                modules["SegmentInspector"],
+                modules["LabelMapEditor"],
+                modules["PoreStats"],
+            ],
+            self.modulesToolbar,
+        )
 
-        self.lastAccessedWidget.enter()
-
-    def exit(self):
-        if self.lastAccessedWidget is None:
-            return
-
-        self.lastAccessedWidget.exit()
+        segmentEditor = slicer.util.getModuleWidget("CustomizedSegmentEditor")
+        segmentEditor.configureEffects()

@@ -5,11 +5,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import qt, ctk, slicer
-from Customizer import Customizer
-from ltrace.slicer import ui
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+import ctk
+import qt
+import slicer
 
+from ltrace.slicer import ui
+from ltrace.slicer_utils import getResourcePath
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 GEOLOG_SCRIPT_ERRORS = {
     -1: "Unknown error occurred. Please check if connection parameters are correct",
@@ -69,6 +71,7 @@ class GeologConnectWidget(qt.QWidget):
             projectUsualPath = "'/home/USER/Paradigm/projects/' for Linux systems"
 
         self.geologInstalation = ctk.ctkDirectoryButton()
+        self.geologInstalation.setMaximumWidth(374)
         self.geologInstalation.caption = "Geolog instalation folder"
         self.geologInstalation.objectName = f"{prefix} Geolog Directory Browser"
         self.geologInstalation.directoryChanged.connect(self.checkSearchButtonState)
@@ -77,6 +80,7 @@ class GeologConnectWidget(qt.QWidget):
         )
 
         self.geologProjectsFolder = ctk.ctkDirectoryButton()
+        self.geologProjectsFolder.setMaximumWidth(374)
         self.geologProjectsFolder.caption = "Geolog project parent folder"
         self.geologProjectsFolder.directoryChanged.connect(self.onProjectPathSelected)
         self.geologProjectsFolder.objectName = f"{prefix} Geolog Projects Directory Browser"
@@ -91,7 +95,7 @@ class GeologConnectWidget(qt.QWidget):
 
         self.refreshButton = qt.QPushButton()
         self.refreshButton.clicked.connect(self.onProjectPathSelected)
-        self.refreshButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
+        self.refreshButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         self.refreshButton.setFixedWidth(30)
         self.refreshButton.setToolTip("Refresh the directory to check for newly created projects")
 

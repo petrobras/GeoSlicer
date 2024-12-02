@@ -12,6 +12,7 @@ import qt
 import slicer.util
 import vtk
 
+from ltrace.slicer import export
 from ltrace.slicer.helpers import (
     extent2size,
     getSourceVolume,
@@ -21,19 +22,13 @@ from ltrace.slicer.helpers import (
     removeTemporaryNodes,
     safe_convert_array,
     getCurrentEnvironment,
+    checkUniqueNames,
 )
 from ltrace.slicer.node_attributes import TableDataOrientation, NodeEnvironment
 from ltrace.slicer_utils import *
 from ltrace.transforms import getRoundedInteger
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-
-
-def checkUniqueNames(nodes):
-    nodeNames = set()
-    for node in nodes:
-        if node.GetName() in nodeNames:
-            node.SetName(slicer.mrmlScene.GenerateUniqueName(node.GetName()))
-        nodeNames.add(node.GetName())
+from ltrace.utils.callback import Callback
 
 
 class Export(LTracePlugin):
@@ -45,8 +40,9 @@ class Export(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Export (Legacy)"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
+        self.parent.hidden = True
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = Export.help()
 
@@ -191,6 +187,7 @@ class ExportWidget(LTracePluginWidget):
         self.formLayout_standard.addRow(" ", None)
 
         self.exportDirectoryButton = ctk.ctkDirectoryButton()
+        self.exportDirectoryButton.setMaximumWidth(374)
         self.exportDirectoryButton.caption = "Export directory"
         self.exportDirectoryButton.directory = self.getExportDirectory()
         self.formLayout_standard.addRow("Export directory:", self.exportDirectoryButton)
@@ -384,11 +381,6 @@ class ExportWidget(LTracePluginWidget):
             slicer.app.processEvents()
 
 
-class Callback(object):
-    def __init__(self, on_update=None):
-        self.on_update = on_update or (lambda *args, **kwargs: None)
-
-
 class ExportLogic(LTracePluginLogic):
     DataType = namedtuple("ExportParameters", ["name", "dimension"])
 
@@ -570,7 +562,7 @@ class ExportLogic(LTracePluginLogic):
             path.mkdir(parents=True, exist_ok=True)
             rawPath = path / ExportLogic.rawPath(node, name, imageType)
             array.astype(imageDtype).tofile(str(rawPath))
-            colorCSV = self.getLabelMapLabelsCSV(node)
+            colorCSV = export.getLabelMapLabelsCSV(node)
             csvPath = rawPath.with_suffix(".csv")
             with open(str(csvPath), mode="w", newline="") as csvFile:
                 writer = csv.writer(csvFile, delimiter="\n")
@@ -597,7 +589,7 @@ class ExportLogic(LTracePluginLogic):
             path.mkdir(parents=True, exist_ok=True)
             rawPath = path / ExportLogic.rawPath(node, name, imageType)
             array.astype(np.uint8).tofile(str(rawPath))
-            colorCSV = self.getLabelMapLabelsCSV(labelMapVolumeNode)
+            colorCSV = export.getLabelMapLabelsCSV(labelMapVolumeNode)
             csvPath = rawPath.with_suffix(".csv")
             with open(str(csvPath), mode="w", newline="") as csvFile:
                 writer = csv.writer(csvFile, delimiter="\n")
@@ -695,19 +687,6 @@ class ExportLogic(LTracePluginLogic):
                 colorCSV.append(colorNode.GetColorName(i) + "," + ",".join(str(e) for e in rgbColor))
 
         return imageArray, colorCSV
-
-    @staticmethod
-    def getLabelMapLabelsCSV(labelMapNode, withColor=False):
-        colorNode = labelMapNode.GetDisplayNode().GetColorNode()
-        labelsCSV = []
-        for i in range(1, colorNode.GetNumberOfColors()):
-            label = f"{colorNode.GetColorName(i)},{i}"
-            if withColor:
-                color = [0] * 4
-                colorNode.GetColor(i, color)
-                label += ",#%02x%02x%02x" % tuple(int(ch * 255) for ch in color[:3])
-            labelsCSV.append(label)
-        return labelsCSV
 
     def exportNodeAsImage(self, nodeName, dataArray, imageFormat, rootPath, nodePath, colorTable=None):
         path = rootPath / nodePath

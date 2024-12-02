@@ -73,7 +73,7 @@ class SegmentEditorMarginEffect(AbstractScriptedSegmentEditorEffect, LTraceSegme
 
   def createCursor(self, widget):
     # Turn off effect-specific cursor for this effect
-    return slicer.util.mainWindow().cursor
+    return slicer.modules.AppContextInstance.mainWindow.cursor
 
   def setMRMLDefaults(self):
     self.scriptedEffect.setParameterDefault("MarginSizePixels", 3)

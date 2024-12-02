@@ -38,6 +38,8 @@ def _readVectorFrom(volumeFile):
     vtkArray = numpy_support.numpy_to_vtk(imageArray.ravel(), deep=True)
     vtkArray.SetNumberOfComponents(3)
 
+    if imageArray.ndim == 3:
+        imageArray = imageArray.reshape(1, *imageArray.shape)
     vtkImage.SetDimensions(imageArray.shape[-2::-1])
     vtkImage.GetPointData().SetScalars(vtkArray)
 

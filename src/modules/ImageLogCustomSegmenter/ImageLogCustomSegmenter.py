@@ -12,6 +12,7 @@ import qt, slicer
 
 from ltrace.slicer_utils import *
 
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.msrfnet_frontend import ComboBox, FormSection
 from ltrace.slicer import helpers
 from ltrace.slicer.ui import hierarchyVolumeInput
@@ -185,7 +186,7 @@ class ImageLogCustomSegmenterWidget(LTracePluginWidget):
             self.progress.close()
             self.progress = None
 
-            if slicer.util.selectedModule() != "ImageLogEnv":
+            if helpers.getCurrentEnvironment() != NodeEnvironment.IMAGE_LOG:
                 if slicer.util.confirmYesNoDisplay(
                     "Your data has already been fetched. Do you want to change to ImageLogs viewer?", "Job Completed"
                 ):
@@ -197,7 +198,7 @@ class ImageLogCustomSegmenterWidget(LTracePluginWidget):
         slicer.app.processEvents()
 
     def centerProgress(self):
-        mainWindow = slicer.util.mainWindow()
+        mainWindow = slicer.modules.AppContextInstance.mainWindow
         screenMainPos = mainWindow.pos
         x = screenMainPos.x() + int((mainWindow.width - self.progress.width) / 2)
         y = screenMainPos.y() + int((mainWindow.height - self.progress.height) / 2)

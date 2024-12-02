@@ -13,7 +13,7 @@ ARROW_TYPE = 3
 
 
 def visualize_vtu(
-    unstructured_grid,
+    filepath,
     cycle,
     scale_factor=10**3,
     pore_scale=2000,
@@ -30,6 +30,10 @@ def visualize_vtu(
         Must be 'w' for wetting phase (usually waater) injection cycles and 'o'
         for non-wetting phase (usually oil) injection cycles
     """
+    reader = vtk.vtkXMLUnstructuredGridReader()
+    reader.SetFileName(filepath)
+    reader.Update()
+    unstructured_grid = reader.GetOutput()
 
     sphere_theta_resolution = 8
     sphere_phi_resolution = 8
@@ -169,18 +173,13 @@ def visualize_vtu(
     return pressure, merger
 
 
-def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005, is_multiscale=False):
+def generate_model_variable_scalar(temp_folder, is_multiscale=False):
     file_names = sorted([i for i in os.listdir(temp_folder) if i[-4:] == ".vtu"])
 
     pressures = []
-    reader = vtk.vtkXMLUnstructuredGridReader()
-
     base_filepath = os.path.join(temp_folder, file_names[0])
-    reader.SetFileName(base_filepath)
-    reader.Update()
-    mesh = reader.GetOutput()
     pressure, pore_mesh = visualize_vtu(
-        mesh, create_model=False, cycle=file_names[0][2].lower(), normalize_radius=is_multiscale
+        base_filepath, create_model=False, cycle=file_names[0][2].lower(), normalize_radius=is_multiscale
     )
     point_data = pore_mesh.GetOutput().GetPointData()
     pressures.append(pressure)
@@ -193,16 +192,13 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005, is_m
 
     for data_point, file_name in enumerate(file_names[1:], start=1):
         filepath = os.path.join(temp_folder, file_name)
-        reader.SetFileName(filepath)
-        reader.Update()
-        mesh = reader.GetOutput()
         pressure, poly_data = visualize_vtu(
-            mesh, cycle=file_name[2].lower(), create_model=False, normalize_radius=is_multiscale
+            filepath, cycle=file_name[2].lower(), create_model=False, normalize_radius=is_multiscale
         )
         saturation = poly_data.GetOutput().GetPointData().GetArray("saturation")
         new_array = vtk.util.numpy_support.vtk_to_numpy(saturation)
 
-        if np.mean(np.abs(new_array - previous_array)) >= min_saturation_delta:
+        if data_point == 1 or np.mean(np.abs(new_array - previous_array)) != 0.0:
             saturation.SetName(f"saturation_{(i:=i+1)}")
             point_data.AddArray(saturation)
             pressures.append(pressure)
@@ -235,7 +231,7 @@ def generate_model_variable_scalar(temp_folder, min_saturation_delta=0.005, is_m
     return extract.GetOutputDataObject(0), saturation_steps
 
 
-def _model_elements_from_grid(
+def _unstructured_grid_to_dict(
     unstructured_grid,
     cycle,
     scale_factor=10**3,
@@ -289,7 +285,6 @@ def _model_elements_from_grid(
     # y_min -= y_length * linear_size_reduction
     # y_max += y_length * linear_size_reduction
 
-    throat_id_list = np.empty(n_cells, dtype=np.int64)
     throat_index_list = np.empty(n_cells, dtype=np.int64)
     neighbors_id_list = np.empty((n_cells, 2), dtype=np.int64)
     throat_radius_list = np.empty(n_cells, dtype=np.float64)
@@ -321,10 +316,8 @@ def _model_elements_from_grid(
         ):
             continue
 
-        throat_id = unstructured_grid.GetCell(i).GetPointIds().GetId(2)
         throat_radius = unstructured_grid.GetCellData().GetArray("RRR").GetComponent(i, 0)
 
-        throat_id_list[throat_count] = throat_id
         throat_index_list[throat_count] = i
         neighbors_id_list[throat_count] = (left_pore_id, right_pore_id)
         throat_radius_list[throat_count] = throat_radius
@@ -418,15 +411,46 @@ def _model_elements_from_grid(
     throats = {}
     for i in range(throat_count):
         throat_index = throat_index_list[i]
-        throat_id = throat_id_list[i]
         left_pore_id, right_pore_id = neighbors_id_list[i]
         throats[throat_index] = {
             "first_conn": pore_mapper[left_pore_id],
             "second_conn": pore_mapper[right_pore_id],
             "radius": throat_radius_list[i],
-            "Sw": unstructured_grid.GetPointData().GetArray("Sw").GetComponent(throat_id, 0),
             "Sw_cell": unstructured_grid.GetCellData().GetArray("Sw").GetComponent(throat_index, 0),
         }
+
+    return pores, throats, arrows, volume_side
+
+
+def _model_elements_from_grid(
+    unstructured_grid,
+    cycle,
+    scale_factor=10**3,
+    pore_scale=2000,
+    throat_scale=20,
+    arrow_scale=0.2,
+    axis="x",
+    normalize_radius=False,
+    **kwargs,
+):
+    """Model elements from unstructured grid
+
+    Args:
+        unstructured_grid (vtkUnstructuredGrid): unstructured_grid
+        cycle (char): "w" for water injection, "o" for oil injection
+        scale_factor (float): Scales entire network
+        pore_scale (float): Scales pore sizes
+        throat_scale (float): Scale throat sizes
+        arrow_scale (float): Scale arrow sizes
+        axis (char): axis
+        normalize_radius (bool): If true, ignore throats and pores scale factors and normalize their size by the grid volume
+
+    Returns:
+        dict: model elements data
+    """
+    pores, throats, arrows, volume_side = _unstructured_grid_to_dict(
+        unstructured_grid, cycle, scale_factor, pore_scale, throat_scale, arrow_scale, axis, normalize_radius
+    )
 
     coordinates = vtk.vtkPoints()
     radii = vtk.vtkFloatArray()

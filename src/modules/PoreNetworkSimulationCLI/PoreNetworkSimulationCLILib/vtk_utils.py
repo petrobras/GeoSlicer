@@ -3,8 +3,6 @@ import os
 
 import numpy as np
 
-IJKTORAS = (1, 1, 1)
-
 
 class GlyphCreator:
     def __init__(self, glyph_filter, length_array, radius):
@@ -30,7 +28,11 @@ class GlyphCreator:
         self.glyph_filter.SetSourceConnection(tube.GetOutputPort())
 
 
-def create_flow_model(project, pore_values, throat_values):
+def create_flow_model(project, pore_values, throat_values, sizes, IJKTORAS=(-1, -1, 1)):
+    if sizes:
+        offset = [10 * sizes[axis] if IJKTORAS[i] < 0 else 0 for i, axis in enumerate(["x", "y", "z"])]
+    else:
+        offset = [0 for i, axis in enumerate(["x", "y", "z"])]
 
     ##### Create pores #####
     coordinates = vtk.vtkPoints()
@@ -39,9 +41,9 @@ def create_flow_model(project, pore_values, throat_values):
     for pore_index in range(len(project.network["pore.all"])):
         coordinates.InsertPoint(
             pore_index,
-            project.network["pore.coords"][pore_index][0] * IJKTORAS[0],
-            project.network["pore.coords"][pore_index][1] * IJKTORAS[1],
-            project.network["pore.coords"][pore_index][2] * IJKTORAS[2],
+            project.network["pore.coords"][pore_index][0] * IJKTORAS[0] + offset[0],
+            project.network["pore.coords"][pore_index][1] * IJKTORAS[1] + offset[1],
+            project.network["pore.coords"][pore_index][2] * IJKTORAS[2] + offset[2],
         )
         pore_value = pore_values[pore_index]
         diameters.InsertTuple1(pore_index, pore_value)
@@ -89,13 +91,19 @@ def create_flow_model(project, pore_values, throat_values):
             continue
 
         nodes_list.append(
-            (throat_index * 2, *[(a[0] / a[1]) for a in zip(project.network["pore.coords"][left_pore_index], IJKTORAS)])
+            (
+                throat_index * 2,
+                *[(a[0] * a[1] + a[2]) for a in zip(project.network["pore.coords"][left_pore_index], IJKTORAS, offset)],
+            )
         )
 
         nodes_list.append(
             (
                 throat_index * 2 + 1,
-                *[(a[0] / a[1]) for a in zip(project.network["pore.coords"][right_pore_index], IJKTORAS)],
+                *[
+                    (a[0] * a[1] + a[2])
+                    for a in zip(project.network["pore.coords"][right_pore_index], IJKTORAS, offset)
+                ],
             )
         )
 

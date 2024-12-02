@@ -40,8 +40,8 @@ class CustomResampleScalarVolume(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "LTrace Resample Scalar Volume"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Resample"
+        self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = CustomResampleScalarVolume.help()

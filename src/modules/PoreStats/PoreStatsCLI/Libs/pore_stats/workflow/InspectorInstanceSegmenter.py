@@ -2,7 +2,7 @@ import os
 import sys
 import nrrd
 from scipy import ndimage as ndi
-from workflow.commons import run_subprocess, write, get_cli_modules_dir, dict_to_arg
+from workflow.commons import get_check_cli_path, run_subprocess, write, dict_to_arg
 
 
 class InspectorInstanceSegmenter:
@@ -24,15 +24,8 @@ class InspectorInstanceSegmenter:
         self.sigma = sigma
         self.min_distance = min_distance
         self.pixel_size = pixel_size
-        self.inspector_cli_path = self._get_cli_path(inspector_cli_path)
+        self.inspector_cli_path = get_check_cli_path(cli_file_prefix="SegmentInspector", cli_path=inspector_cli_path)
         self.no_cli = no_cli
-
-    def _get_cli_path(self, cli_path):
-        if cli_path is None:
-            cli_path = os.path.join(get_cli_modules_dir(), "SegmentInspectorCLI", "SegmentInspectorCLI.py")
-
-        assert os.path.exists(cli_path), f"CLI {cli_path} not found."
-        return cli_path
 
     def _get_params(self):
         if self.algorithm == "islands":
@@ -70,6 +63,7 @@ class InspectorInstanceSegmenter:
         else:
             params = self._get_params()
 
+            print("Getting properties and statistics...")
             run_subprocess(
                 [
                     sys.executable,
@@ -86,7 +80,7 @@ class InspectorInstanceSegmenter:
                     report_file_path,
                     "--returnparameterfile",
                     params_file_path,
-                ]
+                ],
             )
 
             os.remove(params_file_path)

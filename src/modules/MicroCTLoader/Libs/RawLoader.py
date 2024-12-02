@@ -56,16 +56,11 @@ class RawLoaderWidget(qt.QFrame):
         self.endiannessComboBox.addItem("Big endian")
         parametersFormLayout.addRow("Endianness:", self.endiannessComboBox)
 
-        self.imageSkipSliderWidget = ctk.ctkSliderWidget()
-        self.imageSkipSliderWidget.setToolTip(
+        self.imageSkipSpinBox = ui.numberParamInt((0, 10e6), value=0, step=1)
+        self.imageSkipSpinBox.setToolTip(
             "If the file has a header, it can be skipped. Set the number of bytes to skip here."
         )
-        self.imageSkipSliderWidget.setDecimals(0)
-        # self.imageSkipSliderWidget.singleStep = 1
-        # self.imageSkipSliderWidget.minimum = 0
-        self.imageSkipSliderWidget.maximum = 1000000
-        # self.imageSkipSliderWidget.value = 0
-        parametersFormLayout.addRow("Header size:", self.imageSkipSliderWidget)
+        parametersFormLayout.addRow("Header size:", self.imageSkipSpinBox)
 
         self.imageSizeXSliderWidget = ui.numberParamInt((1, 99999), value=100, step=1)
         self.imageSizeXSliderWidget.setToolTip("Set the image dimensions on the X axis.")
@@ -79,11 +74,6 @@ class RawLoaderWidget(qt.QFrame):
         self.imageSizeZSliderWidget.setToolTip("Set the image dimensions on the Z axis.")
         parametersFormLayout.addRow("Z dimension:", self.imageSizeZSliderWidget)
 
-        self.skipSlicesSliderWidget = ui.numberParamInt((0, 99999), value=0, step=1)
-        self.skipSlicesSliderWidget.setToolTip(
-            "Skip this many number of slices before adding the first slice to the ouput volume."
-        )
-
         self.imageSpacingXSliderWidget = ui.numberParam((0.01, 99999.0), value=0.01, step=0.01, decimals=2)
         self.imageSpacingXSliderWidget.setToolTip("Size of a voxel along X axis in microns.")
         parametersFormLayout.addRow("X voxel size (μm):", self.imageSpacingXSliderWidget)
@@ -95,6 +85,10 @@ class RawLoaderWidget(qt.QFrame):
         self.imageSpacingZSliderWidget = ui.numberParam((0.01, 99999.0), value=0.01, step=0.01, decimals=2)
         self.imageSpacingZSliderWidget.setToolTip("Size of a voxel along Z axis in microns.")
         parametersFormLayout.addRow("Z voxel size (μm):", self.imageSpacingZSliderWidget)
+
+        self.realTimeCheckBox = qt.QCheckBox()
+        self.realTimeCheckBox.setToolTip("Show the updated image instantly whenever a parameter changes.")
+        parametersFormLayout.addRow("Real-time update:", self.realTimeCheckBox)
 
         parametersFormLayout.addRow(" ", None)
 
@@ -127,11 +121,10 @@ class RawLoaderWidget(qt.QFrame):
 
         outputFormLayout.addRow(" ", None)
 
-        self.updateButton = ctk.ctkCheckablePushButton()
+        self.updateButton = qt.QPushButton()
         self.updateButton.setText("Load")
         self.updateButton.setMinimumHeight(40)
         self.updateButton.setToolTip("Load view.")
-        self.updateButton.checkState = qt.Qt.Unchecked
         self.updateButton.setEnabled(False)
         formLayout.addRow(self.updateButton)
 
@@ -143,30 +136,29 @@ class RawLoaderWidget(qt.QFrame):
 
         # connections
         self.endiannessComboBox.connect("currentIndexChanged(int)", self.onImageSizeChanged)
-        self.imageSkipSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
-        self.imageSizeXSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
-        self.imageSizeYSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
-        self.imageSizeZSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
-        self.skipSlicesSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
+        self.imageSkipSpinBox.connect("valueChanged(double)", self.onImageSizeChanged)
+        self.imageSizeXSliderWidget.connect("valueChanged(int)", self.onImageSizeChanged)
+        self.imageSizeYSliderWidget.connect("valueChanged(int)", self.onImageSizeChanged)
+        self.imageSizeZSliderWidget.connect("valueChanged(int)", self.onImageSizeChanged)
         self.imageSpacingXSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
         self.imageSpacingYSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
         self.imageSpacingZSliderWidget.connect("valueChanged(double)", self.onImageSizeChanged)
         self.pixelTypeComboBox.connect("currentIndexChanged(int)", self.onImageSizeChanged)
         self.fitToViewsCheckBox.connect("toggled(bool)", self.onFitToViewsCheckboxClicked)
         self.updateButton.connect("clicked()", self.onUpdateButtonClicked)
-        self.updateButton.connect("checkBoxToggled(bool)", self.onUpdateCheckboxClicked)
+        self.realTimeCheckBox.stateChanged.connect(self.onUpdateCheckboxClicked)
 
         self.loadParametersFromSettings()
 
     def exit(self):
         # disable auto-update when exiting the module to prevent accidental
         # updates of other volumes (when the current output volume is deleted)
-        self.updateButton.checkState = qt.Qt.Unchecked
+        self.realTimeCheckBox.setChecked(False)
 
     def onCurrentPathChanged(self, path):
         stem = Path(path).stem
         self.fillInterfaceParametersFromFileName(stem)
-        if self.updateButton.checkState == qt.Qt.Checked:
+        if self.realTimeCheckBox.isChecked():
             self.onUpdate()
             self.showOutputVolume()
 
@@ -232,7 +224,7 @@ class RawLoaderWidget(qt.QFrame):
         if selectedVolumeNode:
             if selectedVolumeNode.IsA(slicer.vtkMRMLSegmentationNode.__name__):
                 # Poking the manual segmentation combobox to update the reference volume
-                segmenterWidget = slicer.modules.MicroCTEnvWidget.segmentationEnv.self().segmentEditorWidget.self()
+                segmenterWidget = slicer.modules.MicroCTEnvInstance.environment.segmentEditor()
                 segmenterWidget.segmentationNodeComboBox.setMRMLScene(None)
                 segmenterWidget.segmentationNodeComboBox.setMRMLScene(slicer.mrmlScene)
 
@@ -248,7 +240,7 @@ class RawLoaderWidget(qt.QFrame):
                 slicer.util.setSliceViewerLayers(background=selectedVolumeNode, fit=fit)
 
     def onImageSizeChanged(self, value):
-        if self.updateButton.checkState == qt.Qt.Checked:
+        if self.realTimeCheckBox.isChecked():
             self.onUpdate()
             self.showOutputVolume()
 
@@ -256,11 +248,10 @@ class RawLoaderWidget(qt.QFrame):
         settings = qt.QSettings()
         settings.setValue("RawImageGuess/pixelType", self.pixelTypeComboBox.currentText)
         settings.setValue("RawImageGuess/endianness", self.endiannessComboBox.currentText)
-        settings.setValue("RawImageGuess/headerSize", self.imageSkipSliderWidget.value)
+        settings.setValue("RawImageGuess/headerSize", self.imageSkipSpinBox.value)
         settings.setValue("RawImageGuess/sizeX", self.imageSizeXSliderWidget.value)
         settings.setValue("RawImageGuess/sizeY", self.imageSizeYSliderWidget.value)
         settings.setValue("RawImageGuess/sizeZ", self.imageSizeZSliderWidget.value)
-        settings.setValue("RawImageGuess/skipSlices", self.skipSlicesSliderWidget.value)
         settings.setValue("RawImageGuess/spacingX", self.imageSpacingXSliderWidget.value)
         settings.setValue("RawImageGuess/spacingY", self.imageSpacingYSliderWidget.value)
         settings.setValue("RawImageGuess/spacingZ", self.imageSpacingZSliderWidget.value)
@@ -270,11 +261,10 @@ class RawLoaderWidget(qt.QFrame):
         settings = qt.QSettings()
         self.pixelTypeComboBox.currentText = settings.value("RawImageGuess/pixelType")
         self.endiannessComboBox.currentText = settings.value("RawImageGuess/endianness")
-        self.imageSkipSliderWidget.value = int(settings.value("RawImageGuess/headerSize", 0))
+        self.imageSkipSpinBox.value = int(settings.value("RawImageGuess/headerSize", 0))
         self.imageSizeXSliderWidget.value = int(settings.value("RawImageGuess/sizeX", 200))
         self.imageSizeYSliderWidget.value = int(settings.value("RawImageGuess/sizeY", 200))
         self.imageSizeZSliderWidget.value = int(settings.value("RawImageGuess/sizeZ", 1))
-        self.skipSlicesSliderWidget.value = int(settings.value("RawImageGuess/skipSlices", 0))
         self.imageSpacingXSliderWidget.value = float(settings.value("RawImageGuess/spacingX", 1.0))
         self.imageSpacingYSliderWidget.value = float(settings.value("RawImageGuess/spacingY", 1.0))
         self.imageSpacingZSliderWidget.value = float(settings.value("RawImageGuess/spacingZ", 1.0))
@@ -284,7 +274,7 @@ class RawLoaderWidget(qt.QFrame):
         self.showOutputVolume()
 
     def onUpdateCheckboxClicked(self, enable):
-        if enable:
+        if enable == qt.Qt.Checked:
             self.onUpdate()
             self.showOutputVolume()
 
@@ -295,9 +285,7 @@ class RawLoaderWidget(qt.QFrame):
 
         with ProgressBarProc() as pb:
             pb.nextStep(0, "Loading image...")
-            if self.updateButton.checkState == qt.Qt.Checked:
-                # If update button is untoggled then make it unchecked, too
-                self.updateButton.checkState = qt.Qt.Unchecked
+            self.realTimeCheckBox.setChecked(False)
             self.onUpdate()
             self.showOutputVolume()
 
@@ -335,8 +323,7 @@ class RawLoaderWidget(qt.QFrame):
                 int(self.imageSizeXSliderWidget.value),
                 int(self.imageSizeYSliderWidget.value),
                 int(self.imageSizeZSliderWidget.value),
-                int(self.imageSkipSliderWidget.value),
-                int(self.skipSlicesSliderWidget.value),
+                int(self.imageSkipSpinBox.value),
                 (float(self.imageSpacingXSliderWidget.value) * ureg.micrometer).m_as(SLICER_LENGTH_UNIT),
                 (float(self.imageSpacingYSliderWidget.value) * ureg.micrometer).m_as(SLICER_LENGTH_UNIT),
                 (float(self.imageSpacingZSliderWidget.value) * ureg.micrometer).m_as(SLICER_LENGTH_UNIT),
@@ -377,7 +364,6 @@ class RawLoaderLogic:
         sizeY,
         sizeZ,
         headerSize,
-        skipSlices,
         spacingX,
         spacingY,
         spacingZ,

@@ -5,13 +5,14 @@ import logging
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import *
 from pathlib import Path
+
 from Plots.Crossplot.CrossplotWidget import CrossplotWidget
 from Plots.BarPlot.BarPlotBuilder import BarPlotBuilder
 from Plots.Windrose.WindrosePlotBuilder import WindrosePlotBuilder
 from Plots.Crossplot.CrossplotPlotBuilder import CrossplotBuilder
 from Plots.HistogramInDepthPlot.HistogramInDepthPlotBuilder import HistogramInDepthPlotBuilder
 from Plots.HistogramPlot.HistogramPlotBuilder import HistogramPlotBuilder
-from DLISImportLib.DLISImportLogic import WELL_NAME_TAG
+from ltrace.constants import DLISImportConst
 import numpy as np
 from ltrace.slicer.helpers import createTemporaryNode, removeTemporaryNodes
 from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
@@ -48,7 +49,7 @@ class Charts(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Charts"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "Charts", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = Charts.help()
@@ -119,7 +120,7 @@ class ChartsWidget(LTracePluginWidget):
         parametersFormLayout.addRow(self.plotButton)
 
         # connections
-        self.plotButton.connect("clicked(bool)", self.onPlotButtonClicked)
+        self.plotButton.clicked.connect(self.onPlotButtonClicked)
         self.plotTypeComboBox.currentTextChanged.connect(self.__onPlotTypeComboBoxChanged)
 
         # Add vertical spacer
@@ -163,7 +164,6 @@ class ChartsWidget(LTracePluginWidget):
         dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
         dialog.setWindowTitle("New plot")
         dialog.setWindowIcon(qt.QIcon(str(self.WINDOWN_ICON)))
-        dialog.setFixedSize(200, 60)
 
         # Question Layout
         formLayout = qt.QFormLayout()
@@ -194,6 +194,7 @@ class ChartsWidget(LTracePluginWidget):
 
         buttonsLayout = qt.QHBoxLayout()
         buttonsLayout.addWidget(okButton)
+        buttonsLayout.addSpacing(10)
         buttonsLayout.addWidget(cancelButton)
         formLayout.addRow(buttonsLayout)
         formLayout.setVerticalSpacing(10)
@@ -235,7 +236,9 @@ class ChartsWidget(LTracePluginWidget):
                     plotWidget.show()
                 except (RuntimeError, Exception) as error:
                     logging.warning(error)
-                    slicer.util.errorDisplay(text=INCOMPATIBLE_MESSAGE, parent=slicer.util.mainWindow())
+                    slicer.util.errorDisplay(
+                        text=INCOMPATIBLE_MESSAGE, parent=slicer.modules.AppContextInstance.mainWindow
+                    )
                     plotWidget.deleteLater()
                     plotWidget = None
                 else:
@@ -289,7 +292,6 @@ class ChartsWidget(LTracePluginWidget):
         self.plot(nodes)
 
     def plot(self, nodes):
-
         failures = [node.GetName() for node in nodes if isVarDescriptor(node)]
 
         if failures:
@@ -297,7 +299,7 @@ class ChartsWidget(LTracePluginWidget):
                 "The nodes below cannot be plotted because its format is not compatible with the chosen chart type.\n"
             )
             message += "\n".join([f" - {name}" for name in failures])
-            slicer.util.errorDisplay(text=message, parent=slicer.util.mainWindow())
+            slicer.util.errorDisplay(text=message, parent=slicer.modules.AppContextInstance.mainWindow)
             return
 
         selectedPlotWidgetLabel = self.plotWidgetsComboBox.currentText
@@ -323,12 +325,13 @@ class ChartsWidget(LTracePluginWidget):
             except (ValueError, RuntimeError) as error:
                 if self.__plotWidgets.get(selectedPlotWidgetLabel) is None and selectPlotWidget is not None:
                     selectPlotWidget.deleteLater()
-                slicer.util.errorDisplay(text=error, parent=slicer.util.mainWindow())
+                logging.warning(error)
+                slicer.util.errorDisplay(text=error, parent=slicer.modules.AppContextInstance.mainWindow)
             except Exception as error:
-                # traceback.print_exc()
                 if self.__plotWidgets.get(selectedPlotWidgetLabel) is None and selectPlotWidget is not None:
                     selectPlotWidget.deleteLater()
-                slicer.util.errorDisplay(text=INCOMPATIBLE_MESSAGE, parent=slicer.util.mainWindow())
+                logging.warning(error)
+                slicer.util.errorDisplay(text=INCOMPATIBLE_MESSAGE, parent=slicer.modules.AppContextInstance.mainWindow)
             else:
                 self.__plotWidgets[selectedPlotWidgetLabel] = selectPlotWidget
                 self.__populatePlotWidgetsComboBox()
@@ -352,7 +355,7 @@ class ChartsWidget(LTracePluginWidget):
         import PythonQt
         import shiboken2
 
-        self.pyqtwidget = PythonQt.Qt.QWidget(slicer.util.mainWindow())
+        self.pyqtwidget = PythonQt.Qt.QWidget(slicer.modules.AppContextInstance.mainWindow)
         self.pysidewidget = shiboken2.wrapInstance(hash(self.pyqtwidget), QWidget)
         return self.pysidewidget
 
@@ -374,7 +377,7 @@ class ChartsWidget(LTracePluginWidget):
         wellsIndexesNodes = []  # tables from wells need to be merged into a multi-colun table per well
         wells = []
         for node in nodes:
-            wellName = node.GetAttribute(WELL_NAME_TAG)
+            wellName = node.GetAttribute(DLISImportConst.WELL_NAME_TAG)
             wellsIndexesNodes.append(
                 {
                     "WellName": wellName,

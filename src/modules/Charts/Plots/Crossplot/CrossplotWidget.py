@@ -12,15 +12,15 @@ from ltrace.slicer.graph_data import NodeGraphData, SCATTER_PLOT_TYPE, TEXT_SYMB
 from ltrace.slicer import helpers, ui
 from ltrace.slicer.equations.equation_base import EquationBase
 from ltrace.slicer.equations.fit_data import FitData
+from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
 from ltrace.slicer.widget.help_button import HelpButton
 from matplotlib import cm as matplotlibcm
 from pint import Unit, UndefinedUnitError, DefinitionSyntaxError
 from pint_pandas import PintArray
-from Plots.BasePlotWidget import BasePlotWidget
-from Plots.Crossplot.data_table_widget import DataTableWidget
-from Plots.Crossplot.data_plot_widget import DataPlotWidget
-from Plots.Crossplot.equations.line import Line
-from Plots.Crossplot.equations.timur_coates import TimurCoates
+from ..BasePlotWidget import BasePlotWidget
+from .data_table_widget import DataTableWidget
+from .equations.line import Line
+from .equations.timur_coates import TimurCoates
 from pyqtgraph.Qt import QtGui, QtCore
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Resources")
@@ -77,8 +77,8 @@ CrossplotColorMaps = [
 class UnitConversionWidget(qt.QWidget):
     unitsChanged = qt.Signal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.__lastUnits = None
         self.__currentUnits = None
 
@@ -199,7 +199,6 @@ class CrossplotWidget(BasePlotWidget):
         parametersLayout = QtGui.QVBoxLayout()
         parametersWidget.setLayout(parametersLayout)
         plot_layout = QtGui.QVBoxLayout()
-
         # Data table widget
         self.__tableWidget = DataTableWidget()
         self.__tableWidget.signal_style_changed.connect(self.__updatePlot)
@@ -207,14 +206,12 @@ class CrossplotWidget(BasePlotWidget):
         self.__tableWidget.signal_all_style_changed.connect(self.__updateAllDataStyles)
         self.__tableWidget.signal_all_visible_changed.connect(self.__updateAllDataVisibility)
         parametersLayout.addWidget(self.__tableWidget)
-
         # Plot widget
         self.dataPlotWidget = DataPlotWidget()
         self.dataPlotWidget.toggleLegendSignal.connect(self.__toggleLegend)
         plot_layout.addWidget(self.dataPlotWidget.widget)
 
         plot_layout.addStretch()
-
         # X axis
         # Histogram options
         self.__xAxisHistogramEnableCheckBox = QtGui.QCheckBox()
@@ -246,9 +243,12 @@ class CrossplotWidget(BasePlotWidget):
         xAxisParameterLayout = QtGui.QFormLayout()
         xAxisParameterLayout.addRow("Parameter", self.__xAxisComboBox)
         xAxisParameterLayout.setHorizontalSpacing(8)
-
         # Layout
         self.__xAxisGridLayout = QtGui.QGridLayout()
+        self.__xAxisGroupBox = QtGui.QGroupBox("X axis")
+        self.__xAxisGroupBox.setLayout(self.__xAxisGridLayout)
+        parametersLayout.addWidget(self.__xAxisGroupBox)
+
         self.__xAxisGridLayout.setHorizontalSpacing(5)
         self.__xAxisGridLayout.addLayout(xAxisParameterLayout, 0, 0, 1, -1)
         self.__xAxisGridLayout.addWidget(xHistogramCheckBoxLabel, 1, 0, 1, 1)
@@ -261,12 +261,7 @@ class CrossplotWidget(BasePlotWidget):
         self.__xAxisGridLayout.addWidget(
             shiboken2.wrapInstance(hash(self.__xUnitConversion), QtGui.QWidget), 2, 0, 1, 4
         )
-
         # Groupbox
-        self.__xAxisGroupBox = QtGui.QGroupBox("X axis")
-        self.__xAxisGroupBox.setLayout(self.__xAxisGridLayout)
-
-        parametersLayout.addWidget(self.__xAxisGroupBox)
 
         # Y axis
         # Histogram options
@@ -302,6 +297,10 @@ class CrossplotWidget(BasePlotWidget):
 
         # Layout
         self.__yAxisGridLayout = QtGui.QGridLayout()
+        self.__yAxisGroupBox = QtGui.QGroupBox("Y axis")
+        self.__yAxisGroupBox.setLayout(self.__yAxisGridLayout)
+        parametersLayout.addWidget(self.__yAxisGroupBox)
+
         self.__yAxisGridLayout.setHorizontalSpacing(5)
         self.__yAxisGridLayout.addLayout(yAxisParameterLayout, 0, 0, 1, -1)
         self.__yAxisGridLayout.addWidget(yHistogramCheckBoxLabel, 1, 0, 1, 1)
@@ -314,12 +313,7 @@ class CrossplotWidget(BasePlotWidget):
         self.__yAxisGridLayout.addWidget(
             shiboken2.wrapInstance(hash(self.__yUnitConversion), QtGui.QWidget), 2, 0, 1, 4
         )
-
         # Groupbox
-        self.__yAxisGroupBox = QtGui.QGroupBox("Y axis")
-        self.__yAxisGroupBox.setLayout(self.__yAxisGridLayout)
-
-        parametersLayout.addWidget(self.__yAxisGroupBox)
 
         # Z axis
         self.__zAxisComboBox = QtGui.QComboBox()
@@ -334,52 +328,45 @@ class CrossplotWidget(BasePlotWidget):
         self.__colorMapComboBox.setIconSize(QtCore.QSize(80, 20))
         self.__populateColorMapComboBox()
 
-        self.__zUnitConversion = UnitConversionWidget()
-
         # Manual/Auto range widgets layout
-        range_layout = QtGui.QHBoxLayout()
-        range_layout.setSpacing(5)
-        auto_range_layout = QtGui.QHBoxLayout()
-        auto_range_layout.setSpacing(5)
-        auto_range_layout.addWidget(QtGui.QLabel("Auto Range"))
-        auto_range_layout.addWidget(self.__autoRangeCheckBox)
-        range_layout.addLayout(auto_range_layout)
-        minimum_layout = QtGui.QHBoxLayout()
-        minimum_layout.setSpacing(5)
-        minimum_layout.addWidget(QtGui.QLabel("Min"))
-        minimum_layout.addWidget(self.__ZMinValueRangeDoubleSpinBox)
-        range_layout.addLayout(minimum_layout)
-        maximum_layout = QtGui.QHBoxLayout()
-        maximum_layout.setSpacing(5)
-        maximum_layout.addWidget(QtGui.QLabel("Max"))
-        maximum_layout.addWidget(self.__ZMaxValueRangeDoubleSpinBox)
-        range_layout.addLayout(maximum_layout)
+        rangeLayout = QtGui.QHBoxLayout()
+        rangeLayout.setSpacing(5)
+        autoRangeLayout = QtGui.QHBoxLayout()
+        autoRangeLayout.setSpacing(5)
+        autoRangeLayout.addWidget(QtGui.QLabel("Auto Range"))
+        autoRangeLayout.addWidget(self.__autoRangeCheckBox)
+        rangeLayout.addLayout(autoRangeLayout)
+        minimumLayout = QtGui.QHBoxLayout()
+        minimumLayout.setSpacing(5)
+        minimumLayout.addWidget(QtGui.QLabel("Min"))
+        minimumLayout.addWidget(self.__ZMinValueRangeDoubleSpinBox)
+        rangeLayout.addLayout(minimumLayout)
+        maximumLayout = QtGui.QHBoxLayout()
+        maximumLayout.setSpacing(5)
+        maximumLayout.addWidget(QtGui.QLabel("Max"))
+        maximumLayout.addWidget(self.__ZMaxValueRangeDoubleSpinBox)
+        rangeLayout.addLayout(maximumLayout)
 
+        self.__zUnitConversion = UnitConversionWidget()
         formLayout = QtGui.QFormLayout()
+        zStyleGroupBox = QtGui.QGroupBox("Z axis")
+        zStyleGroupBox.setLayout(formLayout)
+        parametersLayout.addWidget(zStyleGroupBox)
         formLayout.addRow("Parameter", self.__zAxisComboBox)
-        formLayout.addRow(range_layout)
+        formLayout.addRow(rangeLayout)
         formLayout.addRow("Color map", self.__colorMapComboBox)
         formLayout.addRow(shiboken2.wrapInstance(hash(self.__zUnitConversion), QtGui.QWidget))
 
-        zStyleGroupBox = QtGui.QGroupBox("Z axis")
-        zStyleGroupBox.setLayout(formLayout)
-
-        parametersLayout.addWidget(zStyleGroupBox)
-
         # Settings
         self.__settingsGroupBox = QtGui.QGroupBox("Settings")
-
         self.__themeComboBox = QtGui.QComboBox()
         for themeName in self.dataPlotWidget.themes:
             self.__themeComboBox.addItem(themeName)
-
         self.__embeddedLegendVisibilityCheckBox = QtGui.QCheckBox()
         self.__embeddedLegendVisibilityCheckBox.setChecked(self.dataPlotWidget.embeddedLegendVisibility)
         self.__embeddedLegendVisibilityCheckBox.stateChanged.connect(self.__onEmbeddedLegendVisibilityChange)
-
         settingsFormLayout = QtGui.QFormLayout()
         settingsFormLayout.setHorizontalSpacing(8)
-
         settingsFormLayout.addRow("Theme", self.__themeComboBox)
         settingsFormLayout.addRow("Show legend", self.__embeddedLegendVisibilityCheckBox)
         self.__settingsGroupBox.setLayout(settingsFormLayout)
@@ -444,8 +431,12 @@ class CrossplotWidget(BasePlotWidget):
     def graphDataList(self):
         return list(self.__graphDataList)
 
-    def __createFitTab(self):
-        ## New fit widget
+    def __createFitTab(self) -> qt.QFrame:
+        """Creates a tab for the curve fitting functionality.
+
+        Returns:
+            qt.QFrame: a QFrame containing the layout of the tab.
+        """
         self.__fitDataInputComboBox = qt.QComboBox()
 
         self.__fitEquationComboBox = qt.QComboBox()
@@ -573,6 +564,8 @@ class CrossplotWidget(BasePlotWidget):
             else:
                 importedVolume.SetAttribute("table_type", "equation")
                 self.appendData(importedVolume)
+
+        fileDialog.delete()
 
     def __onExportClicked(self, functionCurveName):
         fitData = self.__getFitData(functionCurveName)

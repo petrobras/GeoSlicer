@@ -28,7 +28,7 @@ class SegmentationKmeans(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Segmentation Kmeans"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = SegmentationKmeans.help()
 

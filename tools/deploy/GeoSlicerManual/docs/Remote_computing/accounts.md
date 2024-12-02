@@ -1,0 +1,1 @@
+As contas cadastradas são gerenciadas

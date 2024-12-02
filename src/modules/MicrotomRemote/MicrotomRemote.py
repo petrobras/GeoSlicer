@@ -57,8 +57,9 @@ class SaturationCorrectionWidget(ctk.ctkCollapsibleButton):
         layout = qt.QFormLayout(self)
         self._correction = None
 
-        self._por_map_table = ui.hierarchyVolumeInput(onChange=self.onSelect, hasNone=True)
-        self._por_map_table.setNodeTypes(["vtkMRMLTableNode"])
+        self._por_map_table = ui.hierarchyVolumeInput(
+            onChange=self.onSelect, hasNone=True, nodeTypes=["vtkMRMLTableNode"]
+        )
         self._por_map_table.addNodeAttributeIncludeFilter("NodeEnvironment", "PorosityMap")
         self._total_micro_porosity_label = qt.QLabel()
         self._total_porosity_label = qt.QLabel()
@@ -434,8 +435,8 @@ class MicrotomRemote(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Microtom Remote"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "Microtom"
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = ""
@@ -496,7 +497,10 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         def resetAll():
             for i in range(self.configWidget.count):
-                self.configWidget.widget(i).reset()
+                # PNM Report does not share the base class, so we need to check if the method exists
+                widget = self.configWidget.widget(i)
+                if hasattr(widget, "reset") and callable(widget.reset):
+                    self.configWidget.widget(i).reset()
 
         self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME].segmentListUpdated.connect(resetAll)
 
@@ -639,10 +643,18 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.psdConfigWidget = DistributionsForm(hasSatCorrection=True, hasResolutionConfig=True)
         self.hpsdConfigWidget = DistributionsForm(hasSatCorrection=True, hasResolutionConfig=False)
         self.distribWidget = DirectedDistributionForm()
-        self.pnmReportWidget = ReportForm()
-        self.pnmReportWidget.objectName = "PNMReportForm"
 
-        self.configWidget.addWidget(self.pnmReportWidget)
+        if ReportForm is not None:
+            self.pnmReportWidget = ReportForm()
+            self.pnmReportWidget.objectName = "PNMReportForm"
+            self.configWidget.addWidget(self.pnmReportWidget)
+        else:
+            warningPlaceHolder = qt.QWidget()
+            warningPlaceHolderLayout = qt.QVBoxLayout(warningPlaceHolder)
+            warningPlaceHolderLayout.addWidget(qt.QLabel("Report module not available"))
+            warningPlaceHolderLayout.addStretch(1)
+            self.configWidget.addWidget(warningPlaceHolder)
+
         self.configWidget.addWidget(self.psdConfigWidget)
         self.configWidget.addWidget(self.hpsdConfigWidget)
         self.configWidget.addWidget(self.distribWidget)
@@ -652,7 +664,9 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.configWidget.addWidget(KrelForm())
 
         for i in range(self.configWidget.count):
-            self.configWidget.widget(i).setup()
+            widget = self.configWidget.widget(i)
+            if hasattr(widget, "setup") and callable(widget.setup):
+                self.configWidget.widget(i).setup()
 
         self.ioFileExecDataSetButton = self._setupExecEnv()
         self.ioFileExecDataSetButton.setToolTip("Select how the algorithm will run, locally or remotely")
@@ -832,6 +846,15 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             folderLineEdit.currentPathChanged.emit(self.server.report_folder)
             advancedFormLayout.addRow("Report Folder:", folderLineEdit)
 
+            hbox = qt.QHBoxLayout()
+            updateScripts = qt.QCheckBox("Update scripts in report folder")
+            updateScripts.stateChanged.connect(self.server.onUpdateScriptsChecked)
+            updateScripts.setToolTip(
+                "This checkbox will replace existing Streamlit codes in the report folder with the versions from the current GeoSlicer release."
+            )
+            hbox.addWidget(updateScripts)
+            advancedFormLayout.addRow(hbox)
+
             ApplicationObservables().applicationLoadFinished.connect(self.server.retrieveActiveStreamlit)
         else:
             self.server = None
@@ -870,7 +893,9 @@ class MicrotomRemoteWidget(LTracePluginWidget):
     def onLocationToggled(self, option, toggle):
         if toggle:
             self.chosenExecutionMode = option
-            self.configWidget.currentWidget().showOnly(option)
+            widget = self.configWidget.currentWidget()
+            if hasattr(widget, "showOnly") and callable(widget.showOnly):
+                widget.showOnly(option)
 
             self.warningLabel.visible = self.chosenExecutionMode == "Remote"
 
@@ -1183,6 +1208,9 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             if self.chosenExecutionMode == "Remote":
                 if uid:
                     self.showJobs()
+                self.restartApplyButton()
+            elif not uid:
+                # if interrupted locally (uid is None), we can restart the button
                 self.restartApplyButton()
 
     def restartApplyButton(self):
@@ -1640,11 +1668,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
 
             else:
                 if not labels:
-                    slicer.util.errorDisplay(
-                        "Please, select at least one segment by checking the segment box on the segment list. "
-                        "The selected segment will be considered as the pore space."
-                    )
-                    return
+                    raise ValueError("No segment selected")
 
                 nodeName = segmentationNode.GetName()
                 inputVolumeNode, _ = helpers.createLabelmapInput(
@@ -1673,12 +1697,19 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 uid = simulator
 
             return uid
+        except ValueError as ve:
+            slicer.util.errorDisplay(
+                "Please, select at least one segment by checking the segment box on the segment list. "
+                "The selected segment will be considered as the pore space."
+            )
         except Exception as e:
             import traceback
 
             traceback.print_exc()
             helpers.removeTemporaryNodes(environment=tag)
             slicer.util.errorDisplay("Sorry, something went wrong...check out the logs")
+
+        return None
 
     def sequencePreRun(self, simulator, sequenceNode, labels, outputPrefix, tag, output_path, params):
         sequenceName = slicer.mrmlScene.GenerateUniqueName(f"{outputPrefix}_{simulator.upper()}_Output_Proxy")

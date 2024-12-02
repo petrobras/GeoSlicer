@@ -1,5 +1,5 @@
 # Note: graphical related libraries must be disabled
-setuptools==59.8.0
+setuptools==60.2.0
 numpy==1.23.1
 dask-image==0.4.0
 dask[complete]==2.30.0

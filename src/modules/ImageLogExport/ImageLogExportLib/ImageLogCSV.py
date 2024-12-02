@@ -3,10 +3,10 @@ import re
 import numpy as np
 import pandas as pd
 import slicer
-
+import ltrace.slicer_utils as slicer_utils
 from pathlib import Path
 from typing import Iterator, Union
-from Export import ExportLogic
+from ltrace.slicer import export
 
 
 def _units(node: slicer.vtkMRMLNode) -> str:
@@ -76,7 +76,7 @@ def exportCSV(node: slicer.vtkMRMLNode, directory: Path, isTechlog: bool = False
         )
 
         # Write color table
-        colorTable = ExportLogic().getLabelMapLabelsCSV(labelMap)
+        colorTable = export.getLabelMapLabelsCSV(labelMap)
         colorFilename = directory / f"{node.GetName()} Colors.csv"
         with open(colorFilename, mode="w", newline="") as csvFile:
             writer = csv.writer(csvFile, delimiter="\n")

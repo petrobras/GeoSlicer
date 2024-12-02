@@ -1,8 +1,9 @@
 import slicer
 import qt
-from Customizer import Customizer
+
 from ltrace.slicer import helpers
 from ltrace.slicer.node_observer import NodeObserver
+from ltrace.slicer_utils import getResourcePath
 from ltrace.utils.Markup import MarkupLine
 
 
@@ -32,7 +33,8 @@ class PixelSizeEditor(qt.QWidget):
         self.scaleSizePxLineEdit.setToolTip("Scale size in pixels")
         self.scaleSizePxLineEdit.textEdited.connect(lambda: self.__on_size_field_edited(self.FIELD_SCALE_SIZE_PX))
         self.scaleSizePxRuler = qt.QPushButton()
-        self.scaleSizePxRuler.setIcon(qt.QIcon(str(Customizer.ANNOTATION_DISTANCE_ICON_PATH)))
+
+        self.scaleSizePxRuler.setIcon(qt.QIcon(getResourcePath("Icons") / "AnnotationDistance.png"))
         self.scaleSizePxRuler.connect("clicked()", self.onScaleSizeRulerButtonClicked)
         self.scaleSizePxFrame = qt.QFrame()
         scaleSizePxLayout = qt.QHBoxLayout(self.scaleSizePxFrame)
@@ -65,11 +67,14 @@ class PixelSizeEditor(qt.QWidget):
         self.__set_retain_size_when_hidden(self.loadFormLayout.labelForField(self.imageSpacingLineEdit), True)
 
     def onScaleSizeRulerButtonClicked(self):
-        def finish(caller_markup, point_index=None):
+        def finish_callback(caller_markup, point_index=None):
             self.scaleSizePxLineEdit.text = round(caller_markup.get_line_length_in_pixels())
             self.__on_size_field_edited(self.FIELD_SCALE_SIZE_PX)
 
-        self.markup = MarkupLine(finish)
+        def finish_criterion(caller_markup, point_index=None):
+            return caller_markup.get_number_of_selected_points() >= 2
+
+        self.markup = MarkupLine(finish_callback=finish_callback, finish_criterion=finish_criterion)
         self.markup.start_picking()
 
     def reset(self):

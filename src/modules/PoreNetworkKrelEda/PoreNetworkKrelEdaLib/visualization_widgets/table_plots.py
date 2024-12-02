@@ -33,7 +33,7 @@ class SecondOrderInteractions(PlotBase):
             if i.count(":") < 1:
                 anova_p = anova_p.drop(i)
 
-        anova_p.sort_values(inplace=True)
+        anova_p = anova_p.sort_values()
 
         alpha = 0.05
         gcolor = anova_p.copy()
@@ -85,7 +85,7 @@ class ThirdOrderInteractions(PlotBase):
             if i.count(":") < 2:
                 anova_p = anova_p.drop(i)
 
-        anova_p.sort_values(inplace=True)
+        anova_p = anova_p.sort_values()
 
         alpha = 0.05
         gcolor = anova_p.copy()

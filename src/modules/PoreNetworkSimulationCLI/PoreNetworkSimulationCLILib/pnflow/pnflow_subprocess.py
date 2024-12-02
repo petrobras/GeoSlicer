@@ -1,15 +1,22 @@
-import ctypes
+import io
+import json
 import os
+from pathlib import Path
 import queue
+import re
 import threading
-from multiprocessing import Process, Manager
 from string import Template
-import time
+
+import numpy as np
+import pandas as pd
 
 from pnflow import pnflow
+from PoreNetworkSimulationCLILib.two_phase.two_phase_subprocess import TwoPhaseSubprocess
+
 
 PNFLOW_INPUT = Template(
     """TITLE  $output_name;  // base name for the output files
+RAND_SEED $seed;
 
 writeStatistics true;
 
@@ -60,11 +67,12 @@ OUTPUT T $enable_vtu_output;
 """
 )
 
+IGNORE_RI = True
 
-class PnFlowSubprocess:
+
+class PnflowSubprocess(TwoPhaseSubprocess):
     def __init__(
         self,
-        manager: Manager,
         params: dict,
         cwd: str,
         link1: str,
@@ -74,45 +82,53 @@ class PnFlowSubprocess:
         id: int,
         write_debug_files: bool,
     ):
-        self.manager = manager
-        self.params = self._process_parameters(params)
-        self.cwd = cwd
-        self.link1 = link1
-        self.link2 = link2
-        self.node1 = node1
-        self.node2 = node2
-        self.process = None
-        self.id = id
-        self.write_debug_files = write_debug_files
-
-        self.input_string = PNFLOW_INPUT.substitute(
-            output_name="Output", enable_vtu_output=self.params["create_sequence"], **self.params
+        super().__init__(
+            params,
+            cwd,
+            link1,
+            link2,
+            node1,
+            node2,
+            id,
+            write_debug_files,
         )
-        self.start_time = 0
-        self.run_count = 0
 
-    def start(self):
-        self.result = self.manager.Value(ctypes.c_char_p, "")
-        self.process = Process(
-            target=self.pnflow_caller,
-            args=(
-                self.result,
-                self.cwd,
-                self.input_string,
-                self.link1,
-                self.link2,
-                self.node1,
-                self.node2,
-                self.write_debug_files,
-            ),
-        )
-        self.start_time = time.time()
-        self.run_count += 1
-        self.process.start()
+    def get_cycle_result(self):
+        cycle_results = {"cycle": [], "Sw": [], "Pc": [], "Krw": [], "Kro": [], "RI": []}
+
+        with open(str(Path(self.cwd) / "result.txt"), "r") as file:
+            for line in file:
+                if "cycle" in line:
+                    cycle_n = re.search(r"cycle(\d+):", line).group(1)
+                    for sub_line in file:
+                        if sub_line.strip() == "":
+                            break
+                        if "//" in sub_line:
+                            continue
+                        values = [float(i.strip()) for i in sub_line.strip().split("\t")]
+                        if len(values) < 5:
+                            continue
+                        if values[2] < 0 or values[2] > 1 or values[3] < 0 or values[3] > 1:
+                            continue
+                        cycle_results["cycle"].append(int(cycle_n))
+                        cycle_results["Sw"].append(values[0])
+                        cycle_results["Pc"].append(values[1])
+                        cycle_results["Krw"].append(values[2])
+                        cycle_results["Kro"].append(values[3])
+                        cycle_results["RI"].append(values[4])
+
+        if IGNORE_RI:
+            del cycle_results["RI"]
+
+        return cycle_results
 
     @staticmethod
-    def pnflow_caller(result, cwd, input_string, link1, link2, node1, node2, write_debug_files=False):
+    def caller(cwd, params, link1, link2, node1, node2, write_debug_files=False):
+        input_string = PNFLOW_INPUT.substitute(
+            output_name="Output", enable_vtu_output=params["create_sequence"], **params
+        )
         os.chdir(cwd)
+
         if write_debug_files:
             input_file = open("input.txt", "w")
             link1_file = open("Image_link1.dat", "w")
@@ -134,10 +150,16 @@ class PnFlowSubprocess:
         threading.stack_size(0x800000)
         result_queue = queue.Queue()
         thread = threading.Thread(
-            target=PnFlowSubprocess.pnflow_thread, args=(input_string, link1, link2, node1, node2, result_queue)
+            target=PnflowSubprocess.pnflow_thread, args=(input_string, link1, link2, node1, node2, result_queue)
         )
         thread.start()
-        result.value = result_queue.get()
+        result_string = result_queue.get()
+
+        if params["create_ca_distributions"]:
+            PnflowSubprocess.__create_cas_json()
+
+        with open("result.txt", "w") as result_file:
+            result_file.write(result_string)
 
     @staticmethod
     def pnflow_thread(input_string, link1, link2, node1, node2, result_queue):
@@ -151,33 +173,21 @@ class PnFlowSubprocess:
         params_copy["oil_viscosity"] = params_copy["oil_viscosity"] / 1000
         return params_copy
 
-    def terminate(self):
-        self.process.terminate()
-        self.process.join()
-        self.start_time = 0
-
-    def get_result(self):
-        return self.result.value
-
-    def is_finished(self):
-        if not self.process.is_alive():
-            return True
-        return False
-
-    def uptime(self) -> float:
-        """
-        Return duration of the process since started in seconds
-        """
-        if self.start_time != 0:
-            return time.time() - self.start_time
-        else:
-            return -1
-
-    def get_run_count(self) -> int:
-        """
-        Get how many times this subprocess was started.
-        """
-        return self.run_count
-
-    def get_id(self) -> int:
-        return self.id
+    @staticmethod
+    def __create_cas_json():
+        ca_distribution = {
+            "drainage": {
+                "advancing_ca": np.degrees(list(pd.read_csv("initial_adv_con_angles.csv")["Contact angle"])).tolist(),
+                "receding_ca": np.degrees(list(pd.read_csv("initial_rec_con_angles.csv")["Contact angle"])).tolist(),
+            },
+            "imbibition": {
+                "advancing_ca": np.degrees(
+                    list(pd.read_csv("equilibrium_adv_con_angles.csv")["Contact angle"])
+                ).tolist(),
+                "receding_ca": np.degrees(
+                    list(pd.read_csv("equilibrium_rec_con_angles.csv")["Contact angle"])
+                ).tolist(),
+            },
+        }
+        with open("ca_distribution.json", "w") as fp:
+            json.dump(ca_distribution, fp)

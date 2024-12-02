@@ -18,7 +18,7 @@ class SubjectHierarchyTreeViewFilter(qt.QObject):
         return False
 
     def viewPortRectWithOffset(self):
-        mw = slicer.util.mainWindow()
+        mw = slicer.modules.AppContextInstance.mainWindow
         vp = self.dataWidget.logic.layoutManagerViewPort
         d = mw.findChild(qt.QDockWidget, "PanelDockWidget")
         if d.isVisible() and not d.isFloating():
@@ -34,7 +34,7 @@ class SubjectHierarchyTreeViewFilter(qt.QObject):
 
     def widgetRectsWithOffset(self):
         rects = []
-        mw = slicer.util.mainWindow()
+        mw = slicer.modules.AppContextInstance.mainWindow
         d = mw.findChild(qt.QDockWidget, "PanelDockWidget")
         for w in self.dataWidget.logic.viewWidgets:
             if d.isVisible() and not d.isFloating():

@@ -1,15 +1,14 @@
 import os
 from pathlib import Path
 
+import ImageLogInstanceSegmenter
 import ctk
 import cv2
 import numpy as np
 import qt
 import slicer
 import vtk
-from Customizer import Customizer
 
-import ImageLogInstanceSegmenter
 from InstanceSegmenterEditorLib.widget.FilterableTableWidgets import (
     GenericTableWidget,
 )
@@ -23,7 +22,7 @@ from ltrace.algorithms.stops import fit_line
 from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.slicer_utils import dataFrameToTableNode
 from ltrace.transforms import transformPoints
 
@@ -36,8 +35,8 @@ class InstanceSegmenterEditor(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Instance Segmenter Editor"
-        self.parent.categories = ["Segmentation"]
+        self.parent.title = "Instance Segmenter Editor"
+        self.parent.categories = ["Segmentation", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = InstanceSegmenterEditor.help()
@@ -104,25 +103,25 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
         editFormLayout = qt.QFormLayout(self.editCollapsibleButton)
 
         self.addSegmentButton = qt.QPushButton("Add")
-        self.addSegmentButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         self.addSegmentButton.clicked.connect(self.onAddSegmentButtonClicked)
 
         self.editSegmentButton = qt.QPushButton("Edit")
-        self.editSegmentButton.setIcon(qt.QIcon(str(Customizer.EDIT_ICON_PATH)))
+        self.editSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Edit.png"))
         self.editSegmentButton.clicked.connect(self.onEditSegmentButtonClicked)
 
         self.applySegmentButton = qt.QPushButton("Apply")
-        self.applySegmentButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         self.applySegmentButton.setEnabled(False)
         self.applySegmentButton.clicked.connect(self.onApplySegmentButtonClicked)
 
         self.cancelSegmentButton = qt.QPushButton("Cancel")
-        self.cancelSegmentButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         self.cancelSegmentButton.setEnabled(False)
         self.cancelSegmentButton.clicked.connect(self.onCancelSegmentButtonClicked)
 
         self.declineSegmentButton = qt.QPushButton("Decline")
-        self.declineSegmentButton.setIcon(qt.QIcon(str(Customizer.DELETE_ICON_PATH)))
+        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Delete.png"))
         self.declineSegmentButton.clicked.connect(self.onDeclineSegmentButtonClicked)
 
         editButtonsHBoxLayout = qt.QHBoxLayout()
@@ -441,7 +440,9 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
         updatedLabelMapNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
         updatedDataFrame = dataFrame
-        updatedDataFrame.drop(updatedDataFrame[updatedDataFrame.label.isin(self.declinedLabels)].index, inplace=True)
+        updatedDataFrame = updatedDataFrame.drop(
+            updatedDataFrame[updatedDataFrame.label.isin(self.declinedLabels)].index
+        )
         updatedTableNode = dataFrameToTableNode(updatedDataFrame)
         updatedTableNode.SetName(self.tableNode.GetName() + "_" + outputSuffix)
         updatedTableNode.SetAttribute("InstanceSegmenter", self.tableNode.GetAttribute("InstanceSegmenter"))
@@ -592,7 +593,7 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
         array[k, 0, i] = subArray
 
     def setMouseInteractionToViewTransform(self):
-        mouseModeToolBar = slicer.util.findChild(slicer.util.mainWindow(), "MouseModeToolBar")
+        mouseModeToolBar = slicer.util.findChild(slicer.modules.AppContextInstance.mainWindow, "MouseModeToolBar")
         mouseModeToolBar.interactionNode().SetCurrentInteractionMode(slicer.vtkMRMLInteractionNode.ViewTransform)
 
     def onMouseButtonClickedOrHeld(self, *args):

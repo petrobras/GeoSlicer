@@ -137,7 +137,7 @@ class MicroCTCupsAnalysis(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Micro CT Cups Analysis (advanced)"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MicroCTCupsAnalysis.help()
 

@@ -1,14 +1,7 @@
-import ctk
 import os
-import qt
-import slicer
-
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 
-from ReportLib.ReportLogic import ReportLogic
-from ReportLib.ReportForm import ReportForm
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
     from ReportLib.StreamlitServer import StreamlitServer
@@ -29,7 +22,7 @@ class PNMReport(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "PNMReport"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = PNMReport.help()
 

@@ -1,3 +1,5 @@
+import logging
+
 import slicer
 
 from ImageLogDataLib.viewwidgets.graphic_view_widget import GraphicViewWidget
@@ -111,7 +113,7 @@ class ImageLogView:
         if node is not None:
             self.viewData.secondaryTableNodeId = node.GetID()
             table_type = self.__get_table_type(node)
-            if table_type == self.TABLE_TYPE_IMAGE_LOG:
+            if table_type in [self.TABLE_TYPE_IMAGE_LOG, self.TABLE_TYPE_POROSITY_PER_REALIZATION]:
                 columns = self.__getParametersForGraphicViewData(node)
             elif table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH:
                 columns = self.__getParametersHistogramInDepth(node)
@@ -138,26 +140,24 @@ class ImageLogView:
             sliceViewData.primaryNodeId = node.GetID()
             return sliceViewData, None
         elif type(node) is slicer.vtkMRMLTableNode:
-            table_type = self.__get_table_type(node)
-            graphicViewData = GraphicViewData()
-            graphicViewData.primaryNodeId = node.GetID()
-            if table_type == self.TABLE_TYPE_IMAGE_LOG:
-                columns = self.__getParametersForGraphicViewData(node)
-                graphicViewData.primaryTableNodeColumn = columns[0]
-                graphicViewData.primaryTableNodeColumnList = columns
-                return graphicViewData, table_type
-            elif table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH:
-                columns = self.__getParametersHistogramInDepth(node)
-                graphicViewData.primaryTableNodeColumn = columns[0]
-                graphicViewData.primaryTableNodeColumnList = columns
-                graphicViewData.primaryTableHistogram = True
-                graphicViewData.primaryTableScaleHistogram = 1.0
-                return graphicViewData, table_type
-            elif table_type == self.TABLE_TYPE_POROSITY_PER_REALIZATION:
-                columns = self.__getParametersForGraphicViewData(node)
-                graphicViewData.primaryTableNodeColumn = columns[-1]
-                graphicViewData.primaryTableNodeColumnList = columns
-                return graphicViewData, table_type
+            if node.GetTable().GetColumn(0) is not None:
+                table_type = self.__get_table_type(node)
+                graphicViewData = GraphicViewData()
+                graphicViewData.primaryNodeId = node.GetID()
+                if table_type in [self.TABLE_TYPE_IMAGE_LOG, self.TABLE_TYPE_POROSITY_PER_REALIZATION]:
+                    columns = self.__getParametersForGraphicViewData(node)
+                    graphicViewData.primaryTableNodeColumn = columns[0]
+                    graphicViewData.primaryTableNodeColumnList = columns
+                    return graphicViewData, table_type
+                elif table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH:
+                    columns = self.__getParametersHistogramInDepth(node)
+                    graphicViewData.primaryTableNodeColumn = columns[0]
+                    graphicViewData.primaryTableNodeColumnList = columns
+                    graphicViewData.primaryTableHistogram = True
+                    graphicViewData.primaryTableScaleHistogram = 1.0
+                    return graphicViewData, table_type
+            else:
+                logging.warning(f"Table node: {node.GetName()} is empty and a GraphicViewData could not be created")
 
         return EmptyViewData(), None
 

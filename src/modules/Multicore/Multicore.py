@@ -20,6 +20,7 @@ from ltrace.slicer.ui import MultiplePathsWidget
 from ltrace.slicer_utils import *
 from ltrace.transforms import transformPoints, getRoundedInteger
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from ltrace.utils.callback import Callback
 from scipy.ndimage import gaussian_filter
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 
@@ -47,7 +48,7 @@ class Multicore(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Multicore"
-        self.parent.categories = ["Core"]
+        self.parent.categories = ["Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = Multicore.help()
@@ -533,11 +534,6 @@ class MulticoreWidget(LTracePluginWidget):
             return
         with self.progressMux:
             slicer.app.processEvents()
-
-
-class Callback(object):
-    def __init__(self, on_update=None):
-        self.on_update = on_update or (lambda *args, **kwargs: None)
 
 
 class MulticoreLogic(LTracePluginLogic):

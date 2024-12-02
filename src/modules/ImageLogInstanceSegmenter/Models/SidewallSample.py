@@ -9,7 +9,6 @@ import pandas as pd
 import qt
 import slicer
 
-from ImageLogInstanceSegmenter import ImageLogInstanceSegmenter
 from ltrace.file_utils import read_csv
 from ltrace.slicer.helpers import (
     triggerNodeModified,
@@ -27,9 +26,10 @@ from ltrace.slicer_utils import (
     is_tensorflow_gpu_enabled,
     dataFrameToTableNode,
 )
+from .model import ModelLogic, ModelWidget
 
 
-class SidewallSampleWidget(qt.QWidget):
+class SidewallSampleWidget(ModelWidget):
     SegmentParameters = namedtuple(
         "SegmentParameters",
         [
@@ -51,8 +51,11 @@ class SidewallSampleWidget(qt.QWidget):
         self.identifier = identifier
         self.setup()
 
+    def cleanup(self):
+        self.instanceSegmenterWidget = None
+
     def getDepthThreshold(self):
-        return ImageLogInstanceSegmenter.get_setting("depthThreshold", default=0.3)
+        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/depthThreshold", 0.3)
 
     def setup(self):
         self.progressBar = LocalProgressBar()
@@ -221,9 +224,7 @@ class SidewallSampleWidget(qt.QWidget):
         self.cancelButton.setEnabled(running)
 
 
-class SidewallSampleLogic(qt.QObject):
-    processFinished = qt.Signal()
-
+class SidewallSampleLogic(ModelLogic):
     def __init__(self, parent, progressBar) -> None:
         super().__init__(parent)
         self.cliNode = None
@@ -240,13 +241,17 @@ class SidewallSampleLogic(qt.QObject):
             raise MaskRCNNInfo("Invalid nominal depths file.")
 
         # stripping newlines from header
-        nominalDepthsDataFrame.rename(columns=lambda x: re.sub("\n", "", x), inplace=True)
+        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(columns=lambda x: re.sub("\n", "", x))
         # renaming prof
-        nominalDepthsDataFrame.rename(columns=lambda x: re.sub("[P|p]rof(\s*\(m\))?", "n depth (m)", x), inplace=True)
+        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(
+            columns=lambda x: re.sub("[P|p]rof(\s*\(m\))?", "n depth (m)", x)
+        )
         # renaming descida|corrida to desc
-        nominalDepthsDataFrame.rename(columns=lambda x: re.sub("([D|d]escida)|([C|c]orrida)", "desc", x), inplace=True)
+        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(
+            columns=lambda x: re.sub("([D|d]escida)|([C|c]orrida)", "desc", x)
+        )
         # renaming condicao to cond
-        nominalDepthsDataFrame.rename(columns=lambda x: re.sub("[C|c]ondicao", "cond", x), inplace=True)
+        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(columns=lambda x: re.sub("[C|c]ondicao", "cond", x))
 
         if "desc" not in nominalDepthsDataFrame:
             nominalDepthsDataFrame["desc"] = 0
@@ -407,10 +412,10 @@ class SidewallSampleLogic(qt.QObject):
                     df_B[~df_B["depth (m)"].isin(df_C["depth (m)"])],
                 ]
             ).fillna(0)
-            df_C["cond"].replace(0, "", inplace=True)
+            df_C = df_C["cond"].replace(0, "")
 
-            df_C.drop(columns=["index_A", "index_B", "difference (m)"], inplace=True)
-            df_C.reset_index(drop=True, inplace=True)
+            df_C = df_C.drop(columns=["index_A", "index_B", "difference (m)"])
+            df_C = df_C.reset_index(drop=True)
             df_C["desc"] = df_C["desc"].apply(lambda x: str(int(float(x))))
             df_C["label"] = df_C["label"].apply(lambda x: int(float(x)))
 
@@ -427,8 +432,8 @@ class SidewallSampleLogic(qt.QObject):
             ["depth (m)", "n depth (m)", "desc", "cond", "diam (cm)", "circularity", "solidity", "azimuth (°)", "label"]
         ]
 
-        df_C.sort_values(by=["depth (m)", "n depth (m)"], inplace=True, ascending=True)
-        df_C.reset_index(drop=True, inplace=True)
+        df_C = df_C.sort_values(by=["depth (m)", "n depth (m)"], ascending=True)
+        df_C = df_C.reset_index(drop=True)
 
         return df_C
 

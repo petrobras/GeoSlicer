@@ -9,6 +9,7 @@ from ltrace.slicer_utils import (
 )
 from ltrace.slicer.cli_queue import CliQueue
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.utils.callback import Callback
 from pathlib import Path
 
 import ctk
@@ -21,13 +22,13 @@ import slicer
 
 
 class CorePhotographLoader(LTracePlugin):
-    SETTING_KEY = "MultipleImageAnalysis"
+    SETTING_KEY = "CorePhotographLoader"
     MODULE_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Core Photograph Loader"  # TODO make this more human readable by adding spaces
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = CorePhotographLoader.help()
@@ -63,6 +64,7 @@ class CorePhotographLoaderWidget(LTracePluginWidget):
 
         # Directory selection widget
         self.directory_selector = ctk.ctkDirectoryButton()
+        self.directory_selector.setMaximumWidth(374)
         self.directory_selector.caption = "Export directory"
         self.directory_selector.directoryChanged.connect(self.on_directory_input_changed)
         parameters_form_layout.addRow("Input folder:", self.directory_selector)
@@ -335,7 +337,7 @@ class CorePhotographLoaderLogic(LTracePluginLogic):
                 )
                 self.__cli_queue.create_cli_node(slicer.modules.corephotographloadercli, cli_config, modified_callback)
 
-        self.__cli_queue.signal_queue_finished.connect(self._on_process_finished)
+        self.__cli_queue.signal_queue_finished.connect(self._on__process_finished)
         self.__cli_queue.run()
         self.process_started.emit()
 

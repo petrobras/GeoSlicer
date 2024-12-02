@@ -10,7 +10,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import qt
 import slicer
-from ltrace.image.optimized_transforms import binset, DEFAULT_NULL_VALUE
+from ltrace.image.optimized_transforms import binset, DEFAULT_NULL_VALUES
 from ltrace.slicer.helpers import setDimensionFrom, getVolumeNullValue
 from ltrace.slicer.slicer_matplotlib import MatplotlibCanvasWidget
 from ltrace.slicer.ui import hierarchyVolumeInput, volumeInput
@@ -179,9 +179,8 @@ class HistogramSegmenterWidget(LTracePluginWidget):
         #
         inputFrame = qt.QHBoxLayout()
 
-        self.inputSelector = hierarchyVolumeInput(onChange=self.onSelect)
-        self.inputSelector.setNodeTypes(["vtkMRMLScalarVolumeNode"])
-        self.inputSelector.setHideChildNodeTypes(
+        self.inputSelector = hierarchyVolumeInput(onChange=self.onSelect, nodeTypes=["vtkMRMLScalarVolumeNode"])
+        self.inputSelector.selectorWidget.setHideChildNodeTypes(
             ["vtkMRMLVectorVolumeNode", "vtkMRMLTensorVolumeNode", "vtkMRMLStreamingVolumeNode"]
         )
 
@@ -464,7 +463,7 @@ class HistogramSegmenterLogic(LTracePluginLogic):
         self.segments: List[Segment] = []
         self.defaults = {}
 
-        self.nullValue = lambda: self.defaults.get("nullableValue", DEFAULT_NULL_VALUE)
+        self.nullValue = lambda: self.defaults.get("nullableValue", DEFAULT_NULL_VALUES)
 
     @staticmethod
     def hasImageData(volumeNode):

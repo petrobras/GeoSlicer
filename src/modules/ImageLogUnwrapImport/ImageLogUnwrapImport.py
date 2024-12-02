@@ -7,7 +7,6 @@ from ltrace.slicer import ui
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 
-import DLISImportLib
 from ltrace.slicer import ui
 from ImageLogUnwrapImportLib.TomographicUnwrapLoadWidget import TomographicUnwrapLoadWidget
 
@@ -18,8 +17,8 @@ class ImageLogUnwrapImport(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Import"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Image Log Unwrap"
+        self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogUnwrapImport.help()
 

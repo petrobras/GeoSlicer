@@ -64,7 +64,12 @@ with open(REQUIREMENTS_FILE) as file:
             module_name = line.split("=")[0]
             import_name = module_name
 
-        if import_name != "mkdocs-localsearch" and import_name != "mkdocs-material":
+        if (
+            import_name != "mkdocs-localsearch"
+            and import_name != "mkdocs-material"
+            and import_name != "mkdocs-mermaid2-plugin"
+            and import_name != "mkdocs-include-markdown-plugin"
+        ):
             try:
                 logger.info(f"Importing python module: {import_name}")
                 globals()[import_name] = importlib.__import__(import_name)
@@ -100,7 +105,6 @@ def generate_slicer_package(
         output_dir,
         version,
         fast_and_dirty,
-        with_porespy=args.with_porespy,
         development=False,
     )
 
@@ -112,7 +116,6 @@ def deploy_development_environment(
     output_dir,
     fast_and_dirty,
     keep_name,
-    with_porespy,
     args,
 ):
     generic_deploy(
@@ -124,7 +127,6 @@ def deploy_development_environment(
         None,
         fast_and_dirty,
         development=True,
-        with_porespy=with_porespy,
         keep_name=keep_name,
     )
 
@@ -135,31 +137,11 @@ def generic_deploy(
     modules_package_folder,
     slicerltrace_repo_folder,
     output_dir,
-    version,
+    version_string: str,
     fast_and_dirty,
     development,
-    with_porespy,
     keep_name=False,
 ):
-    public_version = False
-    if version is not None:
-        parts = version.split(".")
-        if len(parts) > 3:
-            raise RuntimeError("Invalid version: {}".format(version))
-
-        parsed_version = [0, 0, 0]
-        for i in range(len(parts)):
-            v = parts[i]
-            if "RC" in v:
-                v = v.replace("RC", "")
-            if "-public" in v:
-                public_version = True
-                v = v.replace("-public", "")
-            assert int(v) >= 0
-            parsed_version[i] = str(parts[i])
-
-        version = tuple(parsed_version)
-
     logger.info("Extracting")
     slicer_dir = extract_archive(slicer_archive, output_dir)
 
@@ -169,9 +151,7 @@ def generic_deploy(
     repo.git.submodule("update", "--init", "--recursive")
 
     # getting the 3D Slicer version
-    lib_dir = slicer_dir / "lib"
-    lib_dir_subdirs = [f.name for f in lib_dir.iterdir() if f.is_dir()]
-    slicer_version = [s[len(APP_NAME) + 1 :] for s in lib_dir_subdirs if APP_NAME + "-" in s][0]
+    slicer_version = get_slicer_version(slicer_dir)
     logger.info("Slicer version " + str(slicer_version))
 
     if not fast_and_dirty:
@@ -190,7 +170,7 @@ def generic_deploy(
         for path in find_submodules_setup_directory(SUBMODULES_PACKAGE_FOLDER):
             submodule_name = path.name
             if (
-                not with_porespy
+                args.without_porespy
                 and submodule_name
                 in [
                     "porespy",
@@ -231,7 +211,7 @@ def generic_deploy(
     os.chdir(wd)
 
     logger.info("Installing customizer")
-    install_customizer(slicer_dir, modules_to_add, find_extensions(slicer_dir), version, development)
+    install_customizer(slicer_dir, modules_to_add, find_extensions(slicer_dir), version_string, development)
 
     logger.info("Copying assets")
     copy_extra_files(slicer_dir, slicer_version, slicerltrace_repo_folder, fast_and_dirty, development)
@@ -246,20 +226,21 @@ def generic_deploy(
     apply_patches(slicer_dir, slicer_version)
 
     if not development:
-        major, minor, revision = version
-        if revision:
-            version_string = "{}.{}.{}".format(major, minor, revision)
-        else:
-            version_string = "{}.{}".format(major, minor)
-
         version_name = "GeoSlicer-{}".format(version_string)
         archive_folder_name = slicer_dir.with_name(version_name)
         if slicer_dir.name != version_name:
             shutil.move(slicer_dir, archive_folder_name)
 
-        if not fast_and_dirty:
+        if not fast_and_dirty and not args.disable_archiving:
             logger.info("Archiving")
             make_archive(args, archive_folder_name, slicer_archive.with_name(version_name))
+
+
+def get_slicer_version(slicer_dir: Path) -> str:
+    lib_dir = slicer_dir / "lib"
+    lib_dir_subdirs = [f.name for f in lib_dir.iterdir() if f.is_dir()]
+    slicer_version = [s[len(APP_NAME) + 1 :] for s in lib_dir_subdirs if APP_NAME + "-" in s][0]
+    return slicer_version
 
 
 def remove_unwanted_files(slicer_dir, slicer_version):
@@ -345,7 +326,7 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
         pip_call.append("--editable")
     pip_call.append(str(lib_folder))
 
-    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==59.8.0"])
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==60.2.0"])
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
@@ -377,55 +358,30 @@ def find_extensions(slicer_dir):
 
 
 def install_customizer(slicer_dir, modules, extensions, version, dev_environment):
-    def format_string_list_to_write(l):
-        strings = [repr("{}".format(s)) for s in l]
-        return "[\n            {}\n        ]".format(",\n            ".join(strings))
+    src_path = THIS_FOLDER / "slicerrc.py"
+    dest_path = slicer_dir / ".slicerrc.py"
 
-    paths = modules + extensions
-    if dev_environment:
-        formatted_paths = format_string_list_to_write(paths)
-    else:
-        formatted_paths = format_string_list_to_write((p.relative_to(slicer_dir) for p in paths))
-        paths = (p.relative_to(slicer_dir) for p in paths)
-
-    ltrace_modules_whitelist = []
-    for module in modules:
-        if module.name.lower().endswith("cli"):
-            continue
-        module_file = module / (module.name + ".py")
-        assert module_file.is_file()
-        with open(module_file, encoding="utf-8") as m:
-            content = m.read()
-            if f"class {module.name}" in content:
-                ltrace_modules_whitelist.append(module.name)
-            else:
-                logger.info(
-                    f"Warning: Class {module.name} not found in {module_file.name}. It will not be visible in the menu."
-                )
-
-    with open(THIS_FOLDER / "Customizer.py") as f:
-        customizer_source = f.read()
-
-    formatted_whitelist = format_string_list_to_write(ltrace_modules_whitelist)
+    shutil.copy(src_path, dest_path)
 
     repo = git.Repo(path=SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
 
-    with open(get_plugins_dir(slicer_dir) / "qt-scripted-modules" / "Customizer.py", "w") as f:
-        f.write(customizer_source)
+    if dev_environment:
+        module_dir = modules[0].parent
+    else:
+        module_dir = modules[0].parent.relative_to(slicer_dir)
 
     json_output = {
-        "name": "WelcomeGeoSlicer",
+        "name": "GeoSlicer",
         "itk_module": None,
-        "CUSTOM_REL_PATHS": [str(p) for p in paths],
-        "VISIBLE_LTRACE_PLUGINS": ltrace_modules_whitelist,
         "GEOSLICER_VERSION": version,
         "GEOSLICER_HASH": repr(repo.head.object.hexsha),
         "GEOSLICER_HASH_DIRTY": repr(repo.is_dirty()),
         "GEOSLICER_BUILD_TIME": str(datetime.datetime.now()),
         "GEOSLICER_DEV_ENVIRONMENT": repr(dev_environment),
+        "GEOSLICER_MODULES": str(module_dir),
     }
 
-    json_path = get_plugins_dir(slicer_dir) / "qt-scripted-modules" / "Resources" / "json" / "WelcomeGeoSlicer.json"
+    json_path = get_plugins_dir(slicer_dir) / "qt-scripted-modules" / "Resources" / "json" / "GeoSlicer.json"
     with open(json_path, "w") as json_file:
         json.dump(json_output, json_file, indent=4)
 
@@ -611,6 +567,7 @@ def make_archive(args, source_dir: Path, target_file_without_extension: Path) ->
         result = Path(result)
         target = target_file_without_extension.with_name(result.name)
         shutil.move(result, target)
+        logging.info(f"Compressed file created: {target.as_posix()}")
 
     logger.info(f"Compressed file created: {target.as_posix()}")
     return target
@@ -831,6 +788,39 @@ def check_init_files() -> None:
         raise RuntimeError("The following ltrace lib modules does not contain a __init__.py file: " + str(no_init_list))
 
 
+def get_version_string(version: str) -> str:
+    if version is None:
+        return None
+
+    try:
+        if version is not None:
+            parts = version.split(".")
+            if len(parts) > 3:
+                raise
+
+            parsed_version = ["0", "0", "0"]
+            for i in range(len(parts)):
+                v = parts[i]
+                if "RC" in v:
+                    v = v.replace("RC", "")
+                if "-public" in v:
+                    v = v.replace("-public", "")
+                assert int(v) >= 0
+                parsed_version[i] = str(parts[i])
+
+            version = tuple(parsed_version)
+            version = ".".join(version)
+
+    except Exception as error:
+        message = f"Invalid version input: {version}."
+        if str(error):
+            message += f"\nError: {error}"
+
+        raise RuntimeError(message)
+
+    return version
+
+
 def run(args):
     if not args.public_commit_only:
         if args.archive:
@@ -847,6 +837,7 @@ def run(args):
     if args.geoslicer_version and args.dev:
         raise RuntimeError("Can't deploy the development version together with production version")
 
+    geoslicer_version = get_version_string(args.geoslicer_version)
     if args.no_public_commit and args.public_commit_only:
         raise RuntimeError("Can't avoid public commit if you want only to make the public commit.")
 
@@ -862,7 +853,6 @@ def run(args):
                 output_dir,
                 fast_and_dirty=args.fast_and_dirty,
                 keep_name=args.keep_name,
-                with_porespy=args.with_porespy,
                 args=args,
             )
         except Exception as error:
@@ -899,7 +889,7 @@ def run(args):
                 MODULES_PACKAGE_FOLDER,
                 SLICERLTRACE_REPO_FOLDER,
                 output_dir,
-                args.geoslicer_version,
+                geoslicer_version,
                 fast_and_dirty=args.fast_and_dirty,
                 args=args,
             )
@@ -978,9 +968,9 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
-        "--with-porespy",
+        "--without-porespy",
         action="store_true",
-        help="Install porespy as editable local submodules for development",
+        help="Avoid porespy submodule installation to use the installed version from the base file.",
         default=False,
     )
     parser.add_argument(
@@ -993,6 +983,12 @@ if __name__ == "__main__":
         "--keep-tests",
         action="store_true",
         help="Keeps tests when generating standalone build.",
+        default=False,
+    )
+    parser.add_argument(
+        "--disable-archiving",
+        action="store_true",
+        help="Avoid the archiving step when generating a release build.",
         default=False,
     )
     run(parser.parse_args())

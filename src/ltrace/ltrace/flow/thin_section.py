@@ -1,3 +1,5 @@
+import sys
+
 from ltrace.flow.framework import (
     FlowWidget,
     FlowState,
@@ -8,19 +10,24 @@ from ltrace.flow.util import (
     onSegmentEditorEnter,
     onSegmentEditorExit,
 )
-from QEMSCANLoader import QEMSCANLoaderLogic, QEMSCANLoaderWidget, Callback
-from SegmentInspector import SegmentInspectorLogic
-from ThinSectionLoader import ThinSectionLoaderLogic, ThinSectionLoaderWidget
+
 from ltrace import assets_utils as assets
 from ltrace.slicer import helpers, widgets
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
 from ltrace.units import global_unit_registry as ureg
+from ltrace.utils.callback import Callback
 from ltrace.utils.ProgressBarProc import ProgressBarProc
-import Segmenter
+
 import ctk
 import qt
 import slicer
+import importlib
+
+
+Segmenter = helpers.LazyLoad("Segmenter")
+QEMSCANLoader = helpers.LazyLoad("QEMSCANLoader")
+ThinSectionLoader = helpers.LazyLoad("ThinSectionLoader")
 
 
 class Load(FlowStep):
@@ -79,12 +86,12 @@ Choose the PP (plane polarized) image file to load.
 
     def next(self):
         with ProgressBarProc() as pb:
-            logic = ThinSectionLoaderLogic()
+            logic = slicer.util.getModuleLogic("ThinSectionLoader")
 
             path = self.ppFileSelector.currentPath
             pb.setMessage("Loading PP image")
             pb.setProgress(0)
-            params = ThinSectionLoaderWidget.LoadParameters(path)
+            params = ThinSectionLoader.ThinSectionLoaderWidget.LoadParameters(path)
             imageInfo = logic.load(params)
 
             pp = imageInfo["node"]
@@ -98,7 +105,7 @@ Choose the PP (plane polarized) image file to load.
                 pb.setMessage("Loading PX image")
                 pb.setProgress(50)
                 path = self.pxFileSelector.currentPath
-                params = ThinSectionLoaderWidget.LoadParameters(path, automaticImageSpacing=False)
+                params = ThinSectionLoader.ThinSectionLoaderWidget.LoadParameters(path, automaticImageSpacing=False)
                 imageInfo = logic.load(params)
                 px = imageInfo["node"]
 
@@ -225,7 +232,7 @@ class Register(FlowStep):
         moduleWidget = slicer.modules.thinsectionregistration.createNewWidgetRepresentation()
         widget = moduleWidget.self()
         widget.imagesFrame.visible = False
-        widget.buttonsFrame.visible = False
+        widget.applyCancelButtons.visible = False
         return moduleWidget
 
     def enter(self):
@@ -565,10 +572,23 @@ class Inspector(FlowStep):
         self.segmentSelector.targetBox.hide()
         layout.addRow(self.segmentSelector)
 
+        progressLayout = qt.QHBoxLayout()
         self.progressBar = LocalProgressBar()
-        layout.addRow(self.progressBar)
+        progressLayout.addWidget(self.progressBar, 1)
+
+        self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.visible = False
+        self.cancelButton.setToolTip("Cancel the auto-labeling.")
+        self.cancelButton.setFixedHeight(30)
+        progressLayout.addWidget(self.cancelButton, 0)
+
+        layout.addRow(progressLayout)
 
         self.segmentSelector.segmentSelectionChanged.connect(self.onSegmentSelected)
+        self.cancelButton.clicked.connect(self.onCancel)
+
+        self.logic = slicer.util.getModuleLogic("SegmentInspector")
+        self.logic.inspector_process_finished.connect(self.onFinish)
 
         return widget
 
@@ -604,7 +624,7 @@ class Inspector(FlowStep):
         if method == self.WATERSHED:
             params = {
                 "method": "snow",
-                "sigma": 0.0423,
+                "sigma": 0.005,
                 "d_min_filter": 5.0,
                 "size_min_threshold": 0.0,
                 "direction": [],
@@ -614,7 +634,6 @@ class Inspector(FlowStep):
         elif method == self.SEPARATE_OBJECTS:
             params = {"method": "islands", "size_min_threshold": 0.0, "direction": []}
 
-        self.logic = SegmentInspectorLogic()
         self.cliNode = self.logic.runSelectedMethod(
             mainNode,
             segments=self.segmentSelector.getSelectedSegments(),
@@ -626,9 +645,9 @@ class Inspector(FlowStep):
         )
         if self.cliNode is None:
             return
-        self.logic.inspector_process_finished.connect(self.onFinish)
         self.progressBar.setCommandLineModuleNode(self.cliNode)
         self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_OFF_STATE, self.NEXT_IN_PROGRESS_STATE)
+        self.cancelButton.visible = True
 
     def onFinish(self):
         if self.cliNode.GetStatusString() == "Completed":
@@ -637,13 +656,21 @@ class Inspector(FlowStep):
             parent = shNode.GetItemParent(shNode.GetItemByDataNode(self.state.labelmap))
             shNode.SetItemParent(parent, self.state.dir)
             self.onSegmentSelected(self.segmentSelector.getSelectedSegments())
+            self.cancelButton.visible = False
             self.nav.next()
+        else:
+            self.onSegmentSelected(self.segmentSelector.getSelectedSegments())
+            self.cancelButton.visible = False
 
     def onSegmentSelected(self, segmentList):
         if segmentList:
             self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_OFF_STATE, self.NEXT_ON_STATE)
         else:
             self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_OFF_STATE, self.NEXT_OFF_STATE)
+
+    def onCancel(self):
+        if self.cliNode is not None:
+            self.cliNode.Cancel()
 
 
 class LabelEditor(FlowStep):
@@ -677,8 +704,7 @@ class LabelEditor(FlowStep):
 
         widget.input_collapsible.visible = False
         widget.output_collapsible.visible = False
-        widget.save_button.visible = False
-        widget.cancel_button.visible = False
+        widget.applyCancelButtons.visible = False
         widget.labelmapGenerated = self.onFinish
         widget.throat_analysis_checkbox.setChecked(False)
 
@@ -777,7 +803,7 @@ class LoadQemscan(FlowStep):
         self.imageSpacingLineEdit.setToolTip("Pixel size in millimeters")
         layout.addRow("Pixel size (mm):", self.imageSpacingLineEdit)
 
-        self.logic = QEMSCANLoaderLogic()
+        self.logic = slicer.util.getModuleLogic("QEMSCANLoader")
 
         return widget
 
@@ -790,7 +816,7 @@ class LoadQemscan(FlowStep):
 
     def next(self):
         with ProgressBarProc() as pb:
-            loadParameters = QEMSCANLoaderWidget.LoadParameters(
+            loadParameters = QEMSCANLoader.QEMSCANLoaderWidget.LoadParameters(
                 callback=Callback(on_update=lambda message, percent, processEvents=True: pb.nextStep(percent, message)),
                 lookupColorTableNode=None,
                 fillMissing=True,

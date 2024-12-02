@@ -1,34 +1,189 @@
 site_name: GeoSlicer Manual
 
+extra:
+  homepage: Overview/index.html
+
+extra_css:
+    - assets/extra.css
+
 theme:
-    name: material
-    custom_dir: theme
-    logo: assets/logo.png
-    favicon: assets/logo.ico
-    palette:
+  name: material
+  custom_dir: theme
+  logo: assets/logo.png
+  favicon: assets/logo.ico
+  palette:
+    - scheme: default
       primary: white
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: slate
+      primary: white
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
 plugins:
     - search
     - localsearch
+    - include-markdown
+    - mermaid2
+    - tags
+
 use_directory_urls: false
+
+markdown_extensions:
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      toc_depth: 2
+  # Enables admonitions
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.tabbed:
+      alternate_style: true
+
 nav:
-  - Página inicial: "index.md"
-  - Image Log:
-    - Usabilidade: "Image Log/Usabilidade/usabilidade.md"
-    - Instance Segmenter: "Image Log/Instance Segmenter/instance_segmenter.md"
-  - Core CT:
-    - Usabilidade: "Core CT/Usabilidade/usabilidade.md"
-  - Micro CT:
-    - Usabilidade: "Micro CT/Usabilidade/usabilidade.md"
-    - Polynomial Shading Correction: "Micro CT/Polynomial Shading Correction/polynomial_shading_correction.md"
-    - Gradient Anisotropic Diffusion: "Micro CT/Gradient Anisotropic Diffusion/gradient_anisotropic_diffusion.md"
-  - Thin Section:
-    - Usabilidade: "Thin Section/Usabilidade/usabilidade.md"
-  - Segmentação:
-    - Treinamento de Modelo: "Segmenter/Semiauto/semiauto.md"
-    - Modelos Pré-treinados (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
-    - Modelos Pré-treinados (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
-    - Inspector:
-      - Estudos de porosidade: "Inspector/Watershed/estudos_de_porosidade.md"
-extra:
-  homepage: index.html
+  - Visão Geral: "Overview/index.md"
+  - Introdução:
+      - Instalação: "Getting_started/installation_guide.md"
+      - Interface do Usuário:
+          - Aplicação: "Getting_started/User_interface/application.md"
+          - Módulos: "Getting_started/User_interface/modules.md"
+#          - Layouts: "Getting_started/User_interface/layouts.md"
+      - Primeiros Passos: "Getting_started/first_steps.md"
+  - Visualizar Imagens:
+      - Introdução: "Data_loading/intro.md"
+      - Imagens Tomográficas (3D):
+          - Micro CT: "Data_loading/load_microct.md"
+          - Core CT: "Data_loading/load_corect.md"
+      - Lâminas (2D): "Data_loading/load_thin_section.md"
+      - Logs de Poço: "Data_loading/load_well_log.md"
+      - Imagens Grandes:  "Data_loading/load_bigimage.md"
+  - Transforms: "Transforms/transforms.md"
+  - Filtragem e Segmentação:
+      - Filtros: "Filtering_and_Segmentation/Filters/apply_filters.md"
+      - Segmentação:
+            - Introdução: "Filtering_and_Segmentation/Segmentation/intro.md"
+            - Segmentação Manual: "Filtering_and_Segmentation/Segmentation/manual_segmentation.md"
+            - Segmentação Automática (IA): "Filtering_and_Segmentation/Segmentation/auto_segmentation.md"
+#            - Segmentação Semiautomática: "Filtering_and_Segmentation/Segmentation/semiautomatic_segmentation.md"
+#            - Segmentação de Imagens Tomográficas: "Filtering_and_Segmentation/Segmentation/segmentation_microct.md"
+#            - Segmentação de Lâminas: "Filtering_and_Segmentation/Segmentation/segmentation_thin_section.md"
+#            - Segmentação de Logs de Poço: "Filtering_and_Segmentation/Segmentation/segmentation_well_log.md"
+  - Quantificação:
+      - Análise de Resultados: "Quantification/result_analysis.md"
+#      - Particionar Segmentação: "Quantification/partitioning.md"
+      - Identificar Instâncias no Log de Poço: "Quantification/instance_segmenter.md"
+  - Simulação:
+      - Microtom: "Simulation/microtom.md"
+      - Rede de Poros (PNM):
+          - Introdução: "Simulation/PNM/intro.md"
+          - Simulação Kabs: "Simulation/PNM/kabs.md"
+          - Simulação Krel: "Simulation/PNM/krel.md"
+          - Simulação MICP: "Simulation/PNM/micp.md"
+          - Geração de Relatórios: "Simulation/PNM/report.md"
+  - Execução Remota (HPC/Cluster):
+      - Introdução: "Remote_computing/intro.md"
+  - Módulos:
+      - Imagens Tomográficas (3D): "Modules/Thin_section/AutoRegistration.md"
+      - Lâminas (2D):
+          - Auto Registration: "Modules/Thin_section/AutoRegistration.md"
+          - Crop: "Modules/Thin_section/Crop.md"
+          - Editor de Segmentação: "Modules/Thin_section/SegmentEditor.md"
+          - Export: "Modules/Thin_section/Export.md"
+          - Fluxos:
+            - Fluxo PP: "Modules/Thin_section/Fluxo PP.md"
+            - Fluxo PP/PX: "Modules/Thin_section/Fluxo PP PX.md"
+            - Fluxo QEMSCAN: "Modules/Thin_section/Fluxo QEMSCAN.md"
+          - Image Tools: "Modules/Thin_section/ImageTools.md"
+          - Manual Registration: "Modules/Thin_section/Registration.md"
+          - Multiple Image Analysis: "Modules/Thin_section/MultipleImageAnalysis.md"
+          - Pore Stats: "Modules/Thin_section/PoreStats.md"
+          - Qemscan Loader: "Modules/Thin_section/QemscanLoader.md"
+          - Thin Section Loader: "Modules/Thin_section/Loader.md"
+#      - Logs de Poço: "Modules/Thin_section/AutoRegistration.md"
+#      - Imagens Massivas: "Modules/Thin_section/AutoRegistration.md"
+#      - Segmentação:
+      - Quantificação:
+#          - Instance Segmenter: "Modules/Quantification/instance_segmenter.md"
+          - Segment Inspector: "Modules/Quantification/segment_inspector.md"
+      - PNM:
+          - Pore Network Extraction: "Modules/PNM/PNExtraction.md"
+          - Pore Network Simulation: "Modules/PNM/PNSimulation.md"
+          - Cycles Visualization: "Modules/PNM/cycles.md"
+          - Krel EDA: "Modules/PNM/krelEDA.md"
+          - Production Prediction: "Modules/PNM/production.md"
+#  - Suporte:
+#      - Error Log: "Support_and_assistance/error_log.md"
+#      - Reportar Erros: "Support_and_assistance/log_bundle.md"
+
+
+#  - Image Log:
+#    - Usabilidade: "Image Log/Usabilidade/usabilidade.md"
+#    - Instance Segmenter: "Image Log/Instance Segmenter/instance_segmenter.md"
+#  - Core CT:
+#    - Usabilidade: "Core CT/Usabilidade/usabilidade.md"
+#  - Micro CT:
+#    - Introdução: "Micro CT/MicroCT.md"
+#    - Módulos:
+#      - Open Rock: "Micro CT/Modulos/OpenRockData.md"
+#      - Streamlined Segmentation: "Micro CT/Modulos/StreamlinedSegmentation.md"
+#    - Polynomial Shading Correction: "Micro CT/Polynomial Shading Correction/polynomial_shading_correction.md"
+#    - Gradient Anisotropic Diffusion: "Micro CT/Gradient Anisotropic Diffusion/gradient_anisotropic_diffusion.md"
+#  - PNM:
+#    - Introdução: "PNM/Introdução/Introdução.md"
+#    - Ações:
+#      - Simulação Kabs: "PNM/Ações/kabs.md"
+#      - Simulação Krel: "PNM/Ações/krel.md"
+#      - Simulação MICP: "PNM/Ações/micp.md"
+#      - Geração de relatórios: "PNM/Ações/report.md"
+#    - Módulos:
+#      - Pore Network Extraction:  "Modules/PNM/PNExtraction.md"
+#      - Pore Network Simulation:  "Modules/PNM/PNSimulation.md"
+#      - Cycles Visualization: "Modules/PNM/cycles.md"
+#      - Krel EDA: "Modules/PNM/krelEDA.md"
+#      - Production Prediction: "Modules/PNM/production.md"
+#  - Thin Section:
+#    - Introdução: "Thin Section/thinsection.md"
+#    - Ações:
+#      - Executar Fluxos: "Thin Section/Ações/Fluxos.md"
+#      - Importar Imagem: "Thin Section/Ações/ImportarImagem.md"
+#      - Transformar Imagem: "Thin Section/Ações/TransformarImagem.md"
+#      - Segmentar Imagem: "Thin Section/Ações/SegmentarImagem.md"
+#      - Analisar Imagem: "Thin Section/Ações/AnalisarImagem.md"
+#      - Exportar Resultados: "Thin Section/Ações/ExportarResultados.md"
+#    - Módulos:
+#      - Auto Registration: "Modules/Thin_section/AutoRegistration.md"
+#      - Crop: "Modules/Thin_section/Crop.md"
+#      - Editor de Segmentação: "Modules/Thin_section/SegmentEditor.md"
+#      - Export: "Modules/Thin_section/Export.md"
+#      - Fluxos:
+#        - Fluxo PP: "Modules/Thin_section/Fluxo PP.md"
+#        - Fluxo PP/PX: "Modules/Thin_section/Fluxo PP PX.md"
+#        - Fluxo QEMSCAN: "Modules/Thin_section/Fluxo QEMSCAN.md"
+#      - Image Tools: "Modules/Thin_section/ImageTools.md"
+#      - Manual Registration: "Modules/Thin_section/Registration.md"
+#      - Multiple Image Analysis: "Modules/Thin_section/MultipleImageAnalysis.md"
+#      - Pore Stats: "Modules/Thin_section/PoreStats.md"
+#      - Qemscan Loader: "Modules/Thin_section/QemscanLoader.md"
+#      - Segment Inspector: "Modules/Thin_section/SegmentInspector.md"
+#      - Thin Section Loader: "Modules/Thin_section/Loader.md"
+#
+#  - Segmentação:
+#    - Treinamento de Modelo: "Segmenter/Semiauto/semiauto.md"
+#    - Modelos Pré-treinados (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
+#    - Modelos Pré-treinados (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
+#    - Inspector:
+#      - Estudos de porosidade: "Inspector/Watershed/estudos_de_porosidade.md"
+#  - Outros:
+#    - Fluxos: "Outros/fluxos.md"
+
+

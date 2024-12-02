@@ -4,6 +4,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -29,7 +30,7 @@ from ltrace.slicer_utils import (
     hide_nodes_of_type,
 )
 
-from PoreNetworkSimulationLib.constants import *
+from .constants import *
 
 NUM_THREADS = 48
 
@@ -58,6 +59,16 @@ def listFilesInDir(directory):
         if os.path.isfile(filepath):
             files.append(filepath)
     return files
+
+
+def listFilesRegex(directory, regex_pattern=None):
+    matching_files = []
+    regex = re.compile(regex_pattern)
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if regex.match(file):
+                matching_files.append(os.path.join(root, file))
+    return matching_files
 
 
 def readPolydata(filename):
@@ -92,6 +103,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         self.prefix = None
         self.rootDir = None
         self.results = {}
+        self.caDistributionTableDir = None
 
     def run_1phase(self, inputTable, params, prefix, callback, wait=False):
         self.inputTableID = inputTable.GetID()
@@ -99,6 +111,11 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
         self.prefix = prefix
+
+        refNode = inputTable.GetNodeReference("PoresLabelMap")
+        ijktorasDirections = np.zeros([3, 3])
+        refNode.GetIJKToRASDirections(ijktorasDirections)
+        self.params["ijktoras"] = [ijktorasDirections[i, i] for i in range(3)]
 
         self.temp_dir = f"{slicer.app.temporaryPath}/porenetworksimulationcli"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -445,6 +462,16 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
 
+        folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
+        itemTreeId = folderTree.GetItemByDataNode(self.pore_node)
+        parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
+        self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Two_Phase_PN_Simulation")
+        folderTree.SetItemExpanded(self.rootDir, False)
+
+        if params["create_ca_distributions"]:
+            self.caDistributionTableDir = folderTree.CreateFolderItem(self.rootDir, "CA Distribution")
+            folderTree.SetItemExpanded(self.caDistributionTableDir, False)
+
         self.temp_dir = f"{slicer.app.temporaryPath}/porenetworksimulationcli"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         os.mkdir(self.temp_dir)
@@ -465,11 +492,6 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
             self.krelCycleTableNodesId.append(tableNode.GetID())
             cliParams[f"krelCycle{cycle}"] = tableNode.GetID()
 
-        folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
-        itemTreeId = folderTree.GetItemByDataNode(self.pore_node)
-        parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
-        self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Two_Phase_PN_Simulation")
-        folderTree.SetItemExpanded(self.rootDir, False)
         tableDir = folderTree.CreateFolderItem(self.rootDir, "Tables")
         folderTree.SetItemExpanded(tableDir, False)
 
@@ -512,6 +534,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
             if status == "Completed":
                 try:
                     self.updateOutputTables()
+                    self.createCaDistributionTables()
                     self.loadAnimationNodes(caller.GetParameterAsString("saturation_steps"))
                 except:
                     self.removeNodes()
@@ -552,6 +575,22 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
             for tableNodeId, dataFrameFilename in zip(self.krelCycleTableNodesId, dataFrameCycleFileNames):
                 tableNode = helpers.tryGetNode(tableNodeId)
                 self.updateTableFromDataFrame(tableNode, dataFrameFilename)
+
+    def createCaDistributionTables(self):
+        krelResultsTableNode = helpers.tryGetNode(self.krelResultsTableNodeId)
+        if krelResultsTableNode and self.params["create_ca_distributions"]:
+            for file in listFilesRegex(str(self.cwd), "ca_distribution_\\d+"):
+                nodeName = Path(file).stem
+                caDistributionNode = self.__createCaDistributionNode(nodeName)
+                krelResultsTableNode.SetAttribute(f"{nodeName}_id", caDistributionNode.GetID())
+
+    def __createCaDistributionNode(self, ca_distribution_file):
+        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+        caDistributionTableNode = createTableNode(ca_distribution_file, "ca_distribution")
+        folderTree.CreateItem(self.caDistributionTableDir, caDistributionTableNode)
+        self.updateTableFromDataFrame(caDistributionTableNode, ca_distribution_file)
+        return caDistributionTableNode
 
     def loadAnimationNodes(self, staturation_steps_json):
         staturation_steps_list = json.loads(staturation_steps_json)

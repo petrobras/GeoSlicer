@@ -1,29 +1,24 @@
-from functools import partial
 import importlib
 import json
 import logging
 import os
-import uuid
-
 import time
+import uuid
 from pathlib import Path
 
-import logging
+import ctk
 import matplotlib.colors as mcolors
-
 import numpy as np
 import pandas as pd
-
-
 import qt
 import slicer
-import vtk
-import ctk
-
+from recordtype import recordtype  # mutable
 from slicer.util import VTKObservationMixin
 
-from ltrace.algorithms.partition import InvalidSegmentError
-from ltrace.slicer.node_attributes import Tag
+from Output import SegmentInspectorVariablesOutput as SegmentInspectorVariablesOutputClass
+from Output.BasicPetrophysicsOutput import generate_basic_petrophysics_output
+from Output.SegmentInspectorVariablesOutput import SegmentInspectorVariablesOutput
+from ltrace.algorithms.partition import InvalidSegmentError, runPartitioning, ResultInfo
 from ltrace.slicer import ui, helpers, widgets
 from ltrace.slicer.helpers import (
     tryGetNode,
@@ -36,7 +31,8 @@ from ltrace.slicer.helpers import (
     themeIsDark,
     isNodeImage2D,
 )
-from ltrace.slicer.ui import numberParam, fixedRangeNumberParam
+from ltrace.slicer.node_attributes import Tag
+from ltrace.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widgets import BaseSettingsWidget
 from ltrace.slicer_utils import (
@@ -44,14 +40,8 @@ from ltrace.slicer_utils import (
     LTracePluginWidget,
     LTracePluginLogic,
     dataFrameToTableNode,
+    getResourcePath,
 )
-from ltrace.algorithms.partition import runPartitioning, ResultInfo
-from Output import SegmentInspectorVariablesOutput as SegmentInspectorVariablesOutputClass
-from Output.SegmentInspectorVariablesOutput import SegmentInspectorVariablesOutput
-from Output.BasicPetrophysicsOutput import generate_basic_petrophysics_output
-from recordtype import recordtype  # mutable
-
-from ltrace.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
 
 # Checks if closed source code is available
 try:
@@ -73,11 +63,12 @@ class SegmentInspector(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Segment Inspector"
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = SegmentInspector.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/SegmentInspector.html').as_posix()}"
+        )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 
     @classmethod
@@ -95,7 +86,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.modeSelectors = {}
         self.modeWidgets = {}
 
-        self.selectedProducts = set(["all"])
+        self.selectedProducts = {"all"}
 
         self.currentMode = widgets.SingleShotInputWidget.MODE_NAME
 
@@ -111,15 +102,6 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         importlib.reload(SegmentInspectorVariablesOutputClass)
         importlib.reload(widgets)
         importlib.reload(ui)
-
-    def onSceneEndClose(self, caller, event):
-        try:
-            self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME].fullResetUI()
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            pass
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -137,7 +119,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.layout.addStretch(1)
 
         # Setup handlers
-        self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+        # self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
     def _setupInputsSection(self):
         widget = ctk.ctkCollapsibleButton()
@@ -266,26 +248,44 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         widget = qt.QWidget()
         vlayout = qt.QVBoxLayout(widget)
 
-        self.applyButton = ui.ApplyButton(
-            onClick=self._onApplyClicked, tooltip="Run pore analysis on input data limited by ROI", enabled=False
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self._onApplyClicked,
+            onCancelClick=self._onCancelClicked,
+            applyTooltip="Run pore analysis on input data limited by ROI",
+            cancelTooltip="Cancel",
+            applyText="Apply",
+            cancelText="Cancel",
+            enabled=False,
+            applyObjectName="SegmentInspector.ApplyButton",
+            cancelObjectName="SegmentInspector.CancelButton",
         )
 
-        self.applyButton.objectName = "Apply Button"
+        def onProcessStart():
+            self.applyCancelButtons.applyBtn.setEnabled(False)
+            self.applyCancelButtons.cancelBtn.setEnabled(True)
 
-        self.logic.inspectorProcessStarted.connect(lambda: self.applyButton.setEnabled(False))
-        self.logic.inspector_process_finished.connect(lambda: self.applyButton.setEnabled(True))
+        def onProcessFinish():
+            self.applyCancelButtons.applyBtn.setEnabled(True)
+            self.applyCancelButtons.cancelBtn.setEnabled(False)
+
+        self.logic.inspectorProcessStarted.connect(onProcessStart)
+        self.logic.inspector_process_finished.connect(onProcessFinish)
 
         self.progressBar = LocalProgressBar()
         self.logic.progressBar = self.progressBar
 
         hlayout = qt.QHBoxLayout()
-        hlayout.addWidget(self.applyButton)
+        hlayout.addWidget(self.applyCancelButtons)
         hlayout.setContentsMargins(0, 8, 0, 8)
 
         vlayout.addLayout(hlayout)
         vlayout.addWidget(self.progressBar)
 
         return widget
+
+    def _onCancelClicked(self):
+        if self.logic.cliNode is not None:
+            self.logic.cliNode.Cancel()
 
     def _onModeClicked(self):
         for index, mode in enumerate(self.MODES):
@@ -306,7 +306,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         super().enter()
 
     def exit(self):
-        pass
+        self.modeWidgets[self.currentMode].autoPorosityCalcCb.setChecked(False)
 
     def cleanup(self):
         super().cleanup()
@@ -336,19 +336,18 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         prefix = self.outputPrefix.text + "_{type}"
 
         products = list(self.selectedProducts)
-
-        referenceVolumeNode = modeWidget.referenceInput.currentNode()  ## Can be null
-
-        segmentationNode = modeWidget.mainInput.currentNode()
-        # doing this with an if because when setting the visibility it messes with the imagelog viewer
-        if not self.blockVisibilityChanges:
-            segmentationNode.GetDisplayNode().SetVisibility(False)
-
-        roiSegNode = modeWidget.soiInput.currentNode()
-        if roiSegNode and not self.blockVisibilityChanges:
-            roiSegNode.GetDisplayNode().SetVisibility(False)
-
         try:
+            referenceVolumeNode = modeWidget.referenceInput.currentNode()  ## Can be null
+
+            segmentationNode = modeWidget.mainInput.currentNode()
+            # doing this with an if because when setting the visibility it messes with the imagelog viewer
+            if not self.blockVisibilityChanges:
+                segmentationNode.GetDisplayNode().SetVisibility(False)
+
+            roiSegNode = modeWidget.soiInput.currentNode()
+            if roiSegNode and not self.blockVisibilityChanges:
+                roiSegNode.GetDisplayNode().SetVisibility(False)
+
             params = self.methodSelector.currentWidget().toJson()
 
             cli = self.logic.runSelectedMethod(
@@ -422,7 +421,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         elif self.currentMode == widgets.BatchInputWidget.MODE_NAME:
             valid_input_config = input_mode_widget.ioFileInputLineEdit.currentPath != ""
 
-        self.applyButton.enabled = valid_output_prefix and valid_input_config
+        self.applyCancelButtons.applyBtn.setEnabled(valid_output_prefix and valid_input_config)
 
     def __on_output_prefix_changed(self, text):
         modeWidget: widgets.SingleShotInputWidget = self.modeWidgets[self.currentMode]
@@ -514,7 +513,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
 
         sizeFilterBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.sizeFilterThreshold = numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
+        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
         self.sizeFilterThreshold.setToolTip(
             "Filter spurious partitions with major axis (feret_max) smaller than Size Filter value."
         )
@@ -555,7 +554,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
 
         smoothFactorBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.smoothFactor = numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
+        self.smoothFactor = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
         self.smoothFactor.setToolTip(
             "Smooth Factor being the standard deviation of the Gaussian filter applied to distance transform. "
             "As Smooth Factor increases less partitions will be created. Use small values for more reliable results."
@@ -569,7 +568,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
         smoothFactorBox.addWidget(self.smoothFactorPixelLabel)
 
         minDistBox = qt.QHBoxLayout()
-        self.minimumDistance = fixedRangeNumberParam(2, 30, value=5)
+        self.minimumDistance = ui.fixedRangeNumberParam(2, 30, value=5)
         self.minimumDistance.setToolTip(
             "Minimum distance separating peaks in a region of 2 * min_distance + 1 "
             "(i.e. peaks are separated by at least min_distance). To found the maximum number of partitions, "
@@ -709,7 +708,7 @@ class IslandsSettingsWidget(BaseSettingsWidget):
         formLayout = qt.QFormLayout(self)
 
         sizeFilterBox = qt.QHBoxLayout()
-        self.sizeFilterThreshold = numberParam((0.0, 99999.0), value=0, step=0.001, decimals=4)
+        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=0.001, decimals=4)
         self.sizeFilterThreshold.setToolTip(
             "Filter spurious partitions with major axis (feret_max) smaller than Size Filter value."
         )
@@ -774,7 +773,7 @@ class MedialSurfaceSettingsWidget(BaseSettingsWidget):
         formLayout = qt.QFormLayout(self)
 
         smoothFilterSigmaBox = qt.QHBoxLayout()
-        self.smoothFilterSigma = numberParam((0.0, 99999.0), value=0, step=0.001, decimals=4)
+        self.smoothFilterSigma = ui.numberParam((0.0, 99999.0), value=0, step=0.001, decimals=4)
         self.smoothFilterSigma.setToolTip("Smooth label interfaces.")
         self.smoothFilterSigma.objectName = "Smooth Filter Sigma SpinBox"
         self.smoothFilterSigmaPixelLabel = qt.QLabel("  0 px")
@@ -782,7 +781,7 @@ class MedialSurfaceSettingsWidget(BaseSettingsWidget):
         smoothFilterSigmaBox.addWidget(self.smoothFilterSigmaPixelLabel)
 
         numProcessesBox = qt.QHBoxLayout()
-        self.numProcesses = numberParam((1, 64), value=8, step=1, decimals=0)
+        self.numProcesses = ui.numberParam((1, 64), value=8, step=1, decimals=0)
         self.numProcesses.setToolTip("Number of processes to use during some parts of the execution.")
         self.numProcesses.objectName = "Number Processes SpinBox"
         numProcessesBox.addWidget(self.numProcesses)
@@ -832,7 +831,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
 
         ThresholdSplitBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.ThresholdSplit = numberParam((0.0, 1.0), value=0.95, step=step, decimals=4)
+        self.ThresholdSplit = ui.numberParam((0.0, 1.0), value=0.95, step=step, decimals=4)
         SplitThresholdTooltip = "Threshold used to split regions"
         self.ThresholdSplit.setToolTip(SplitThresholdTooltip)
         self.ThresholdSplit.objectName = "Deep Watershed Split Threshold SpinBox"
@@ -869,7 +868,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
 
         baseVolumeBox = qt.QHBoxLayout()
         step = 1
-        self.baseVolume = numberParam((0.0, 99999.0), value=150, step=step, decimals=0)
+        self.baseVolume = ui.numberParam((0.0, 99999.0), value=150, step=step, decimals=0)
         baseVolumeTooltip = (
             "Initial value that will be used to split the input volume into smaller patches for inferece"
         )
@@ -880,7 +879,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
 
         intersectionBox = qt.QHBoxLayout()
         step = 1
-        self.intersection = numberParam((0.0, 99999.0), value=60, step=step, decimals=0)
+        self.intersection = ui.numberParam((0.0, 99999.0), value=60, step=step, decimals=0)
         intersectionTooltip = "Intersection between inferences"
         self.intersection.setToolTip(intersectionTooltip)
 
@@ -889,7 +888,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
 
         borderBox = qt.QHBoxLayout()
         step = 1
-        self.border = numberParam((0.0, 99999.0), value=40, step=step, decimals=0)
+        self.border = ui.numberParam((0.0, 99999.0), value=40, step=step, decimals=0)
         borderTooltip = "Border to be cut from inferences"
         self.border.setToolTip(borderTooltip)
 
@@ -898,7 +897,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
 
         ThresholdBackgroundBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.ThresholdBackground = numberParam((0.0, 1.0), value=0.05, step=step, decimals=4)
+        self.ThresholdBackground = ui.numberParam((0.0, 1.0), value=0.05, step=step, decimals=4)
         ThresholdBackgroundTooltip = "Threshold used to remove the background (pore/non-pore segmentation)"
         self.ThresholdBackground.setToolTip(ThresholdBackgroundTooltip)
         self.ThresholdBackground.objectName = "Deep Watershed Background Threshold SpinBox"
@@ -1147,13 +1146,28 @@ class SegmentInspectorLogic(LTracePluginLogic):
                     topSegments=[s + 1 for s in segments],
                 )
 
+                bins = np.bincount(slicer.util.arrayFromVolume(labelMapNode).ravel())
+                count_nonbg = sum([bins[i] for i in targetLabels])
+
+                if count_nonbg == np.prod(labelMapNode.GetImageData().GetDimensions()):
+                    msg = "The combination of the selected segments covers the entire image. This can lead to unexpected results. Do you want to proceed?"
+                    ret = qt.QMessageBox.warning(
+                        slicer.modules.AppContextInstance.mainWindow,
+                        "Input Validation",
+                        msg,
+                        qt.QMessageBox.Yes,
+                        qt.QMessageBox.No,
+                    )
+
+                    if ret == qt.QMessageBox.No:
+                        raise AttributeError(msg)
+
                 if params["method"] == "medial surface":
                     array = slicer.util.arrayFromVolume(labelMapNode)
                     ndim = np.squeeze(array).ndim
                     if ndim != 3:
                         msg = "Medial surface segmentation is only available for 3D images."
                         slicer.util.errorDisplay(msg)
-                        helpers.removeTemporaryNodes(environment=self.tag)
                         raise AttributeError(msg)
 
                 if params.get("generate_throat_analysis", False) == True:
@@ -1339,13 +1353,6 @@ class SegmentInspectorLogic(LTracePluginLogic):
                         dpath.unlink(missing_ok=True)
 
                 segmentMap = getCountForLabels(info.sourceLabelMapNode, info.roiNode)
-                self.__createBasicPetrophysicsOutputNode(
-                    info.allLabels,  # force all targets here
-                    info.allLabels,
-                    segmentMap=dict(segmentMap),
-                    prefix=info.outputPrefix,
-                    where=outputDir,
-                )
 
         if method == "basic_petrophysics":
             segmentMap = getCountForLabels(info.sourceLabelMapNode, info.roiNode)
@@ -1376,7 +1383,8 @@ class SegmentInspectorLogic(LTracePluginLogic):
             helpers.moveNodeTo(outputDir, resultNode, dirTree=folderTree)
             makeTemporaryNodePermanent(resultNode, show=True)
             if resultNode.IsA("vtkMRMLLabelMapVolumeNode"):
-                nsegments = int(caller.GetParameterAsString("number_of_partitions"))
+                numPartitions = caller.GetParameterAsString("number_of_partitions")
+                nsegments = int(numPartitions) if numPartitions else 0
                 colors = rand_cmap(nsegments)
                 colorTableNode = helpers.create_color_table(
                     node_name=f"{resultNode.GetName()}_ColorMap",

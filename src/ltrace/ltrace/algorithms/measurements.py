@@ -1,9 +1,10 @@
+import logging
 import math
 from collections import namedtuple
 from multiprocessing import Process, Queue, Value
 from queue import Empty
 from threading import Thread
-from typing import List
+from typing import List, Callable
 
 import cv2
 import numba as nb
@@ -51,6 +52,14 @@ PORE_SIZE_CATEGORIES = [
 ]
 
 CLASS_LABEL_SUFFIX = ["[label]", "[ID]", "[CID]"]
+
+GENERIC_PROPERTIES = [
+    "area (m²)",
+    "insc diam (mm)",
+    "azimuth (°)",
+    "Circularity",
+    "Perimeter over Area (1/mm)",
+]
 
 
 def get_pore_size_class_label_field(fields):
@@ -434,7 +443,7 @@ def object_consumer(operator, queue, results, visited):
     results.put(None)
 
 
-def _executor_task(func: object, tasks: Queue, sender: Queue):
+def _executor_task(func: Callable, tasks: Queue, sender: Queue):
     processed = 0
     valid_results = []
     while True:
@@ -470,7 +479,7 @@ def _separator_task(im: np.ndarray, tasks: Queue, pool_size: int):
         tasks.put_nowait((-1, None))
 
 
-def calculate_statistics_on_segments(im: np.ndarray, operator: object, callback=None) -> None:
+def calculate_statistics_on_segments(im: np.ndarray, operator: object, callback=None):
     from timeit import default_timer as timer
 
     tstart = timer()
@@ -757,19 +766,26 @@ class LabelStatistics2D:
         else:
             self.__anglesFromReferenceDirection = mock
 
-    def __call__(self, label, pointsInRAS):
-        pointsInRAS = blobers(pointsInRAS, r=self.radius)
-        if pointsInRAS.shape[0] < 3:
+    def __call__(self, label, pointsInRasBorder):
+        # deprecated API
+        return self.calculate(label, pointsInRasBorder)
+
+    def calculate(self, label, pointsInRasBorder):
+        pointsInRasBorder = blobers(pointsInRasBorder, r=self.radius)
+        if pointsInRasBorder.shape[0] < 3:
             return None
 
-        voxelCount = len(pointsInRAS)
+        return self.strict_calculate(label, pointsInRasBorder)
+
+    def strict_calculate(self, label, pointsInRasBorder):
+        voxelCount = len(pointsInRasBorder)
         area_mm = voxelCount * self.voxel_size
 
         try:
-            chull = ConvexHull(pointsInRAS)
+            chull = ConvexHull(pointsInRasBorder)
             perimeter = chull.area  # yes, for 2D, the area is the perimeter
 
-            diameter, major_angle, min_feret, minor_angle, _ = rotating_calipers(pointsInRAS[chull.vertices])
+            diameter, major_angle, min_feret, minor_angle, _ = rotating_calipers(pointsInRasBorder[chull.vertices])
             eccen = np.sqrt(1 - min_feret / diameter)
             elong = np.sqrt(diameter / min_feret)
 
@@ -935,11 +951,11 @@ def zero_origin(vector):
 def get_angle_between(v1, v2):
     """Returns the angle in radians between vectors 'v1' and 'v2'::
 
-    >>> angle_between((1, 0, 0), (0, 1, 0))
+    angle_between((1, 0, 0), (0, 1, 0))
     1.5707963267948966
-    >>> angle_between((1, 0, 0), (1, 0, 0))
+    angle_between((1, 0, 0), (1, 0, 0))
     0.0
-    >>> angle_between((1, 0, 0), (-1, 0, 0))
+    angle_between((1, 0, 0), (-1, 0, 0))
     3.141592653589793
     """
     v1_u = unit_vector(zero_origin(v1))
@@ -1022,17 +1038,21 @@ def randomize_colors(im, keep_vals=[0]):
     neither will they be in the output.
     Examples
     --------
-    >>> import scipy as sp
-    >>> sp.random.seed(0)
-    >>> im = sp.random.randint(low=0, high=5, size=[4, 4])
-    >>> print(im)
-    [[4 0 3 3]
+
+    import scipy as sp
+    sp.random.seed(0)
+    im = sp.random.randint(low=0, high=5, size=[4, 4])
+    print(im)
+
+    $ [[4 0 3 3]
      [3 1 3 2]
      [4 0 0 4]
      [2 1 0 1]]
-    >>> im_rand = randomize_colors(im)
-    >>> print(im_rand)
-    [[2 0 4 4]
+
+    im_rand = randomize_colors(im)
+    print(im_rand)
+
+     [[2 0 4 4]
      [4 1 4 3]
      [2 0 0 2]
      [3 1 0 1]]
@@ -1105,11 +1125,12 @@ def sidewall_sample_instance_properties(instance_mask, spacing):
     return properties
 
 
-def generic_instance_properties(instance_mask, spacing, shape=None, offset=None):
+def generic_instance_properties(instance_mask, selected_measurements, spacing, shape=None, offset=None):
     """
     Calculates the instance generic properties.
 
     :param instance_mask: the binary 2D array containing the instance to be evaluated
+    :param selected_measurements: binary array that controls which measurement to calculate
     :param spacing: the spacing from the related volume
     :return: a dictionary containing the generic properties of the instance
     """
@@ -1119,44 +1140,75 @@ def generic_instance_properties(instance_mask, spacing, shape=None, offset=None)
 
     if offset is None:
         offset = (0, 0)
+    properties = {}
+    for index in range(len(selected_measurements)):
+        if selected_measurements[index]:
+            properties[GENERIC_PROPERTIES[index]] = -1
 
-    properties = {"area (m²)": -1, "insc diam (mm)": -1, "azimuth (°)": -1}
     contours, _ = cv2.findContours(instance_mask.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     markAreaInPixels = np.count_nonzero(instance_mask)
 
     if markAreaInPixels <= 0:
         raise ValueError("Detected Label with invalid area.")
 
-    try:
-        pixelArea = spacing[0] * spacing[1]
-        markAreaInMillimeters = markAreaInPixels * pixelArea
-        markAreaInMeters = markAreaInMillimeters / (10**6)
-        properties["area (m²)"] = np.round(markAreaInMeters, 8)
-    except Exception as e:
-        raise ValueError("Area calculation failed.")
+    if GENERIC_PROPERTIES[0] in properties.keys():
+        try:
+            pixelArea = spacing[0] * spacing[1]
+            markAreaInMillimeters = markAreaInPixels * pixelArea
+            markAreaInMeters = markAreaInMillimeters / (10**6)
+            properties["area (m²)"] = np.round(markAreaInMeters, 8)
+        except Exception as e:
+            properties["area (m²)"] = np.nan
+            logging.warning("Area calculation failed.")
 
-    try:
-        if any(instance_mask[:, 0] & instance_mask[:, -1]):
-            concatenated_mask = np.concatenate([instance_mask, instance_mask], axis=1)
-            padded_mask = np.pad(concatenated_mask, pad_width=1, mode="constant", constant_values=0)
-        else:
-            padded_mask = np.pad(instance_mask, pad_width=1, mode="constant", constant_values=0)
-        dt = ndimage.distance_transform_edt(padded_mask, sampling=spacing)
-        max_radius = instance_mask.shape[1] * spacing[1] / 2
-        radius = np.max(dt, initial=0, where=dt < max_radius)
-        diameter = 2 * radius
-        properties["insc diam (mm)"] = diameter
-    except Exception as e:
-        raise ValueError("Diameter calculation failed.")
+    if GENERIC_PROPERTIES[1] in properties.keys():
+        try:
+            if any(instance_mask[:, 0] & instance_mask[:, -1]):
+                concatenated_mask = np.concatenate([instance_mask, instance_mask], axis=1)
+                padded_mask = np.pad(concatenated_mask, pad_width=1, mode="constant", constant_values=0)
+            else:
+                padded_mask = np.pad(instance_mask, pad_width=1, mode="constant", constant_values=0)
+            dt = ndimage.distance_transform_edt(padded_mask, sampling=spacing)
+            max_radius = instance_mask.shape[1] * spacing[1] / 2
+            radius = np.max(dt, initial=0, where=dt < max_radius)
+            diameter = 2 * radius
+            properties["insc diam (mm)"] = diameter
+        except Exception as e:
+            properties["insc diam (mm)"] = np.nan
+            logging.warning("Diameter calculation failed.")
 
-    try:
-        markContour = max(contours, key=cv2.contourArea)
-        moments = cv2.moments(markContour)
-        center_x = int(np.round(moments["m10"] / moments["m00"])) + offset[1]
-        azimuth_in_degrees = 360 * center_x / (shape[1] - 1)
-        properties["azimuth (°)"] = int(np.round(azimuth_in_degrees))
-    except Exception as e:
-        raise ValueError("Azimuth calculation failed.")
+    if GENERIC_PROPERTIES[2] in properties.keys():
+        try:
+            markContour = max(contours, key=cv2.contourArea)
+            moments = cv2.moments(markContour)
+            center_x = int(np.round(moments["m10"] / moments["m00"])) + offset[1]
+            azimuth_in_degrees = 360 * center_x / (shape[1] - 1)
+            properties["azimuth (°)"] = int(np.round(azimuth_in_degrees))
+        except Exception as e:
+            properties["azimuth (°)"] = np.nan
+            logging.warning("Azimuth calculation failed.")
+
+    if GENERIC_PROPERTIES[3] in properties.keys():
+        try:
+            countourPerimeter = cv2.arcLength(contours[0], True)
+            countourArea = cv2.contourArea(contours[0])
+            properties[GENERIC_PROPERTIES[3]] = 4 * np.pi * countourArea / countourPerimeter**2
+        except Exception as e:
+            properties[GENERIC_PROPERTIES[3]] = np.nan
+            logging.warning("Circularity calculation failed.")
+
+    if GENERIC_PROPERTIES[4] in properties.keys():
+        try:
+            rescaledContour = contours[0]
+            rescaledContour[:, :, 0] = rescaledContour[:, :, 0] * spacing[0]
+            rescaledContour[:, :, 1] = rescaledContour[:, :, 1] * spacing[1]
+
+            rescaledPerimeter = cv2.arcLength(rescaledContour, True)
+            rescaledArea = cv2.contourArea(rescaledContour)
+            properties[GENERIC_PROPERTIES[4]] = rescaledPerimeter / rescaledArea
+        except Exception as e:
+            properties[GENERIC_PROPERTIES[4]] = np.nan
+            logging.warning("Perimeter over Area calculation failed.")
 
     return properties
 
@@ -1178,7 +1230,7 @@ def crop_to_content(image, padding=0):
     return instanceMask, indices, offset
 
 
-def instancesPropertiesDataFrame(labelMap):
+def instancesPropertiesDataFrame(labelMap, selectedMeasurements=[1, 1, 1]):
     propertiesList = []
     array = slicer.util.arrayFromVolume(labelMap)
     labels = np.unique(array)
@@ -1213,7 +1265,7 @@ def instancesPropertiesDataFrame(labelMap):
 
         try:
             instanceProperties = generic_instance_properties(
-                instanceMask, inverted_2d_spacing, arraySliceCopy.shape, offset
+                instanceMask, selectedMeasurements, inverted_2d_spacing, arraySliceCopy.shape, offset
             )
         except ValueError as err:
             # logging.debug(f"{err}\n{traceback.print_exc()}") # hide this error from the user for while; it's not critical; we must handle logging filters;
@@ -1222,9 +1274,11 @@ def instancesPropertiesDataFrame(labelMap):
         instanceProperties["depth (m)"] = instance_depth(labelMap, label)
         instanceProperties["label"] = label
         propertiesList.append(instanceProperties)
-    propertiesDataFrame = pd.DataFrame(
-        propertiesList, columns=["depth (m)", "area (m²)", "label", "azimuth (°)", "insc diam (mm)"]
-    )
+
+    measurementColumns = [
+        GENERIC_PROPERTIES[index] for index in range(len(selectedMeasurements)) if selectedMeasurements[index]
+    ]
+    propertiesDataFrame = pd.DataFrame(propertiesList, columns=["depth (m)", "label"] + measurementColumns)
     return propertiesDataFrame
 
 

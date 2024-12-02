@@ -111,7 +111,7 @@ Simple instructions: Select the input segment by selecting it from the segment l
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def onHopsChanged(self, hops):
         if self.scriptedEffect.parameterSetNode() is None:

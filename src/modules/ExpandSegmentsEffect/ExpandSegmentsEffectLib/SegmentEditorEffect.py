@@ -89,7 +89,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def onApply(self):
         if self.scriptedEffect.parameterSetNode() is None:

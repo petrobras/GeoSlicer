@@ -9,6 +9,7 @@ import slicer
 from enum import Enum
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
 from ltrace.slicer.tests.constants import TestState
+from typing import List
 
 
 class TestsSource(Enum):
@@ -232,16 +233,20 @@ class LTraceTestsModel(qt.QObject):
         self.__cancelling = True
 
     def result(self):
-        for test_suite in self.test_suite_list:
-            if not test_suite.enabled:
-                continue
+        def check_suite(suite_list: List[TestSuiteData]) -> TestState:
+            for test_suite in suite_list:
+                if not test_suite.enabled:
+                    continue
 
-            enabled_test_cases = [case for case in test_suite.test_case_data_list if case.enabled is True]
-            for case in enabled_test_cases:
-                if case.test_status != TestState.SUCCEED:
-                    return TestState.FAILED
+                enabled_test_cases = [case for case in test_suite.test_case_data_list if case.enabled is True]
 
-        return TestState.SUCCEED
+                for case in enabled_test_cases:
+                    if case.test_status != TestState.SUCCEED:
+                        return TestState.FAILED
+
+            return TestState.SUCCEED
+
+        return check_suite(self.test_suite_list + self.generate_suite_list)
 
     def __get_all_suites(self, test_source=TestsSource.ANY):
         test_suite_list = []
@@ -338,7 +343,7 @@ class LTraceTestsModel(qt.QObject):
     def run_tests(self, **kwargs):
         self.__is_running = True
         shuffle = kwargs.get("shuffle", False)
-        test_suite_list = kwargs.get("suite_list")
+        test_suite_list: List[TestSuiteData] = kwargs.get("suite_list")
 
         if not isinstance(test_suite_list, list) or test_suite_list is None:
             self.__cancelling = False

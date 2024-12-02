@@ -14,18 +14,21 @@ import pandas as pd
 
 from ltrace.pore_networks.functions import geo2spy
 from ltrace.slicer import data_utils as du
+from ltrace.slicer.helpers import LazyLoad
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer_utils import LTracePluginLogic
 
-from CustomResampleScalarVolume import CustomResampleScalarVolumeLogic
-from PoreNetworkExtractor import PoreNetworkExtractorLogic
-from PoreNetworkProduction import PoreNetworkProductionLogic
-from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulationWidget
-from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
-from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
-from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget, MercurySimulationLogic
-from MercurySimulationLib.SubscaleModelWidget import SubscaleLogicDict
+CustomResampleScalarVolumeLogic = LazyLoad("CustomResampleScalarVolume.CustomResampleScalarVolumeLogic")
+PoreNetworkExtractorLogic = LazyLoad("PoreNetworkExtractor.PoreNetworkExtractorLogic")
+PoreNetworkProductionLogic = LazyLoad("PoreNetworkProduction.PoreNetworkProductionLogic")
+OnePhaseSimulationWidget = LazyLoad("PoreNetworkSimulationLib.OnePhaseSimulationWidget.OnePhaseSimulationWidget")
+TwoPhaseSimulationWidget = LazyLoad("PoreNetworkSimulationLib.TwoPhaseSimulationWidget.TwoPhaseSimulationWidget")
+OnePhaseSimulationLogic = LazyLoad("PoreNetworkSimulationLib.PoreNetworkSimulationLogic.OnePhaseSimulationLogic")
+TwoPhaseSimulationLogic = LazyLoad("PoreNetworkSimulationLib.PoreNetworkSimulationLogic.TwoPhaseSimulationLogic")
+MercurySimulationWidget = LazyLoad("MercurySimulationLib.MercurySimulationWidget.MercurySimulationWidget")
+MercurySimulationLogic = LazyLoad("MercurySimulationLib.MercurySimulationLogic.MercurySimulationLogic")
+SubscaleLogicDict = LazyLoad("MercurySimulationLib.SubscaleModelWidget.SubscaleLogicDict")
 
 
 class PNMQueue(qt.QObject):
@@ -458,6 +461,10 @@ class ReportLogic(LTracePluginLogic):
         def onFinishKrel(state):
             if state:
                 try:
+                    self.json_entry_node_ids["sensibility_parameters"] = self.params[
+                        "sensibility_parameters_node"
+                    ].GetID()
+
                     krelResultsTableNode = slicer.util.getNode(logic.krelResultsTableNodeId)
                     krelResultsTableNode.SetName("Sensibility")
                     self.json_entry_node_ids["sensibility"] = krelResultsTableNode.GetID()
@@ -537,8 +544,13 @@ class ReportLogic(LTracePluginLogic):
             if state:
                 micp_results_node_id = logic.results_node_id
                 if micp_results_node_id:
-                    micp_results = slicer.util.getNode(micp_results_node_id)
-                    self.json_entry_node_ids["micp"] = micp_results.GetID()
+                    self.json_entry_node_ids["micp"] = micp_results_node_id
+
+                flow_props_pore_id = logic.flow_props_pore_id
+                flow_props_throat_id = logic.flow_props_throat_id
+                if flow_props_pore_id and flow_props_throat_id:
+                    self.json_entry_node_ids["flow_props_pore_network"] = flow_props_pore_id
+                    self.json_entry_node_ids["flow_props_throat_network"] = flow_props_throat_id
 
                 self.MICPState = True
 
@@ -622,6 +634,11 @@ class ReportLogic(LTracePluginLogic):
                 self.json_entry[key] = os.path.basename(name)
             else:
                 continue
+
+        name = f"{folder}/{self.outputPrefix}/subres_model.json"
+        with open(name, "w") as f:
+            json.dump({self.subres_model_name: self.subres_params}, f)
+        self.json_entry["subres_model"] = os.path.basename(name)
 
         self.projects_dict[self.outputPrefix] = self.json_entry
 

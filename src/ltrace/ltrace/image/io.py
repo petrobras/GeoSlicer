@@ -1,10 +1,10 @@
 import os
-import pathlib
 
 import cv2
 from natsort import natsorted
 import numpy as np
 from PIL import Image, ExifTags
+from pathlib import Path
 import slicer
 
 
@@ -20,6 +20,7 @@ def load_from_files(dirpath: str):
 
 def volume_from_image(filepath):
     new_node = slicer.util.loadVolume(str(filepath), properties={"singleFile": True})
+    new_node.SetName(Path(filepath).stem)
 
     with Image.open(filepath) as image:
         if image.format == "PNG":

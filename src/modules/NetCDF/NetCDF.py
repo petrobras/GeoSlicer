@@ -19,7 +19,7 @@ class NetCDF(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "NetCDF"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = NetCDF.help()
 
@@ -39,12 +39,12 @@ class NetCDFWidget(LTracePluginWidget):
         self.export_module = slicer.modules.netcdfexport.createNewWidgetRepresentation()
         self.save_module = SaveNetcdfWidget()
 
-        main_tab = qt.QTabWidget()
-        main_tab.addTab(self.import_module, "Import")
-        main_tab.addTab(self.save_module, "Save")
-        main_tab.addTab(self.export_module, "Export")
+        self.main_tab = qt.QTabWidget()
+        self.main_tab.addTab(self.import_module, "Import")
+        self.main_tab.addTab(self.save_module, "Save")
+        self.main_tab.addTab(self.export_module, "Export")
 
-        self.layout.addWidget(main_tab)
+        self.layout.addWidget(self.main_tab)
         self.layout.addStretch(1)
 
 

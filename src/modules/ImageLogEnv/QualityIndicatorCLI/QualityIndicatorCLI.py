@@ -6,27 +6,12 @@
 from __future__ import print_function
 
 import vtk, slicer, slicer.util, mrml
-
-import logging
-import os, sys
-import traceback
-
-from xarray import where
+import numpy as np
 
 from ltrace.slicer.helpers import getVolumeNullValue
-
-import json
-
-from pathlib import Path
-import numpy as np
-import csv
-
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUE as DEFAULT_NULL_VALUES
-
 from ltrace.slicer.cli_utils import readFrom, writeDataInto, progressUpdate
 from ltrace.algorithms.spiral_filter import filter_spiral
-
-DEFAULT_NULL_VALUE = list(DEFAULT_NULL_VALUES)[0]
+from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE as DEFAULT_NULL_VALUE
 
 
 def calculateSpiralIndicator(data, windowSizeIndex):

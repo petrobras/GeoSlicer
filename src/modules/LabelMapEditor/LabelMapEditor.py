@@ -64,7 +64,7 @@ class LabelMapEditor(LTracePlugin):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent.title = "Label Map Editor"
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Segmentation", "MicroCT", "Thin Section", "ImageLog", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = LabelMapEditor.help()
@@ -199,25 +199,23 @@ class LabelMapEditorWidget(LTracePluginWidget):
 
         self.layout.addWidget(output_collapsible)
 
-        # Save button
-        self.save_button = qt.QPushButton("Apply")
-        self.save_button.setObjectName("saveLabelMapButton")
-        self.save_button.setFixedHeight(40)
-        self.save_button.clicked.connect(self.on_save_button_clicked)
-
-        self.cancel_button = qt.QPushButton("Cancel")
-        self.cancel_button.setFixedHeight(40)
-        self.cancel_button.clicked.connect(self.on_cancel_saving_button_clicked)
-
-        save_buttons_layout = qt.QHBoxLayout()
-        save_buttons_layout.addWidget(self.save_button)
-        save_buttons_layout.addWidget(self.cancel_button)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.on_save_button_clicked,
+            onCancelClick=self.on_cancel_saving_button_clicked,
+            applyTooltip="Save",
+            cancelTooltip="Cancel",
+            applyText="Save",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName="saveLabelMapButton",
+            cancelObjectName=None,
+        )
 
         # Progress bar
         self.progress_bar = LocalProgressBar()
         self.progress_update = lambda value: None
 
-        self.layout.addLayout(save_buttons_layout)
+        self.layout.addWidget(self.applyCancelButtons)
         self.layout.addWidget(self.progress_bar)
 
         # Add vertical spacer
@@ -336,7 +334,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
                 checkPercent=False,
             )
             # Avoid multiple clicks at the Save button
-            self.save_button.setEnabled(False)
+            self.applyCancelButtons.applyBtn.setEnabled(False)
             self.progress_bar.setCommandLineModuleNode(self.cliNode)
 
             self.cliNode.AddObserver("ModifiedEvent", lambda c, ev, p=resultInfo: self.eventHandler(c, ev, p))
@@ -845,7 +843,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
             if not caller.IsBusy():
                 removeTemporaryNodes()
                 self.progress_update(1.0)
-                self.save_button.setEnabled(True)
+                self.applyCancelButtons.applyBtn.setEnabled(True)
 
     def _createRunStats(self, inputNode, labels, params, roiNode=None, prefix="", where=None):
         """

@@ -8,6 +8,7 @@ pipeline {
         booleanParam(name: 'SFX', defaultValue: false, description: 'Create Self-Extracting File instead of the compressed file.')
         booleanParam(name: 'PUBLIC_VERSION', defaultValue: false, description: 'Generate the application\'s public version.')
         booleanParam(name: 'NO_PUBLIC_COMMIT', defaultValue: true, description: 'Avoid commiting to the opensource code repository. (only valid when enabling the public version generation parameter)')        
+        booleanParam(name: 'MESA3D_DRIVER', defaultValue: false, description: 'Install the Mesa3D Driver (no-GPU support).')        
         choice(name: 'PLATFORM', choices: ['Linux', 'Windows'], description: 'Select the desired Operational System to generate the application.')
         string(name: 'BASE', defaultValue: 'latest', description: 'Filename of the base archive or version number. "latest" will download the latest version from the OCI bucket.')
     }
@@ -35,7 +36,7 @@ pipeline {
                         label "${PLATFORM}".toLowerCase()
                     }
                     options {
-                        timeout(time: 10, unit: "MINUTES")
+                        timeout(time: 20, unit: "MINUTES")
                         skipDefaultCheckout()
                     }
                     steps {
@@ -85,16 +86,17 @@ pipeline {
                             steps {
                                 script {
                                     def git_tag = util.get_git_tag()                                    
-                                    def no_test_flag = ("${params.EXPORT}" == "false") ? "--no-export" : ""
-                                    def no_export_flag = ("${params.TEST}" == "false") ? "--no-test" : ""
+                                    def no_export_flag = ("${params.EXPORT}" == "false") ? "--no-export --disable-archiving" : ""
+                                    def no_test_flag = ("${params.TEST}" == "false") ? "--no-test" : ""
                                     def sfx_flag = ("${params.SFX}" == "true") ? "--sfx" : ""
                                     def public_flag = ("${params.PUBLIC_VERSION}" == "true") ? "--generate-public-version" : ""
                                     def no_public_commit_flag = ("${params.NO_PUBLIC_COMMIT}" == "true") ? "--no-public-commit" : ""
+                                    def no_gpu = ("${params.MESA3D_DRIVER}" == "true") ? "--no-gpu" : ""
                                     def base = "${params.BASE}"
                                     if (base.trim().isEmpty()) {
                                         error("Base is empty. Please, set the base parameter.")
                                     }
-                                    def arguments = "--version ${git_tag} --no-gpu ${no_test_flag} ${no_export_flag} ${sfx_flag} ${public_flag} ${no_public_commit_flag} --base ${base} --production".trim()
+                                    def arguments = "--version ${git_tag} ${no_gpu} ${no_test_flag} ${no_export_flag} ${sfx_flag} ${public_flag} ${no_public_commit_flag} --base ${base} --production".trim()
                                     util.download_and_deploy(arguments, false)
                                 }
                             }
@@ -142,16 +144,17 @@ pipeline {
                             steps {
                                 script {
                                     def git_tag = util.get_git_tag()
-                                    def no_test_flag = ("${params.EXPORT}" == "false") ? "--no-export" : ""
-                                    def no_export_flag = ("${params.TEST}" == "false") ? "--no-test" : ""
+                                    def no_export_flag = ("${params.EXPORT}" == "false") ? "--no-export --disable-archiving" : ""
+                                    def no_test_flag = ("${params.TEST}" == "false") ? "--no-test" : ""
                                     def sfx_flag = ("${params.SFX}" == "true") ? "--sfx" : ""
                                     def public_flag = ("${params.PUBLIC_VERSION}" == "true") ? "--generate-public-version" : ""
                                     def no_public_commit_flag = ("${params.NO_PUBLIC_COMMIT}" == "true") ? "--no-public-commit" : ""
+                                    def no_gpu = ("${params.MESA3D_DRIVER}" == "true") ? "--no-gpu" : ""
                                     def base = "${params.BASE}"
                                     if (base.trim().isEmpty()) {
                                         error("Base is empty. Please, set the base parameter.")
                                     }
-                                    def arguments = "--version ${git_tag} --no-gpu ${no_test_flag} ${no_export_flag} ${sfx_flag} ${public_flag} ${no_public_commit_flag} --base ${base} --production".trim()
+                                    def arguments = "--version ${git_tag} ${no_gpu} ${no_test_flag} ${no_export_flag} ${sfx_flag} ${public_flag} ${no_public_commit_flag} --base ${base} --production".trim()
                                     util.download_and_deploy(arguments, true)
                                 }
                             }

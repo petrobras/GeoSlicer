@@ -18,6 +18,7 @@ from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     hide_nodes_of_type,
+    getResourcePath,
 )
 from ltrace.slicer import widgets
 
@@ -38,11 +39,11 @@ class PoreNetworkVisualization(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "PoreNetworkVisualization"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "PNM Cycles Visualization"
+        self.parent.categories = ["MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PoreNetworkVisualization.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/cycles.html').as_posix()}"
         self.parent.acknowledgementText = ""
 
     @classmethod

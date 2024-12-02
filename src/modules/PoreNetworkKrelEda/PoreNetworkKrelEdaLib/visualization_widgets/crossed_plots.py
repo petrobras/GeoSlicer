@@ -4,7 +4,7 @@ import qt
 import shiboken2
 
 from ltrace.slicer.graph_data import DataFrameGraphData
-from Plots.Crossplot.data_plot_widget import DataPlotWidget
+from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 
 
@@ -31,8 +31,14 @@ class CrossedError(PlotBase):
 
         self.dataPlotWidget = DataPlotWidget()
         self.dataPlotWidget.set_theme("Light")
+
+        self.spacerWidget = pyside.QtWidgets.QSpacerItem(
+            0, 0, pyside.QtWidgets.QSizePolicy.Expanding, pyside.QtWidgets.QSizePolicy.Expanding
+        )
+
         pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), pyside.QtWidgets.QFormLayout)
         pySideMainLayout.addRow(self.dataPlotWidget.widget)
+        pySideMainLayout.addItem(self.spacerWidget)
 
     def update(self):
         self.xAxisComboBox.blockSignals(True)
@@ -101,8 +107,14 @@ class CrossedParameters(PlotBase):
 
         self.dataPlotWidget = DataPlotWidget()
         self.dataPlotWidget.set_theme("Light")
+
+        self.spacerWidget = pyside.QtWidgets.QSpacerItem(
+            0, 0, pyside.QtWidgets.QSizePolicy.Expanding, pyside.QtWidgets.QSizePolicy.Expanding
+        )
+
         pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), pyside.QtWidgets.QFormLayout)
         pySideMainLayout.addRow(self.dataPlotWidget.widget)
+        pySideMainLayout.addItem(self.spacerWidget)
 
     def update(self):
         self.xAxisComboBox.blockSignals(True)

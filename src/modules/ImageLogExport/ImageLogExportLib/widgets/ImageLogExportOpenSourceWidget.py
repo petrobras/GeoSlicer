@@ -1,21 +1,30 @@
 import logging
-import vtk, qt, ctk, slicer
-import json
 import os
 import re
-from .output_name_dialog import OutputNameDialog
 from pathlib import Path
-from Export import ExportLogic, checkUniqueNames
+
+import ctk
+import qt
+import slicer
+import vtk
 from ImageLogExportLib import ImageLogCSV
-from ltrace.slicer.helpers import getNodeDataPath
-from ltrace.slicer_utils import LTracePluginWidget
-from ltrace.utils.recursive_progress import RecursiveProgress
+
 import ltrace.image.las as imglas
-from ltrace.slicer.helpers import createTemporaryNode, getNodeDataPath, getSourceVolume, removeTemporaryNodes
+from ltrace.slicer import export
+from ltrace.slicer.helpers import (
+    createTemporaryNode,
+    getNodeDataPath,
+    getSourceVolume,
+    removeTemporaryNodes,
+    checkUniqueNames,
+)
 from ltrace.slicer.node_attributes import NodeEnvironment, TableType
+from ltrace.utils.ProgressBarProc import ProgressBarProc
+from ltrace.utils.recursive_progress import RecursiveProgress
+from .output_name_dialog import OutputNameDialog
 
 
-class ImageLogExportOpenSourceWidget(LTracePluginWidget):
+class ImageLogExportOpenSourceWidget(qt.QWidget):
     EXPORT_DIR = "ImageLogExport/exportDir"
     IGNORE_DIR_STRUCTURE = "ImageLogExport/ignoreDirStructure"
     FORMAT_MATRIX_CSV = "CSV (matrix format)"
@@ -31,16 +40,16 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         slicer.vtkMRMLLabelMapVolumeNode,
     )
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.cancel = False
         self.cliCompleted = False
         self.auxNode = None
         self.moduleName = "ImageLogExport"
 
-    def setup(self):
-        LTracePluginWidget.setup(self)
+        self.setup()
 
+    def setup(self):
         self.subjectHierarchyTreeView = slicer.qMRMLSubjectHierarchyTreeView()
         self.subjectHierarchyTreeView.setMRMLScene(slicer.app.mrmlScene())
         self.subjectHierarchyTreeView.header().setVisible(False)
@@ -71,6 +80,7 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         self.directorySelector.directory = slicer.app.settings().value(
             self.EXPORT_DIR, Path(slicer.mrmlScene.GetRootDirectory()).parent
         )
+        self.directorySelector.setMaximumWidth(374)
 
         self.progressBar = qt.QProgressBar()
         self.progressBar.setValue(0)
@@ -112,9 +122,11 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         statusHBoxLayout.addWidget(self.currentStatusLabel)
         formLayout.addRow(statusHBoxLayout)
 
-        self.layout.addLayout(formLayout)
+        layout = qt.QVBoxLayout()
+        layout.addLayout(formLayout)
+        layout.addStretch(1)
 
-        self.layout.addStretch(1)
+        self.setLayout(layout)
 
     def _startExport(self):
         self.progressBar.setValue(0)
@@ -131,7 +143,7 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
     def _updateNodesAndExportButton(self):
         items = vtk.vtkIdList()
         self.subjectHierarchyTreeView.currentItems(items)
-        self.nodes = ExportLogic().getDataNodes(items, self.EXPORTABLE_TYPES)
+        self.nodes = export.getDataNodes(items, self.EXPORTABLE_TYPES)
         self.exportButton.enabled = self.nodes
 
     def onExportClicked(self):
@@ -152,8 +164,8 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
         for node in self.nodes:
             if (
                 type(node) is slicer.vtkMRMLTableNode
-                or self.logFormatBox.currentText == ImageLogExportClosedSourceWidget.FORMAT_MATRIX_CSV
-                or self.logFormatBox.currentText == ImageLogExportClosedSourceWidget.FORMAT_TECHLOG_CSV
+                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV
+                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV
             ):
                 nodeToExportList.append(node)
             elif (
@@ -194,7 +206,7 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
                             )
                 else:
                     if self.tableFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_CSV:
-                        ExportLogic().exportTable(node, outputDir, nodeDir, ExportLogic.TABLE_FORMAT_CSV)
+                        export.exportTable(node, outputDir, nodeDir, export.TABLE_FORMAT_CSV)
                         progress.set_progress(1)
             else:
                 if self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV:
@@ -211,14 +223,19 @@ class ImageLogExportOpenSourceWidget(LTracePluginWidget):
             self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
             or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
         ) and len(nodeToLASList):
-            try:
-                self.startLasExport(nodeToLASList, outputDir, lasProgress)
-            except RuntimeError as e:
-                logging.error(e)
-                self._stopExport()
-                self.progressBar.setValue(0)
-                self.currentStatusLabel.text = "Export failed!"
-                return
+
+            with ProgressBarProc() as progressBarProc:
+                progressBarProc.nextStep(5, "Starting to export LAS...")
+                try:
+                    self.startLasExport(nodeToLASList, outputDir, lasProgress)
+                except RuntimeError as e:
+                    logging.error(e)
+                    self._stopExport()
+                    self.progressBar.setValue(0)
+                    self.currentStatusLabel.text = "Export failed!"
+                    progressBarProc.nextStep(0, "Error exporting LAS data.")
+                    return
+                progressBarProc.nextStep(100, "LAS export completed.")
 
         self._stopExport()
         self.progressBar.setValue(100)

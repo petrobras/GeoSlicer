@@ -27,8 +27,8 @@ class CTAutoRegistration(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "CT Auto Registration"
-        self.parent.categories = ["Registration"]
+        self.parent.title = "MicroCT Auto Registration"
+        self.parent.categories = ["Registration", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CTAutoRegistration.help()

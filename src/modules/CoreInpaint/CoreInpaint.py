@@ -22,7 +22,7 @@ class CoreInpaint(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Core Inpaint"
-        self.parent.categories = ["Core"]
+        self.parent.categories = ["Core", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = CoreInpaint.help()
 
@@ -47,6 +47,7 @@ class CoreInpaintWidget(LTracePluginWidget):
 
         self.outputNameField = qt.QLineEdit()
         self.outputNameField.setToolTip("Name of the output volume")
+        self.outputNameField.objectName = "Output Name Line Edit"
 
         self.progressBar = qt.QProgressBar()
 
@@ -86,15 +87,16 @@ class CoreInpaintWidget(LTracePluginWidget):
 
         if not selectedSegments:
             highlight_error(self.inputWidget.segmentListGroup[1])
+            self.applyButton.enabled = True
             return
 
         labelMapNode = createTemporaryVolumeNode(slicer.vtkMRMLLabelMapVolumeNode, "mask")
         labelMapNode.CopyContent(segmentNode)
         slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(segmentNode, labelMapNode, imageNode)
 
-        outNode = slicer.vtkSlicerVolumesLogic().CloneVolume(
-            slicer.mrmlScene, imageNode, self.outputNameField.text, False
-        )
+        outNode = slicer.vtkSlicerVolumesLogic().CloneVolume(slicer.mrmlScene, imageNode, "clonedNode", False)
+        outNode.SetName(slicer.mrmlScene.GenerateUniqueName(self.outputNameField.text))
+        outNode.Modified()
 
         try:
             self.logic.apply(imageNode, labelMapNode, selectedSegments, outNode, self.onProgress)
@@ -106,6 +108,8 @@ class CoreInpaintWidget(LTracePluginWidget):
 
             slicer.util.errorDisplay(str(err))
             raise
+        finally:
+            self.applyButton.enabled = True
 
         self.progressBar.setValue(100)
         self.onReferenceSelected(self.inputWidget.referenceInput.currentNode(), updateName=False)

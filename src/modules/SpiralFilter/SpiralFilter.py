@@ -2,6 +2,7 @@ import logging
 import os
 from collections import namedtuple
 from pathlib import Path
+from typing import Union
 
 import ctk
 import qt
@@ -29,7 +30,7 @@ class SpiralFilter(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Spiral Filter"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = SpiralFilter.help()
@@ -78,6 +79,7 @@ class SpiralFilterWidget(LTracePluginWidget):
         self.logic = SpiralFilterLogic(self.progressBar)
         self.logic.setParent(self.parent)
         self.logic.filterFinished.connect(lambda: self.updateApplyCancelButtonsEnablement(True))
+        self.logic.filterFinished.connect(self.__updateFilteredDifferenceLabel)
 
         frame = qt.QFrame()
         self.layout.addWidget(frame)
@@ -104,6 +106,8 @@ class SpiralFilterWidget(LTracePluginWidget):
         self.inputVolume.setToolTip("Select the image input to the algorithm.")
         self.inputVolume.currentNodeChanged.connect(self.onInputVolumeCurrentNodeChanged)
         self.inputVolume.objectName = "Image Input"
+        self.inputVolume.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
+        self.inputVolume.setMaximumHeight(24)
         inputFormLayout.addRow("Image:", self.inputVolume)
         inputFormLayout.addRow(" ", None)
 
@@ -115,18 +119,18 @@ class SpiralFilterWidget(LTracePluginWidget):
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         self.minimumWavelengthDoubleSpinBox = qt.QDoubleSpinBox()
-        self.minimumWavelengthDoubleSpinBox.setRange(1, 100)
-        self.minimumWavelengthDoubleSpinBox.setDecimals(0)
-        self.minimumWavelengthDoubleSpinBox.setSingleStep(1)
+        self.minimumWavelengthDoubleSpinBox.setRange(0, 100)
+        self.minimumWavelengthDoubleSpinBox.setDecimals(2)
+        self.minimumWavelengthDoubleSpinBox.setSingleStep(0.1)
         self.minimumWavelengthDoubleSpinBox.setValue(float(self.getMinimumWavelength()))
         self.minimumWavelengthDoubleSpinBox.setToolTip("Minimum vertical wavelength of the spiraling effect in meters.")
         self.minimumWavelengthDoubleSpinBox.objectName = "Minimum Wave Length Input"
         parametersFormLayout.addRow("Minimum wavelength (m):", self.minimumWavelengthDoubleSpinBox)
 
         self.maximumWavelengthDoubleSpinBox = qt.QDoubleSpinBox()
-        self.maximumWavelengthDoubleSpinBox.setRange(1, 500)
-        self.maximumWavelengthDoubleSpinBox.setDecimals(0)
-        self.maximumWavelengthDoubleSpinBox.setSingleStep(1)
+        self.maximumWavelengthDoubleSpinBox.setRange(0, 500)
+        self.maximumWavelengthDoubleSpinBox.setDecimals(2)
+        self.maximumWavelengthDoubleSpinBox.setSingleStep(0.1)
         self.maximumWavelengthDoubleSpinBox.setValue(float(self.getMaximumWavelength()))
         self.maximumWavelengthDoubleSpinBox.setToolTip("Maximum vertical wavelength of the spiraling effect in meters.")
         self.maximumWavelengthDoubleSpinBox.objectName = "Maximum Wave Length Input"
@@ -198,6 +202,19 @@ class SpiralFilterWidget(LTracePluginWidget):
 
         self.layout.addWidget(self.progressBar)
 
+        # Add filter difference label indicator
+        self.indicatorsWidget = qt.QWidget()
+        self.indicatorsWidget.objectName = "Indicators Widget"
+        self.indicatorsWidget.visible = False
+        self.indicatorsWidget.setStyleSheet("QLabel { color : green; }")
+
+        self.filteredDifferenceValueLabel = qt.QLabel("")
+        self.filteredDifferenceLayout = qt.QFormLayout()
+        self.filteredDifferenceLayout.addRow("Filter difference:", self.filteredDifferenceValueLabel)
+
+        self.indicatorsWidget.setLayout(self.filteredDifferenceLayout)
+        self.layout.addWidget(self.indicatorsWidget)
+
         self.layout.addStretch()
 
     def onOutputPrefixTextChanged(self, text: str) -> None:
@@ -219,6 +236,9 @@ class SpiralFilterWidget(LTracePluginWidget):
         self.applyButton.enabled = node is not None
 
     def onApplyButtonClicked(self):
+        self.filteredDifferenceValueLabel.text = ""
+        self.indicatorsWidget.visible = False
+
         try:
             if self.inputVolume.currentNode() is None:
                 raise FilterInfo("Input image is required.")
@@ -254,9 +274,21 @@ class SpiralFilterWidget(LTracePluginWidget):
         self.applyButton.enabled = applyEnabled and self.inputVolume.currentNode() is not None
         self.cancelButton.enabled = not applyEnabled
 
+    def __updateFilteredDifferenceLabel(self, value: Union[None, str]) -> None:
+        if value is None:
+            return
+
+        try:
+            valueFloat = float(value)
+        except ValueError:
+            return
+
+        self.filteredDifferenceValueLabel.text = f"{valueFloat*100:.2f}%"
+        self.indicatorsWidget.visible = True
+
 
 class SpiralFilterLogic(LTracePluginLogic):
-    filterFinished = qt.Signal()
+    filterFinished = qt.Signal(object)
 
     def __init__(self, progressBar):
         LTracePluginLogic.__init__(self)
@@ -306,6 +338,7 @@ class SpiralFilterLogic(LTracePluginLogic):
 
         status = caller.GetStatusString()
         outputVolumeNode = helpers.tryGetNode(self.outputVolumeNodeId)
+        filteredDiff = None
         if "Completed" in status or status == "Cancelled":
             logging.debug(status)
 
@@ -315,6 +348,8 @@ class SpiralFilterLogic(LTracePluginLogic):
             elif status != "Completed":
                 slicer.mrmlScene.RemoveNode(outputVolumeNode)
                 slicer.util.errorDisplay("Filtering failed.")
+            else:  # Completed
+                filteredDiff = self.cliNode.GetParameterAsString(f"filtered_diff")
 
         outputVolumeNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
@@ -322,7 +357,7 @@ class SpiralFilterLogic(LTracePluginLogic):
             self.outputVolumeNodeId = None
             del self.cliNode
             self.cliNode = None
-            self.filterFinished.emit()
+            self.filterFinished.emit(filteredDiff)
 
     def cancel(self):
         if self.cliNode is None:

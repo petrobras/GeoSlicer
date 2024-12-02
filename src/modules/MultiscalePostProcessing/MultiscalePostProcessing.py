@@ -9,6 +9,7 @@ import numpy as np
 from ltrace.slicer import ui, helpers, widgets
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
 from ltrace.utils.ProgressBarProc import ProgressBarProc
+from ltrace.slicer.node_attributes import ImageLogDataSelectable, TableType
 
 try:
     from Test.MultiscalePostProcessingTest import MultiscalePostProcessingTest
@@ -24,8 +25,8 @@ class MultiscalePostProcessing(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multiscale Post-processing"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "Multi-Scale Post-Processing"
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MultiscalePostProcessing.help()
 
@@ -71,6 +72,8 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
             onChange=self.onRealizationNodeChange,
             nodeTypes=[
                 "vtkMRMLScalarVolumeNode",
+                "vtkMRMLLabelMapVolumeNode",
+                "vtkMRMLSegmentationNode",
             ],
             hasNone=True,
         )
@@ -83,6 +86,8 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
             onChange=self.onTrainingImageChange,
             nodeTypes=[
                 "vtkMRMLScalarVolumeNode",
+                "vtkMRMLLabelMapVolumeNode",
+                "vtkMRMLSegmentationNode",
             ],
             hasNone=True,
         )
@@ -139,7 +144,10 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.porosityValueSpinBox.setToolTip("Set the value of the segment classified as pore in the image.")
 
         self.singleShotWidget = widgets.SingleShotInputWidget(
-            hideImage=True, hideSoi=True, hideCalcProp=False, allowedInputNodes=["vtkMRMLLabelMapVolumeNode"]
+            hideImage=True,
+            hideSoi=True,
+            hideCalcProp=False,
+            allowedInputNodes=["vtkMRMLLabelMapVolumeNode", "vtkMRMLSegmentationNode"],
         )
         self.singleShotWidget.segmentListGroup[1].itemChanged.connect(self.checkRunButtonState)
 
@@ -185,15 +193,24 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
                 self.runFrequencyLogic()
 
     def runPorosityLogic(self):
-        node = self.realizationNodeComboBox.currentNode()
+        mainNode = self.realizationNodeComboBox.currentNode()
+        TINode = (
+            self.trainingImageComboBox.currentNode() if self.trainingImageComboBox.currentNode() is not None else None
+        )
+
+        if mainNode is not None and isinstance(mainNode, slicer.vtkMRMLSegmentationNode):
+            mainNode, _ = helpers.createLabelmapInput(mainNode, "temporary_Main")
+
+        if TINode is not None and isinstance(TINode, slicer.vtkMRMLSegmentationNode):
+            TINode, _ = helpers.createLabelmapInput(TINode, "temporary_TI")
 
         self.logic.generatePorosityPerRealization(
-            node,
+            mainNode,
             np.array(self.singleShotWidget.getSelectedSegments()) + 1
             if self.isSegment
             else [self.porosityValueSpinBox.value],
             self.outputPrefix.text,
-            self.trainingImageComboBox.currentNode() if self.trainingImageComboBox.currentNode() is not None else None,
+            TINode,
         )
 
     def runFrequencyLogic(self):
@@ -225,12 +242,12 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
     def onRealizationNodeChange(self, itemId):
         node = self.subjectHierarchyNode.GetItemDataNode(itemId)
         if node:
-            if isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
-                self.singleShotWidget.mainInput.setCurrentNode(node)
-                self.changePoreValueSelector(True)
-            else:
+            if type(node) is slicer.vtkMRMLScalarVolumeNode:
                 self.changePoreValueSelector(False)
                 self.singleShotWidget.mainInput.setCurrentNode(None)
+            else:
+                self.singleShotWidget.mainInput.setCurrentNode(node)
+                self.changePoreValueSelector(True)
 
             self.outputPrefix.text = "Porosity_per_realization_table"
         else:
@@ -406,6 +423,9 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
 
         result = dataFrameToTableNode(df)
         result.SetName(slicer.mrmlScene.GenerateUniqueName(outputPrefix))
-        result.SetAttribute("table_type", "porosity_per_realization")
+        result.SetAttribute(TableType.name(), TableType.POROSITY_PER_REALIZATION.value)
+        result.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
         self.__AddNodeToHierarchy(result, METHODS["Porosity"])
+
+        helpers.removeTemporaryNodes()

@@ -40,7 +40,7 @@ if __name__ == "__main__":
         help="The module's title. Example: 'New Module'. Default to the same as the name input string.",
     )
     parser.add_argument(
-        "-c", "--category", type=str, default="LTrace Tools", help="The module's category. Default to 'LTrace Tools'."
+        "-c", "--category", type=str, default="Tools", help="The module's category. Default to 'LTrace Tools'."
     )
     parser.add_argument("--cli", action="store_true", help="Add CLI related files", default=False)
 

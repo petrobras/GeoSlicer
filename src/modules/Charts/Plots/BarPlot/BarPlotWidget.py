@@ -1,7 +1,7 @@
-from .AngleAxisItem import AngleAxisItem
 from .BarPlotWidgetModel import BarPlotWidgetModel
 from ..BasePlotWidget import BasePlotWidget
 from ltrace.slicer.helpers import segmentListAndProportionsFromSegmentation
+from ltrace.slicer.widget.customized_pyqtgraph.AngleAxisItem import AngleAxisItem
 
 from pyqtgraph.Qt import QtGui, QtCore
 

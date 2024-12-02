@@ -260,9 +260,9 @@ def main(args):
 
     shape = np.array(im.shape)
     spacing = getIJKSpacing(labelVolumeNode)[np.where(shape != 1)]
+
     """This case does not handle non-orthogonal volumes.
     """
-    voxel_size = np.prod(spacing)  # TODO fix get_voxel_volume(labelVolumeNode) to handle this case (dim=1)
 
     if ("all" in products or "partitions" in products) and params.get("method") is not None:
         if np.any(shape == 1):
@@ -342,20 +342,20 @@ def main(args):
             progressUpdate(0.3)
 
             if df.shape[1] > 1 and df.shape[0] > 0:
-                df.set_axis(operator.ATTRIBUTES, axis=1, inplace=True)
+                df = df.set_axis(operator.ATTRIBUTES, axis=1)
 
-                df.dropna(axis=1, how="all", inplace=True)  # Remove unused columns
-                df.dropna(axis=0, how="any", inplace=True)  # Remove unused columns
+                df = df.dropna(axis=1, how="all")  # Remove unused columns
+                df = df.dropna(axis=0, how="any")  # Remove unused columns
 
                 filtered_indices = df[df.max_feret < size_min_threshold].index
                 # Remove filtered segments by user's diameter choice
-                df.drop(filtered_indices, axis=0, inplace=True)
+                df = df.drop(filtered_indices, axis=0)
 
                 # Round all float columns
                 for col in df.select_dtypes(include=["float"]).columns:
                     df[col] = df[col].round(5)
 
-                df.sort_values(by=["voxelCount", "max_feret", "label"], ascending=False, inplace=True)
+                df = df.sort_values(by=["voxelCount", "max_feret", "label"], ascending=False)
 
                 # After sorting, old labels serve as a reverse map
                 # Added one more position because regions has the label '0'
@@ -374,7 +374,7 @@ def main(args):
                 if args.outputReport:
                     df = addUnitsToDataFrameParameters(df)
                     categ = {i: v for i, v in enumerate(PORE_SIZE_CATEGORIES)}
-                    df.pore_size_class = df.pore_size_class.replace(categ, inplace=False)
+                    df.pore_size_class = df.pore_size_class.replace(categ)
                     print(f"writing df to tableNode, {args.outputReport}")
                     writeToTable(df, args.outputReport)
 

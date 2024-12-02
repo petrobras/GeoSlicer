@@ -9,10 +9,14 @@ import json
 import math
 import numpy as np
 import os
+import pyqtgraph as pg
 import traceback
 
+from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.slicer.debounce_caller import DebounceCaller
 from ltrace.slicer.widget.depth_overview_axis_item import DepthOverviewAxisItem
 from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
 from ltrace.constants import ImageLogConst
 from pathlib import Path
 from slicer.util import VTKObservationMixin
@@ -28,6 +32,7 @@ from ImageLogDataLib.view.image_log_view import ImageLogView
 from ImageLogDataLib.viewcontroller import *
 from ImageLogDataLib.viewdata import *
 from ImageLogDataLib.treeview.SubjectHierarchyTreeViewFilter import SubjectHierarchyTreeViewFilter
+from ImageLogDataLib.mouse_event_filter import MouseEventFilter
 
 # Checks if closed source code is available
 try:
@@ -44,8 +49,8 @@ class ImageLogData(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Data"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Explorer"
+        self.parent.categories = ["Tools", "ImageLog", "Thin Section", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ImageLogData.help()
@@ -64,10 +69,14 @@ class ImageLogDataWidget(CustomizedDataWidget):
 
     def setup(self):
         super().setup()
-        self.isFirstInstance = False
-        if not ImageLogDataWidget.logic:
-            ImageLogDataWidget.logic = ImageLogDataLogic(self.parent)
-            self.isFirstInstance = True
+        if hasattr(slicer.modules.AppContextInstance, "imageLogDataLogic"):
+            self.logic = ImageLogDataWidget.logic = slicer.modules.AppContextInstance.imageLogDataLogic
+        else:
+            self.logic = (
+                ImageLogDataWidget.logic
+            ) = slicer.modules.AppContextInstance.imageLogDataLogic = ImageLogDataLogic(
+                slicer.modules.AppContextInstance.mainWindow
+            )
 
         ## Add custom context menu actions
         self.subjectHierarchyTreeView.setMRMLScene(slicer.app.mrmlScene())
@@ -134,8 +143,8 @@ class ImageLogDataWidget(CustomizedDataWidget):
 
         settingsFormLayout.addRow(viewsGroupBox)
 
-        if self.isFirstInstance:
-            self.logic.addViewClicked.connect(self.addView)
+        self.logic.addViewClicked.disconnect()
+        self.logic.addViewClicked.connect(self.addView)
 
         self.filter = SubjectHierarchyTreeViewFilter(dataWidget=self)
         self.subjectHierarchyTreeView.installEventFilter(self.filter)
@@ -146,11 +155,43 @@ class ImageLogDataWidget(CustomizedDataWidget):
     def scalingSpeedChanged(self, value):
         self.logic.scalingSpeedChanged(value)
 
+    def onReload(self) -> None:
+        logic = ImageLogDataWidget.logic
+        oldDockedWidget = None
+        if hasattr(slicer.modules, "ImageLogDataDockedWidget") and slicer.modules.ImageLogDataWidget is not self:
+            oldWidget = slicer.modules.ImageLogDataWidget
+            oldDockedWidget = slicer.modules.ImageLogDataDockedWidget
+
+        self.cleanup()
+        super().onReload()
+
+        self.logic.onSlicerLayoutChanged(slicer.app.layoutManager().layout)
+
+        if oldDockedWidget is not None:
+            newDockedWidget = slicer.util.getModuleWidget("ImageLogData")
+            slicer.modules.ImageLogDataWidget = oldWidget
+            slicer.modules.ImageLogDataDockedWidget = newDockedWidget
+
+        ImageLogDataWidget.logic = logic
+        ImageLogDataWidget.logic.setParent(slicer.util.getModuleWidget("ImageLogData").parent)
+
     def addView(self):
-        try:
+        def nodeFromSubjectItemId(itemId):
+            return self.subjectHierarchyTreeView.subjectHierarchyNode().GetItemDataNode(itemId)
+
+        if not hasattr(slicer.modules, "ImageLogDataDockedWidget"):
             selectedNodeIdInTree = self.subjectHierarchyTreeView.currentItem()
-            self.logic.addView(selectedNodeIdInTree)
+            selectedNode = nodeFromSubjectItemId(selectedNodeIdInTree)
             self.subjectHierarchyTreeView.setCurrentItems(vtk.vtkIdList())
+        else:  # Handling both explorers. The left panel is preffered.
+            leftPanelSelectedNode = slicer.modules.ImageLogDataWidget.subjectHierarchyTreeView.currentItem()
+            rightPanelSelectedNode = slicer.modules.ImageLogDataDockedWidget.subjectHierarchyTreeView.currentItem()
+            selectedNode = nodeFromSubjectItemId(leftPanelSelectedNode) or nodeFromSubjectItemId(rightPanelSelectedNode)
+            slicer.modules.ImageLogDataWidget.subjectHierarchyTreeView.setCurrentItems(vtk.vtkIdList())
+            slicer.modules.ImageLogDataDockedWidget.subjectHierarchyTreeView.setCurrentItems(vtk.vtkIdList())
+
+        try:
+            self.logic.addView(selectedNode)
         except ImageLogDataInfo as e:
             slicer.util.infoDisplay(str(e))
 
@@ -187,10 +228,30 @@ class ImageLogDataWidget(CustomizedDataWidget):
 
     def cleanup(self):
         super().cleanup()
-        self.logic.layoutViewOpened.disconnect()
-        self.logic.layoutViewClosed.disconnect()
-        self.logic.viewsRefreshed.disconnect()
-        self.logic.addViewClicked.disconnect()
+        self.subjectHierarchyTreeView.removeEventFilter(self.filter)
+        self.logic.addViewClicked.disconnect(self.addView)
+        self.logic.imageLogViewList.clear()
+        self.logic.refreshViews()
+
+    def getVisibleViews(self):
+        identifiers = self.logic.getViewDataListIdentifiers()
+        views = {}
+        for id in identifiers:
+            viewData = self.logic.imageLogViewList[id].viewData
+            viewControllerWidget = self.logic.viewControllerWidgets[id]
+            viewLabel = viewControllerWidget.findChild(qt.QLabel, "viewLabel" + str(id))
+            name = viewLabel.text
+            views[id] = {"type": type(viewData).__name__, "name": name}
+
+        return views
+
+    def getGraphicViewPlotItem(self, viewIdentifier: int) -> pg.PlotItem:
+        if not isinstance(viewIdentifier, int):
+            return
+
+        if isinstance(self.logic.imageLogViewList[viewIdentifier].viewData, GraphicViewData):
+            curvePlot = self.logic.imageLogViewList[viewIdentifier].widget.getPlot()
+            return curvePlot.get_plot_item()
 
 
 class ViewDataEncoder(json.JSONEncoder):
@@ -207,15 +268,13 @@ class ViewDataEncoder(json.JSONEncoder):
 class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     CONFIGURATION_SINGLETON_TAG = "ImageLogConfiguration"
     MAXIMUM_NUMBER_OF_VIEWS = 5
+    ALLOWED_ENVIRONMENTS_FOR_LAYOUT = "ImageLogEnv", "MultiscaleEnv", "ThinSectionEnv"
 
     """
     Do not lower this time unless it is all tested (a lower delay time results in a faster interface response but tends to cause many 
     interface problems, some subtle, like the incorrect synchronization of the range in each of the views).
     """
     REFRESH_DELAY = 50
-    DEFAULT_LAYOUT_ID_START_VALUE = (
-        ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE
-    )  # Initial layout id. It will be incremented as views configurations changes.
 
     layoutViewOpened = qt.Signal()
     layoutViewClosed = qt.Signal()
@@ -236,7 +295,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.observedDisplayNodes = []
         self.observedPrimaryNodes = []
         self.observedInteractors = []
-        self.layoutId = self.DEFAULT_LAYOUT_ID_START_VALUE
         self.currentRange = (
             None  # This is the current range of the tracks. [bottom depth, top depth] where bottom depth > top depth
         )
@@ -245,15 +303,21 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.segmentationOpacity = 0.5  # Maintains opacity value between all segmentation nodes
         self.nodeAboutToBeRemoved = False  # To avoid calling primaryNodeChanged function when a node is removed
         self.debug = False  # Set true to track some function calls origin
-        self.__createRefreshTimer()
-        self.__createAdjustViewsVisibleRegionTimer()
+        self.delayedAdjustViewsVisibleRegion = DebounceCaller(
+            self, intervalMs=self.REFRESH_DELAY, callback=self.adjustViewsVisibleRegion
+        )
+        self.__delayedRefreshViews = DebounceCaller(self, intervalMs=self.REFRESH_DELAY, callback=self.__refreshViews)
+
         slicer.app.layoutManager().layoutChanged.connect(self.onSlicerLayoutChanged)
         self.__layoutViewOpen = False
         self.__observerHandlers = []
         self.layoutManagerViewPort = slicer.app.layoutManager().viewport()  # Central widget
-        self.mouseDetectorFilter = None
+        self.mouseEventFilter = MouseEventFilter(self)
         self.saveObserver = None
         self.configurationsNode = None
+        self.imageLogLayoutViewAction = None
+        self.__addImageLogViewOption()
+        ApplicationObservables().environmentChanged.connect(self.__updateImageLogLayoutActionVisibility)
 
     def loadConfiguration(self):
         slicer.app.processEvents()
@@ -277,10 +341,13 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             if viewsJson:
                 viewsList = json.loads(viewsJson)
                 if viewsList:
-                    self.handleViewList(viewsList)
+                    self.__loadViewFromList(viewsList)
 
-    def handleViewList(self, viewList):
-        for identifier, viewData in viewList:
+    def __loadViewFromList(self, viewList):
+        self.imageLogViewList.clear()
+        self.cleanUp()
+
+        for identifier, viewData in viewList[: self.MAXIMUM_NUMBER_OF_VIEWS - 1]:
             if "primaryNodeId" in viewData:
                 if viewData["primaryNodeId"] is None:
                     # Add EmptyViewData
@@ -289,7 +356,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     self.addSliceViewData(viewData, identifier)
             if "primaryTableNodeColumnList" in viewData:
                 self.addGraphicViewData(viewData)
-        self.refreshViews()
+
+        self.refreshViews("loadViewFromList")
 
     def addSliceViewData(self, viewData, identifier):
         primaryNode = tryGetNode(viewData["primaryNodeId"])
@@ -329,118 +397,20 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             return
 
         # If layout view is not initialized yet, then create it
-        if self.layoutId == self.DEFAULT_LAYOUT_ID_START_VALUE:
+        if slicer.modules.AppContextInstance.imageLogLayoutId == ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE:
             self.refreshViews("changeToLayout")
         else:
-            slicer.app.layoutManager().setLayout(self.layoutId)
+            slicer.app.layoutManager().setLayout(slicer.modules.AppContextInstance.imageLogLayoutId)
 
     def onSlicerLayoutChanged(self, layoutId):
-        if self.DEFAULT_LAYOUT_ID_START_VALUE <= layoutId < 16000:
+        self.__updateImageLogLayoutActionVisibility()
+        if ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE <= layoutId < 16000:
             if self.__layoutViewOpen is True:
                 return
 
             self.updateViewsAxis()
 
-            if not self.mouseDetectorFilter:
-
-                class MouseDetectorFilter(qt.QObject):
-                    dataLogic = self
-
-                    def __init__(self, parent=None):
-                        super().__init__(parent)
-
-                    def getGeometry(self, viewWidget):
-                        if self.dataLogic is None or not hasattr(self.dataLogic, "axisItem"):
-                            return qt.QRect(0, 0, 0, 0)
-
-                        logGeometry = viewWidget.geometry
-
-                        oldWidth = logGeometry.width()
-                        oldHeight = logGeometry.height()
-                        axisGeometry = self.dataLogic.axisItem.geometry()
-
-                        logGeometryXY = viewWidget.mapToGlobal(qt.QPoint(0, axisGeometry.y()))
-
-                        logGeometry = qt.QRect(logGeometryXY.x(), logGeometryXY.y(), oldWidth, oldHeight)
-
-                        return logGeometry
-
-                    def getCursorPhysicalPosition(self, viewWidget, imageLogView, x, y):
-                        width = viewWidget.geometry.width()
-
-                        if imageLogView.widget == None:
-                            # This avoids raising unnecessary errors,
-                            # but might also avoid unknown necessary ones, too
-                            return -1, -1
-
-                        xDepth = imageLogView.widget.getGraphX(x, width)
-
-                        axisItem = self.dataLogic.axisItem
-                        height = axisItem.geometry().height()
-
-                        vDif = axisItem.range[0] - axisItem.range[1]
-                        if vDif == 0:
-                            yScale = 1
-                            yOffset = 0
-                        else:
-                            yScale = height / vDif
-                            yOffset = axisItem.range[1] * yScale
-
-                        yDepth = (y + yOffset) / yScale
-
-                        return xDepth, yDepth
-
-                    def getValue(self, imageLogView, x, y):
-                        value = None
-                        if imageLogView.widget:
-                            value = imageLogView.widget.getValue(x, y)
-                        return value
-
-                    def writeCoordinates(self, identifier, x, y, value):
-                        text = f"View #{identifier} ({x:.2f}, {y:.2f})"
-                        text = text + f" {value:.2f}" if isinstance(value, float) else text + f" {value}"
-                        toolBarWidget = self.dataLogic.containerWidgets["toolBarWidget"]
-                        mousePhysicalCoordinates = toolBarWidget.findChild(qt.QLabel, "MousePhysicalCoordinates")
-                        mousePhysicalCoordinates.setText(text)
-
-                    def eventFilter(self, widget, event):
-                        if not (isinstance(event, qt.QHoverEvent) or isinstance(event, qt.QWheelEvent)):
-                            return
-                        for identifier in self.dataLogic.getViewDataListIdentifiers():
-                            imageLogView = self.dataLogic.imageLogViewList[identifier]
-                            if imageLogView is None:
-                                continue
-
-                            try:
-                                viewWidget = self.dataLogic.viewWidgets[identifier]
-                            except IndexError as error:
-                                logging.debug(error)
-                                continue
-                            viewData = imageLogView.viewData
-                            if viewData.primaryNodeId == None:
-                                continue
-                            if (
-                                type(viewData) is SliceViewData
-                                or type(viewData) is GraphicViewData
-                                and (viewData.primaryTableNodeColumn != "" or viewData.secondaryTableNodeColumn != "")
-                            ):
-                                posMouse = qt.QCursor().pos()
-                                logGeometry = self.getGeometry(viewWidget)
-                                if not logGeometry.contains(posMouse):
-                                    continue
-                                relativePosMouseY = posMouse.y() - logGeometry.y()
-                                relativePosMouseX = posMouse.x() - logGeometry.x()
-                                physicalPos = self.getCursorPhysicalPosition(
-                                    viewWidget, imageLogView, relativePosMouseX, relativePosMouseY
-                                )
-                                value = self.getValue(imageLogView, *physicalPos)
-                                self.writeCoordinates(identifier, *physicalPos, value)
-                                break
-
-                self.mouseDetectorFilter = MouseDetectorFilter()
-
-            slicer.util.mainWindow().installEventFilter(self.mouseDetectorFilter)
-
+            slicer.modules.AppContextInstance.mainWindow.installEventFilter(self.mouseEventFilter)
             self.layoutViewOpened.emit()
             self.__layoutViewOpen = True
             self.refreshViews("EnterEvent")
@@ -450,8 +420,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             if self.__layoutViewOpen is False:
                 return
 
-            if self.mouseDetectorFilter:
-                slicer.util.mainWindow().removeEventFilter(self.mouseDetectorFilter)
+            slicer.modules.AppContextInstance.mainWindow.removeEventFilter(self.mouseEventFilter)
 
             self.layoutViewClosed.emit()
             self.__layoutViewOpen = False
@@ -513,7 +482,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         """
         Register the layout on Slicer's layout manager and saves the views widgets for later access.
         """
-        self.layoutId += 1
+        slicer.modules.AppContextInstance.imageLogLayoutId += 1
 
         viewDataListIdentifiers = self.getViewDataListIdentifiers()
 
@@ -548,8 +517,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Registering the layout and activating it
         layoutManager = slicer.app.layoutManager()
-        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(self.layoutId, layout)
-        slicer.app.layoutManager().setLayout(self.layoutId)
+        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(
+            slicer.modules.AppContextInstance.imageLogLayoutId, layout
+        )
+        slicer.app.layoutManager().setLayout(slicer.modules.AppContextInstance.imageLogLayoutId)
 
         # And now we can save the slice views references
         for identifier in viewDataListIdentifiers:
@@ -561,7 +532,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 self.viewWidgets[identifier] = viewWidget
 
         # Stretch factors
-        centralWidgetLayoutFrame = slicer.util.mainWindow().findChild(qt.QFrame, "CentralWidgetLayoutFrame")
+        centralWidgetLayoutFrame = slicer.modules.AppContextInstance.mainWindow.findChild(
+            qt.QFrame, "CentralWidgetLayoutFrame"
+        )
         centralWidgetLayoutFrameLayout = centralWidgetLayoutFrame.layout()
         if centralWidgetLayoutFrameLayout and centralWidgetLayoutFrameLayout.count() >= 2:
             layout = centralWidgetLayoutFrameLayout.itemAt(1).layout()
@@ -642,16 +615,16 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             ):
                 self.setupGraphicViewWidget(identifier)
 
-    def setupViewSpacerWidgets(self):
-        for identifier in self.getViewDataListIdentifiers():
-            viewData = self.imageLogViewList[identifier].viewData
-            if type(viewData) is SliceViewData:
-                viewSpacerWidget = self.viewSpacerWidgets[identifier]
-                viewSpacerWidgetLayout = qt.QVBoxLayout(viewSpacerWidget)
-                viewSpacerWidgetLayout.setContentsMargins(0, 0, 0, 0)
-                viewSpacerWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 20))
-            # else:
-            #     self.viewSpacerWidgets[identifier].deleteLater()  # Not used in other views
+    # def setupViewSpacerWidgets(self):
+    #     for identifier in self.getViewDataListIdentifiers():
+    #         viewData = self.imageLogViewList[identifier].viewData
+    #         if type(viewData) is SliceViewData:
+    #             viewSpacerWidget = self.viewSpacerWidgets[identifier]
+    #             viewSpacerWidgetLayout = qt.QVBoxLayout(viewSpacerWidget)
+    #             viewSpacerWidgetLayout.setContentsMargins(0, 0, 0, 0)
+    #             viewSpacerWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 20))
+    #         # else:
+    #         #     self.viewSpacerWidgets[identifier].deleteLater()  # Not used in other views
 
     def setupGraphicViewWidget(self, identifier):
         viewWidget = self.viewWidgets[identifier]
@@ -721,7 +694,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         axisWidget = self.containerWidgets["axisWidget"]
 
         axisWidgetVerticalLayout = qt.QVBoxLayout(axisWidget)
-        axisWidgetVerticalLayout.setContentsMargins(0, 37, 0, 0)
+        axisWidgetVerticalLayout.setContentsMargins(0, 40, 0, 0)
         axisWidgetVerticalLayout.setSpacing(0)
 
         scaleFrame = qt.QFrame()
@@ -749,7 +722,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         axisWidgetVerticalLayout.addWidget(axisWidgetFrame)
 
         pysideQHBoxLayout = shiboken2.wrapInstance(hash(axisWidgetLayout), PySide2.QtWidgets.QHBoxLayout)
-        pysideQHBoxLayout.setContentsMargins(0, 0, 0, 21)
+        pysideQHBoxLayout.setContentsMargins(0, 10, 0, 0)
 
         self.depthOverview = pg.GraphicsLayoutWidget()
         self.depthOverview.setBackground("#FFFFFF")
@@ -788,21 +761,26 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewColorBarWidgetLayout = qt.QHBoxLayout(viewColorBarWidget)
             viewColorBarWidgetLayout.setContentsMargins(0, 0, 0, 0)
 
-            if primaryNode is not None and type(primaryNode) is slicer.vtkMRMLScalarVolumeNode:
-                colorBarWidget = ColorBarWidget()
-                colorBarWidget.setObjectName("colorBarWidget" + str(identifier))
-                viewColorBarWidgetLayout.addWidget(colorBarWidget)
-                if primaryNode.GetDisplayNode() is None:
-                    primaryNode.CreateDefaultDisplayNodes()
-                displayNode = primaryNode.GetDisplayNode()
-                observerID = displayNode.AddObserver(
-                    "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateColorBar(identifier_)
-                )
-                self.observedDisplayNodes.append([displayNode, observerID])
-                colorBarWidget.setColorTableNode(displayNode.GetColorNode())
-                displayNode.Modified()  # To update the color bar
-            else:
-                viewColorBarWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 20))
+            if primaryNode is not None:
+                if type(primaryNode) is slicer.vtkMRMLScalarVolumeNode:
+                    colorBarWidget = ColorBarWidget()
+                    colorBarWidget.setObjectName("colorBarWidget" + str(identifier))
+                    viewColorBarWidgetLayout.addWidget(colorBarWidget)
+                    if primaryNode.GetDisplayNode() is None:
+                        primaryNode.CreateDefaultDisplayNodes()
+                    displayNode = primaryNode.GetDisplayNode()
+                    observerID = displayNode.AddObserver(
+                        "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateColorBar(identifier_)
+                    )
+                    self.observedDisplayNodes.append([displayNode, observerID])
+                    colorBarWidget.setColorTableNode(displayNode.GetColorNode())
+                    displayNode.Modified()  # To update the color bar
+
+                elif type(primaryNode) is slicer.vtkMRMLLabelMapVolumeNode:
+                    viewColorBarWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 41))
+
+                elif viewData.secondaryTableNodeColumn == "" or viewData.primaryTableHistogram:
+                    viewColorBarWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 20))
 
     ########################################################################################################################################
     # Widgets populate
@@ -826,7 +804,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewLabel = viewControllerWidget.findChild(qt.QLabel, "viewLabel" + str(identifier))
             primaryNode = self.getNodeById(viewData.primaryNodeId)
             if primaryNode is not None:
-                viewLabel.setText(primaryNode.GetName())
+                if type(viewData) is GraphicViewData and self.getNodeById(viewData.secondaryTableNodeId):
+                    viewLabel.setText(
+                        f"{primaryNode.GetName()} / {self.getNodeById(viewData.secondaryTableNodeId).GetName()}"
+                    )
+                else:
+                    viewLabel.setText(primaryNode.GetName())
 
             settingsToolButton = viewControllerWidget.findChild(qt.QToolButton, "settingsToolButton" + str(identifier))
             settingsToolButton.setChecked(viewData.viewControllerSettingsToolButtonToggled)
@@ -882,9 +865,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 showHidePrimaryNodeButton.blockSignals(True)
                 if viewData.primaryNodeHidden:
                     showHidePrimaryNodeButton.setChecked(True)
-                    showHidePrimaryNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
                 else:
-                    showHidePrimaryNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
                 showHidePrimaryNodeButton.blockSignals(False)
 
             primaryTableNodeColumnComboBox = viewControllerWidget.findChild(
@@ -986,9 +969,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 showHideSegmentationNodeButton.blockSignals(True)
                 if viewData.segmentationNodeHidden:
                     showHideSegmentationNodeButton.setChecked(True)
-                    showHideSegmentationNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
                 else:
-                    showHideSegmentationNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
                 showHideSegmentationNodeButton.blockSignals(False)
 
     def populateProportionsNodeInterfaceItems(self):
@@ -1014,9 +997,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     showHideProportionsNodeButton.blockSignals(True)
                     if viewData.proportionsNodeHidden:
                         showHideProportionsNodeButton.setChecked(True)
-                        showHideProportionsNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+                        showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
                     else:
-                        showHideProportionsNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+                        showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
                     showHideProportionsNodeButton.blockSignals(False)
 
     ########################################################################################################################################
@@ -1027,35 +1010,37 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         """
         Handles timer to refresh views.
         """
+        env = slicer.modules.AppContextInstance.modules.currentWorkingDataType
         if self.debug:
-            print("refreshViews:", source)
+            print("refreshViews:", source, env)
+        if not env or env[1] not in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT:
+            return
 
-        if self.__refreshViewsTimer.isActive():
-            self.__refreshViewsTimer.stop()
-
-        self.__refreshViewsTimer.setInterval(interval_ms)
-        self.__refreshViewsTimer.start()
+        self.__delayedRefreshViews()
 
     def __refreshViews(self, source=None):
         """
         Refreshes all the views with the current data.
+        Don't call this method directly. Use the 'refreshViews' method instead.
         """
         self.cleanUp()
         self.registerLayout(self.generateLayout())
         self.setupToolBar()
         self.setupViewControllerWidgets()
         self.setupViewWidgets()
-        self.setupViewSpacerWidgets()
+        # self.setupViewSpacerWidgets()
         self.populateViewsInterface()
         self.setupAxisWidget()
         self.setupViewColorBarWidgets()
         self.setupSpacerWidget()
         self.delayedAdjustViewsVisibleRegion()
-        self.delayedReloadImageLogSegmenterEffect()
+        self.delayedReloadImageLogSegmentEditorEffect()
         self.delayedAddGraphicViewsConnections()
         self.delayedAddPrimaryNodeObservers()
-        self.viewsRefreshed.emit()
         self.updateDepthOverviewScale()
+        self.__updateToolBarVisibility()
+        self.imageLogLayoutViewAction.setData(slicer.modules.AppContextInstance.imageLogLayoutId)
+        self.viewsRefreshed.emit()
 
     def setupToolBar(self):
         toolBarWidget = self.containerWidgets["toolBarWidget"]
@@ -1064,21 +1049,22 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Fit button
         fitButton = qt.QPushButton()
-        fitButton.setIcon(qt.QIcon(str(Customizer.FIT_ICON_PATH)))
-        fitButton.clicked.connect(lambda state: self.fit())
+        fitButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Fit.png"))
+        fitButton.clicked.connect(self.fit)
         fitButton.setFixedWidth(25)
         fitButton.setToolTip("Reset the views to fit all data.")
 
         # Adjust to real aspect ratio button
         fitRealAspectRatio = qt.QPushButton()
-        fitRealAspectRatio.setIcon(qt.QIcon(str(Customizer.FIT_REAL_ASPECT_RATIO_ICON_PATH)))
-        fitRealAspectRatio.clicked.connect(lambda state: self.fitToAspectRatio())
+        fitRealAspectRatio.setIcon(qt.QIcon(getResourcePath("Icons") / "FitRealAspectRatio.png"))
+        fitRealAspectRatio.clicked.connect(self.fitToAspectRatio)
         fitRealAspectRatio.setFixedWidth(25)
         fitRealAspectRatio.setToolTip("Adjust the views to their real aspect ratio.")
 
         # Add view button
         addViewButton = qt.QPushButton("Add view")
-        addViewButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        addViewButton.setObjectName("Add view button")
+        addViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         addViewButton.clicked.connect(self.addViewClicked)
 
         # Mouse physical coordinates on Slice/Graphic view
@@ -1147,20 +1133,20 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             if curvePlotWidget is not None:
                 curvePlotWidget.blockSignals(False)
 
-    def delayedReloadImageLogSegmenterEffect(self):
-        qt.QTimer.singleShot(self.REFRESH_DELAY, self.reloadImageLogSegmenterEffect)
+    def delayedReloadImageLogSegmentEditorEffect(self):
+        qt.QTimer.singleShot(self.REFRESH_DELAY, self.reloadImageLogSegmentEditorEffect)
 
-    def reloadImageLogSegmenterEffect(self):
+    def reloadImageLogSegmentEditorEffect(self):
         """
         Reloads the effect to avoid a bug related to the effect activation on the new segmentation and/or master volume.
         """
-        if not hasattr(self, "imageLogSegmenterWidget"):
+        if not hasattr(self, "ImageLogSegmentEditorWidget"):
             return
 
         try:
-            segmentEditorWidget = self.imageLogSegmenterWidget.self().segmentEditorWidget
+            segmentEditorWidget = slicer.util.getModuleWidget("ImageLogSegmentEditor").segmentEditorWidget
         except ValueError:
-            # imageLogSegmenterWidget was deleted
+            # ImageLogSegmentEditorWidget was deleted
             return
         activeEffect = segmentEditorWidget.activeEffect()
         segmentEditorWidget.setActiveEffectByName("None")
@@ -1208,25 +1194,24 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             colorBarWidget.updateInformation(displayNode.GetWindow(), displayNode.GetLevel())
             colorBarWidget.setColorTableNode(displayNode.GetColorNode())
 
-    def addView(self, selectedNodeIdInTree=None):
-        if len(self.imageLogViewList) == self.MAXIMUM_NUMBER_OF_VIEWS:
-            slicer.app.layoutManager().setLayout(self.layoutId)  # In case there is other layout selected
+    def addView(self, selectedNode=None):
+        nodeName = selectedNode.GetName() if selectedNode is not None else "None"
+        print(f"ImageLogDataLogic.addView from logic {self}: {nodeName}")
+        if len(self.imageLogViewList) >= self.MAXIMUM_NUMBER_OF_VIEWS:
+            slicer.app.layoutManager().setLayout(
+                slicer.modules.AppContextInstance.imageLogLayoutId
+            )  # In case there is other layout selected
             raise ImageLogDataInfo("The maximum number of views was reached.")
 
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-
         # defaults
-        selectedNode = None
         isVolumeNode = False
         isSegmentationNode = False
         isTableNode = False
-        if selectedNodeIdInTree is not None:
-            selectedNode = subjectHierarchyNode.GetItemDataNode(selectedNodeIdInTree)
 
-            if selectedNode is not None:
-                isVolumeNode = isinstance(selectedNode, slicer.vtkMRMLVolumeNode)
-                isSegmentationNode = isinstance(selectedNode, slicer.vtkMRMLSegmentationNode)
-                isTableNode = isinstance(selectedNode, slicer.vtkMRMLTableNode)
+        if selectedNode is not None:
+            isVolumeNode = isinstance(selectedNode, slicer.vtkMRMLVolumeNode)
+            isSegmentationNode = isinstance(selectedNode, slicer.vtkMRMLSegmentationNode)
+            isTableNode = isinstance(selectedNode, slicer.vtkMRMLTableNode)
 
         self.imageLogViewList.append(None)
         identifier = len(self.imageLogViewList) - 1
@@ -1244,7 +1229,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if self.imageLogViewList[identifier] is None:
             self.imageLogViewList[identifier] = ImageLogView(None)
 
-        self.__refreshViews("AddView")
+        self.refreshViews("AddView")
 
     def removeViewFromPrimaryNode(self, nodeId: str) -> None:
         if nodeId is None:
@@ -1269,71 +1254,82 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             self.refreshViews("removeViewFromPrimaryNode")
 
     def removeView(self, identifier, refresh=True):
-        del self.imageLogViewList[identifier]
+        if identifier < len(self.imageLogViewList):
+            del self.imageLogViewList[identifier]
+
         if refresh:
             self.refreshViews("removeView")
 
     def primaryNodeChanged(self, identifier, node):
         """The first node combo box of a view determines the primary node. The primary node type determines the type of the view."""
         if not self.nodeAboutToBeRemoved:
-            self.imageLogViewList[identifier] = ImageLogView(node)
+            if identifier < len(self.imageLogViewList):
+                self.imageLogViewList[identifier] = ImageLogView(node)
             self.refreshViews("primaryNodeChanged")
 
     def secondaryTableNodeChanged(self, identifier, node):
         if not self.nodeAboutToBeRemoved:
-            self.imageLogViewList[identifier].set_new_secondary_node(node)
+            if identifier < len(self.imageLogViewList):
+                self.imageLogViewList[identifier].set_new_secondary_node(node)
             self.refreshViews("secondaryTableNodeChanged")
 
     def segmentationNodeChanged(self, identifier, segmentationNode):
         if not self.nodeAboutToBeRemoved:
-            self.imageLogViewList[identifier].set_new_segmentation_node(segmentationNode)
+            if identifier < len(self.imageLogViewList):
+                self.imageLogViewList[identifier].set_new_segmentation_node(segmentationNode)
             self.refreshViews("segmentationNodeChanged")
 
     def primaryTableNodeColumnChanged(self, identifier):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewControllerWidget = self.viewControllerWidgets[identifier]
-        primaryTableNodeColumnComboBox = viewControllerWidget.findChild(
-            qt.QComboBox, "primaryTableNodeColumnComboBox" + str(identifier)
-        )
-        viewData.primaryTableNodeColumn = primaryTableNodeColumnComboBox.currentText
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewControllerWidget = self.viewControllerWidgets[identifier]
+            primaryTableNodeColumnComboBox = viewControllerWidget.findChild(
+                qt.QComboBox, "primaryTableNodeColumnComboBox" + str(identifier)
+            )
+            viewData.primaryTableNodeColumn = primaryTableNodeColumnComboBox.currentText
         self.refreshViews("primaryTableNodeColumnChanged")
 
     def primaryTableNodePlotColorChanged(self, identifier, color, scaleHistogram=None):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewData.primaryTableNodePlotColor = color
-        viewData.primaryTableScaleHistogram = scaleHistogram
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewData.primaryTableNodePlotColor = color
+            viewData.primaryTableScaleHistogram = scaleHistogram
         self.refreshViews("primaryTableNodePlotColorChanged")
 
     def primaryTableNodePlotTypeChanged(self, identifier):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewControllerWidget = self.viewControllerWidgets[identifier]
-        primaryTableNodePlotTypeComboBox = viewControllerWidget.findChild(
-            qt.QComboBox, "primaryTableNodePlotTypeComboBox" + str(identifier)
-        )
-        viewData.primaryTableNodePlotType = primaryTableNodePlotTypeComboBox.currentData
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewControllerWidget = self.viewControllerWidgets[identifier]
+            primaryTableNodePlotTypeComboBox = viewControllerWidget.findChild(
+                qt.QComboBox, "primaryTableNodePlotTypeComboBox" + str(identifier)
+            )
+            viewData.primaryTableNodePlotType = primaryTableNodePlotTypeComboBox.currentData
         self.refreshViews("primaryTableNodePlotTypeChanged")
 
     def secondaryTableNodeColumnChanged(self, identifier):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewControllerWidget = self.viewControllerWidgets[identifier]
-        secondaryTableNodeColumnComboBox = viewControllerWidget.findChild(
-            qt.QComboBox, "secondaryTableNodeColumnComboBox" + str(identifier)
-        )
-        viewData.secondaryTableNodeColumn = secondaryTableNodeColumnComboBox.currentText
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewControllerWidget = self.viewControllerWidgets[identifier]
+            secondaryTableNodeColumnComboBox = viewControllerWidget.findChild(
+                qt.QComboBox, "secondaryTableNodeColumnComboBox" + str(identifier)
+            )
+            viewData.secondaryTableNodeColumn = secondaryTableNodeColumnComboBox.currentText
         self.refreshViews("secondaryTableNodeColumnChanged")
 
     def secondaryTableNodePlotColorChanged(self, identifier, color):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewData.secondaryTableNodePlotColor = color
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewData.secondaryTableNodePlotColor = color
         self.refreshViews("secondaryTableNodePlotColorChanged")
 
     def secondaryTableNodePlotTypeChanged(self, identifier):
-        viewData = self.imageLogViewList[identifier].viewData
-        viewControllerWidget = self.viewControllerWidgets[identifier]
-        secondaryTableNodePlotTypeComboBox = viewControllerWidget.findChild(
-            qt.QComboBox, "secondaryTableNodePlotTypeComboBox" + str(identifier)
-        )
-        viewData.secondaryTableNodePlotType = secondaryTableNodePlotTypeComboBox.currentData
+        if identifier < len(self.imageLogViewList):
+            viewData = self.imageLogViewList[identifier].viewData
+            viewControllerWidget = self.viewControllerWidgets[identifier]
+            secondaryTableNodePlotTypeComboBox = viewControllerWidget.findChild(
+                qt.QComboBox, "secondaryTableNodePlotTypeComboBox" + str(identifier)
+            )
+            viewData.secondaryTableNodePlotType = secondaryTableNodePlotTypeComboBox.currentData
         self.refreshViews("secondaryTableNodePlotTypeChanged")
 
     def configureSliceViewsAllowedSegmentationNodes(self):
@@ -1366,7 +1362,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             prepareBasicViews = True
 
         if not prepareBasicViews:
-            msg_box = qt.QMessageBox(slicer.util.mainWindow())
+            msg_box = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
             msg_box.setIcon(qt.QMessageBox.Question)
             msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
             msg_box.setDefaultButton(qt.QMessageBox.Yes)
@@ -1440,19 +1436,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     def getViewPrimaryNode(self, identifier):
         return self.getNodeById(self.imageLogViewList[identifier].viewData.primaryNodeId)
 
-    def delayedAdjustViewsVisibleRegion(self):
-        """
-        Handles timer to adjust view region.
-        """
-        if self.debug:
-            print("adjustViewsVisibleRegion delayed")
-
-        if self.__adjustViewsVisibleRegionTimer.isActive():
-            self.__adjustViewsVisibleRegionTimer.stop()
-
-        self.__adjustViewsVisibleRegionTimer.setInterval(self.REFRESH_DELAY)
-        self.__adjustViewsVisibleRegionTimer.start()
-
     def adjustViewsVisibleRegion(self):
         """
         Iterates through the viewDataList and sets currentRange to the full data if it is None, or set the corresponding view range to
@@ -1511,6 +1494,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 sliceNode = sliceLogic.GetSliceNode()
                 fieldOfView = sliceNode.GetFieldOfView()
                 windowSizeFactor = sliceNode.GetDimensions()[0] / sliceNode.GetDimensions()[1]
+                if windowSizeFactor == 0 or aspectRatio == 0:
+                    continue
+
                 sliceNode.SetFieldOfView(fieldOfView[0], (fieldOfView[0] / windowSizeFactor) / aspectRatio, 1)
                 xyToRAS = sliceNode.GetXYToRAS()
                 dimensions = sliceNode.GetDimensions()
@@ -1628,11 +1614,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QPushButton, "showHidePrimaryNodeButton" + str(identifier)
         )
         if showHidePrimaryNodeButton.checked:
-            showHidePrimaryNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
             sliceCompositeNode.SetBackgroundOpacity(0)
             viewData.primaryNodeHidden = True
         else:
-            showHidePrimaryNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
             sliceCompositeNode.SetBackgroundOpacity(1)
             viewData.primaryNodeHidden = False
 
@@ -1653,7 +1639,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QToolButton, "showHideSegmentationNodeButton" + str(identifier)
         )
         if showHideSegmentationNodeButton.checked:
-            showHideSegmentationNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
             if segmentationNode is not None:
                 if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                     segmentationNode.GetDisplayNode().RemoveViewNodeID(viewId)
@@ -1661,7 +1647,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     sliceCompositeNode.SetLabelVolumeID(None)
             viewData.segmentationNodeHidden = True
         else:
-            showHideSegmentationNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
             if segmentationNode is not None:
                 if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                     segmentationNode.GetDisplayNode().AddViewNodeID(viewId)
@@ -1677,7 +1663,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 showHideProportionsNodeButton.click()
 
         # "Reloads" the active effect to enable it in the views when the user change the view segmentation
-        segmentEditorWidget = self.imageLogSegmenterWidget.self().segmentEditorWidget
+        segmentEditorWidget = slicer.util.getModuleWidget("ImageLogSegmentEditor").segmentEditorWidget
         activeEffect = segmentEditorWidget.activeEffect()
         segmentEditorWidget.setActiveEffectByName("None")
         segmentEditorWidget.setActiveEffect(activeEffect)
@@ -1716,12 +1702,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QPushButton, "showHideProportionsNodeButton" + str(identifier)
         )
         if showHideProportionsNodeButton.checked:
-            showHideProportionsNodeButton.setIcon(qt.QIcon(str(Customizer.CLOSED_EYE_ICON_PATH)))
+            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
             sliceCompositeNode.SetLabelVolumeID(None)
             viewData.proportionsNodeHidden = True
         else:
             proportionsNodeId = self.imageLogViewList[identifier].viewData.proportionsNodeId
-            showHideProportionsNodeButton.setIcon(qt.QIcon(str(Customizer.OPEN_EYE_ICON_PATH)))
+            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
             if proportionsNodeId is not None:
                 sliceCompositeNode.SetLabelVolumeID(proportionsNodeId)
             viewData.proportionsNodeHidden = False
@@ -1737,12 +1723,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             )
             if not showHideSegmentationNodeButton.checked:
                 showHideSegmentationNodeButton.click()
-
-    def setImageLogSegmenterWidget(self, imageLogSegmenterWidget):
-        """
-        Allows Image Log Data to perform some interface on Image Log Segmenter widget while the user sets up the views.
-        """
-        self.imageLogSegmenterWidget = imageLogSegmenterWidget
 
     def customResizeWidgetCallback(self, width):
         self.delayedAdjustViewsVisibleRegion()
@@ -1832,7 +1812,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         self.__observerHandlers.clear()
 
-    def onNodeAdded(self, caller, event):
+    @vtk.calldata_type(vtk.VTK_OBJECT)
+    def onNodeAdded(self, caller, event, node):
+        if node.GetHideFromEditors():
+            # Non-data nodes such as segment editors should not trigger a refresh
+            return
         self.blockAllViewControllerSignals(True)
         self.refreshViews("onNodeAdded")
 
@@ -1855,7 +1839,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
     def blockAllViewControllerSignals(self, mode=True):
         for viewControllerWidget in self.viewControllerWidgets:
-            comboBoxes = viewControllerWidget.findChildren(slicer.qMRMLNodeComboBox)
+            try:
+                comboBoxes = viewControllerWidget.findChildren(slicer.qMRMLNodeComboBox)
+            except ValueError:  # Widget has been deleted
+                continue
+
             for comboBox in comboBoxes:
                 comboBox.blockSignals(mode)
 
@@ -1873,28 +1861,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     def logMode(self, identifier, activated):
         self.imageLogViewList[identifier].viewData.logMode = activated
         self.refreshViews("logMode")
-
-    def __createRefreshTimer(self):
-        """Initialize timer object that process plots refresh"""
-        if hasattr(self, "__refreshViewsTimer") and self.__refreshViewsTimer is not None:
-            self.__refreshViewsTimer.delete()
-            self.__refreshViewsTimer = None
-
-        self.__refreshViewsTimer = qt.QTimer(self)
-        self.__refreshViewsTimer.setSingleShot(True)
-        self.__refreshViewsTimer.timeout.connect(lambda: self.__refreshViews("Timer"))
-        self.__refreshViewsTimer.setInterval(self.REFRESH_DELAY)
-
-    def __createAdjustViewsVisibleRegionTimer(self):
-        """Initialize timer object that process plots refresh"""
-        if hasattr(self, "__adjustViewsVisibleRegionTimer") and self.__adjustViewsVisibleRegionTimer is not None:
-            self.__adjustViewsVisibleRegionTimer.delete()
-            self.__adjustViewsVisibleRegionTimer = None
-
-        self.__adjustViewsVisibleRegionTimer = qt.QTimer(self)
-        self.__adjustViewsVisibleRegionTimer.setSingleShot(True)
-        self.__adjustViewsVisibleRegionTimer.timeout.connect(self.adjustViewsVisibleRegion)
-        self.__adjustViewsVisibleRegionTimer.setInterval(self.REFRESH_DELAY)
 
     def fit(self):
         self.findMaximumCurrentRange()
@@ -1962,6 +1928,56 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             return -1 * lowest_bound, -1 * highest_bound
         else:
             return None, None
+
+    def __updateToolBarVisibility(self) -> None:
+        widget = self.containerWidgets.get("toolBarWidget")
+        if widget is None:
+            return
+
+        for wid in widget.children():
+            if hasattr(wid, "setVisible"):
+                wid.setVisible(True)
+
+            wid.update()
+
+    def __addImageLogViewOption(self):
+        if self.imageLogLayoutViewAction is not None:
+            return
+
+        viewToolBar = slicer.util.mainWindow().findChild("QToolBar", "ViewToolBar")
+        layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
+
+        imageLogActionText = "ImageLog View"
+        layoutActions = {action.text: action for action in layoutMenu.actions()}
+        imageLogActionInMenu = imageLogActionText in layoutActions.keys()
+
+        if not imageLogActionInMenu:
+            self.imageLogLayoutViewAction = qt.QAction("ImageLog View")
+            self.imageLogLayoutViewAction.setIcon(qt.QIcon(getResourcePath("Icons") / "ImageLog.png"))
+            self.imageLogLayoutViewAction.triggered.connect(self.__onImagelogLayoutViewActionClicked)
+
+            after3DOnlyActionIndex = next(
+                (i for i, action in enumerate(layoutMenu.actions()) if action.text == "3D only"), None
+            )
+            layoutMenu.insertAction(
+                layoutMenu.actions()[after3DOnlyActionIndex + 1], self.imageLogLayoutViewAction
+            )  # insert new action before reference
+        else:
+            self.imageLogLayoutViewAction = layoutActions["ImageLog View"]
+
+    def __onImagelogLayoutViewActionClicked(self):
+        slicer.util.getModuleLogic("ImageLogData").changeToLayout()
+        self.imageLogLayoutViewAction.setData(slicer.modules.AppContextInstance.imageLogLayoutId)
+
+    def __updateImageLogLayoutActionVisibility(self):
+        currentEnvironment = slicer.modules.AppContextInstance.modules.currentWorkingDataType[1]
+        isEnvironmentValid = currentEnvironment in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT
+        if not isEnvironmentValid and slicer.app.layoutManager().layout >= ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE:
+            viewToolBar = slicer.util.mainWindow().findChild("QToolBar", "ViewToolBar")
+            layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
+            layoutMenu.actions()[0].triggered()  # Force triggering action to update menu icon
+
+        self.imageLogLayoutViewAction.setVisible(isEnvironmentValid)
 
 
 class ImageLogDataInfo(RuntimeError):

@@ -2,6 +2,7 @@ from .custom_behavior_node_base import CustomBehaviorNodeBase, CustomBehaviorReq
 from .defs import TriggerEvent
 from ltrace.slicer.node_attributes import LosslessAttribute
 from ltrace.slicer.helpers import isImageFile
+from ltrace.slicer import export
 from pathvalidate import sanitize_filepath
 from pathlib import Path
 from typing import Union
@@ -126,8 +127,7 @@ class CustomBehaviorImageNode(CustomBehaviorNodeBase):
         array = slicer.util.arrayFromVolume(node)
         imageArray = cv2.cvtColor(array[0, :, :, :], cv2.COLOR_BGR2RGB)
 
-        exportLogic = slicer.modules.export.widgetRepresentation().self().logic
-        exportLogic.exportNodeAsImage(
+        export.exportNodeAsImage(
             nodeName=destinationImageFile.stem,
             dataArray=imageArray,
             imageFormat=destinationImageFile.suffix,

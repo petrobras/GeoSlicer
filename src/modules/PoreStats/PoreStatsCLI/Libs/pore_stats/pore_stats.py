@@ -3,35 +3,38 @@ import glob
 import re
 import shutil
 import argparse
-import warnings
 import pandas as pd
+import tempfile
 
+from pathlib import Path
 from workflow.ThinSectionLoader import ThinSectionLoader
 from workflow.PoreSegmenter import PoreSegmenter
-from workflow.FragmentsSplitter import FragmentsSplitter
+from workflow.ForegroundSegmenter import ForegroundSegmenter
 from workflow.PoreCleaner import PoreCleaner
 from workflow.InspectorInstanceSegmenter import InspectorInstanceSegmenter
 from workflow.commons import delete_tmp_nrrds, get_model_type
 
 
 def main(args):
-    tmp_dir = os.path.join(__file__, "..", "tmp")
+    tmp_dir = Path(tempfile.TemporaryDirectory().name)
 
     try:
-        os.makedirs(tmp_dir, exist_ok=True)
-        os.makedirs(args.output_dir, exist_ok=True)
+        output_dir_path = Path(args.output_dir)
+        output_dir_path.mkdir(parents=True, exist_ok=True)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
 
         image_filter = None
         no_px_filter = None
         if args.max_frags == "custom":
-            image_filter = pd.read_csv(os.path.join(__file__, "..", "filter_images.csv"), delimiter=";")
+            image_filter_file = Path(__file__).parent / "filter_images.csv"
+            image_filter = pd.read_csv(image_filter_file, delimiter=";")
         if args.use_px == "custom":
-            no_px_filter = pd.read_csv(os.path.join(__file__, "..", "not_use_px.csv"), header=None)[0]
+            no_px_filter = pd.read_csv(Path(__file__).parent / "not_use_px.csv", header=None)[0]
 
         pores_output_dir = None
         if args.export_images or args.export_sheets or args.export_las:
-            pores_output_dir = os.path.join(args.output_dir, "pores")
-            os.makedirs(pores_output_dir, exist_ok=True)
+            pores_output_dir = output_dir_path / "pores"
+            pores_output_dir.mkdir(parents=True, exist_ok=True)
 
         pore_model_type = get_model_type(args.pore_model)
 
@@ -39,9 +42,14 @@ def main(args):
             args.pixel_size, using_bayesian="bayes" in pore_model_type, do_resize=args.resize
         )
         pore_segmenter = PoreSegmenter(args.pore_model, args.seg_cli)
-        fragments_splitter = FragmentsSplitter()
+        foreground_segmenter = ForegroundSegmenter(args.foreground_cli)
         pore_cleaner = PoreCleaner(
-            pore_model_type, args.keep_spurious, args.keep_residues, save_unclean_resin=args.save_unclean_resin
+            pore_model_type,
+            args.keep_spurious,
+            args.keep_residues,
+            args.remove_spurious_cli,
+            args.clean_resin_cli,
+            save_unclean_resin=args.save_unclean_resin,
         )
         inspector_instance_segmenter = InspectorInstanceSegmenter(
             args.algorithm,
@@ -58,8 +66,8 @@ def main(args):
                 OoidSegmenter,
             )  # importando só aqui para não requerer as dependências específicas (stardist e csbdeep) desnecessariamente
 
-            ooids_output_dir = os.path.join(args.output_dir, "ooids")
-            os.makedirs(ooids_output_dir, exist_ok=True)
+            ooids_output_dir = output_dir_path / "ooids"
+            ooids_output_dir.mkdir(parents=True, exist_ok=True)
             ooid_segmenter = OoidSegmenter(resized_input=args.resize)
 
             ooids_size_min_scales_log2 = [float("-inf")] + list(range(-8, 3)) + [6, 8, float("inf")]
@@ -93,8 +101,8 @@ def main(args):
         if args.netcdf:
             from workflow.NetCDFExporter import NetCDFExporter
 
-            netcdfs_output_dir = os.path.join(args.output_dir, "netCDFs")
-            os.makedirs(netcdfs_output_dir, exist_ok=True)
+            netcdfs_output_dir = output_dir_path / "netCDFs"
+            netcdfs_output_dir.mkdir(parents=True, exist_ok=True)
             netcdf_exporter = NetCDFExporter(netcdfs_output_dir, args.pixel_size)
 
         generate_sheets = args.export_sheets or args.export_las
@@ -120,7 +128,7 @@ def main(args):
         for filename in os.listdir(args.input_dir):
             if re.search(image_file_pattern, filename):
                 well_names.add(filename.split("_")[0])
-                image_paths.append(os.path.join(args.input_dir, filename))
+                image_paths.append((Path(args.input_dir) / filename).as_posix())
 
         if len(image_paths) == 0:
             raise FileNotFoundError("No valid images were found in the input directory.")
@@ -132,10 +140,11 @@ def main(args):
         image_paths = sorted(image_paths)
         n_images = len(image_paths)
         image_idx = 0
-        checkpoint_path = os.path.join(args.output_dir, "checkpoint.txt")
-        if os.path.exists(checkpoint_path):
+        checkpoint_path = output_dir_path / "checkpoint.txt"
+        if checkpoint_path.exists():
             with open(checkpoint_path, "r") as checkpoint:
                 resume_image_path = checkpoint.readline()
+                resume_image_path = Path(resume_image_path).as_posix()
             image_idx = image_paths.index(resume_image_path)
             print("\n * Resuming from", resume_image_path, end=" *\n")
         image_paths = image_paths[image_idx:]
@@ -161,25 +170,25 @@ def main(args):
                 if n_largest_islands == 0:
                     continue
 
-            px_image = None
-            px_rock_area = None
+            load_px_image_path = None
+            px_rock_area_path = None
             if not args.keep_residues:
                 if args.use_px == "all" or (no_px_filter is not None and not no_px_filter.isin([image_filename]).any()):
-                    px_image = thin_section_loader.run(image_path.replace("_c1", "_c2"))
+                    load_px_image_path = thin_section_loader.run(image_path.replace("_c1", "_c2"), tmp_nrrd_dir=tmp_dir)
                     if args.reg_method == "auto":
-                        px_rock_area = fragments_splitter.get_rock_area(px_image)
+                        px_rock_area_path = foreground_segmenter.run(load_px_image_path)
 
             loaded_image_file_path = thin_section_loader.run(image_path, tmp_nrrd_dir=tmp_dir)
             pore_binary_seg_file_path = pore_segmenter.run(loaded_image_file_path)
-            frags_file_path, rock_area = fragments_splitter.run(
+            frags_file_path, rock_area_path = foreground_segmenter.run(
                 loaded_image_file_path, pore_binary_seg_file_path, n_largest_islands
             )
             pore_binary_seg_file_path = pore_cleaner.run(
                 frags_file_path,
                 pore_binary_seg_file_path,
-                px_image=px_image,
-                pp_rock_area=rock_area,
-                px_rock_area=px_rock_area,
+                px_image_path=load_px_image_path,
+                pp_rock_area_path=rock_area_path,
+                px_rock_area_path=px_rock_area_path,
                 decide_best_reg=args.reg_method == "auto",
             )
             pore_instance_seg_file_path, pore_report_file_path = inspector_instance_segmenter.run(
@@ -187,9 +196,9 @@ def main(args):
             )
 
             if args.export_images:
-                image_exporter.run(loaded_image_file_path, pore_instance_seg_file_path, pores_output_dir)
+                image_exporter.run(loaded_image_file_path, pore_instance_seg_file_path, pores_output_dir.as_posix())
             if generate_sheets:
-                sheet_exporter.run(loaded_image_file_path, pore_report_file_path, pores_output_dir)
+                sheet_exporter.run(loaded_image_file_path, pore_report_file_path, pores_output_dir.as_posix())
 
             if not args.exclude_ooids:
                 ooid_seg_file_path = ooid_segmenter.run(frags_file_path, pore_instance_seg_file_path)
@@ -198,12 +207,12 @@ def main(args):
                 )
 
                 if args.export_images:
-                    image_exporter.run(loaded_image_file_path, ooid_seg_file_path, ooids_output_dir)
+                    image_exporter.run(loaded_image_file_path, ooid_seg_file_path, ooids_output_dir.as_posix())
                 if generate_sheets:
                     sheet_exporter.run(
                         loaded_image_file_path,
                         ooid_report_file_path,
-                        ooids_output_dir,
+                        ooids_output_dir.as_posix(),
                         instance_type="ooids",
                         groups={
                             "property": "max_feret (mm)",
@@ -236,10 +245,10 @@ def main(args):
                     if os.path.basename(d) != "LAS"
                 ]
 
-            las_exporter.run(image_names, sheet_exporter.stats_sheet_prefix, pores_output_dir)
+            las_exporter.run(image_names, sheet_exporter.stats_sheet_prefix, pores_output_dir.as_posix())
             if not args.exclude_ooids:
                 las_exporter.run(
-                    image_names, sheet_exporter.stats_sheet_prefix, ooids_output_dir, instance_type="ooids"
+                    image_names, sheet_exporter.stats_sheet_prefix, ooids_output_dir.as_posix(), instance_type="ooids"
                 )
 
             if sheet_exporter.temporary:
@@ -256,12 +265,13 @@ def main(args):
                     for image_dir in image_dirs:
                         shutil.rmtree(image_dir)
 
-        os.remove(checkpoint_path)
+        checkpoint_path.unlink(missing_ok=True)
     except Exception as e:
         raise e
     finally:
         if not args.keep_temp and os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
+        print("Done.")
 
 
 if __name__ == "__main__":
@@ -403,6 +413,30 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to the pore segmentation CLI to use. Must be provided for deployed versions of GeoSlicer. For release versions, it is recommended \
+                        not to be provided, so it will be inferred automatically.",
+    )
+    parser.add_argument(
+        "-fc",
+        "--foreground-cli",
+        type=str,
+        default=None,
+        help="Path to the foreground segmenter CLI to use. Must be provided for deployed versions of GeoSlicer. For release versions, it is recommended \
+                        not to be provided, so it will be inferred automatically.",
+    )
+    parser.add_argument(
+        "-rc",
+        "--remove-spurious-cli",
+        type=str,
+        default=None,
+        help="Path to the spurious pores remover CLI to use. Must be provided for deployed versions of GeoSlicer. For release versions, it is recommended \
+                        not to be provided, so it will be inferred automatically.",
+    )
+    parser.add_argument(
+        "-cc",
+        "--clean-resin-cli",
+        type=str,
+        default=None,
+        help="Path to the resin cleaner CLI to use. Must be provided for deployed versions of GeoSlicer. For release versions, it is recommended \
                         not to be provided, so it will be inferred automatically.",
     )
     parser.add_argument(

@@ -471,7 +471,7 @@ def calculate_statistics(df, instances, class_ids, classes, scale, spacing):
                 callback=lambda i, total: None,
             )
             if len(df_stats) > 0:
-                df_stats.set_axis(operator.ATTRIBUTES, axis=1, inplace=True)
+                df_stats = df_stats.set_axis(operator.ATTRIBUTES, axis=1)
                 for col in df_stats.select_dtypes(include=["float"]).columns:
                     df_stats[col] = df_stats[col].round(5)
 
@@ -552,8 +552,7 @@ def runcli(args):
     scale_percent = params["resize_ratio"]
     chunk_size = params.get("chunk_size")
     chunk_overlap = params.get("chunk_overlap")
-    chunk_overlap = chunk_overlap / 100.0 if chunk_overlap else None
-
+    chunk_overlap = chunk_overlap / 100.0 if chunk_overlap is not None else 0
     image = channels[0]
 
     model_path = Path(args.input_model)

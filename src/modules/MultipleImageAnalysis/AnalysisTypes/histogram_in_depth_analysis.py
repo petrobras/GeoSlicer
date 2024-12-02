@@ -1,20 +1,18 @@
-import ctk
-import qt
-import slicer
-
 import logging
-import numpy as np
 import os
-import pandas as pd
+from typing import Dict, List
 
-from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
+import ctk
+import numpy as np
+import pandas as pd
+import qt
+
+from ltrace.slicer.node_attributes import TableDataOrientation, TableType
 from ltrace.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
 from ltrace.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
 from ltrace.slicer.segment_inspector.inspector_files.inspector_variables_file import InspectorVariablesFile
-from ltrace.slicer.node_attributes import TableDataOrientation, TableType
 from ltrace.slicer.ui import numberParamInt
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from typing import Dict, List
+from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
 
 
 class HistogramInDepthAnalysisWidget(AnalysisWidgetBase):
@@ -198,99 +196,99 @@ class HistogramInDepthAnalysis(AnalysisBase):
         if poresNumber <= 0:
             raise Exception("No data found in the selected directory")
 
-        with ProgressBarProc() as progressBar:
-            progressBar.setTitle("Histogram in Depth Analysis")
-            progressStep = 99 // (poresNumber * 3)  # 3 for loops
-            currentProgress = 0
-            progressBar.nextStep(0, "Starting...")
+        # with ProgressBarProc() as progressBar:
+        # progressBar.setTitle("Histogram in Depth Analysis")
+        progressStep = 99 // (poresNumber * 3)  # 3 for loops
+        currentProgress = 0
+        # progressBar.nextStep(0, "Starting...")
 
-            # Filter valid depths
-            for pore in list(poresDataDict.keys()):
-                if poresDataDict[pore]["Report"] is None:
-                    poresDataDict.pop(pore)
+        # Filter valid depths
+        for pore in list(poresDataDict.keys()):
+            if poresDataDict[pore]["Report"] is None:
+                poresDataDict.pop(pore)
 
-                currentProgress += progressStep
-                progressBar.nextStep(currentProgress, f"Filtering valid data for {pore}...")
+            currentProgress += progressStep
+            # progressBar.nextStep(currentProgress, f"Filtering valid data for {pore}...")
 
-            # check min / max value from sample data
-            minSampleValue = np.inf
-            maxSampleValue = -np.inf
-            for pore in poresDataDict.keys():
-                currentProgress += progressStep
-                progressBar.nextStep(currentProgress, f"Checking minimum/maximum values for {pore}...")
+        # check min / max value from sample data
+        minSampleValue = np.inf
+        maxSampleValue = -np.inf
+        for pore in poresDataDict.keys():
+            currentProgress += progressStep
+            # progressBar.nextStep(currentProgress, f"Checking minimum/maximum values for {pore}...")
 
-                reportData = poresDataDict[pore]["Report"].data
-                sampleData = reportData.loc[:, sampleColumnLabel]
-                currentMin = np.amin(sampleData)
-                currentMax = np.amax(sampleData)
+            reportData = poresDataDict[pore]["Report"].data
+            sampleData = reportData.loc[:, sampleColumnLabel]
+            currentMin = np.amin(sampleData)
+            currentMax = np.amax(sampleData)
 
-                minSampleValue = min(minSampleValue, currentMin)
-                maxSampleValue = max(maxSampleValue, currentMax)
+            minSampleValue = min(minSampleValue, currentMin)
+            maxSampleValue = max(maxSampleValue, currentMax)
 
-            limitBins = nBins
-            if sampleColumnLabel == "pore_size_class":
-                firestPoreSizeClass = 0
-                lasPoreSizeClass = 7
-                limitBins = np.linspace(
-                    start=firestPoreSizeClass,
-                    stop=lasPoreSizeClass + 1,
-                    num=lasPoreSizeClass + 1 - firestPoreSizeClass + 1,
-                )
-            elif minSampleValue != 0:
-                limitBins = np.zeros(nBins + 1)
-                for i in range(0, len(limitBins)):
-                    limitBins[i] = minSampleValue * np.power(np.power(maxSampleValue / minSampleValue, 1 / (nBins)), i)
+        limitBins = nBins
+        if sampleColumnLabel == "pore_size_class":
+            firestPoreSizeClass = 0
+            lasPoreSizeClass = 7
+            limitBins = np.linspace(
+                start=firestPoreSizeClass,
+                stop=lasPoreSizeClass + 1,
+                num=lasPoreSizeClass + 1 - firestPoreSizeClass + 1,
+            )
+        elif minSampleValue != 0:
+            limitBins = np.zeros(nBins + 1)
+            for i in range(0, len(limitBins)):
+                limitBins[i] = minSampleValue * np.power(np.power(maxSampleValue / minSampleValue, 1 / (nBins)), i)
 
-            data = dict()
-            for pore in poresDataDict.keys():
-                currentProgress += progressStep
-                progressBar.nextStep(currentProgress, f"Generating histogram for {pore}...")
+        data = dict()
+        for pore in poresDataDict.keys():
+            currentProgress += progressStep
+            # progressBar.nextStep(currentProgress, f"Generating histogram for {pore}...")
 
-                reportData = poresDataDict[pore]["Report"].data
-                variablesFile = poresDataDict[pore]["Variables"]
-                variablesData = variablesFile.data if variablesFile else None
-                weights = None
-                if weightColumnLabel != "None" and weightColumnLabel in list(reportData.columns):
-                    weights = reportData.loc[:, weightColumnLabel]
+            reportData = poresDataDict[pore]["Report"].data
+            variablesFile = poresDataDict[pore]["Variables"]
+            variablesData = variablesFile.data if variablesFile else None
+            weights = None
+            if weightColumnLabel != "None" and weightColumnLabel in list(reportData.columns):
+                weights = reportData.loc[:, weightColumnLabel]
 
-                yValues, x = np.histogram(reportData.loc[:, sampleColumnLabel], bins=limitBins, weights=weights)
-                if data.get("X") is None:
-                    if sampleColumnLabel == "pore_size_class":
-                        data["X"] = x[:-1]
-                    else:
-                        xValues = [np.sqrt(x[i + 1] * x[i]) for i in range(0, nBins)]
-                        data["X"] = xValues
-
-                if (
-                    normalizationEnabled
-                    and normalizationLabel != ""
-                    and normalizationLabel != self.configWidget.NORMALIZATION_BY_SUM_LABEL
-                    and variablesData is not None
-                    and normalizationLabel in list(variablesData["Properties"])
-                ):
-                    normalizationFactor = float(
-                        variablesData.loc[variablesData["Properties"] == normalizationLabel, "Values"].iloc[0]
-                    )
-                    if normalizationFactor > 0:
-                        yValues = yValues / normalizationFactor
-                elif normalizeCheckBox:
-                    yValues = yValues / yValues.sum()
+            yValues, x = np.histogram(reportData.loc[:, sampleColumnLabel], bins=limitBins, weights=weights)
+            if data.get("X") is None:
+                if sampleColumnLabel == "pore_size_class":
+                    data["X"] = x[:-1]
                 else:
-                    mx = np.nanmax(yValues) / histogramHeight
-                    if np.isscalar(mx):
-                        yValues = np.true_divide(yValues, mx)
+                    xValues = [np.sqrt(x[i + 1] * x[i]) for i in range(0, nBins)]
+                    data["X"] = xValues
 
-                data[str(pore)] = yValues
+            if (
+                normalizationEnabled
+                and normalizationLabel != ""
+                and normalizationLabel != self.configWidget.NORMALIZATION_BY_SUM_LABEL
+                and variablesData is not None
+                and normalizationLabel in list(variablesData["Properties"])
+            ):
+                normalizationFactor = float(
+                    variablesData.loc[variablesData["Properties"] == normalizationLabel, "Values"].iloc[0]
+                )
+                if normalizationFactor > 0:
+                    yValues = yValues / normalizationFactor
+            elif normalizeCheckBox:
+                yValues = yValues / yValues.sum()
+            else:
+                mx = np.nanmax(yValues) / histogramHeight
+                if np.isscalar(mx):
+                    yValues = np.true_divide(yValues, mx)
 
-            # Create AnalysisReport from data
-            config = {
-                TableDataOrientation.name(): TableDataOrientation.ROW.value,
-                TableType.name(): TableType.HISTOGRAM_IN_DEPTH.value,
-            }
-            report = AnalysisReport(name=outputName, data=data, config=config)
-            progressBar.nextStep(100, "Done!")
+            data[str(pore)] = yValues
 
-            return report
+        # Create AnalysisReport from data
+        config = {
+            TableDataOrientation.name(): TableDataOrientation.ROW.value,
+            TableType.name(): TableType.HISTOGRAM_IN_DEPTH.value,
+        }
+        report = AnalysisReport(name=outputName, data=data, config=config)
+        # progressBar.nextStep(100, "Done!")
+
+        return report
 
     def getSuggestedOutputName(self, filesDir: str) -> str:
         projectName = os.path.basename(filesDir)

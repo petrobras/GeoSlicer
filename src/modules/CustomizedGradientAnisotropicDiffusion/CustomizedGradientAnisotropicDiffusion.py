@@ -53,7 +53,7 @@ class CustomizedGradientAnisotropicDiffusion(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Gradient Anisotropic Diffusion"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedGradientAnisotropicDiffusion.help()

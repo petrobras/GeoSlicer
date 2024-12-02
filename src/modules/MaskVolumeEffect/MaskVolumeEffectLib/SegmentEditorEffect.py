@@ -186,10 +186,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def setEnvironment(self, tag):
-        self.shouldHideInputOutput = "ImageLogSegmenter" in tag
+        self.shouldHideInputOutput = "ImageLogSegmentEditor" in tag
         self.inputVisibilityButton.setVisible(not self.shouldHideInputOutput)
         self.outputVisibilityButton.setVisible(not self.shouldHideInputOutput)
 

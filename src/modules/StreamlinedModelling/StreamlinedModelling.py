@@ -246,7 +246,7 @@ class StreamlinedModelling(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Modelling Flow"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = StreamlinedModelling.help()
@@ -302,8 +302,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         cropModule = slicer.modules.customizedcropvolume.createNewWidgetRepresentation()
         self.cropWidget = cropModule.self()
         self.cropWidget.inputCollapsibleButton.visible = False
-        self.cropWidget.cropButton.visible = False
-        self.cropWidget.cancelButton.visible = False
+        self.cropWidget.applyCancelButtons.visible = False
         return cropModule
 
     def enterCrop(self):
@@ -576,9 +575,12 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.nextButton.setToolTip("Run modelling")
 
         inputWidget = self.microporosityWidget.inputWidget
-        inputWidget.soiInput.setCurrentNode(self.flowState.soi)
         inputWidget.mainInput.setCurrentNode(self.flowState.segmentation)
+        inputWidget.mainInput.itemChangedHandler(inputWidget.mainInput.currentItem())
+        inputWidget.soiInput.setCurrentNode(self.flowState.soi)
+        inputWidget.soiInput.itemChangedHandler(inputWidget.soiInput.currentItem())
         inputWidget.referenceInput.setCurrentNode(self.flowState.scalarVolume)
+        inputWidget.referenceInput.itemChangedHandler(inputWidget.referenceInput.currentItem())
 
         self.microporosityWidget.poreDistSelector[0].setCurrentText("Macroporosity")
         self.microporosityWidget.poreDistSelector[1].setCurrentText("Microporosity")

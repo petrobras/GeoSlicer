@@ -31,7 +31,7 @@ class FilteredNodeComboBox(qt.QComboBox):
             if node.GetAttribute("ShowInFilteredNodeComboBox") == "False":
                 continue
             else:
-                self.addItem(node.GetName(), node.GetID())
+                self.addNode(node)
 
         def changeNode(index):
             self.blockSignals(True)

@@ -4,3 +4,9 @@
 [submodule "src/submodules/pnflow"]
 	path = src/submodules/pnflow
 	url = git@github.com:ltracegeo/pnflow.git
+[submodule "src/submodules/py_pore_flow"]
+	path = src/submodules/py_pore_flow
+	url = git@bitbucket.org:ltrace/py_pore_flow.git
+[submodule "src/submodules/pyflowsolver"]
+	path = src/submodules/pyflowsolver
+	url = git@github.com:Arenhart/PyFlowSolver.git

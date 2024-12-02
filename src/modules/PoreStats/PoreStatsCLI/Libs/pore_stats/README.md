@@ -3,6 +3,7 @@
 
 Este repositório disponibiliza o *script* de cálculo de estatísticas e propriedades de poros e partículas (mais especificamente oóides) em imagens de seção delgada de rocha. Foi desenvolvido de modo a aproveitar alguns recursos do GeoSlicer e combinar com soluções próprias para a segmentação de poros e oóides e a geração de imagens e tabelas dos dados computados.
 
+**Nota: o módulo de segmentação de oóides ainda não foi atualizado para acompanhar as atualizações dos demais módulos, então pode não funcionar corretamente no momento.**
 
 # Funcionamento
 
@@ -36,7 +37,7 @@ A princípio, o *script* foi desenvolvido para funcionar sobre as imagens dos po
 
 ### Formato esperado
 
-Espera-se que as imagens de um mesmo poço estejam contidas em um mesmo diretório com seu nome. Ambas as versões de iluminação em polarização direta (PP ou c1) e polarização cruzada (PX ou c2) são necessárias, exceto para as imagens expecificadas no arquivo `not_use_px.csv`. As imagens devem ser nomeadas no padrão `<poço>_<profundidade-valor>(-índice-opcional)<profundidade-unidade>_<…>_c<1/2>.<extensão>`. Exemplo:
+Espera-se que as imagens de um mesmo poço estejam contidas em um mesmo diretório com seu nome. A versão de iluminação em polarização direta (PP ou c1) é necessária, enquanto a de polarização cruzada (PX ou c2) é desejável para uma melhor qualidade da segmentação final. As imagens devem ser nomeadas no padrão `<poço>_<profundidade-valor>(-índice-opcional)<profundidade-unidade>_<…>_c<1/2>.<extensão>`. Exemplo:
 
 ```
 RJS-661
@@ -97,7 +98,7 @@ Opcionalmente, também se podem gerar imagens netCDF dos resultados. Elas estar�
 
 
 ```
-<caminho-do-GeoSlicer>/bin/PythonSlicer pore_stats.py <diretório-entrada> <diretório-saída> [--algorithm {watershed,islands}] [--pixel-size TAMANHO_DO_PIXEL] [--min-size TAMANHO_MÍNIMO] [--sigma SIGMA] [--min-distance DISTÂNCIA_MÍNIMA] [--pore-model {unet,sbayes,bbayes}] [--reg-method {centralized,auto}] [--netcdf]
+<caminho-do-GeoSlicer>/bin/PythonSlicer pore_stats.py <diretório-entrada> <diretório-saída> [--algorithm {watershed,islands}] [--pixel-size TAMANHO_DO_PIXEL] [--min-size TAMANHO_MÍNIMO] [--sigma SIGMA] [--min-distance DISTÂNCIA_MÍNIMA] [--pore-model {unet,sbayes,bbayes,CAMINHO_MODELO}] [--max-frags {custom,all,NÚMERO_FRAGMENTOS}] [--netcdf] [--keep-spurious] [--keep-residues] [--use-px {none,custom,all}] [--reg-method {centralized,auto}] [--no-images] [--no-sheets] [--no-las] [--seg-cli CAMINHO_CLI_SEGMENTAÇÃO_DE_POROS] [--foreground-cli CAMINHO_CLI_PRIMEIRO_PLANO] [--remove-spurious-cli CAMINHO_CLI_REMOÇÃO_DE_ESPÚRIOS] [--clean-resin-cli CAMINHO_CLI_LIMPEZA_DE_RESINA] [--inspector-cli CAMINHO_CLI_INSPETOR_DE_INSTÂNCIAS]
 
 * <diretório-entrada>: caminho do diretório de entrada;
 * <diretório-saída>: caminho do diretório de saída;
@@ -108,6 +109,7 @@ Opcionalmente, também se podem gerar imagens netCDF dos resultados. Elas estar�
 * --min-distance: distância mínima (em pixeis) que separa picos nos segmentos a serem separados. Ignorado para o algoritmo "islands". Padrão: 5;
 * --pore-model: modelo de segmentação binária de poros. Escolha entre "unet" (U-Net), "sbayes" (small-bayesian: modelo bayesiano de kernel pequeno small) ou "bbayes" (big-bayesian: modelo bayesiano de kernel grande), ou forneça o caminho do modelo diretamente (recomendado para versões de desenvolvimento (não-release) do GeoSlicer). Padrão: "unet";
 * --max-frags: limita a quantidade máxima de fragmentos de rocha a serem analisados, do maior para o menor. Pode ser um número inteiro descrevendo a quantidade diretamente, "all" para considerar todos os fragmentos e "custom" para uma análise individual de cada imagem listada no arquivo "filter_images.csv" (use 0 para ignorar a imagem). Padrão: "custom";
+* --netcdf: se especificado, salva os resultados das segmentações em um arquivo netCDF para cada imagem;
 * --keep-spurious: se especificado, detecções espúrias de poros não são removidas;
 * --keep-residues: se especificado, bolhas e resíduos na resina de poro não são limpas;
 * --use-px: opção de uso de imagem PX para auxiliar na limpeza da resina de poro. Se "none", apenas a imagem PP é usada. Se "all", ambas PP e PX são usadas. Se "custom", imagens que constem no arquivo "not_use_px.csv" não terão a imagem PX usada. Ignorado se --keep-residues for especificado. Padrão: "custom";
@@ -116,8 +118,10 @@ Opcionalmente, também se podem gerar imagens netCDF dos resultados. Elas estar�
 * --no-sheets: se especificado, as planilhas de propriedades e estatísticas não são geradas;
 * --no-las: se especificado, os arquivos LAS de saída não são gerados;
 * --seg-cli: caminho opcional do CLI de segmentação de poros a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir;
-* --inspector-cli: caminho opcional do CLI de inspeção de segmento (separação e cálculo de propriedades/estatísticas das instâncias detectadas) de poros a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir;
-* --netcdf: se especificado, salva os resultados das segmentações em um arquivo netCDF para cada imagem.
+* --foreground-cli: caminho opcional do CLI de segmentação de primeiro plano (área de rocha; fragmentos) a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir;
+--remove-spurious-cli: caminho opcional do CLI de remoção de detecções espúrias a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir;
+--clean-resin-cli: caminho opcional do CLI de limpeza de resina a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir;
+* --inspector-cli: caminho opcional do CLI de inspeção de segmento (separação e cálculo de propriedades/estatísticas das instâncias detectadas) de poros a ser utilizado. Caso não seja especificado, é inferido automaticamente, o que é recomendado para versões release do GeoSlicer. Para versões de desenvolvimento, deve ser especificado. Padrão: inferir.
 ```
 
 Durante a execução, um arquivo `checkpoint.txt` no diretório de saída é atualizado com a identificação da imagem atualmente em processamento. Caso a execução seja interrompida, a próxima execução retomará o processamento a partir desta.

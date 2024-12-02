@@ -5,7 +5,7 @@ import shiboken2
 import slicer
 
 from .base_view_widget import BaseViewWidget
-from ImageLogDataLib.view.View import CurvePlot
+from ImageLogDataLib.view.View import CurvePlot, SECONDARY_VIEW_BOX
 from ltrace.slicer.graph_data import LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from ltrace.slicer_utils import tableNodeToDict
 
@@ -22,9 +22,11 @@ class GraphicViewWidget(BaseViewWidget):
         self.curve_plot._plot_item.setContentsMargins(-7, -7, -6, -6)
         self.curve_plot._plot_item.hideButtons()
         self.curve_plot._plot_item.hideAxis("left")
-        self.curve_plot._plot_item.getAxis("bottom").setPen(color=(0, 0, 0))
-        self.curve_plot._plot_item.getAxis("bottom").setTextPen(color=(0, 0, 0))
-        self.curve_plot._plot_item.signalLogMode.connect(self.curve_plot.logMode)
+        self.curve_plot._plot_item.hideAxis("bottom")
+        self.curve_plot._plot_item.showAxis("top")
+        self.curve_plot._plot_item.getAxis("top").setPen(color=(0, 0, 0))
+        self.curve_plot._plot_item.getAxis("top").setTextPen(color=(0, 0, 0))
+        self.curve_plot._plot_item.signalLogMode.connect(self.curve_plot.set_primary_logMode)
         self.__primary_table_dict = tableNodeToDict(primary_node)
 
         # Primary table node
@@ -61,6 +63,7 @@ class GraphicViewWidget(BaseViewWidget):
                 plot_type=secondary_plot_type,
                 color=view_data.secondaryTableNodePlotColor,
                 symbol=secondary_plot_symbol,
+                view_box=SECONDARY_VIEW_BOX,
             )
 
         if view_data.logMode:

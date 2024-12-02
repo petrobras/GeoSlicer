@@ -11,7 +11,7 @@ from SegmentEditorEffects import *
 from SegmentEditorEffects.SegmentEditorThresholdEffect import PreviewPipeline
 
 from ltrace.algorithms.common import randomChoice
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUE
+from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES
 from ltrace.slicer.helpers import getVolumeNullValue, getPythonQtWidget, hide_masking_widget
 from ltrace.slicer.ui import numberParamInt
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
@@ -38,7 +38,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         self.defaults = {}
 
-        self.nullValue = lambda: self.defaults.get("nullableValue", DEFAULT_NULL_VALUE)
+        self.nullValue = lambda: self.defaults.get("nullableValue", DEFAULT_NULL_VALUES)
         self.transitions = list()
         self._observerHandlers = list()
         self.segmentationNode = None
@@ -259,7 +259,7 @@ the number of clusters equal to the number of segments added to the segmentation
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def getParentLazyNode(self):
         if self.scriptedEffect.parameterSetNode() is None:

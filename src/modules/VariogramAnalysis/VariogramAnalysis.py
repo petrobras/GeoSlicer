@@ -255,6 +255,7 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         outputGroup.text = "Output"
         outputLayout = qt.QFormLayout(outputGroup)
         self.exportDirectoryButton = ctk.ctkDirectoryButton()
+        self.exportDirectoryButton.setMaximumWidth(374)
         self.exportDirectoryButton.caption = "Export directory"
         self.exportDirectoryButton.directory = VariogramAnalysis.get_setting(
             self.EXPORT_DIRECTORY, default=str(Path.home())

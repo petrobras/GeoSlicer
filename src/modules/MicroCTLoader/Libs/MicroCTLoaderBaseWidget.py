@@ -1,15 +1,13 @@
 import ctk
 import qt
 import slicer
-import numpy as np
+import importlib
 
 from dataclasses import dataclass, field
 from ltrace.slicer import microct
-import importlib
-import Libs.RawLoader
 
-importlib.reload(Libs.RawLoader)
-from Libs.RawLoader import RawLoaderWidget
+# importlib.reload(Libs.RawLoader)
+from .RawLoader import RawLoaderWidget
 from ltrace.slicer.ui import DirOrFileWidget
 from ltrace.slicer.helpers import (
     highlight_error,
@@ -19,13 +17,9 @@ from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.units import global_unit_registry as ureg
 from pathlib import Path
 from threading import Lock
+from ltrace.utils.callback import Callback
 
 COLORS = [(1, 0, 0), (0, 0.5, 1), (1, 0, 1)]
-
-
-class Callback(object):
-    def __init__(self, on_update=None):
-        self.on_update = on_update or (lambda *args, **kwargs: None)
 
 
 @dataclass
@@ -223,6 +217,11 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.loadFormLayout.addRow(self.normalWidget)
 
         self.layout.addStretch()
+
+        self.rawWidget.visible = False
+        self.rawParamsSection.visible = False
+        self.normalWidget.visible = False
+        self.enableProcessing(False)
 
         if self.pathWidget.path != "":
             # Path is set from settings

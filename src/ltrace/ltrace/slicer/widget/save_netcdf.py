@@ -2,10 +2,11 @@ import qt
 import ctk
 import vtk
 import slicer
+
 from ltrace.slicer import ui
+from ltrace.slicer import export, netcdf
 from pathlib import Path
-import Export
-import NetCDFExport
+
 
 EXPORTABLE_TYPES = (
     slicer.vtkMRMLLabelMapVolumeNode,
@@ -19,7 +20,7 @@ def getNodesFromFolder(folderId):
     ids = vtk.vtkIdList()
     ids.SetNumberOfIds(1)
     ids.SetId(0, folderId)
-    return Export.ExportLogic().getDataNodes(ids, EXPORTABLE_TYPES)
+    return export.getDataNodes(ids, EXPORTABLE_TYPES)
 
 
 class SaveNetcdfWidget(qt.QFrame):
@@ -67,13 +68,17 @@ class SaveNetcdfWidget(qt.QFrame):
         detailsLayout.addWidget(detailsLabel)
         layout.addRow(detailsGroup)
 
-        self.folderSelector = ui.hierarchyVolumeInput(nodeTypes=EXPORTABLE_TYPES)
-        self.folderSelector.setToolTip("All images in this folder that are not yet in the file will be added.")
+        self.folderSelector = ui.hierarchyVolumeInput(
+            nodeTypes=EXPORTABLE_TYPES,
+            tooltip="All images in this folder that are not yet in the file will be added.",
+            allowFolders=True,
+        )
         layout.addRow("Folder:", self.folderSelector)
 
         self.fileLabel = qt.QLabel()
         self.fileLabel.setToolTip(
-            "The selected folder was previously imported from this file. New images will be saved to the file. Existing images and attributes will remain in the file."
+            "The selected folder was previously imported from this file. New images will be saved to the file. "
+            "Existing images and attributes will remain in the file."
         )
         layout.addRow("Save as:", self.fileLabel)
 
@@ -104,5 +109,5 @@ class SaveNetcdfWidget(qt.QFrame):
         path = Path(self.fileLabel.text)
         folderId = self.folderSelector.currentItem()
         nodes = getNodesFromFolder(folderId)
-        NetCDFExport.exportNetcdf(path, nodes, single_coords=True, save_in_place=True)
+        netcdf.exportNetcdf(path, nodes, single_coords=True, save_in_place=True)
         self.close()

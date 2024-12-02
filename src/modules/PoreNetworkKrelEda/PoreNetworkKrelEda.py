@@ -19,11 +19,13 @@ from ltrace.slicer_utils import (
     dataframeFromTable,
     dataFrameToTableNode,
     slicer_is_in_developer_mode,
+    getResourcePath,
 )
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from PoreNetworkKrelEdaLib.export.PoreNetworkKrelEdaExport import PoreNetworkKrelEdaExportWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.crossed_plots import CrossedError, CrossedParameters
 from PoreNetworkKrelEdaLib.visualization_widgets.curves_plot import CurvesPlot
+from PoreNetworkKrelEdaLib.visualization_widgets.ca_distribution_plot import CaDistributionPlot
 from PoreNetworkKrelEdaLib.visualization_widgets.heatmap_plots import (
     ParameterErrorCorrelation,
     ParameterResultCorrelation,
@@ -52,10 +54,10 @@ class PoreNetworkKrelEda(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Krel EDA"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "PNM Krel EDA"
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PoreNetworkKrelEda.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/krelEDA.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -116,6 +118,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         self.__visualizationTypeSelector.addWidget(SecondOrderInteraction(data_manager=self.data_manager))
         self.__visualizationTypeSelector.addWidget(SecondOrderInteractions(data_manager=self.data_manager))
         self.__visualizationTypeSelector.addWidget(ThirdOrderInteractions(data_manager=self.data_manager))
+        self.__visualizationTypeSelector.addWidget(CaDistributionPlot(data_manager=self.data_manager))
         self.__visualizationTypeSelector.currentWidgetChanged.connect(self.__update_current_plot)
         self.__visualizationTypeSelector.objectName = "Visualization selector"
         self.__clear_plots()
@@ -207,7 +210,12 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
     def __update_current_plot(self, vtkid=None):
         currentWidget = self.__visualizationTypeSelector.currentWidget()
-        if self.data_manager.is_valid():
+
+        curvesWidget = self.__visualizationTypeSelector.widget(0)
+        number_of_simulations = self.data_manager.get_number_of_simulations()
+        invalid_combination = currentWidget != curvesWidget and number_of_simulations == 1
+
+        if self.data_manager.is_valid() and not invalid_combination:
             currentWidget.setVisible(True)
             currentWidget.update()
         else:

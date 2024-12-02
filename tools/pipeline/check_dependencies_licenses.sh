@@ -1,5 +1,6 @@
 #!/bin/bash
 
+excluded_modules="PNM_Report other"
 repository_path=$( cd "$(dirname "$0")" ; pwd -P )\\..\\..
 requirement_files=$(find ./src -iname "requirements.txt" -type f)
 
@@ -10,6 +11,9 @@ echo -e "\
 
 for requirement_file in $requirement_files; do
     module_name=$(basename $(dirname ${requirement_file}))
+    if [[ " ${excluded_modules} " =~ " ${module_name} " ]]; then
+        continue
+    fi
     echo "Checking licenses for '${module_name}' dependencies"
     echo -e "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
     python -m liccheck -r "${requirement_file}"

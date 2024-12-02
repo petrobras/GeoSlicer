@@ -2,10 +2,11 @@ import os
 from pathlib import Path
 
 import slicer.util
-from Customizer import Customizer
-from ltrace.slicer_utils import *
 
 from ImageToolsLib import *
+from ltrace.slicer import ui
+from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
 
 
 class ImageTools(LTracePlugin):
@@ -16,11 +17,13 @@ class ImageTools(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Tools"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Filters"
+        self.parent.categories = ["Tools", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ImageTools.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/ImageTools.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):
@@ -93,7 +96,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.hideToolWidgets()
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         self.applyButton.setToolTip(
             "Apply the current tool changes. These changes can be undone, unless you click Save."
         )
@@ -101,13 +104,13 @@ class ImageToolsWidget(LTracePluginWidget):
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         self.cancelButton.setToolTip("Cancel the current tool changes.")
         self.cancelButton.enabled = False
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(str(Customizer.UNDO_ICON_PATH)))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo applied tool changes. The earliest undo is where the image was loaded or saved."
         )
@@ -115,7 +118,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(str(Customizer.REDO_ICON_PATH)))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
         self.redoButton.setToolTip("Redo applied tool changes.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)
@@ -127,22 +130,18 @@ class ImageToolsWidget(LTracePluginWidget):
         buttonsHBoxLayout.addWidget(self.redoButton)
         self.formLayout.addRow(buttonsHBoxLayout)
 
-        self.saveButton = qt.QPushButton("Save")
-        self.saveButton.setIcon(qt.QIcon(str(Customizer.SAVE_ICON_PATH)))
-        self.saveButton.setToolTip("Save the applied tool changes. This action cannot be undone.")
-        self.saveButton.enabled = False
-        self.saveButton.clicked.connect(self.onSaveButtonClicked)
-
-        self.resetButton = qt.QPushButton("Reset")
-        self.resetButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
-        self.resetButton.setToolTip("Reset the applied tool changes to the last saved state.")
-        self.resetButton.enabled = False
-        self.resetButton.clicked.connect(self.onResetButtonClicked)
-
-        saveResetButtonsHBoxLayout = qt.QHBoxLayout()
-        saveResetButtonsHBoxLayout.addWidget(self.saveButton)
-        saveResetButtonsHBoxLayout.addWidget(self.resetButton)
-        self.formLayout.addRow(saveResetButtonsHBoxLayout)
+        self.saveResetButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onSaveButtonClicked,
+            onCancelClick=self.onResetButtonClicked,
+            applyTooltip="Save the applied tool changes. This action cannot be undone.",
+            cancelTooltip="Reset the applied tool changes to the last saved state.",
+            applyText="Save",
+            cancelText="Reset",
+            enabled=False,
+            applyObjectName=None,
+            cancelObjectName=None,
+        )
+        self.layout.addWidget(self.saveResetButtons)
 
         self.layout.addStretch()
 
@@ -316,11 +315,9 @@ class ImageToolsWidget(LTracePluginWidget):
         self.undoButton.enabled = numberOfUndoLevels
         self.redoButton.enabled = numberOfRedoLevels
         if numberOfUndoLevels > 0 or numberOfRedoLevels > 0:
-            self.saveButton.enabled = True
-            self.resetButton.enabled = True
+            self.saveResetButtons.setEnabled(True)
         else:
-            self.saveButton.enabled = False
-            self.resetButton.enabled = False
+            self.saveResetButtons.setEnabled(False)
         self.applyButton.enabled = False
         self.cancelButton.enabled = False
 
@@ -408,7 +405,7 @@ class ImageToolsWidget(LTracePluginWidget):
         if slicer.mrmlScene.GetNumberOfUndoLevels() > 0 or slicer.mrmlScene.GetNumberOfRedoLevels() > 0:
             messageBox = qt.QMessageBox()
             saveImageAnswer = messageBox.question(
-                slicer.util.mainWindow(),
+                slicer.modules.AppContextInstance.mainWindow,
                 "GeoSlicer confirmation",
                 "Save the changes to the image before exiting?",
                 qt.QMessageBox.Yes | qt.QMessageBox.No,  # | qt.QMessageBox.Cancel,
@@ -426,7 +423,7 @@ class ImageToolsWidget(LTracePluginWidget):
     def configureInterfaceForThinSectionRegistrationModule(self):
         self.formLayout.setContentsMargins(0, 0, 0, 0)
         self.showImageButton.setVisible(False)  # To not mess with the comparison view
-        self.saveButton.setVisible(False)  # It's only to help placing the landmarks
+        self.saveResetButtons.applyBtn.setVisible(False)  # It's only to help placing the landmarks
 
 
 class ImageToolsInfo(RuntimeError):

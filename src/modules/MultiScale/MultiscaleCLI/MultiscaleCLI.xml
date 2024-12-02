@@ -83,6 +83,13 @@
       <description>Set if data is continuous or discrete</description>
       <default></default>
     </integer>
+    <float>
+      <name>mpsTime</name>
+      <label>A floating point return value</label>
+      <channel>output</channel>
+      <default>0.0</default>
+      <description>Float value that will return mps execution time</description>
+    </float>
   </parameters>
 
   <parameters advanced="false">

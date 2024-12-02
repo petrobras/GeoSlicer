@@ -43,7 +43,7 @@ class Markup(qt.QObject):
         self.last_slice_view_name = None
 
         self.markups_node = createTemporaryNode(cls=self.TYPE_TO_SLICER_TYPE[self.type], name="markups_node")
-        slicer.util.mainWindow().installEventFilter(self)
+        slicer.modules.AppContextInstance.mainWindow.installEventFilter(self)
 
     def __del__(self):
         self.stop_picking()
@@ -82,8 +82,9 @@ class Markup(qt.QObject):
             else:  # pick another point
                 if self.update_instruction:
                     self.update_instruction(self, point_index)
-                if interaction_node.GetCurrentInteractionMode() != 1:  # (i.e., 2)
-                    interaction_node.SetCurrentInteractionMode(1)
+                if interaction_node.GetCurrentInteractionMode() != 1:
+                    self.stop_picking()
+                    self.__reset_markups_node()
 
         self.__reset_markups_node()
         self.__removeInteractionObserverTags()
@@ -119,7 +120,7 @@ class Markup(qt.QObject):
         interactionNode.SetPlaceModePersistence(0)
         interactionNode.SetCurrentInteractionMode(2)
         interactionNode.SwitchToViewTransformMode()
-        slicer.util.mainWindow().removeEventFilter(self)
+        slicer.modules.AppContextInstance.mainWindow.removeEventFilter(self)
 
     def cancel_picking(self):
         if self.markups_node is not None:
@@ -182,6 +183,9 @@ class Markup(qt.QObject):
     def __ras_to_ijk(self, ras, volume_node=None, as_int=True):
         if volume_node is None:
             volume_node = slicer.mrmlScene.GetNodeByID(self.markups_node.GetNthControlPointAssociatedNodeID(0))
+        if volume_node is None:
+            self.__reset_markups_node()
+            return
         ras1Arr = np.c_[ras, np.ones((ras.shape[0], 1))]
         ras_to_ijk = vtk.vtkMatrix4x4()
         volume_node.GetRASToIJKMatrix(ras_to_ijk)

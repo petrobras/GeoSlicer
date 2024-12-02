@@ -9,8 +9,7 @@ import qt
 import slicer
 import traceback
 
-from ImageLogInstanceSegmenter import ImageLogInstanceSegmenter
-from ltrace.algorithms.measurements import instancesPropertiesDataFrame
+from ltrace.algorithms.measurements import instancesPropertiesDataFrame, GENERIC_PROPERTIES
 from ltrace.slicer.helpers import (
     makeNodeTemporary,
     triggerNodeModified,
@@ -25,11 +24,12 @@ from ltrace.slicer.ui import fixedRangeNumberParam
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widgets import PixelLabel, SingleShotInputWidget
 from ltrace.slicer_utils import dataFrameToTableNode
+from .model import ModelLogic, ModelWidget
 
 CLONED_COLUMNS = 40
 
 
-class SnowWidget(qt.QWidget):
+class SnowWidget(ModelWidget):
     SegmentParameters = namedtuple(
         "SegmentParameters",
         [
@@ -39,6 +39,7 @@ class SnowWidget(qt.QWidget):
             "minDistanceFilter",
             "sizeMinThreshold",
             "outputPrefix",
+            "selectedMeasurements",
         ],
     )
 
@@ -49,13 +50,13 @@ class SnowWidget(qt.QWidget):
         self.setup()
 
     def getSigma(self):
-        return ImageLogInstanceSegmenter.get_setting("sigma", default=0.0)
+        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/sigma", 0.0)
 
     def getMinDistanceFilter(self):
-        return ImageLogInstanceSegmenter.get_setting("minDistanceFilter", default=5)
+        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/minDistanceFilter", 5)
 
     def getSizeMinThreshold(self):
-        return ImageLogInstanceSegmenter.get_setting("sizeMinThreshold", default=0.0)
+        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/sizeMinThreshold", 0.0)
 
     def setup(self):
         self.progressBar = LocalProgressBar()
@@ -91,7 +92,7 @@ class SnowWidget(qt.QWidget):
         parametersCollapsibleButton.setText("Parameters")
         formLayout.addRow(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-        parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        parametersFormLayout.setLabelAlignment(qt.Qt.AlignLeft)
 
         self.smooth_factor = qt.QDoubleSpinBox()
         self.smooth_factor.setRange(0, 10)
@@ -136,7 +137,26 @@ class SnowWidget(qt.QWidget):
         pixel_label.setSizePolicy(qt.QSizePolicy.Maximum, qt.QSizePolicy.Fixed)
         thresholdBoxLayout.addWidget(pixel_label)
         parametersFormLayout.addRow("Size minimum threshold (mm):", thresholdBoxLayout)
-        parametersFormLayout.addRow(" ", None)
+
+        self.measurementsList = qt.QListWidget()
+        self.measurementsList.setSizePolicy(qt.QSizePolicy.Expanding, qt.QAbstractScrollArea.AdjustToContents)
+        self.measurementsList.objectName = "Snow measurement list widget"
+        for measurement in GENERIC_PROPERTIES:
+            item = qt.QListWidgetItem(measurement)
+            item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)
+            item.setCheckState(qt.Qt.Checked)
+            self.measurementsList.addItem(item)
+
+        selectAllButton = qt.QPushButton("Select all")
+        selectAllButton.clicked.connect(lambda: self.changeMeasurementsSelection(True))
+        unselectAllButton = qt.QPushButton("Unselect all")
+        unselectAllButton.clicked.connect(lambda: self.changeMeasurementsSelection(False))
+        selectionButtonsLayout = qt.QHBoxLayout()
+        selectionButtonsLayout.addWidget(selectAllButton)
+        selectionButtonsLayout.addWidget(unselectAllButton)
+
+        parametersFormLayout.addRow("Select measurements:", self.measurementsList)
+        parametersFormLayout.addRow("", selectionButtonsLayout)
 
         # Output section
         outputCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -242,6 +262,7 @@ class SnowWidget(qt.QWidget):
                 minDistanceFilter=int(self.minDistanceFilter.value),
                 sizeMinThreshold=float(self.sizeMinThreshold.value),
                 outputPrefix=self.outputPrefixLineEdit.text,
+                selectedMeasurements=self.getSelectedMeasurements(),
             )
             self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
@@ -260,16 +281,27 @@ class SnowWidget(qt.QWidget):
         self.applyButton.setEnabled(not running)
         self.cancelButton.setEnabled(running)
 
+    def getSelectedMeasurements(self):
+        selectedMeasurements = []
+        for item in range(self.measurementsList.count):
+            itemSelected = self.measurementsList.item(item).checkState() == qt.Qt.Checked
+            selectedMeasurements.append(1 if itemSelected else 0)
 
-class SnowLogic(qt.QObject):
-    processFinished = qt.Signal()
+        return selectedMeasurements
 
+    def changeMeasurementsSelection(self, selected):
+        for item in range(self.measurementsList.count):
+            self.measurementsList.item(item).setCheckState(qt.Qt.Checked if selected else qt.Qt.Unchecked)
+
+
+class SnowLogic(ModelLogic):
     def __init__(self, parent, progressBar) -> None:
         super().__init__(parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.outputLabelMapNode = None
         self.propertiesTableNode = None
+        self.selectedMeasurements = []
 
     def apply(self, p):
         self.model = p.model
@@ -277,12 +309,13 @@ class SnowLogic(qt.QObject):
         self.sigma = p.sigma
         self.minDistanceFilter = p.minDistanceFilter
         self.sizeMinThreshold = p.sizeMinThreshold
+        self.selectedMeasurements = p.selectedMeasurements
         self.outputPrefix = p.outputPrefix
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.itemParent = shNode.GetItemParent(shNode.GetItemByDataNode(self.segmentationNode))
 
         self.outputLabelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-        self.outputLabelMapNode.SetName(p.outputPrefix + "_Instances")
+        self.outputLabelMapNode.SetName(slicer.mrmlScene.GenerateUniqueName(p.outputPrefix + "_Instances"))
         self.outputLabelMapNode.SetAttribute("InstanceSegmenter", p.model)
         self.outputLabelMapNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
         self.outputLabelMapNode.HideFromEditorsOn()
@@ -360,7 +393,9 @@ class SnowLogic(qt.QObject):
                     self.decloneColumns(self.outputLabelMapNode, link_border_segments=True)
                     self.decloneColumns(self.segmentationNode)
 
-                    propertiesDataFrame = instancesPropertiesDataFrame(self.outputLabelMapNode)
+                    propertiesDataFrame = instancesPropertiesDataFrame(
+                        self.outputLabelMapNode, self.selectedMeasurements
+                    )
                     if len(propertiesDataFrame.index) == 0:
                         slicer.mrmlScene.RemoveNode(self.outputLabelMapNode)
                         slicer.util.infoDisplay("No instances were detected.")
@@ -371,7 +406,9 @@ class SnowLogic(qt.QObject):
 
                     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
                     self.propertiesTableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
-                    self.propertiesTableNode.SetName(self.outputPrefix + "_Instances_Report")
+                    self.propertiesTableNode.SetName(
+                        slicer.mrmlScene.GenerateUniqueName(self.outputPrefix + "_Instances_Report")
+                    )
                     self.propertiesTableNode.SetAttribute("InstanceSegmenter", self.model)
                     self.propertiesTableNode.AddNodeReferenceID(
                         "InstanceSegmenterLabelMap", self.outputLabelMapNode.GetID()
@@ -385,13 +422,16 @@ class SnowLogic(qt.QObject):
                     slicer.util.errorDisplay(
                         "A problem has occurred during the segmentation. Please check your input files."
                     )
+                self.selectedMeasurements = []
 
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputLabelMapNode)
                 slicer.mrmlScene.RemoveNode(self.propertiesTableNode)
+                self.selectedMeasurements = []
             else:
                 slicer.mrmlScene.RemoveNode(self.outputLabelMapNode)
                 slicer.mrmlScene.RemoveNode(self.propertiesTableNode)
+                self.selectedMeasurements = []
 
             if self.segmentationNode.GetAttribute(NodeTemporarity.name()) == NodeTemporarity.TRUE.value:
                 slicer.mrmlScene.RemoveNode(self.segmentationNode)

@@ -1,10 +1,9 @@
 ###########################################################
 # WARNING: DO NOT IMPORT UI MODULES LIKE QT, CTK GLOBALLY #
 ###########################################################
-import sys
-import lasio
 import cv2
 import enum
+import importlib
 import lasio
 import logging
 import numpy as np
@@ -14,7 +13,9 @@ import pandas as pd
 import psutil
 import re
 import slicer
+import sys
 import stat
+import tempfile
 import time
 import vtk
 
@@ -24,7 +25,6 @@ from ltrace.slicer.node_attributes import (
     NodeTemporarity,
     LosslessAttribute,
 )
-from ltrace.wrappers import timeit
 
 from pathlib import Path
 from skimage.segmentation import relabel_sequential
@@ -268,10 +268,15 @@ def bounds2size(extent):
 
 
 def getCurrentEnvironment():
-    envName = slicer.util.selectedModule()
+    try:
+        envName = slicer.modules.AppContextInstance.modules.currentWorkingDataType[1]
+    except Exception as error:
+        return None
+
     for env in NodeEnvironment:
         if env.value == envName:
             return env
+
     return None
 
 
@@ -349,7 +354,8 @@ def createTemporaryVolumeNode(
     """
     valid_name = slicer.mrmlScene.GenerateUniqueName(name) if uniqueName else name
     tempNode = slicer.mrmlScene.AddNewNodeByClass(cls.__name__, valid_name)
-    tempNode.CreateDefaultDisplayNodes()
+    if hasattr(tempNode, "CreateDefaultDisplayNodes"):
+        tempNode.CreateDefaultDisplayNodes()
 
     if hidden:
         tempNode.SetHideFromEditors(True)
@@ -1445,7 +1451,7 @@ def openModuleHelp(module):
     else:
         return
 
-    mainWindow = slicer.util.mainWindow()
+    mainWindow = slicer.modules.AppContextInstance.mainWindow
     mainWindow.moduleSelector().selectModule(module.parent.name)
     modulePanel = mainWindow.findChild(slicer.qSlicerModulePanel, "ModulePanel")
     helpCollapsibleButton = modulePanel.findChild(ctk.ctkCollapsibleButton, "HelpCollapsibleButton")
@@ -1534,80 +1540,6 @@ def arrayPartsFromNode(node: slicer.vtkMRMLNode) -> tuple[np.ndarray, np.ndarray
     return depthColumn, values
 
 
-def redactAnonymize(
-    node: slicer.vtkMRMLNode,
-    messDepths: bool,
-    messData: bool,
-    newName="DummyName",
-    newWellName="DummyWell",
-):
-    """Anonymizes data (and optionally edits numerical values) to meet NDA criteria".
-
-    Well name is replaced, node name is replaced, depths can be offset by a random value. And (not working yet) numerical data can be shuffled.
-    No noise is added to the data so to keep the standard null entries and to preserve the numerical range.
-    """
-
-    raise NotImplementedError("redactAnonymize not fully implemented.")
-
-    # messData not working yet
-    if messData:
-        messData = False
-
-    node.SetAttribute("WellName", newWellName)
-
-    if newWellName:
-        node.SetName(f"{newWellName}_{newName}")
-    else:
-        node.SetName(f"{newName}")
-
-    if isinstance(node, slicer.vtkMRMLTableNode):
-        df = None  # dutils.tableNodeToDataFrame(node)
-        df_inner = df.values
-        depths = df_inner[0:, 0]
-        dfTo = None  # dutils.tableNodeToDataFrame(node)
-        if messDepths:
-            offset = 100000.0 + (np.random.random_sample() * 200000.0)
-            depths += offset
-            dfTo.iloc[0:, 0] = pd.Series(depths)
-            dutils.dataFrameToTableNode(dfTo, node)
-        if messData:  # not working yet
-            values = df_inner[0:, 1:]
-            values = np.squeeze(values)
-            np.random.shuffle(values)
-            values = values.transpose()
-            np.random.shuffle(values)
-            values = values.transpose()
-            dfTo.iloc[0:, 1] = pd.Series(values)  # doesn't work for multidimensional arrays
-            dutils.dataFrameToTableNode(dfTo, node)
-    else:
-        values = []
-        spacing = []
-        origin = []
-        if isinstance(node, slicer.vtkMRMLSegmentationNode):
-            values, spacing, origin = arrayFromVisibleSegmentsBinaryLabelmap(node)
-        else:
-            values = slicer.util.arrayFromVolume(node)
-            origin = node.GetOrigin()
-
-        if messDepths:
-            new_origin = [
-                origin[0],
-                origin[1],
-                origin[2] - 100000.0 - (np.random.random_sample() * 200000.0),
-            ]
-        else:
-            new_origin = origin
-        node.SetOrigin(new_origin)
-
-        if messData:
-            values = np.squeeze(values)
-            np.random.shuffle(values)
-            values = values.transpose()
-            np.random.shuffle(values)
-            values = values.transpose()
-            slicer.util.updateVolumeFromArray(node, values)
-
-
 def themeIsDark():
     import qt
 
@@ -1615,6 +1547,25 @@ def themeIsDark():
     bg_color = palette.color(qt.QPalette.Background)
     fg_color = palette.color(qt.QPalette.WindowText)
     return fg_color.value() > bg_color.value()
+
+
+def svgToQIcon(iconPath):
+    import qt
+
+    with open(iconPath, "r", encoding="utf-8") as src:
+        svg_content = src.read()
+
+    hex = "#e1e1e1" if themeIsDark() else "#333333"
+    updated_svg_content = re.sub(r'stroke="[^"]+"', f'stroke="{hex}"', svg_content)
+
+    with tempfile.NamedTemporaryFile(suffix=".svg", delete=False, mode="w", encoding="utf-8") as src:
+        src.write(updated_svg_content)
+        tmpIconPath = Path(src.name)
+
+    icon = qt.QIcon(tmpIconPath.as_posix())
+    tmpIconPath.unlink()
+
+    return icon
 
 
 def numberArrayToLabelArray(array: np.ndarray) -> np.ndarray:
@@ -2022,36 +1973,32 @@ class GitImportError(Exception):
     pass
 
 
-def import_git():
-    try:
-        import git
+def install_git_module(remote, collection=False):
+    from ltrace.slicer.app import getApplicationInfo
 
-        return git
-    except Exception as e:
-        raise GitImportError() from e
+    modules_parent_dir = get_scripted_modules_path().parent
+    third_party_dir = modules_parent_dir / "qt-scripted-external-modules"
 
+    repo = clone_or_update_repo(remote, third_party_dir, branch="master", collection=collection)
 
-def install_git_module(remote):
-    from ltrace.slicer_utils import base_version
+    return repo
 
-    geoslicer_version = base_version()
-
-    modules_folders = (
-        *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-        *(("lib\\" + geoslicer_version + "\\qt-scripted-modules").split("\\")),
-    )
-    modules_path = os.path.join(modules_folders[0], os.sep, *modules_folders[1:])
-
-    json_folders = (
-        *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-        *(("lib\\" + geoslicer_version + "\\qt-scripted-modules\\Resources\\json\\WelcomeGeoSlicer.json").split("\\")),
-    )
-    json_path = os.path.join(json_folders[0], os.sep, *json_folders[1:])
-
-    new_module_name = remote.split("/")[-1].split(".")[0]
-    new_module_path = os.path.join(modules_path, new_module_name)
-    _ = import_git().Repo.clone_from(remote, new_module_path, env={"GIT_SSL_NO_VERIFY": "1"})
-    config_module_paths(new_module_name, new_module_path, json_path)
+    # modules_folders = (
+    #     *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
+    #     *(("lib\\" + geoslicer_version + "\\qt-scripted-modules").split("\\")),
+    # )
+    # modules_path = os.path.join(modules_folders[0], os.sep, *modules_folders[1:])
+    #
+    # json_folders = (
+    #     *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
+    #     *(("lib\\" + geoslicer_version + "\\qt-scripted-modules\\Resources\\json\\WelcomeGeoSlicer.json").split("\\")),
+    # )
+    # json_path = os.path.join(json_folders[0], os.sep, *json_folders[1:])
+    #
+    # new_module_name = remote.split("/")[-1].split(".")[0]
+    # new_module_path = os.path.join(modules_path, new_module_name)
+    # _ = import_git().Repo.clone_from(remote, new_module_path, env={"GIT_SSL_NO_VERIFY": "1"})
+    # config_module_paths(new_module_name, new_module_path, json_path)
 
 
 def config_module_paths(new_module_name, new_module_path, json_path):
@@ -2224,7 +2171,6 @@ def safe_convert_array(array, dtype):
 
     array = array.astype(dtype)
     return array
-    return typeStr
 
 
 def isImageFile(filePath: Union[Path, str]) -> bool:
@@ -2254,7 +2200,7 @@ class WatchSignal:
     Example:
     >>> with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=10000):
     >>>     doSomething()
-    >>>     slicer.mrmlScene.Clear(0) # Close project
+    >>>     ProjectManager().close() # Close project
     """
 
     def __init__(self, signal: slicer.vtkMRMLScene.SceneEventType, timeout_ms: int = 2000) -> None:
@@ -2366,3 +2312,62 @@ def hex2Rgb(hex: str, normalize=True) -> Tuple:
     lv = len(hex)
     rgb = tuple(int(hex[i : i + lv // 3], 16) / normalizeValue for i in range(0, lv, lv // 3))
     return rgb
+
+
+class LazyLoad:
+    def __init__(self, moduleName):
+        self.moduleName = moduleName
+        self.module = None
+
+    def __getattr__(self, name):
+        if not self.module:
+            moduleInfo = slicer.modules.AppContextInstance.modules.availableModules[self.moduleName]
+            sys.path.append(moduleInfo.searchPath)
+            self.module = importlib.import_module(self.moduleName)
+        return getattr(self.module, name)
+
+
+def checkUniqueNames(nodes):
+    nodeNames = set()
+    for node in nodes:
+        if node.GetName() in nodeNames:
+            node.SetName(slicer.mrmlScene.GenerateUniqueName(node.GetName()))
+        nodeNames.add(node.GetName())
+
+
+def arrayPartsFromNode(node: slicer.vtkMRMLNode) -> tuple[np.ndarray, np.ndarray]:
+    mmToM = 0.001
+    if isinstance(node, slicer.vtkMRMLScalarVolumeNode):
+        values = slicer.util.arrayFromVolume(node).copy().squeeze()
+        if values.ndim != 2:
+            raise ValueError(f"Node has dimension {values.ndim}, expected 2.")
+
+        bounds = [0] * 6
+        node.GetBounds(bounds)
+        ymax = -bounds[4] * mmToM
+        ymin = -bounds[5] * mmToM
+        spacing = node.GetSpacing()[2] * mmToM
+        depthColumn = np.arange(ymin, ymax - spacing / 2, spacing)
+
+        ijkToRas = np.zeros([3, 3])
+        node.GetIJKToRASDirections(ijkToRas)
+        if ijkToRas[0][0] > 0:
+            values = np.flip(values, axis=0)
+        if ijkToRas[1][1] > 0:
+            values = np.flip(values, axis=1)
+        if ijkToRas[2][2] > 0:
+            values = np.flip(values, axis=2)
+    elif isinstance(node, slicer.vtkMRMLTableNode):
+        if node.GetAttribute("table_type") == "histogram_in_depth":
+            df = slicer.util.dataframeFromTable(node)
+            df_columns = df.columns
+            depthColumn = df[df_columns[0]].to_numpy() * mmToM
+            values = df[df_columns[1:]].to_numpy()
+        else:
+            values = slicer.util.arrayFromTableColumn(node, node.GetColumnName(1))
+            depthColumn = slicer.util.arrayFromTableColumn(node, node.GetColumnName(0)) * mmToM
+            if depthColumn[0] > depthColumn[-1]:
+                depthColumn = np.flipud(depthColumn)
+                values = np.flipud(values)
+
+    return depthColumn, values

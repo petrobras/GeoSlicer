@@ -10,7 +10,7 @@ Performs one-phase and two-phase flow simulations to obtain absolute and relativ
 
 ### Parameters
 
-1. __Fluids simulation__: Chose either "one-phase" for absolute permeability, or "two-phase" for relative permeability.
+1. __Fluids simulation__: Chose either "one-phase" for absolute permeability, "two-phase" for relative permeability or "mercury injection".
 
 #### One-phase
 

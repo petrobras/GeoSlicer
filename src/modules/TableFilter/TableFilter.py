@@ -147,7 +147,7 @@ class TableFilter(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Table Filter"
-        self.parent.categories = [""]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ""
@@ -415,7 +415,7 @@ class TableFilterWidget(LTracePluginWidget):
     def openDialog(self):
         self.logic.takeSnapshot()
         item = 0 if self.logic._colorBy == -1 else self.logic.currentColumnColoredBy()
-        d = LabelDialog(slicer.util.mainWindow(), self.logic, self.getCurrentMasterNode(), item)
+        d = LabelDialog(slicer.modules.AppContextInstance.mainWindow, self.logic, self.getCurrentMasterNode(), item)
         if d.exec_() == 1:
             # Force default column as color parameter
             if self.logic._colorBy == -1:
@@ -440,7 +440,7 @@ class TableFilterWidget(LTracePluginWidget):
 
     def addFilter(self):
         self.logic.takeSnapshot()
-        d = FilterDialog(slicer.util.mainWindow(), self.logic, self.getCurrentMasterNode(), 0)
+        d = FilterDialog(slicer.modules.AppContextInstance.mainWindow, self.logic, self.getCurrentMasterNode(), 0)
         if d.exec_() == 1 and d.currentFilter is not None:
             filter_ = d.currentFilter
             self.filterList.addItem(repr(filter_))
@@ -463,7 +463,7 @@ class TableFilterWidget(LTracePluginWidget):
         column = filter_.column + 1  # add None position
         self.logic.takeSnapshot()
         d = FilterDialog(
-            slicer.util.mainWindow(),
+            slicer.modules.AppContextInstance.mainWindow,
             self.logic,
             self.getCurrentMasterNode(),
             column,
@@ -494,7 +494,7 @@ class TableFilterWidget(LTracePluginWidget):
         try:
             if self.logic is not None and len(self.logic._filters) > 0 and self.logic._node != node:
                 answer = qt.QMessageBox.question(
-                    slicer.util.mainWindow(),
+                    slicer.modules.AppContextInstance.mainWindow,
                     "Table Filter",
                     "There are changes in the current table selection. Are you sure you want to change table? All filters will be erased.",
                     qt.QMessageBox.Yes | qt.QMessageBox.No,  # | qt.QMessageBox.Cancel,

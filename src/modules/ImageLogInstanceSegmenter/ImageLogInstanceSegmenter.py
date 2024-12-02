@@ -11,6 +11,11 @@ from ltrace.slicer_utils import (
     LTracePluginLogic,
 )
 
+from Models.SidewallSample import SidewallSampleWidget
+from Models.Stops import StopsWidget
+from Models.Islands import IslandsWidget
+from Models.Snow import SnowWidget
+
 try:
     from Test.ImageLogInstanceSegmenterTest import ImageLogInstanceSegmenterTest
 except ImportError:
@@ -42,8 +47,8 @@ class ImageLogInstanceSegmenter(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Instance segmenter"
-        self.parent.categories = ["Segmentation"]
+        self.parent.title = "Instance Segmenter"
+        self.parent.categories = ["Segmentation", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ImageLogInstanceSegmenter.help()
@@ -58,13 +63,9 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
 
     def setup(self):
-        from Models.SidewallSample import SidewallSampleWidget
-        from Models.Stops import StopsWidget
-        from Models.Islands import IslandsWidget
-        from Models.Snow import SnowWidget
 
         LTracePluginWidget.setup(self)
-        self.logic = InstanceSegmenterLogic()
+        self.logic = InstanceSegmenterLogic(self.parent)
 
         form = qt.QFormLayout()
         form.setLabelAlignment(qt.Qt.AlignRight)
@@ -110,7 +111,13 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
     def updateFormFromModel(self):
         self.stackedWidgets.setCurrentIndex(self.modelComboBox.currentIndex)
 
+    def cleanup(self) -> None:
+        LTracePluginWidget.cleanup(self)
+        for idx in range(self.stackedWidgets.count):
+            widget = self.stackedWidgets.widget(idx)
+            widget.cleanup()
+
 
 class InstanceSegmenterLogic(LTracePluginLogic):
-    def __init__(self):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent):
+        LTracePluginLogic.__init__(self, parent)

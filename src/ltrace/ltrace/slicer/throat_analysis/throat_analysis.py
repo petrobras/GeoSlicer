@@ -199,12 +199,12 @@ class ThroatAnalysis:
             SegmentOperator(operator, volume_operator.ijkToRasOperator),
             stepcb=lambda i, total: self.__progress_update_callback(i / total),
         )
-        df.set_axis(operator.ATTRIBUTES, axis=1, inplace=True)
-        df.sort_values(by=["label"], ascending=True, inplace=True)
+        df = df.set_axis(operator.ATTRIBUTES, axis=1)
+        df = df.sort_values(by=["label"], ascending=True)
 
         if df.shape[1] > 1 and df.shape[0] > 0:
-            df.dropna(axis=1, how="all", inplace=True)  # Remove unused columns
-            df.dropna(axis=0, how="any", inplace=True)  # Remove unused columns
+            df = df.dropna(axis=1, how="all")  # Remove unused columns
+            df = df.dropna(axis=0, how="any")  # Remove unused columns
 
             # Relabel array due to report handling
             indices = np.array(df.label, copy=True, dtype=int)
@@ -252,7 +252,7 @@ class ThroatAnalysis:
         id_list = rename_duplicated_ids(id_list)
         df = pd.DataFrame({"id": id_list, "label": label_list})
 
-        df.sort_values(by=["label"], ascending=True, inplace=True)
+        df = df.sort_values(by=["label"], ascending=True)
         return df["id"].tolist()
 
 

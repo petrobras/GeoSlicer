@@ -8,16 +8,24 @@ import ctk
 import numpy as np
 import qt
 import slicer
+from scipy.ndimage import zoom
+
+from ltrace.slicer import ui
 from ltrace.slicer.helpers import (
     triggerNodeModified,
     highlight_error,
     reset_style_on_valid_node,
     reset_style_on_valid_text,
 )
-from ltrace.slicer.widgets import SingleShotInputWidget
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import slicer_is_in_developer_mode, LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from scipy.ndimage import zoom
+from ltrace.slicer.widgets import SingleShotInputWidget
+from ltrace.slicer_utils import (
+    slicer_is_in_developer_mode,
+    LTracePlugin,
+    LTracePluginWidget,
+    LTracePluginLogic,
+    getResourcePath,
+)
 
 
 class ThinSectionAutoRegistration(LTracePlugin):
@@ -28,11 +36,13 @@ class ThinSectionAutoRegistration(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Thin Section Auto Registration"
-        self.parent.categories = ["Registration"]
+        self.parent.title = "Auto Registration"
+        self.parent.categories = ["Registration", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ThinSectionAutoRegistration.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/AutoRegistration.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):
@@ -125,18 +135,18 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
         outputFormLayout.addRow(" ", None)
         reset_style_on_valid_text(self.outputPrefixLineEdit)
 
-        self.registerButton = qt.QPushButton("Apply")
-        self.registerButton.setFixedHeight(40)
-        self.registerButton.clicked.connect(self.onRegisterButtonClicked)
-
-        self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setFixedHeight(40)
-        self.cancelButton.clicked.connect(self.onCancelButtonClicked)
-
-        buttonsHBoxLayout = qt.QHBoxLayout()
-        buttonsHBoxLayout.addWidget(self.registerButton)
-        buttonsHBoxLayout.addWidget(self.cancelButton)
-        formLayout.addRow(buttonsHBoxLayout)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onRegisterButtonClicked,
+            onCancelClick=self.onCancelButtonClicked,
+            applyTooltip="Apply changes",
+            cancelTooltip="Cancel",
+            applyText="Apply",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName="Apply Button",
+            cancelObjectName=None,
+        )
+        self.layout.addWidget(self.applyCancelButtons)
 
         self.layout.addWidget(self.progressBar)
 

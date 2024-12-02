@@ -185,7 +185,6 @@ def generate_application(
         "python",
         deploy_script_path,
         geoslicer_base_zip_file_path,
-        "--with-porespy",
     ]
 
     if production:
@@ -203,6 +202,9 @@ def generate_application(
 
     if args.no_public_commit:
         command.append("--no-public-commit")
+
+    if args.disable_archiving:
+        command.append("--disable-archiving")
 
     logger.info("Running GeoSlicer deploy script...")
     run_subprocess(command)
@@ -613,6 +615,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--base",
         help="Filename of base archive in the bucket's release base directory",
+        default="latest",
     )
     parser.add_argument(
         "--production", action="store_true", help="Generate application in production mode to export.", default=False
@@ -635,7 +638,12 @@ if __name__ == "__main__":
         help="Avoid commiting to the opensource code repository.",
         default=True,
     )
-
+    parser.add_argument(
+        "--disable-archiving",
+        action="store_true",
+        help="Avoid the archiving step when generating a release build.",
+        default=False,
+    )
     p_args = parser.parse_args()
 
     if not p_args.version:

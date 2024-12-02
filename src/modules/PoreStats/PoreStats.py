@@ -20,14 +20,11 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
 from slicer.ScriptedLoadableModule import *
 
 
-# $TODO: Tests PoreStats
-"""
 # Checks if closed source code is available
 try:
-    from Test.PoreStatsTest import PoreStatsTest 
+    from Test.PoreStatsTest import PoreStatsTest
 except ImportError:
     PoreStatsTest = None  # tests not deployed to final version or closed source
-"""
 
 
 class PoreStats(LTracePlugin):
@@ -38,11 +35,10 @@ class PoreStats(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "PoreStats"  # TODO make this more human readable by adding spaces
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Segmentation", "Thin Section", "ImageLog", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = PoreStats.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Modules/Thin_section/PoreStats.html').as_posix()}"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 
     @classmethod
@@ -55,6 +51,7 @@ class PoreStatsWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
 
         self.cliNode = None
+        self.__cliNodeObserver = None
         self.refNodeId = None
         self.filterUpdateThread = None
         self.inputsSelector = None
@@ -290,14 +287,11 @@ class PoreStatsWidget(LTracePluginWidget):
         self._onChangedClassifier()
 
     def _addPretrainedModelsIfAvailable(self):
-        def _getNetNameFromModelName(model_name):
-            return re.search(r"\(([^()]*)\)", model_name).group(1)
+        def _getNetNameFromModelName(modelName):
+            return re.search(r"\(([^()]*)\)", modelName).group(1)
 
-        env = slicer.util.selectedModule()
-        envs = tuple(map(lambda x: x.value, NodeEnvironment))
-
-        if env not in envs:
-            return
+        env = helpers.getCurrentEnvironment().value
+        assert env is not None, "Missing environment definition"
 
         model_dirs = get_trained_models_with_metadata(env)
         for model_dir in model_dirs:
@@ -405,6 +399,10 @@ class PoreStatsWidget(LTracePluginWidget):
 
     def _onScriptFinished(self, caller, event):
         if caller is None:
+            if self.cliNode is not None:
+                self.cliNode = None
+                self.cliNode.RemoveObserver(self.__cliNodeObserver)
+                self.__cliNodeObserver = None
             return
 
         if caller.GetStatusString() == "Completed":
@@ -414,19 +412,24 @@ class PoreStatsWidget(LTracePluginWidget):
                 f"Batch porosity analysis failed:\n\n{caller.GetErrorText().strip().splitlines()[-1]}"
             )
 
-        self._checkRequirementsForApply()
-
         if not caller.IsBusy():
             print("ExecCmd CLI %s" % caller.GetStatusString())
+            self.cliNode.RemoveObserver(self.__cliNodeObserver)
+            self.__cliNodeObserver = None
+            del self.cliNode
+            self.cliNode = None
+
+            self._checkRequirementsForApply()
 
     def _validateDirs(self, inputDir, outputDir):
         if not os.path.exists(inputDir):
             slicer.util.errorDisplay("Input directory does not exist.")
             return False
 
-        checkpointPath = os.path.join(outputDir, "checkpoint.txt")
-        if os.path.exists(checkpointPath):
-            resumeMessageBox = qt.QMessageBox()
+        checkpointPath = Path(outputDir) / "checkpoint.txt"
+        if checkpointPath.exists():
+            resumeMessageBox = qt.QMessageBox(slicer.util.mainWindow())
+            resumeMessageBox.setIcon(qt.QMessageBox.Warning)
             resumeMessageBox.setWindowTitle("Resume execution")
             resumeMessageBox.setText(
                 "A previous unfinished execution was detected on the selected output directory. What do you want to do?"
@@ -440,7 +443,7 @@ class PoreStatsWidget(LTracePluginWidget):
             if resumeMessageBox.clickedButton() == resumeButton:
                 return True
             elif resumeMessageBox.clickedButton() == restartButton:
-                os.remove(checkpointPath)
+                checkpointPath.unlink()
                 return True
             elif resumeMessageBox.clickedButton() == cancelButton:
                 return False
@@ -451,15 +454,15 @@ class PoreStatsWidget(LTracePluginWidget):
         return True
 
     def _onApplyClicked(self):
-        def _getSegCLIPath(model_name):
-            if "bayes" in model_name.lower():
+        def _getSegCLIPath(modelName):
+            if "bayes" in modelName.lower():
                 cliModule = slicer.modules.bayesianinferencecli
             else:
                 cliModule = slicer.modules.monaimodelscli
             return cliModule.path
 
-        def _getModelFilePath(model_path):
-            return str(model_path if os.path.isfile(model_path) else get_pth(model_path))
+        def _getModelFilePath(modelPath):
+            return str(modelPath if os.path.isfile(modelPath) else get_pth(modelPath))
 
         inputDir = self.inputDirectoryLineEdit.currentPath
         outputDir = self.outputDirectoryLineEdit.currentPath
@@ -477,9 +480,11 @@ class PoreStatsWidget(LTracePluginWidget):
                         minSize=str(self.methodSelector.currentWidget().sizeFilterThreshold.value),
                         usePx="all" if self.usePXCheckbox.checked else "none",
                         regMethod="auto" if self.regMethodCheckbox.checked else "centralized",
-                        maxFrags="all"
-                        if not self.limitFragsCheckbox.checked
-                        else int(self.limitFragsHBoxLayout.itemAt(0).widget().value),
+                        maxFrags=(
+                            "all"
+                            if not self.limitFragsCheckbox.checked
+                            else int(self.limitFragsHBoxLayout.itemAt(0).widget().value)
+                        ),
                     )
                 ),
                 flags=json.dumps(
@@ -494,6 +499,9 @@ class PoreStatsWidget(LTracePluginWidget):
                 poreModel=_getModelFilePath(self.classifierInput.currentData),
                 segCLI=_getSegCLIPath(self.classifierInput.currentText),
                 inspectorCLI=slicer.modules.segmentinspectorcli.path,
+                foregroundCLI=slicer.modules.smartforegroundcli.path,
+                removeSpuriousCLI=slicer.modules.removespuriouscli.path,
+                cleanResinCLI=slicer.modules.cleanresincli.path,
             )
             if hasattr(self.methodSelector.currentWidget(), "smoothFactor"):
                 cliConf.update(
@@ -504,8 +512,9 @@ class PoreStatsWidget(LTracePluginWidget):
                 )
 
             self.cliNode = slicer.cli.run(slicer.modules.porestatscli, None, cliConf, wait_for_completion=False)
-            self.cliNode.AddObserver("ModifiedEvent", self._onScriptFinished)
+            self.__cliNodeObserver = self.cliNode.AddObserver("ModifiedEvent", self._onScriptFinished)
             self.progressBar.setCommandLineModuleNode(self.cliNode)
+            self._checkRequirementsForApply()
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to complete execution: {e}")
             self._checkRequirementsForApply()

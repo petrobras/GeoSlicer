@@ -9,6 +9,7 @@ pipeline {
         booleanParam(name: 'EXPORT', defaultValue: false, description: 'Allow to export the generated application to the OCI bucket')
         booleanParam(name: 'SFX', defaultValue: false, description: 'Create Self-Extracting File instead of the compressed file')
         booleanParam(name: 'PUBLIC_VERSION', defaultValue: false, description: 'Generate the application\'s public version. The commit to the opensource code will be ignored.')
+        booleanParam(name: 'MESA3D_DRIVER', defaultValue: true, description: 'Install the Mesa3D Driver (no-GPU support).')        
         choice(name: 'PLATFORM', choices: ['Linux', 'Windows'], description: 'Select the desired Operational System to generate the application.')
         string(name: 'BASE', defaultValue: 'latest', description: 'Filename of the base archive or version number. "latest" will download the latest version from the OCI bucket.')
         choice(name: 'MODE', choices: ['Production', 'Development'], description: 'Select the desired application\'s mode to export')
@@ -129,17 +130,18 @@ pipeline {
                             steps {
                                 script {
                                     Random rnd = new Random()
-                                    def version = "v${rnd.nextInt(9)}.${rnd.nextInt(9)}${rnd.nextInt(9)}"
-                                    def no_test_flag = ("${params.EXPORT}" == "false") ? "--no-export" : ""
-                                    def no_export_flag = ("${params.INTEGRATION_TESTS}" == "false") ? "--no-test" : ""
+                                    def version = "v${rnd.nextInt(9)}.${rnd.nextInt(9)}.${rnd.nextInt(9)}"
+                                    def no_export_flag = ("${params.EXPORT}" == "false") ? "--no-export --disable-archiving" : ""
+                                    def no_test_flag = ("${params.INTEGRATION_TESTS}" == "false") ? "--no-test" : ""
                                     def sfx_flag = ("${params.SFX}" == "true") ? "--sfx" : ""                                    
                                     def prod_flag = ("${params.MODE}" == "Production") ? "--production" : ""
                                     def public_flag = ("${params.PUBLIC_VERSION}" == "true") ? "--generate-public-version --no-public-commit" : ""
+                                    def no_gpu = ("${params.MESA3D_DRIVER}" == "true") ? "--no-gpu" : ""
                                     def base = "${params.BASE}"
                                     if (base.trim().isEmpty()) {
                                         error("Base is empty. Please, set the base parameter.")
                                     }
-                                    def arguments = "--version ${version} --no-gpu ${no_test_flag} --base ${base} ${no_export_flag} ${sfx_flag} ${prod_flag} ${public_flag}"
+                                    def arguments = "--version ${version} ${no_gpu} ${no_test_flag} --base ${base} ${no_export_flag} ${sfx_flag} ${prod_flag} ${public_flag}"
                                     util.download_and_deploy(arguments, false)
                                     if (params.EXPORT == true) {                                        
                                         def file_name = util.get_exported_application_name(params.MODE, version)
@@ -254,16 +256,17 @@ pipeline {
                                 script {
                                     Random rnd = new Random()
                                     def version = "v${rnd.nextInt(9)}.${rnd.nextInt(9)}${rnd.nextInt(9)}"
-                                    def no_test_flag = ("${params.EXPORT}" == "false") ? "--no-export" : ""
-                                    def no_export_flag = ("${params.INTEGRATION_TESTS}" == "false") ? "--no-test" : ""
+                                    def no_export_flag = ("${params.EXPORT}" == "false") ? "--no-export --disable-archiving" : ""
+                                    def no_test_flag = ("${params.INTEGRATION_TESTS}" == "false") ? "--no-test" : ""
                                     def sfx_flag = ("${params.SFX}" == "true") ? "--sfx" : ""
                                     def prod_flag = ("${params.MODE}" == "Production") ? "--production" : ""
                                     def public_flag = ("${params.PUBLIC_VERSION}" == "true") ? "--generate-public-version --no-public-commit" : ""
+                                    def no_gpu = ("${params.MESA3D_DRIVER}" == "true") ? "--no-gpu" : ""
                                     def base = "${params.BASE}"
                                     if (base.trim().isEmpty()) {
                                         error("Base is empty. Please, set the base parameter.")
                                     }
-                                    def arguments = "--version ${version} --no-gpu ${no_test_flag} --base ${base} ${no_export_flag} ${sfx_flag} ${prod_flag} ${public_flag}"
+                                    def arguments = "--version ${version} ${no_gpu} ${no_test_flag} --base ${base} ${no_export_flag} ${sfx_flag} ${prod_flag} ${public_flag}"
                                     util.download_and_deploy(arguments, true)
                                     if (params.EXPORT == true) {
                                         def file_name = util.get_exported_application_name(params.MODE, version)

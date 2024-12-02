@@ -67,6 +67,6 @@ if __name__ == "__main__":
         params["colors"],
         params["names"],
         params["output_url"],
-        params["geoslicer_version"],
+        params["geoslicerVersion"],
         hostData,
     )

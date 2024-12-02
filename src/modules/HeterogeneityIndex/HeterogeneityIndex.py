@@ -19,7 +19,7 @@ class HeterogeneityIndex(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Heterogeneity Index"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = HeterogeneityIndex.help()
 

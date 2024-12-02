@@ -1,6 +1,10 @@
-import ctk
+import vtk
 import qt
 import slicer
+import mrml
+
+from ltrace.slicer.helpers import svgToQIcon
+from ltrace.slicer_utils import getResourcePath
 
 
 class GlobalProgressBar(qt.QWidget):
@@ -23,54 +27,95 @@ class GlobalProgressBar(qt.QWidget):
 
             layout = qt.QHBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(2)
+            layout.setAlignment(qt.Qt.AlignRight)
 
-            self.progressBar = slicer.qSlicerCLIProgressBar()
-            self.progressBar.findChild(ctk.ctkExpandButton).setVisible(False)
-            self.progressBar.setStatusVisibility(False)
-            self.progressBar.setNameVisibility(False)
-            self.progressBar.setMaximumHeight(25)
-            self.progressBar.setMinimumHeight(25)
-            self.progressBar.setMaximumWidth(400)
-            self.progressBar.setMinimumWidth(400)
-            newFont = self.progressBar.font
-            newFont.setPixelSize(7)
-            self.progressBar.setFont(newFont)
+            self.progressBar = qt.QProgressBar()
+            self.progressBar.setFixedHeight(10)
+            self.progressBar.setMinimumWidth(128)
+            self.progressBar.setMaximumWidth(256)
+            self.progressBar.setProperty("style", "thin")
+            # newFont = self.progressBar.font
+            # newFont.setPixelSize(7)
+            # self.progressBar.setFont(newFont)
 
             self.toolButton = qt.QToolButton()
             self.toolButton.setToolTip("Return to the last CLI started.")
             self.toolButton.setEnabled(False)
-            icon = (
-                slicer.util.mainWindow().moduleSelector().findChildren(qt.QToolButton)[-2].icon
-            )  # Next module tool button
+            icon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Open.svg")
             self.toolButton.setObjectName("GoBackButton")
             self.toolButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
             self.toolButton.setIcon(icon)
+            self.toolButton.setAutoRaise(True)
 
             self.lastCLILabel = qt.QLabel()
             self.lastCLILabel.setObjectName("lastCLILabel")
 
+            layout.addStretch(1)
             layout.addWidget(self.lastCLILabel)
             layout.addWidget(self.toolButton)
             layout.addWidget(self.progressBar)
 
             self.setLayout(layout)
 
+            self.visible = False
+
+            self.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
+
             GlobalProgressBar._instance = self
 
-    def setCommandLineModuleNode(self, cliNode, localProgressBar):
+    def setCommandLineModuleNode(self, cliNode, localProgressBar, customText=""):
         GlobalProgressBar._instance.currentCliNode = cliNode
-        GlobalProgressBar._instance.progressBar.setCommandLineModuleNode(cliNode)
+        cliNode.AddObserver("ModifiedEvent", GlobalProgressBar._instance.updateUiFromCommandLineModuleNode)
 
         GlobalProgressBar._instance.toolButton.setEnabled(True)
         GlobalProgressBar._instance.toolButton.clicked.disconnect()
         GlobalProgressBar._instance.toolButton.clicked.connect(localProgressBar.returnToCLIWidget)
 
-        GlobalProgressBar._instance.lastCLILabel.setText(
-            f"Last scheduled job from: {localProgressBar.getCLIWidgetName()}"
-        )
+        GlobalProgressBar._instance.lastCLILabel.setText(customText)
+        localProgressBar.refToGlobal = self
+        self.visible = True
 
     def actionCreated(self, action):
         GlobalProgressBar._instance.toolButton.addAction(action)
+
+    def disableWhenJobIsCompleted(self):
+        currentCLiNode = GlobalProgressBar._instance.currentCliNode
+        if currentCLiNode and "Completed" in currentCLiNode.GetStatusString():
+            GlobalProgressBar._instance.toolButton.setEnabled(False)
+            GlobalProgressBar._instance.lastCLILabel.setText("")
+            self.visible = False
+
+    def updateUiFromCommandLineModuleNode(self, cliNode, event):
+        if cliNode is None:
+            return
+
+        status = cliNode.GetStatus()
+        info = cliNode.GetModuleDescriptionAsString()
+
+        if status == mrml.vtkMRMLCommandLineModuleNode.Cancelled:
+            self.progressBar.setRange(0, 0)
+            self.progressBar.setValue(0)
+            self.visible = False
+        elif status == mrml.vtkMRMLCommandLineModuleNode.Scheduled:
+            self.progressBar.setRange(0, 0)
+            self.progressBar.setValue(0)
+            GlobalProgressBar._instance.lastCLILabel.setText("Scheduling...")
+        elif status == mrml.vtkMRMLCommandLineModuleNode.Running:
+            maxRange = 100 if cliNode.GetProgress() != 0 else 0
+            self.progressBar.setRange(0, maxRange)
+            self.progressBar.setValue(cliNode.GetProgress())
+            GlobalProgressBar._instance.lastCLILabel.setText("Running...")
+        elif (
+            status == mrml.vtkMRMLCommandLineModuleNode.Completed
+            or status == mrml.vtkMRMLCommandLineModuleNode.CompletedWithErrors
+        ):
+            self.progressBar.setRange(0, 100)
+            self.progressBar.setValue(100)
+            message = (
+                "Completed with errors" if status == mrml.vtkMRMLCommandLineModuleNode.CompletedWithErrors else "Done"
+            )
+            GlobalProgressBar._instance.lastCLILabel.setText(message)
 
 
 class LocalProgressBar(qt.QWidget):
@@ -89,11 +134,16 @@ class LocalProgressBar(qt.QWidget):
         self.completed = 0
         self.running = False
         self.goBackAction = None
+        self.refToGlobal = None
 
     def setCommandLineModuleNode(self, cliNode):
 
-        self.module = slicer.util.mainWindow().moduleSelector().selectedModule
-        self.moduleWidget = eval(f"slicer.modules.{self.module}Widget")
+        self.module = slicer.modules.AppContextInstance.mainWindow.moduleSelector().selectedModule
+
+        if not self.module:
+            return
+
+        self.moduleWidget = slicer.util.getModuleWidget(self.module)
 
         try:
             self.tabIndex = self.moduleWidget.mainTab.currentIndex
@@ -140,7 +190,7 @@ class LocalProgressBar(qt.QWidget):
         if cliNode is None:
             return
 
-        if cliNode.GetStatusString() == "Completed" and self.running:
+        if "Completed" in cliNode.GetStatusString() and self.running:
             self.completed += 1
             self.running = False
         elif cliNode.GetStatusString() == "Running" and cliNode in self.scheduled:
@@ -154,7 +204,7 @@ class LocalProgressBar(qt.QWidget):
         name = currentModule.parent.title
         try:
             name += f" → {self.moduleWidget.mainTab.tabText(self.tabIndex)}"
-            if self.subtabIndex != None:
+            if self.subtabIndex is not None:
                 currentTab = self.moduleWidget.mainTab.widget(self.tabIndex)
                 name += f" → {currentTab.tabText(self.subtabIndex)}"
         except AttributeError as e:  # no attribute 'mainTab'
@@ -162,7 +212,10 @@ class LocalProgressBar(qt.QWidget):
         return name
 
     def returnToCLIWidget(self):
-        moduleSelectorToolBar = slicer.util.mainWindow().findChild(slicer.qSlicerModuleSelectorToolBar)
+        moduleSelectorToolBar = slicer.modules.AppContextInstance.mainWindow.findChild(
+            slicer.qSlicerModuleSelectorToolBar
+        )
         moduleSelectorToolBar.selectModule(self.module)
         self.completed = 0
+        self.refToGlobal.disableWhenJobIsCompleted()
         self.changeAction()

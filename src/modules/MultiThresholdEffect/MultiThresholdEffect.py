@@ -15,7 +15,7 @@ class MultiThresholdEffect(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Multiple Thresholds Effect"
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Segmentation", "MicroCT"]
         self.parent.dependencies = ["Segmentations"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.hidden = True

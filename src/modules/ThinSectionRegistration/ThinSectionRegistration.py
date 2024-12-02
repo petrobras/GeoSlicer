@@ -1,23 +1,24 @@
-import ctk
+import logging
+import os
+import re
+import time
+from collections import Counter
+from pathlib import Path
+from typing import Dict, List, Union
+
+import RegistrationLib
+import numpy as np
 import qt
 import slicer
 import vtk
-
-import logging
-import numpy as np
-import os
-import re
-import RegistrationLib
-import ThinSectionRegistrationLib
-import time
-
-from collections import Counter
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.slicer_utils import *
-from ltrace.transforms import getRoundedInteger
-from pathlib import Path
 from skimage.transform import resize
-from typing import Dict, List, Union
+
+import ThinSectionRegistrationLib
+from ltrace.slicer import ui
+from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
+from ltrace.transforms import getRoundedInteger
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.ThinSectionRegistrationTest import ThinSectionRegistrationTest
@@ -33,11 +34,13 @@ class ThinSectionRegistration(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Thin Section Registration"
-        self.parent.categories = ["Thin Section"]
+        self.parent.title = "Registration"
+        self.parent.categories = ["Registration", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ThinSectionRegistration.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Registration.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):
@@ -69,6 +72,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         self.selectVolumesButton = qt.QPushButton("Select the images to register")
         self.selectVolumesButton.objectName = "Select Volumes Button"
         self.selectVolumesButton.setFixedHeight(40)
+        self.selectVolumesButton.setProperty("class", "actionButtonBackground")
         self.selectVolumesButton.connect("clicked(bool)", self.setupDialog)
         self.layout.addWidget(self.selectVolumesButton)
 
@@ -117,22 +121,19 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         self.landmarksWidget = ThinSectionRegistrationLib.LandmarksWidget(self.logic)
         parametersFormLayout.addRow(self.landmarksWidget.widget)
 
-        self.finishRegistrationButton = qt.QPushButton("Finish registration")
-        self.finishRegistrationButton.objectName = "Finish Registration Button"
-        self.finishRegistrationButton.setFixedHeight(40)
-        self.finishRegistrationButton.clicked.connect(self.finishRegistration)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.finishRegistration,
+            onCancelClick=self.cancelRegistration,
+            applyTooltip="Finish registration",
+            cancelTooltip="Cancel registration",
+            applyText="Finish registration",
+            cancelText="Cancel registration",
+            enabled=True,
+            applyObjectName="Finish Registration Button",
+            cancelObjectName="Cancel Registration Button",
+        )
 
-        self.cancelRegistrationButton = qt.QPushButton("Cancel registration")
-        self.cancelRegistrationButton.objectName = "Cancel Registration Button"
-        self.cancelRegistrationButton.setFixedHeight(40)
-        self.cancelRegistrationButton.clicked.connect(self.cancelRegistration)
-
-        self.buttonsFrame = qt.QFrame()
-        hBoxLayout = qt.QHBoxLayout(self.buttonsFrame)
-        hBoxLayout.addWidget(self.finishRegistrationButton)
-        hBoxLayout.addWidget(self.cancelRegistrationButton)
-        parametersFormLayout.addRow(self.buttonsFrame)
-
+        parametersFormLayout.addRow(self.applyCancelButtons)
         # Add vertical spacer
         self.layout.addStretch(1)
 
@@ -256,7 +257,8 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         if not self.volumeSelectDialog:
             self.volumeSelectDialog = qt.QDialog(self.parent)
             self.volumeSelectDialog.setModal(True)
-            self.volumeSelectDialog.setFixedSize(550, 150)
+            self.volumeSelectDialog.setMinimumSize(400, 180)
+            self.volumeSelectDialog.setMaximumSize(800, 280)
             self.volumeSelectDialog.objectName = "Thin Section Registration Volume Select"
             self.volumeSelectDialog.setLayout(qt.QVBoxLayout())
 
@@ -296,18 +298,19 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
             self.volumeButtonFrame.setLayout(qt.QHBoxLayout())
             self.volumeSelectDialog.layout().addWidget(self.volumeButtonFrame)
 
-            self.volumeDialogApply = qt.QPushButton("Apply", self.volumeButtonFrame)
-            self.volumeDialogApply.objectName = "Volume Dialog Apply"
-            self.volumeDialogApply.setToolTip("Use currently selected images.")
-            self.volumeButtonFrame.layout().addWidget(self.volumeDialogApply)
-
-            self.volumeDialogCancel = qt.QPushButton("Cancel", self.volumeButtonFrame)
-            self.volumeDialogCancel.objectName = "Volume Dialog Cancel"
-            self.volumeDialogCancel.setToolTip("Cancel current operation.")
-            self.volumeButtonFrame.layout().addWidget(self.volumeDialogCancel)
-
-            self.volumeDialogApply.connect("clicked()", self.onVolumeDialogApply)
-            self.volumeDialogCancel.connect("clicked()", self.volumeSelectDialog.hide)
+            self.volumeDialogApplyCancelButtons = ui.ApplyCancelButtons(
+                onApplyClick=self.onVolumeDialogApply,
+                onCancelClick=lambda: self.volumeSelectDialog.hide(),
+                applyTooltip="Use currently selected images.",
+                cancelTooltip="Cancel current operation.",
+                applyText="Apply",
+                cancelText="Cancel",
+                enabled=True,
+                applyObjectName="Volume Dialog Apply",
+                cancelObjectName="Cancel Registration Button",
+                parent=self.volumeButtonFrame,
+            )
+            self.volumeButtonFrame.layout().addWidget(self.volumeDialogApplyCancelButtons)
 
         if self.volumeDialogSelectors["Fixed"].nodeCount() <= 1:
             slicer.util.warningDisplay("You need at least two different images to register.")

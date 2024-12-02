@@ -34,9 +34,9 @@ DEFAULT_SETTINGS = "settings.json"
 
 from copy import deepcopy
 
-from MonaiModelsCLILib.models.unet import UNetAct, UNetActWithBoundarySupervision
+from MonaiModelsLib.models.unet import UNetAct, UNetActWithBoundarySupervision
 
-from MonaiModelsCLILib.transforms import (
+from MonaiModelsLib.transforms import (
     ComposedTransform,
     IdentityTransform,
     ReadNetCDFTransform,

@@ -2,7 +2,7 @@ import os
 import sys
 from workflow.commons import (
     dict_to_arg,
-    get_cli_modules_dir,
+    get_check_cli_path,
     get_model_type,
     get_models_dir,
     get_models_info,
@@ -55,10 +55,7 @@ class PoreSegmenter:
             return cli_file_prefix, xargs, extra_args, model_type
 
         cli_file_prefix, xargs, extra_args, model_type = get_cli_info()
-        if cli_path is None:
-            cli_path = os.path.join(get_cli_modules_dir(), f"{cli_file_prefix}CLI", f"{cli_file_prefix}CLI.py")
-
-        assert os.path.exists(cli_path), f"CLI {cli_path} not found."
+        cli_path = get_check_cli_path(cli_file_prefix, cli_path)
         assert ("bayes" in model_type) == (
             cli_file_prefix == "BayesianInference"
         ), f"{cli_file_prefix}CLI is not compatible with model of type {model_type}"
@@ -68,6 +65,7 @@ class PoreSegmenter:
     def run(self, nrrd_image_file_path):
         output_file_path = nrrd_image_file_path.replace(".nrrd", "_seg.nrrd")
         if not os.path.exists(output_file_path):
+            print("* Segmenting pores...")
             run_subprocess(
                 [
                     sys.executable,

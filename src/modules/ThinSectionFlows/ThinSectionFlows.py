@@ -1,4 +1,5 @@
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from ltrace.slicer_utils import getResourcePath
 from pathlib import Path
 import qt
 import os
@@ -33,9 +34,11 @@ class ThinSectionFlows(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Thin Section Flows"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = ThinSectionFlows.help()
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Fluxo%20PP.html').as_posix()}"
+        )
 
     @classmethod
     def readme_path(cls):

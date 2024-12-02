@@ -4,21 +4,23 @@ from collections import namedtuple
 from pathlib import Path
 from threading import Lock
 
+import ctk
 import numpy as np
 import pandas as pd
 import qt
 import slicer
 import vtk
-import ctk
-from Customizer import Customizer
-from ltrace.file_utils import read_csv
-from ltrace.slicer_utils import *
-from ltrace.transforms import getRoundedInteger
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from ltrace.slicer import helpers
+from ltrace.slicer import ui
 
 from slicer.util import MRMLNodeNotFoundException
 from slicer.util import dataframeFromTable
+
+from ltrace.file_utils import read_csv
+from ltrace.slicer import helpers
+from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
+from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from ltrace.utils.callback import Callback
 
 
 class QEMSCANLoader(LTracePlugin):
@@ -33,7 +35,7 @@ class QEMSCANLoader(LTracePlugin):
         self.parent.categories = ["Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = QEMSCANLoader.help()
+        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Thin%20Section/Modulos/QemscanLoader.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -140,10 +142,18 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
 
         loadFormLayout.addRow(" ", None)
 
-        self.loadButton = qt.QPushButton("Load QEMSCANs")
-        self.loadButton.setFixedHeight(40)
-        self.loadButton.clicked.connect(self.onLoadButtonClicked)
-        loadFormLayout.addRow(None, self.loadButton)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onLoadButtonClicked,
+            onCancelClick=self.onCancelButtonClicked,
+            applyTooltip="Load QEMSCANs",
+            cancelTooltip="Cancel",
+            applyText="Load QEMSCANs",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName=None,
+            cancelObjectName=None,
+        )
+        self.layout.addWidget(self.applyCancelButtons)
 
         statusLabel = qt.QLabel("Status: ")
         self.currentStatusLabel = qt.QLabel("Idle")
@@ -207,6 +217,9 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
         self.logic.deleteQEMSCANLookupColorTable(tableNode)
         self.addLookupColorTableButton.setFocus(True)  # To avoid focusing the pixel size input after deleting an item
 
+    def onCancelButtonClicked(self):
+        self.logic.onCancel()
+
     def onLoadButtonClicked(self):
         if not self.validateInput():
             return
@@ -268,13 +281,8 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
             slicer.app.processEvents()
 
 
-class Callback(object):
-    def __init__(self, on_update=None):
-        self.on_update = on_update or (lambda *args, **kwargs: None)
-
-
 class QEMSCANLoaderLogic(LTracePluginLogic):
-    QEMSCAN_LOOKUP_COLOR_TABLES_PATH = Customizer.RESOURCES_PATH / "QEMSCAN/LookupColorTables"
+    QEMSCAN_LOOKUP_COLOR_TABLES_PATH = getResourcePath("QEMSCAN") / "LookupColorTables"
     ROOT_DATASET_DIRECTORY_NAME = "Thin Section"
     QEMSCAN_LOADER_FILE_EXTENSIONS = [".tif", ".tiff"]
 
@@ -308,6 +316,7 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
         )
 
     def loadImage(self, file, p, baseName):
+        self.cancel = False
         outputVolumeNode = None
         segmentationNode = None
         try:
@@ -380,7 +389,13 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
             slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentationNode, labelMapVolumeNode)
             self.setImageSpacing(labelMapVolumeNode, p.imageSpacing)
             self.configureInitialNodeMetadata(labelMapVolumeNode, baseName, p)
+            if self.cancel:
+                slicer.mrmlScene.RemoveNode(labelMapVolumeNode)
+                slicer.util.resetSliceViews()
+                p.callback.on_update("Cancelled", 100)
+                return
             return labelMapVolumeNode
+
         except Exception as e:
             raise e
             slicer.mrmlScene.RemoveNode(labelMapVolumeNode)
@@ -389,6 +404,9 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
             slicer.mrmlScene.RemoveNode(segmentationNode)
             slicer.mrmlScene.RemoveNode(outputVolumeNode)
             slicer.util.resetSliceViews()
+
+    def onCancel(self):
+        self.cancel = True
 
     def setImageSpacing(self, node, imageSpacing):
         node.SetSpacing(

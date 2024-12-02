@@ -1,17 +1,16 @@
 import collections
-import ctk
 import json
-import numpy as np
-import vtk
-
-from Customizer import Customizer
 from dataclasses import dataclass
+from pathlib import Path
+
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.workflow.workstep import *
 from ltrace.workflow.workstep.data import *
 from ltrace.workflow.workstep.segmentation import *
 from ltrace.workflow.workstep.simulation import *
-from pathlib import Path
+
+from ltrace.slicer_utils import getResourcePath
+
 
 WORKSTEPS = {
     module.NAME: module
@@ -326,8 +325,8 @@ class WorkflowWidget(qt.QDialog):
         optionsMenu = menuBar.addMenu("&Options")
         helpMenu = menuBar.addMenu("&Help")
 
-        loadWorkflowAction = qt.QAction(qt.QIcon(str(Customizer.LOAD_ICON_PATH)), "&Load...", fileMenu)
-        saveWorkflowAction = qt.QAction(qt.QIcon(str(Customizer.SAVE_ICON_PATH)), "&Save", fileMenu)
+        loadWorkflowAction = qt.QAction(qt.QIcon(getResourcePath("Icons") / "Load.png"), "&Load...", fileMenu)
+        saveWorkflowAction = qt.QAction(qt.QIcon(getResourcePath("Icons") / "Save.png"), "&Save", fileMenu)
         saveAsWorkflowAction = qt.QAction("Save as...", fileMenu)
         closeWorkflowAction = qt.QAction("&Close", fileMenu)
         exitWorkflowAction = qt.QAction("E&xit", fileMenu)
@@ -385,9 +384,9 @@ class WorkflowWidget(qt.QDialog):
         toolBar.setObjectName("toolBar")
         toolBar.setToolButtonStyle(qt.Qt.ToolButtonTextBesideIcon)
         toolBar.setStyleSheet("QToolBar {border-top: 1px solid gray; border-bottom: 1px solid gray;}")
-        runWorkflowAction = qt.QAction(qt.QIcon(str(Customizer.RUN_ICON_PATH)), "Run workflow", toolBar)
+        runWorkflowAction = qt.QAction(qt.QIcon(getResourcePath("Icons") / "Run.png"), "Run workflow", toolBar)
         toolBar.addAction(runWorkflowAction)
-        stopWorkflowAction = qt.QAction(qt.QIcon(str(Customizer.STOP_ICON_PATH)), "Stop workflow", toolBar)
+        stopWorkflowAction = qt.QAction(qt.QIcon(getResourcePath("Icons") / "Stop.png"), "Stop workflow", toolBar)
         toolBar.addAction(stopWorkflowAction)
 
         runWorkflowAction.triggered.connect(self.run)
@@ -494,10 +493,10 @@ class WorkflowWidget(qt.QDialog):
         addWorkstepButton = qt.QPushButton("Add workstep")
         addWorkstepButton.setObjectName("addWorkstepButton")
         addWorkstepButton.setAutoDefault(False)
-        addWorkstepButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        addWorkstepButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         addCloneDeleteWorkstepsButtonsLayout.addWidget(addWorkstepButton)
         self.deleteWorkstepButton = qt.QPushButton("Delete workstep")
-        self.deleteWorkstepButton.setIcon(qt.QIcon(str(Customizer.DELETE_ICON_PATH)))
+        self.deleteWorkstepButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Delete.png"))
         self.deleteWorkstepButton.setEnabled(False)
         self.deleteWorkstepButton.setAutoDefault(False)
         addCloneDeleteWorkstepsButtonsLayout.addWidget(self.deleteWorkstepButton)
@@ -632,7 +631,7 @@ class WorkflowWidget(qt.QDialog):
         workstepStateButtonsLayout = qt.QHBoxLayout()
         workstepStateButtonsLayout.addWidget(qt.QWidget())
         resetWorkstepButton = qt.QPushButton("Reset to default")
-        resetWorkstepButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
+        resetWorkstepButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         workstepStateButtonsLayout.addWidget(resetWorkstepButton)
         workstepStateButtonsLayout.addWidget(qt.QWidget())
         workstepLayout.addLayout(workstepStateButtonsLayout)

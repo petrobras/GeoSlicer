@@ -1,0 +1,145 @@
+QPushButton {
+    background-color: #535353; /* Button color */
+    color: #ffffff; /* Button text color for readability */
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.actionButtonBackground {background-color: #26C252;}
+
+
+QPushButton:hover {
+    background-color: #37403A; /* Slightly lighter green on hover */
+}
+
+QPushButton:pressed {
+    background-color: #1e8e41; /* Darker shade on button press */
+}
+
+QLineEdit, QTextEdit {
+    background-color: #535353;
+    border: 1px solid #666666;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QTextEdit#pythonConsole {
+    background-color: #333333; /* Console background color */
+    border-radius: 0px;
+}
+
+
+QListView, QTableView {
+    background-color: #333333; /* Match general background */
+    alternate-background-color: #3b3b3b; /* Subtle alternating row color */
+    color: #f0f0f0; /* Text color */
+    selection-background-color: #37403A; /* Selection color */
+    selection-color: #ffffff; /* Text color when selected */
+}
+
+QScrollBar:vertical, QScrollBar:horizontal {
+    background: #535353; /* Scrollbar background */
+    width: 10px;
+}
+
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: #26C252; /* Scrollbar handle */
+    border-radius: 4px;
+}
+
+/* -~- Checkboxes -~- */
+QCheckBox, QRadioButton {
+    color: #f0f0f0; /* Text color */
+}
+
+QWidget::indicator {
+    border-radius: 3px;
+}
+
+QCheckBox::indicator, QRadioButton::indicator, QGroupBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    margin-top: 0.07em;  /* Make checkbox look centered vertically in relation to text */
+}
+
+/* Hack: QGroupBox has weird border behavior */
+QGroupBox::indicator {
+   width: 20px;
+   height: 20px;
+}
+
+QRadioButton::indicator {
+    border-radius: 10px;
+}
+    
+QWidget::indicator:unchecked {
+    background-color: none;
+    border: 2px solid #bbb;
+}
+
+QWidget::indicator:checked:enabled {
+    background-color: #26C252;
+    border: 2px solid #26C252;
+    image: url($iconPath/checkbox_checked_enabled.svg);
+}
+
+/* QListWidget and QTreeWidget are excluded here because hovering the text counts as hovering them,
+ * but clicking the text does not toggle the checkbox.
+ */
+QCheckBox::indicator:unchecked:hover, QRadioButton::indicator:unchecked:hover, QGroupBox::indicator:unchecked:hover {
+    border-color: #26C252;
+}
+
+/* Don't style hovered checked radio button because clicking it won't uncheck it */
+QCheckBox::indicator:checked:hover, QGroupBox::indicator:checked:hover {
+    border-color: #46E262;
+}
+
+QWidget::indicator:unchecked:disabled {
+    background-color: none;
+    border: 2px solid #535353;
+}
+
+QWidget::indicator:checked:disabled {
+    background-color: #535353;
+    border: 2px solid #535353;
+    image: url($iconPath/checkbox_checked_disabled.svg);
+}
+/* -~- End Checkboxes -~- */
+
+QSlider::groove:horizontal {
+    height: 4px; /* the groove expands to the size of the slider by default. by giving it a height, it has a fixed size */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #B1B1B1, stop:1 #c4c4c4);
+    margin: 2px 0;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #535353, stop:1 #8f8f8f);
+    border: 1px solid #5c5c5c;
+    width: 18px;
+    margin: -2px 0; /* handle is placed by default on the contents rect of the groove. Expand outside the groove */
+    border-radius: 3px;
+}
+
+QProgressBar {
+    background-color: #535353; /* Background of the progress bar */
+    border-radius: 4px;
+    text-align: center; /* Center text over progress bar */
+}
+
+QProgressBar::chunk {
+    background-color: #26C252; /* Grey progress color */
+    border-radius: 4px;
+}
+
+/* Thin ProgressBar */
+QProgressBar[style="thin"] {
+    height: 8px; /* Thin progress bar */
+    font-size: 7px;
+}
+
+QProgressBar[style="thin"]::chunk {
+    background-color: #26C252; /* Grey progress color */
+    border-radius: 4px;
+}

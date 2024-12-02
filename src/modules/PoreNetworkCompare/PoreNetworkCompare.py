@@ -15,12 +15,12 @@ import vtk
 from scipy.ndimage import zoom
 from scipy.spatial import distance
 
-from Plots.Crossplot.data_plot_widget import DataPlotWidget
 from ltrace.pore_networks.visualization_model import PORE_TYPE, TUBE_TYPE
 from ltrace.slicer.graph_data import DataFrameGraphData
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
+from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, LazyLoad
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
 from ltrace.transforms import transformPoints
 
 NUMBER_OF_VIEWS = 2
@@ -41,8 +41,8 @@ class PoreNetworkCompare(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Pore Network Compare"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "PNM Compare Models"
+        self.parent.categories = ["MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = PoreNetworkCompare.help()

@@ -54,6 +54,7 @@ class NodeEnvironment(NodeAttributeValue):
     THIN_SECTION = "ThinSectionEnv"
     CHARTS = "Charts"
     LABEL_MAP_EDITOR = "LabelMapEditor"
+    MULTISCALE = "MultiscaleEnv"
 
 
 class DataOrigin(NodeAttributeValue):

@@ -6,7 +6,6 @@ import qt
 import slicer
 from ltrace.slicer_utils import *
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from Multicore import MulticoreLogic
 
 
 class MulticoreTransforms(LTracePlugin):
@@ -148,7 +147,7 @@ class MulticoreTransformsWidget(LTracePluginWidget):
 class MulticoreTransformsLogic(LTracePluginLogic):
     def __init__(self):
         LTracePluginLogic.__init__(self)
-        self.multicoreLogic = MulticoreLogic()
+        self.multicoreLogic = slicer.util.getModuleLogic("Multicore")
 
     def applyTransform(self, volumeNodeNames, depthIncrement, orientationIncrement):
         """

@@ -283,7 +283,7 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def sourceVolumeNodeChanged(self):
         pass

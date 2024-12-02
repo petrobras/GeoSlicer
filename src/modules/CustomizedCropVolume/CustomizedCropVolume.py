@@ -7,9 +7,11 @@ import qt
 import slicer
 import vtk
 
+from ltrace.slicer import ui
 from ltrace.slicer.helpers import bounds2size, copy_display
 from ltrace.slicer_utils import *
-from ltrace.slicer.node_observer import NodeObserver
+from ltrace.slicer_utils import getResourcePath
+from ltrace.utils.callback import Callback
 
 try:
     from Test.CustomizedCropVolumeTest import CustomizedCropTest
@@ -25,11 +27,11 @@ class CustomizedCropVolume(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Customized Crop Volume"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Volumes Crop"
+        self.parent.categories = ["Tools", "MicroCT", "Thin Section", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = CustomizedCropVolume.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Crop.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -107,18 +109,16 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
 
         parametersFormLayout.addRow(" ", None)
 
-        self.cropButton = qt.QPushButton("Crop")
-        self.cropButton.setFixedHeight(40)
-        self.cropButton.clicked.connect(self.onCropButtonClicked)
-
-        self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setFixedHeight(40)
-        self.cancelButton.clicked.connect(self.onCancelButtonClicked)
-
-        buttonsHBoxLayout = qt.QHBoxLayout()
-        buttonsHBoxLayout.addWidget(self.cropButton)
-        buttonsHBoxLayout.addWidget(self.cancelButton)
-        loadFormLayout.addRow(buttonsHBoxLayout)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onCropButtonClicked,
+            onCancelClick=self.onCancelButtonClicked,
+            applyTooltip="Crop",
+            cancelTooltip="Cancel",
+            applyText="Crop",
+            cancelText="Cancel",
+            enabled=True,
+        )
+        loadFormLayout.addWidget(self.applyCancelButtons)
 
         statusLabel = qt.QLabel("Status: ")
         self.currentStatusLabel = qt.QLabel("Idle")
@@ -208,12 +208,18 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
         self.logic.roi = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLMarkupsROINode.__name__, "Crop ROI")
         self.logic.roi.SetDisplayVisibility(False)
         self.logic.roi.GetDisplayNode().SetFillOpacity(0.5)
-        self.roiObserver = NodeObserver(node=self.logic.roi, parent=None)
-        self.roiObserver.modifiedSignal.connect(self.onRoiModified)
+        self.roiObserver = self.logic.roi.AddObserver(
+            slicer.vtkMRMLDisplayableNode.DisplayModifiedEvent, self.onRoiModified
+        )
+        # self.roiObserver = NodeObserver(node=self.logic.roi, parent=None)
+        # self.roiObserver.modifiedSignal.connect(self.onRoiModified)
 
     def exit(self):
+        if self.roiObserver:
+            self.logic.roi.RemoveObserver(self.roiObserver)
         self.roiObserver = None
         slicer.mrmlScene.RemoveNode(self.logic.roi)
+        self.logic.roi = None
 
     def updateStatus(self, message, progress=None, processEvents=True):
         self.progressBar.show()
@@ -238,11 +244,6 @@ class CustomizedCropVolumeWidget(LTracePluginWidget):
         self.exit()
 
 
-class Callback(object):
-    def __init__(self, on_update=None):
-        self.on_update = on_update or (lambda *args, **kwargs: None)
-
-
 class CustomizedCropVolumeLogic(LTracePluginLogic):
     def __init__(self):
         LTracePluginLogic.__init__(self)
@@ -264,7 +265,8 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
 
     def crop(self, volume, ijkSize):
         position_ras = [0] * 3
-        self.roi.GetXYZ(position_ras)
+        if self.roi is not None:
+            self.roi.GetXYZ(position_ras)
 
         ras_to_ijk = vtk.vtkMatrix4x4()
         volume.GetRASToIJKMatrix(ras_to_ijk)
@@ -300,14 +302,16 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         slicer.util.setSliceViewerLayers(background=croppedVolume, fit=True)
         copy_display(volume, croppedVolume)
 
-        self.roi.SetDisplayVisibility(False)
+        if self.roi is not None:
+            self.roi.SetDisplayVisibility(False)
         self.lastCroppedVolume = croppedVolume
 
     def getCroppedSize(self, volume):
         position = [0] * 3
         radius = [0] * 3
-        self.roi.GetRadiusXYZ(radius)
-        self.roi.GetXYZ(position)
+        if self.roi is not None:
+            self.roi.GetRadiusXYZ(radius)
+            self.roi.GetXYZ(position)
 
         volumeExtents = [0] * 6
         volume.GetRASBounds(volumeExtents)
@@ -327,7 +331,8 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
     def setRoiSizeIjk(self, volume, ijkSize):
         spacing = volume.GetSpacing()
         rasSize = tuple(ijkDim * spacingDim / 2 for ijkDim, spacingDim in zip(ijkSize, spacing))
-        self.roi.SetRadiusXYZ(rasSize)
+        if self.roi is not None:
+            self.roi.SetRadiusXYZ(rasSize)
 
 
 class CropInfo(RuntimeError):

@@ -32,12 +32,11 @@ class MultipleImageAnalysis(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multiple Image Analysis"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Multi-Image Analysis"
+        self.parent.categories = ["Tools", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = MultipleImageAnalysis.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Thin%20Section/Modulos/MultipleImageAnalysis.html').as_posix()}"
 
     @classmethod
     def readme_path(cls):
@@ -252,7 +251,7 @@ class MultipleImageAnalysisWidget(LTracePluginWidget):
         if folder == "" or not os.path.isdir(folder):
             message = "The selected path is invalid. Please select a directory."
             logging.warning(message)
-            qt.QMessageBox.information(slicer.util.mainWindow(), "Error", message)
+            qt.QMessageBox.information(slicer.modules.AppContextInstance.mainWindow, "Error", message)
             return
 
         self._refreshInputReportFiles(folder)
@@ -269,7 +268,7 @@ class MultipleImageAnalysisWidget(LTracePluginWidget):
         if analysisModel is None:
             message = "The selected analysis' type is invalid. Please, contact the technical support."
             logging.warning(message)
-            qt.QMessageBox.information(slicer.util.mainWindow(), "Error", message)
+            qt.QMessageBox.information(slicer.modules.AppContextInstance.mainWindow, "Error", message)
             return
 
         try:
@@ -277,7 +276,7 @@ class MultipleImageAnalysisWidget(LTracePluginWidget):
             self._onOutputNameChangedSignal(analysisModel)
         except RuntimeError as error:
             logging.warning(error)
-            qt.QMessageBox.information(slicer.util.mainWindow(), "Error", error)
+            qt.QMessageBox.information(slicer.modules.AppContextInstance.mainWindow, "Error", error)
         else:
             self._updateTable(tableData)
 
@@ -408,6 +407,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
         self.__generatedReportNodeId = None
         self.data = None
         self.__errorDetected = False
+        self.__imageLogDataLogic = slicer.util.getModuleLogic("ImageLogData")
 
     @property
     def generating(self) -> bool:
@@ -460,10 +460,9 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
 
         # Show node in image log view
         if displayImageLogView:
-            slicer.modules.ImageLogDataWidget.logic.changeToLayout()
-            subjectItemId = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemByDataNode(node)
+            self.__imageLogDataLogic.changeToLayout()
             try:
-                slicer.modules.ImageLogDataWidget.logic.addView(subjectItemId)
+                self.__imageLogDataLogic.addView(node)
             except Exception as error:
                 slicer.util.warningDisplay(
                     f"The maximum number of views has been reached, preventing the current preview from being displayed.\nTo view the current analysis, please select the analysis node in an already open view."
@@ -501,7 +500,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
             tableNode.SetUseFirstColumnAsRowHeader(True)
 
             df = pd.DataFrame.from_dict(report.data, orient="index")
-            df.sort_index(ascending=True, inplace=True)
+            df = df.sort_index(ascending=True)
             df = df.round(decimals=5)
 
             # Workaround to create a row header
@@ -517,7 +516,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
             # Rename first table's cell random name
         else:
             df = pd.DataFrame.from_dict(report.data)
-            df.sort_values(by=df.columns[0], ascending=True, inplace=True)
+            df = df.sort_values(by=df.columns[0], ascending=True)
             df = df.round(decimals=5)
             dataFrameToTableNode(dataFrame=df, tableNode=tableNode)
 
@@ -566,7 +565,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
         self.__generating = False
         if self.__generatedReportNodeId is not None:
             try:
-                slicer.modules.ImageLogDataWidget.logic.removeViewFromPrimaryNode(self.__generatedReportNodeId)
+                self.__imageLogDataLogic.removeViewFromPrimaryNode(self.__generatedReportNodeId)
             except Exception as error:
                 logging.error(error)
 

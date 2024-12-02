@@ -8,14 +8,7 @@ from ltrace.slicer.widget.save_netcdf import SaveNetcdfWidget
 Env = NodeEnvironment
 
 
-def _select_tab(tab_widget, label):
-    for i in range(tab_widget.count):
-        if tab_widget.tabText(i) == label:
-            tab_widget.setCurrentIndex(i)
-            return tab_widget.widget(i)
-
-
-def _detect_node_env(node, current_env):
+def _detectNodeEnv(node, current_env):
     if node is None:
         return None
     if node.IsA("vtkMRMLTableNode") or node.IsA("vtkMRMLSegmentationNode"):
@@ -33,45 +26,31 @@ def _detect_node_env(node, current_env):
     return None
 
 
-def _export_node_as(selected_item_id, env):
+def _exportNodeAs(selectedItemId, env):
     if env is None:
         slicer.util.warningDisplay(
             "Can't export selection. Make sure you have selected a single image, or try using the 'Data > Export' tab of your environment."
         )
         return
-    select_module = slicer.util.mainWindow().moduleSelector().selectModule
+    selectModule = slicer.modules.AppContextInstance.mainWindow.moduleSelector().selectModule
     if env == Env.THIN_SECTION:
-        select_module("ThinSectionEnv")
-        widget = slicer.modules.ThinSectionEnvWidget
-
-        data_widget = _select_tab(widget.mainTab, "Data")
-        export_widget = _select_tab(data_widget, "Export").self()
-
-        export_widget.subjectHierarchyTreeView.setCurrentItem(selected_item_id)
+        selectModule("ThinSectionExport")
+        widget = slicer.modules.ThinSectionExportWidget
+        widget.subjectHierarchyTreeView.setCurrentItem(selectedItemId)
         return
     if env == Env.IMAGE_LOG:
-        select_module("ImageLogEnv")
-        widget = slicer.modules.ImageLogEnvWidget
-
-        data_widget = _select_tab(widget.mainTab, "Data")
-        export_widget = _select_tab(data_widget, "Export").self()
-        export_widget.subjectHierarchyTreeView.setCurrentItem(selected_item_id)
+        selectModule("ImageLogExport")
+        widget = slicer.modules.ImageLogExportWidget
+        widget.subjectHierarchyTreeView.setCurrentItem(selectedItemId)
         return
     if env == Env.CORE:
-        select_module("CoreEnv")
-        widget = slicer.modules.CoreEnvWidget
+        selectModule("MulticoreExport")
+        widget = slicer.modules.MulticoreExportWidget
 
-        data_widget = _select_tab(widget.mainTab, "Data")
-        export_widget = _select_tab(data_widget, "Export").self()
-
-        export_widget.subjectHierarchyTreeView.setCurrentItem(selected_item_id)
+        widget.subjectHierarchyTreeView.setCurrentItem(selectedItemId)
         return
     if env == Env.MICRO_CT:
-        select_module("MicroCTEnv")
-        widget = slicer.modules.MicroCTEnvWidget
-
-        data_widget = _select_tab(widget.mainTab, "Data")
-        export_widget = _select_tab(data_widget, "Export").self()
+        selectModule("MicroCTExport")
         return
 
 
@@ -85,29 +64,30 @@ def _export_folder_as_netcdf(folder_id):
 
 def _save_folder_as_netcdf(folder_id):
     widget = SaveNetcdfWidget()
-    widget.setFolder(folder_id)
     widget.show()
+    widget.setFolder(folder_id)
 
 
-def _export_selected_node():
+def _exportSelectedNode():
     sh = slicer.mrmlScene.GetSubjectHierarchyNode()
-    plugin_handler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
-    selected_item_id = plugin_handler.currentItem()
+    pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+    selectedItemId = pluginHandler.currentItem()
 
-    if sh.GetItemOwnerPluginName(selected_item_id) == "Folder":
-        if sh.GetItemAttribute(selected_item_id, "netcdf_path"):
-            _save_folder_as_netcdf(selected_item_id)
+    if sh.GetItemOwnerPluginName(selectedItemId) == "Folder":
+        if sh.GetItemAttribute(selectedItemId, "netcdf_path"):
+            _save_folder_as_netcdf(selectedItemId)
         else:
-            _export_folder_as_netcdf(selected_item_id)
+            _export_folder_as_netcdf(selectedItemId)
         return
-    node = sh.GetItemDataNode(selected_item_id)
-    detected_env = _detect_node_env(node, getCurrentEnvironment())
-    _export_node_as(selected_item_id, detected_env)
+
+    node = sh.GetItemDataNode(selectedItemId)
+    detectedEnv = _detectNodeEnv(node, getCurrentEnvironment())
+    _exportNodeAs(selectedItemId, detectedEnv)
 
 
-def customize_export_to_file():
-    plugin_handler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
-    export_plugin = plugin_handler.pluginByName("Export")
-    export_action = export_plugin.findChild(qt.QAction)
-    export_action.triggered.disconnect()
-    export_action.triggered.connect(_export_selected_node)
+def customizeExportToFile():
+    pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+    exportPlugin = pluginHandler.pluginByName("Export")
+    exportAction = exportPlugin.findChild(qt.QAction)
+    exportAction.triggered.disconnect()
+    exportAction.triggered.connect(_exportSelectedNode)

@@ -59,6 +59,14 @@ def get_cli_modules_dir():
         raise FileNotFoundError(f"CLI modules directory {cli_modules_dir} not found.")
 
 
+def get_check_cli_path(cli_file_prefix, cli_path=None):
+    if cli_path is None:
+        cli_path = os.path.join(get_cli_modules_dir(), f"{cli_file_prefix}CLI", f"{cli_file_prefix}CLI.py")
+
+    assert os.path.exists(cli_path), f"CLI {cli_path} not found."
+    return cli_path
+
+
 def get_models_dir():
     candidate_dirs = []
     geoslicer_path = sys.executable.split(os.path.join(os.sep, "bin"))[0]
@@ -121,10 +129,20 @@ def get_model_type(model_type_or_path):
 
 
 def run_subprocess(args):
-    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    for line in process.stdout:
+        if line.startswith(r"No module named 'logic'"):
+            continue
+        if not line.startswith("<filter-progress>"):
+            print(f"\n\n{line}", end="")
+        else:
+            print(
+                f"\r{line[:-1]}".ljust(70), end="", flush=True
+            )  # to update the progress line in terminal instead of printing in subsequent lines
     _, error = process.communicate()
     if process.returncode != 0:
         raise RuntimeError(error)
+    print()
 
 
 # from SegmentInspectorCLI.py

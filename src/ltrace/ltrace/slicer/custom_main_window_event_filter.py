@@ -18,10 +18,12 @@ class CustomizerEventFilter(qt.QWidget):
         """Qt eventFilter method overload.
         Please read reference for more information: https://doc.qt.io/archives/qt-4.8/eventsandfilters.html
         """
-        appObservables = ApplicationObservables()
-        mainWindow = slicer.util.mainWindow()
+
         if event.type() == qt.QEvent.Close:
+            appObservables = ApplicationObservables()
+            mainWindow = slicer.modules.AppContextInstance.mainWindow
             isModified = mainWindow.isWindowModified()
+
             if isModified is False:
                 event.accept()
                 appObservables.aboutToQuit.emit()
@@ -49,9 +51,6 @@ class CustomizerEventFilter(qt.QWidget):
                         event.ignore()
                         return True
                     else:  # SaveStatus.FAILED options and SaveStatus.IN_PROGRESS
-                        slicer.util.errorDisplay(
-                            "Failed to save the project. Please, check the application's logs and try again."
-                        )
                         event.ignore()
                         return True
             elif messageBox.clickedButton() == exitButton:

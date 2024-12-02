@@ -31,7 +31,7 @@ class MonaiLabelServer(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "MONAILabel Server"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
 
@@ -146,15 +146,19 @@ class MonaiLabelServerWidget(LTracePluginWidget):
         dialog = qt.QFileDialog()
         dialog.setFileMode(qt.QFileDialog.Directory)
         dialog.setOption(qt.QFileDialog.ShowDirsOnly)
-        directory = dialog.getExistingDirectory(slicer.util.mainWindow(), "Choose App Directory")
+        directory = dialog.getExistingDirectory(slicer.modules.AppContextInstance.mainWindow, "Choose App Directory")
         self.appLineEdit.setText(directory)
+        dialog.delete()
 
     def browseDataset(self):
         dialog = qt.QFileDialog()
         dialog.setFileMode(qt.QFileDialog.Directory)
         dialog.setOption(qt.QFileDialog.ShowDirsOnly)
-        directory = dialog.getExistingDirectory(slicer.util.mainWindow(), "Choose Dataset Directory")
+        directory = dialog.getExistingDirectory(
+            slicer.modules.AppContextInstance.mainWindow, "Choose Dataset Directory"
+        )
         self.datasetLineEdit.setText(directory)
+        dialog.delete()
 
     def _onLocalToggled(self):
         self.remoteRadioButton.setChecked(False)

@@ -25,11 +25,11 @@ class ModuleInstaller(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Module Installer"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["Rafael Arenhart (LTrace Geophysics)"]
         self.parent.helpText = """
-Imports a new module from a filder, zip file or git URL.
+Imports a new module from a directory, zip file or git URL.
 """
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = """
@@ -140,7 +140,7 @@ class ModuleInstallerLogic(LTracePluginLogic):
                 install_git_module(remote)
             else:
                 qt.QMessageBox.warning(
-                    slicer.util.mainWindow(),
+                    slicer.modules.AppContextInstance.mainWindow,
                     "Source is not valid",
                     "Given source for module is neither a zip file nor an accessible git repository.",
                 )
@@ -148,7 +148,7 @@ class ModuleInstallerLogic(LTracePluginLogic):
 
             slicer.modules.CustomizerInstance.set_paths()
             qt.QMessageBox.information(
-                slicer.util.mainWindow(),
+                slicer.modules.AppContextInstance.mainWindow,
                 "Module installation successful",
                 "Please restart GeoSlicer to finish new modules setup.",
             )

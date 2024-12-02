@@ -1,55 +1,22 @@
-from collections import OrderedDict
-from dataclasses import dataclass
 import datetime
-from functools import partial
 import json
 import logging
 import os
 
+from collections import OrderedDict
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from queue import Queue
-from typing import Callable, List
-from uuid import uuid4
-
-import ctk
-
 
 import qt
 import slicer
-import vtk
 
-from ltrace.slicer.widget.elided_label import ElidedLabel
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-
-from ltrace.remote.targets import TargetManager, Host
 from ltrace.remote.connections import JobExecutor
 from ltrace.remote.jobs import JobManager
-
+from ltrace.remote.targets import Host
 from ltrace.slicer import ui
-
-
-class EventHandler:
-    def __call__(self, caller, event, *args, **kwargs):
-        return
-
-
-# class TaskExecutor:
-
-#     def __init__(self,  account_callback: Callable, login_callback: Callable) -> None:
-#         self.request_account = account_callback
-#         self.request_login = login_callback
-
-#     def run(self, task: Callable, *args, **kwargs):
-#         host: TargetHost = self.request_account()
-#         if host is None:
-#             raise Exception("No host selected")  # TODO handle with custom exceptions
-
-#         connection = self.connections.find(host)
-#         if connection is None:
-#             connection = connect(host, self.request_login)
-
-
-# RemoteService.instance.cli(ssh.Client).run()
+from ltrace.slicer.widget.elided_label import ElidedLabel
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 
 def prettydt(dtt: datetime):
@@ -270,7 +237,7 @@ class JobMonitor(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Job Monitor"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = JobMonitor.help()
@@ -387,7 +354,7 @@ class DetailsDialog(qt.QDialog):
 
     @staticmethod
     def show():
-        d = DetailsDialog(parent=slicer.util.mainWindow())
+        d = DetailsDialog(parent=slicer.modules.AppContextInstance.mainWindow)
         return d.exec_() == 1
 
 
@@ -490,7 +457,7 @@ class JobMonitorWidget(LTracePluginWidget):
         self.logic.cancelJob(job)
 
     def showJobDetails(self, job: JobExecutor):
-        d = DetailsDialog(job, parent=slicer.util.mainWindow())
+        d = DetailsDialog(job, parent=slicer.modules.AppContextInstance.mainWindow)
         self.logic.currentDetail = (job.uid, d.view.update)
         d.exec_()
         self.logic.currentDetail = None

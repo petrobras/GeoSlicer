@@ -6,9 +6,10 @@ import numpy as np
 import qt
 import slicer
 import vtk
-from Customizer import Customizer
+
 from ltrace.slicer_utils import *
 from ltrace.slicer.helpers import BlockSignals
+from ltrace.slicer_utils import getResourcePath
 
 
 def normalize_angle(angle):
@@ -23,8 +24,8 @@ class MicroCTTransforms(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Micro CT Transforms"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "MicroCT Manual Registration"
+        self.parent.categories = ["MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = MicroCTTransforms.help()
@@ -214,7 +215,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         buttonsLayout = qt.QFormLayout(self.buttonsWidget)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(str(Customizer.UNDO_ICON_PATH)))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo last change. The earliest undo is when the volume was loaded or transformation was last applied."
         )
@@ -222,7 +223,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(str(Customizer.REDO_ICON_PATH)))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
         self.redoButton.setToolTip("Redo last change.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)
@@ -233,13 +234,13 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         buttonsLayout.addRow(buttonsHBoxLayout)
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         self.applyButton.setToolTip("Apply changes. This action cannot be undone.")
         self.applyButton.enabled = False
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.resetButton = qt.QPushButton("Reset")
-        self.resetButton.setIcon(qt.QIcon(str(Customizer.RESET_ICON_PATH)))
+        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         self.resetButton.setToolTip("Reset changes to the last applied state.")
         self.resetButton.enabled = False
         self.resetButton.clicked.connect(self.onResetButtonClicked)

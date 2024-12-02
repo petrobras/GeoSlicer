@@ -1,26 +1,14 @@
 import numbers
-import re
 
+import PySide2
 import ctk
 import numpy as np
 import pandas as pd
-import PySide2
+import pyqtgraph as pg
 import qt
 import shiboken2
-import pyqtgraph as pg
 import slicer
-
-from Customizer import Customizer
-from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
-from ltrace.pore_networks.simulation_parameters_node import (
-    dataframe_to_parameter_node,
-    parameters_dict_to_dataframe,
-)
-from ltrace.slicer import ui, widgets
-from ltrace.slicer_utils import dataframeFromTable
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
-from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import KrelResultCurves
+import warnings
 from PoreNetworkKrelEdaLib.input_estimation import (
     closest_estimate,
     CurveFilter,
@@ -28,6 +16,17 @@ from PoreNetworkKrelEdaLib.input_estimation import (
     filter_simulations,
     regression_estimate,
 )
+from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
+from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import KrelResultCurves
+
+from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
+from ltrace.pore_networks.simulation_parameters_node import (
+    dataframe_to_parameter_node,
+    parameters_dict_to_dataframe,
+)
+from ltrace.slicer import ui, widgets
+from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from ltrace.slicer_utils import dataframeFromTable, getResourcePath
 
 
 class CurvesPlot(PlotBase):
@@ -61,24 +60,22 @@ class CurvesPlot(PlotBase):
 
         self.mainLayout.addRow(" ", None)
 
-        boxes_layout = qt.QGridLayout()
-        boxes_layout.setColumnStretch(1, 1)
-        boxes_layout.setColumnStretch(3, 1)
-        boxes_layout.setColumnStretch(5, 1)
+        self.boxes_layout = qt.QGridLayout()
+        self.boxes_layout.setColumnStretch(1, 1)
+        self.boxes_layout.setColumnStretch(3, 1)
+        self.boxes_layout.setColumnStretch(5, 1)
         self.checkboxes = {}
         cycle_labels = ["Drainage", "Imbibition", "Second Drainage"]
         for i, label in enumerate(cycle_labels):
             for j, phase in enumerate(["Ko", "Kw"]):
                 name = f"{label} {phase}"
-                boxes_layout.addWidget(qt.QLabel(name), j, i * 2)
-                self.checkboxes[name] = qt.QCheckBox()
-                boxes_layout.addWidget(self.checkboxes[name], j, i * 2 + 1)
-                self.checkboxes[name].setChecked(False)
-                self.checkboxes[name].objectName = name
-                self.checkboxes[name].stateChanged.connect(self.update)
-        self.mainLayout.addRow(boxes_layout)
+                self.__add_visibility_checkbox(name, i, j)
+        self.__add_visibility_checkbox("Mean", i + 1, 0)
+
+        self.mainLayout.addRow(self.boxes_layout)
         self.checkboxes["Imbibition Ko"].setChecked(True)
         self.checkboxes["Imbibition Kw"].setChecked(True)
+        self.checkboxes["Mean"].setChecked(True)
 
         self.mainLayout.addRow(" ", None)
 
@@ -217,7 +214,8 @@ class CurvesPlot(PlotBase):
                 ref_plot.set_visible(cycle_id, KrelCurvesPlot.KRO, plot_kro)
 
         filtered_simulation_id_list = self.__getSelectedSimulations(parameters_df)
-        filtered_simulation_id_list += ["middle"]
+        if self.checkboxes["Mean"].isChecked():
+            filtered_simulation_id_list += ["middle"]
         self.__krel_curves_plot.set_all_visible_simulations(filtered_simulation_id_list)
         self.filtered_simulation_list = [x for x in filtered_simulation_id_list if isinstance(x, numbers.Number)]
 
@@ -238,6 +236,14 @@ class CurvesPlot(PlotBase):
         slicer.app.processEvents()
 
         self.__plot_item.autoRange()
+
+    def __add_visibility_checkbox(self, name, i, j):
+        self.boxes_layout.addWidget(qt.QLabel(name), j, i * 2)
+        self.checkboxes[name] = qt.QCheckBox()
+        self.boxes_layout.addWidget(self.checkboxes[name], j, i * 2 + 1)
+        self.checkboxes[name].setChecked(False)
+        self.checkboxes[name].objectName = name
+        self.checkboxes[name].stateChanged.connect(self.update)
 
     def __update_hidden_ref_curves(self):
         hidden_curve_nodes = self.filterListWidget.getHiddenCurveNodes()
@@ -458,13 +464,13 @@ class FilterListWidget(qt.QFrame):
         self.estimationMethodCombobox.setCurrentIndex(1)
 
         addRefCurveButton = qt.QPushButton("Add reference curve")
-        addRefCurveButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        addRefCurveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         addRefCurveButton.setIconSize(qt.QSize(16, 16))
         addRefCurveButton.clicked.connect(self.__onAddRefCurveClicked)
 
         addFilterButton = qt.QPushButton("Add filter")
         addFilterButton.objectName = "Add filter button"
-        addFilterButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        addFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         addFilterButton.setIconSize(qt.QSize(16, 16))
         addFilterButton.clicked.connect(self.__onAddFilterClicked)
 
@@ -497,7 +503,7 @@ class FilterListWidget(qt.QFrame):
             if filter_name == "-":
                 continue
             new_curve_filter = CurveFilter()
-            new_curve_filter.column_name = f"{RESULT_PREFIX}{filter_name}"
+            new_curve_filter.column_name = filter_name
             new_curve_filter.min_value = list_item_widget.widget.getMinValue()
             new_curve_filter.max_value = list_item_widget.widget.getMaxValue()
             filters.append(new_curve_filter)
@@ -535,9 +541,11 @@ class FilterListWidget(qt.QFrame):
         column_names = list(self.data_manager.parameters_df.columns)
         parameter_parser = KrelParameterParser()
         for column_name in column_names:
-            parameter_name = parameter_parser.get_result_name(column_name)
+            parameter_name = parameter_parser.get_result_name(column_name) or parameter_parser.get_input_name(
+                column_name
+            )
             if parameter_name is not None:
-                filter_list.append(parameter_name)
+                filter_list.append(column_name)
         return filter_list
 
     def __onAddFilterClicked(self):
@@ -581,7 +589,7 @@ class FilterBaseWidget(qt.QFrame):
         super().__init__(parent)
 
         self.removeFilterButton = qt.QPushButton()
-        self.removeFilterButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        self.removeFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         self.removeFilterButton.setIconSize(qt.QSize(16, 16))
         self.removeFilterButton.setFlat(True)
         self.removeFilterButton.clicked.connect(self.__onRemoveButtonClicked)
@@ -688,11 +696,15 @@ class KrelCurvesPlot:
             kro_filtered = [cycle.kro_data[id] for id in filtered_list if id in cycle.kro_data]
 
             if krw_filtered:
-                krw_mean = np.nanmean(np.array(krw_filtered), axis=0)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    krw_mean = np.nanmean(np.array(krw_filtered), axis=0)
                 cycle.krw_data["middle"] = list(krw_mean)
 
             if kro_filtered:
-                kro_mean = np.nanmean(np.array(kro_filtered), axis=0)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    kro_mean = np.nanmean(np.array(kro_filtered), axis=0)
                 cycle.kro_data["middle"] = list(kro_mean)
 
     def plot(self, color_callback=None):
@@ -705,7 +717,7 @@ class KrelCurvesPlot:
 
             number_of_simulations = krel_cycle_curves.get_number_of_simulations()
             if number_of_simulations > 0:
-                self.transparency = 128 + 128 // number_of_simulations
+                self.transparency = 128 + 64 // number_of_simulations
             else:
                 self.transparency = 128
             for simulation_id in range(number_of_simulations):

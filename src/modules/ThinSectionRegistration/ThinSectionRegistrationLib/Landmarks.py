@@ -203,7 +203,9 @@ class LandmarksWidget(pqWidget):
         landmarks = self.logic.landmarksForVolumes(self.volumeNodes)
         if self.selectedLandmark in landmarks:
             newName = qt.QInputDialog.getText(
-                slicer.util.mainWindow(), "Rename Landmark", "New name for landmark '%s'?" % self.selectedLandmark
+                slicer.modules.AppContextInstance.mainWindow,
+                "Rename Landmark",
+                "New name for landmark '%s'?" % self.selectedLandmark,
             )
             if newName != "":
                 for fiducialNode, index in landmarks[self.selectedLandmark]:
@@ -229,7 +231,7 @@ class LandmarksWidget(pqWidget):
 
             traceback.print_exc()
             qt.QMessageBox.warning(
-                slicer.util.mainWindow(),
+                slicer.modules.AppContextInstance.mainWindow,
                 "Node Added",
                 "Exception!\n\n" + str(e) + "\n\nSee Python Console for Stack Trace",
             )

@@ -1,19 +1,17 @@
-import qt
-import slicer
-import vtk
-import json
 import markdown2 as markdown
 import numpy as np
-import os
 import pandas as pd
-
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
-from ltrace.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
+from typing import Union
 from pathlib import Path
+from abc import abstractmethod
+
 from SegmentEditorEffects import *
 from slicer import ScriptedLoadableModule
-from typing import Union
+
+from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.slicer.helpers import svgToQIcon
+from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
+from ltrace.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
 
 
 __all__ = [
@@ -47,6 +45,12 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
         if self.SETTING_KEY is None:
             raise NotImplementedError
 
+        moduleDir = Path(self.parent.path).parent
+        iconPath = moduleDir / "Resources" / "Icons" / f"{self.moduleName}.svg"
+
+        if iconPath.is_file():
+            self.parent.icon = svgToQIcon(iconPath)
+
     @classmethod
     def help(cls):
         htmlHelp = ""
@@ -69,7 +73,9 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
             msec: delay to associate with :func:`ScriptedLoadableModuleTest.delayDisplay()`.
         """
         if useGui:
-            tests_widget = LTraceTestsWidget(parent=slicer.util.mainWindow(), current_module=self.__class__.__name__)
+            tests_widget = LTraceTestsWidget(
+                parent=slicer.modules.AppContextInstance.mainWindow, currentModule=self.__class__.__name__
+            )
             tests_widget.exec()
             return
 
@@ -83,18 +89,19 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
     def set_setting(cls, key, value):
         slicer.app.settings().setValue(f"{cls.SETTING_KEY}/{key}", value)
 
+    def resource(self, resourceName):
+        return Path(slicer.util.modulePath(self.moduleName)).parent / "Resources" / resourceName
+
+    def title(self):
+        return self.parent.title
+
 
 class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-    def isReloading(self) -> bool:
-        return slicer.reloadingWidget.get(self.moduleName, False) if hasattr(slicer, "reloadingWidget") else False
-
-    def onReload(self) -> None:
-        slicer.reloadingWidget[self.moduleName] = True
-        ScriptedLoadableModule.ScriptedLoadableModuleWidget.onReload(self)
-        slicer.reloadingWidget[self.moduleName] = False
+    def setup(self):
+        super().setup()
 
     def enter(self) -> None:
         ApplicationObservables().moduleWidgetEnter.emit(self)
@@ -183,6 +190,44 @@ def dataFrameToTableNode(dataFrame, tableNode=None):
     return tableNode
 
 
+class LTraceEnvironmentMixin:
+    @property
+    def modulesToolbar(self):
+        if not self.__modulesToolbar:
+            raise AttributeError("Modules toolbar not set")
+        return self.__modulesToolbar
+
+    @modulesToolbar.setter
+    def modulesToolbar(self, value):
+        self.__modulesToolbar = value
+
+    def segmentEditor(self):
+        return slicer.util.getModuleWidget("CustomizedSegmentEditor")
+
+    def setCategory(self, category):
+        self.category = category
+
+    @abstractmethod
+    def setupEnvironment(self):
+        pass
+
+    def setupSegmentation(self):
+        pass
+
+    def enter(self):
+        pass
+
+    def setupTools(self):
+        self.getModuleManager().addToolsMenu(self.__modulesToolbar)
+
+    def setupLoaders(self):
+        self.getModuleManager().addLoadersMenu(self.__modulesToolbar)
+
+    @staticmethod
+    def getModuleManager():
+        return slicer.modules.AppContextInstance.modules
+
+
 def tableNodeToDict(tableNode):
     """
     Returns a dictionary of 1D numpy arrays
@@ -228,7 +273,7 @@ def tableNodeToDict(tableNode):
 
 def restartSlicerIn2s():
     text = "Slicer has been successfully configured and must be restarted."
-    mb = qt.QMessageBox(slicer.util.mainWindow())
+    mb = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
     mb.text = text
     mb.setWindowTitle("Configuration finished")
     qt.QTimer.singleShot(2000, lambda: killSlicer(mb))
@@ -240,18 +285,6 @@ def killSlicer(messagebox=None):
         messagebox.close()
         messagebox.delete()
     slicer.app.restart()
-
-
-def get_json_data():
-    folders = [
-        *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-        *(f"lib\\{base_version()}\\qt-scripted-modules\\Resources\\json\\WelcomeGeoSlicer.json".split("\\")),
-    ]
-    JSON_PATH = os.path.join(folders[0], os.sep, *folders[1:])
-    with open(JSON_PATH, "r") as json_file:
-        JSON_DATA = json.load(json_file)
-
-    return JSON_DATA
 
 
 def addNodeToSubjectHierarchy(node, dirPaths: list = None):
@@ -453,34 +486,5 @@ def tableWidgetToDataFrame(tableWidget: qt.QTableWidget) -> pd.DataFrame:
     return df
 
 
-class DebounceSignal:
-    """Wrapper for qt.Signal with debouncing, emiting the signal only one time after a given interval."""
-
-    def __init__(
-        self, parent: Union[qt.QWidget, qt.QObject], signal: qt.Signal, intervalMs: int = 500, qtTimer=qt.QTimer
-    ) -> None:
-        assert signal is not None, "Invalid signal reference."
-        assert parent is not None, "Invalid parent reference."
-
-        self.__signal = signal
-        self.timer = qtTimer(parent)
-        self.timer.setSingleShot(True)
-        self.timer.setInterval(intervalMs)
-        self.timer.timeout.connect(self.__onTimeout)
-        self.timer.stop()
-        self.__args = None
-        self.__kwargs = None
-
-    def emit(self, *args, **kwargs) -> None:
-        self.__args = args
-        self.__kwargs = kwargs
-
-        if self.timer.isActive():
-            self.timer.stop()
-
-        self.timer.start()
-
-    def __onTimeout(self) -> None:
-        self.__signal.emit(*self.__args, **self.__kwargs)
-        self.__args = None
-        self.__kwargs = None
+def getResourcePath(rtype: str) -> Path:
+    return Path(slicer.app.slicerHome) / "LTrace" / "Resources" / rtype

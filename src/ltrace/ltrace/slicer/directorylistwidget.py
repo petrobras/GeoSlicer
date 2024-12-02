@@ -63,3 +63,5 @@ class DirectoryListWidget(qt.QWidget):
             for path in natsorted(paths):
                 if len(path):
                     self.ui.pathList.addDirectory(path)
+
+        file_dialog.delete()

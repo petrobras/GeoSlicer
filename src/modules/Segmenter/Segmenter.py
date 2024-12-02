@@ -1,22 +1,25 @@
+import copy
 import glob
 import importlib
 import json
+import logging
 import math
 import os
 import pickle
-from pathlib import Path
 import shutil
-import cv2
-import markdown
-import logging
+from pathlib import Path
 
 import ctk
-import copy
+import cv2
+import markdown
 import matplotlib.colors as mcolors
 import numpy as np
 import qt
 import slicer
 import vtk
+from recordtype import recordtype  # mutable
+
+from SegmenterMethods.correlation_distance import CorrelationDistance
 from ltrace.algorithms.gabor import get_gabor_kernels
 from ltrace.assets_utils import get_trained_models_with_metadata, get_metadata, get_pth
 from ltrace.slicer import ui, helpers, widgets
@@ -29,17 +32,14 @@ from ltrace.slicer.helpers import (
     maskInputWithROI,
     highlight_error,
     hex2Rgb,
+    getCurrentEnvironment,
 )
 from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widgets import BaseSettingsWidget, PixelLabel
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer.widgets import BaseSettingsWidget, PixelLabel
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from Customizer import Customizer
-from SegmenterMethods.correlation_distance import CorrelationDistance
-from recordtype import recordtype  # mutable
-from slicer.ScriptedLoadableModule import *
-
+from ltrace.slicer.cli_queue import CliQueue
 
 # Checks if closed source code is available
 try:
@@ -156,12 +156,11 @@ class Segmenter(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Segmenter"  # TODO make this more human readable by adding spaces
-        self.parent.categories = ["Segmentation"]
+        self.parent.title = "AI Segmenter"
+        self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = Segmenter.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Segmenter/Automatic/automatic_thinSection.html').as_posix()}"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 
     @classmethod
@@ -173,13 +172,14 @@ class SegmenterWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
 
-        self.cliNode = None
+        self.cliQueue = None
         self.refNodeId = None
         self.filterUpdateThread = None
         self.inputsSelector = None
         self.inputSelectorMode = None
         self.imageLogMode = False
         self.deterministicPreTrainedModels = False
+        self.poreCleaningOptionsWidget = None
 
         self.hideWhenCreatingClassifier = []
         self.hideWhenLoadingClassifier = []
@@ -195,6 +195,7 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.layout.addWidget(self._setupClassifierSection())
         self.layout.addWidget(self._setupInputsSection())
+        self.layout.addWidget(self._setupCleaningSection())
         self.layout.addWidget(self._setupSettingsSection())
         self.layout.addWidget(self._setupOutputSection())
         self.layout.addWidget(self._setupApplySection())
@@ -226,7 +227,8 @@ class SegmenterWidget(LTracePluginWidget):
         self.classifierInput.objectName = "Classifier Input ComboBox"
         self.userClassifierInput.objectName = "User Classifier Input ComboBox"
 
-        self.classifierInput.activated.connect(self._onChangedClassifier)
+        # self.classifierInput.activated.connect(self._onChangedClassifier)
+        self.classifierInput.currentTextChanged.connect(self._onChangedClassifier)
         self.classifierInput.setToolTip("Select pre-trained model for segmentation")
         self.classifierInput.currentIndexChanged.connect(lambda _: self.classifierInput.setStyleSheet(""))
 
@@ -283,6 +285,55 @@ class SegmenterWidget(LTracePluginWidget):
 
         return widget
 
+    def _setupCleaningSection(self):
+        widget = ctk.ctkCollapsibleButton()
+        widget.text = "Cleaning"
+        widget.objectName = "Cleaning Collapsible Button"
+        layout = qt.QFormLayout(widget)
+
+        self.removeSpuriousCheckbox = qt.QCheckBox("Remove spurious")
+        self.removeSpuriousCheckbox.toolTip = "Detect and remove spurious predictions."
+        self.removeSpuriousCheckbox.checked = True
+        self.removeSpuriousCheckbox.objectName = "Remove Spurious CheckBox"
+
+        self.cleanResinCheckbox = qt.QCheckBox("Clean resin")
+        self.cleanResinCheckbox.toolTip = "Detect and clean bubbles and residues in pore resin."
+        self.cleanResinCheckbox.checked = True
+        self.cleanResinCheckbox.objectName = "Clean Resin CheckBox"
+        self.cleanResinCheckbox.connect("toggled(bool)", self._onCleanResinClicked)
+
+        self.pxForCleaningInput = ui.hierarchyVolumeInput(
+            hasNone=True,
+            nodeTypes=[
+                "vtkMRMLScalarVolumeNode",
+                "vtkMRMLVectorVolumeNode",
+            ],
+            tooltip="Combine PP and PX images for more accurate resin cleaning. If None, only the PP image is used. \
+                If a PX image is required as a model input, this selector will remain blocked and set to use the same image.",
+            onChange=self._onPxForCleaningSelected,
+            onActivation=self._onPxForCleaningSelected,
+        )
+        self.pxForCleaningInput.objectName = "PX For Cleaning ComboBox"
+
+        self.pxForCleaningInputLabel = qt.QLabel("       PX:")
+
+        self.smartRegCheckbox = qt.QCheckBox("Smart registration")
+        self.smartRegCheckbox.toolTip = "Method for registrating PP and PX images for pore resin cleaning. If unchecked, the images will be overlapped so that \
+            each one's center will share the same location: recommended when the images seem to be naturally registered already. \
+            If checked, the algorithm will decide between just centralizing the images (as in the unchecked case) or cropping their \
+            rock region before: recommended when PP and PX have different dimensions or do not seem to overlap naturally."
+        self.smartRegCheckbox.objectName = "Smart Registration CheckBox"
+        self.smartRegCheckbox.checked = False
+
+        layout.addRow(self.removeSpuriousCheckbox)
+        layout.addRow(self.cleanResinCheckbox)
+        layout.addRow(self.pxForCleaningInputLabel, self.pxForCleaningInput)
+        layout.addRow("", self.smartRegCheckbox)
+
+        self.poreCleaningOptionsWidget = widget
+
+        return widget
+
     def _setupInputsSection(self):
         widget = ctk.ctkCollapsibleButton()
         widget.text = "Inputs"
@@ -318,6 +369,8 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.inputComboboxes = [self.inputsSelector.referenceInput, *extraInputComboboxes]
         self.inputLabels = [self.inputsSelector.referenceLabel, *extraInputLabels]
+
+        self.pxInputCombobox = self.inputComboboxes[1]
 
         for i in range(maxInputChannels):
             combobox = self.inputComboboxes[i]
@@ -390,28 +443,38 @@ class SegmenterWidget(LTracePluginWidget):
         widget = qt.QWidget()
         vlayout = qt.QVBoxLayout(widget)
 
-        self.applyButton = ui.ButtonWidget(
-            text="Apply", tooltip="Run segmenter on input data limited by ROI", onClick=self._onApplyClicked
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self._onApplyClicked,
+            onCancelClick=self._onCancel,
+            applyTooltip="Run segmenter on input data limited by ROI",
+            cancelTooltip="Cancel",
+            applyText="Apply",
+            cancelText="Cancel",
+            enabled=False,
+            applyObjectName="Apply Button",
+            cancelObjectName=None,
         )
-        self.applyButton.objectName = "Apply Button"
 
-        self.applyButton.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 0px}")
-        self.applyButton.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
-
-        self.applyButton.enabled = False
-
+        self.stepLabel = qt.QLabel("")
         self.progressBar = LocalProgressBar()
 
         hlayout = qt.QHBoxLayout()
-        hlayout.addWidget(self.applyButton)
+        hlayout.addWidget(self.applyCancelButtons)
         hlayout.setContentsMargins(0, 8, 0, 8)
 
         vlayout.addLayout(hlayout)
+        vlayout.addWidget(self.stepLabel)
         vlayout.addWidget(self.progressBar)
 
         return widget
 
+    def _onCleanResinClicked(self):
+        self.pxForCleaningInput.visible = self.cleanResinCheckbox.checked
+        self.pxForCleaningInputLabel.visible = self.cleanResinCheckbox.checked
+        self._onPxForCleaningSelected()
+
     def _onLoadClassifierRadioToggled(self):
+        self._onCleanResinClicked()
         self._onChangedClassifier()
         self._updateWidgetsVisibility()
 
@@ -449,12 +512,12 @@ class SegmenterWidget(LTracePluginWidget):
     def enter(self) -> None:
         super().enter()
         # Update URL from Automatic classifier help's message
-        targetEnvUrlRelation = {"MicroCTEnv": "microCT", "ThinSectionEnv": "thinSection"}
-
-        env = slicer.util.selectedModule()
-        envLabel = targetEnvUrlRelation.get(env, "microCT")
-        message = self.loadClassifierHelpButton.message.replace("[ENV]", envLabel)
-        self.loadClassifierHelpButton.updateMessage(message)
+        # targetEnvUrlRelation = {"MicroCTEnv": "microCT", "ThinSectionEnv": "thinSection"}
+        #
+        # env = slicer.util.selectedModule()
+        # envLabel = targetEnvUrlRelation.get(env, "microCT")
+        # message = self.loadClassifierHelpButton.message.replace("[ENV]", envLabel)
+        # self.loadClassifierHelpButton.updateMessage(message)
 
         # Add pretrained models
         if self.classifierInput.count == 0:
@@ -462,13 +525,14 @@ class SegmenterWidget(LTracePluginWidget):
         self._updateWidgetsVisibility()
 
     def _addPretrainedModelsIfAvailable(self):
-        env = slicer.util.selectedModule()
+        env = getCurrentEnvironment().value
         envs = tuple(map(lambda x: x.value, NodeEnvironment))
 
         if env not in envs:
             return
 
         self.classifierInput.clear()
+
         model_dirs = get_trained_models_with_metadata(env)
         for model_dir in model_dirs:
             try:
@@ -568,6 +632,10 @@ class SegmenterWidget(LTracePluginWidget):
                 combobox.setCurrentNode(None)
 
         self.inputsSelector.mainInput.setCurrentNode(None)
+        self.poreCleaningOptionsWidget.visible = model_classes == ["Pore"]
+        self.pxForCleaningInput.enabled = len(model_inputs) == 1
+        if not self.pxForCleaningInput.enabled:
+            self._onPxSelected()
 
     def _onChangedUserClassifier(self, selected):
         isNodeTypeValid = selected and selected.IsA("vtkMRMLTextNode")
@@ -622,9 +690,9 @@ class SegmenterWidget(LTracePluginWidget):
 
     def _onReferenceSelected(self, node):
         self.refNodeId = node.GetID() if node is not None else None
-        self._checkRequirementsForApply()
         if node is None:
             return
+        self._checkRequirementsForApply()
 
         spacing = min([x for x in node.GetSpacing()])
         minSide = min(filter(lambda i: i != 1, node.GetImageData().GetDimensions())) * spacing
@@ -637,6 +705,14 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.bayes_widget.setImageInput(node)
 
+    def _onPxSelected(self):
+        self.pxForCleaningInput.setCurrentNode(self.pxInputCombobox.currentNode())
+
+    def _onPxForCleaningSelected(self):
+        self.smartRegCheckbox.visible = self.pxForCleaningInput.visible and (
+            self.pxForCleaningInput.currentNode() is not None
+        )
+
     def _checkHaveFilters(self):
         if self.createClassifierRadio.isChecked() and self.methodSelector.currentWidget().METHOD == "random_forest":
             valid = len(self.methodSelector.currentWidget().customFilters) and (self.refNodeId != None)
@@ -647,22 +723,10 @@ class SegmenterWidget(LTracePluginWidget):
         if self.methodSelector.currentWidget() == None:
             return
 
-        if self.cliNode == None or not self.cliNode.IsBusy():
-            self.applyButton.enabled = self.refNodeId is not None
+        if self.cliQueue == None or not self.cliQueue.is_running():
+            self.applyCancelButtons.setEnabled(self.refNodeId is not None)
         else:
-            self.applyButton.enabled = False
-
-    def _onSegmenterCLIModified(self, cliNode, event):
-        if cliNode is None:
-            return
-
-        if cliNode.GetStatusString() == "Completed":
-            warning = cliNode.GetParameterAsString("report")
-            if warning != "":
-                slicer.util.warningDisplay(warning)
-
-        if not cliNode.IsBusy():
-            print("ExecCmd CLI %s" % cliNode.GetStatusString())
+            self.applyCancelButtons.setEnabled(False)
 
     def _currentMethod(self):
         widget = self.methodSelector.currentWidget()
@@ -686,8 +750,8 @@ class SegmenterWidget(LTracePluginWidget):
         if not self._validateSourceVolume(segmentationNode, roiSegNode, referenceVolumeNode):
             return
 
-        self.applyButton.enabled = False
-
+        self.applyCancelButtons.applyBtn.setEnabled(False)
+        self.applyCancelButtons.cancelBtn.setEnabled(True)
         prefix = self.outputPrefix.text + "_{type}"
 
         if not self.imageLogMode:
@@ -709,11 +773,13 @@ class SegmenterWidget(LTracePluginWidget):
                 return
 
         try:
+            self.cliQueue = CliQueue(update_display=False, progress_bar=self.progressBar, progress_label=self.stepLabel)
+
             if self._currentMethod() == "bayesian-inference":
                 inputModelDir = None
                 params = self.methodSelector.currentWidget().getValuesAsDict()
                 logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
-                self.cliNode = logic.run(
+                logic.run(
                     inputModelDir,
                     segmentationNode,
                     referenceVolumeNode,
@@ -721,12 +787,13 @@ class SegmenterWidget(LTracePluginWidget):
                     roiSegNode,
                     prefix,
                     params,
+                    self.cliQueue,
                 )
             elif self.createClassifierRadio.checked:
                 inputModelDir = None
                 params = self.methodSelector.currentWidget().getValuesAsDict()
                 logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
-                self.cliNode = logic.run(
+                logic.run(
                     inputModelDir,
                     segmentationNode,
                     referenceVolumeNode,
@@ -735,6 +802,7 @@ class SegmenterWidget(LTracePluginWidget):
                     prefix,
                     params,
                     self.keepFeaturesCheckbox.checked,
+                    self.cliQueue,
                 )
             elif self.userClassifierRadio.checked:
                 inputModelDir = self.userClassifierInput.currentNode()
@@ -743,7 +811,7 @@ class SegmenterWidget(LTracePluginWidget):
                     raise ValueError("Please select a valid model.")
                 params = None
                 logic = SegmenterLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
-                self.cliNode = logic.run(
+                logic.run(
                     inputModelDir,
                     segmentationNode,
                     referenceVolumeNode,
@@ -752,25 +820,29 @@ class SegmenterWidget(LTracePluginWidget):
                     prefix,
                     params,
                     self.keepFeaturesCheckbox.checked,
+                    self.cliQueue,
                 )
             else:
                 inputModelComboBox = self.classifierInput
                 modelKind = get_metadata(inputModelComboBox.currentData)["kind"]
+                kernelSize = None
 
                 if modelKind == "torch":
                     logic = MonaiModelsLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
-                    self.cliNode = logic.run(
+                    tmpReferenceNode, tmpOutNode = logic.run(
                         inputModelComboBox,
                         referenceVolumeNode,
                         extraVolumeNodes,
                         roiSegNode,
                         prefix,
                         self.deterministicPreTrainedModels,
+                        self.cliQueue,
                     )
                 elif modelKind == "bayesian":
+                    kernelSize = int(inputModelComboBox.currentData.split("_")[-1][0])
                     params = None
                     logic = BayesianInferenceLogic(self.imageLogMode, onFinish=self.resetUI, parent=self.parent)
-                    self.cliNode = logic.run(
+                    tmpReferenceNode, tmpOutNode = logic.run(
                         inputModelComboBox.currentData,
                         segmentationNode,
                         referenceVolumeNode,
@@ -778,21 +850,38 @@ class SegmenterWidget(LTracePluginWidget):
                         roiSegNode,
                         prefix,
                         params,
+                        self.cliQueue,
                     )
+
+                if self.cliQueue and self.poreCleaningOptionsWidget.visible:
+                    logic = PoreCleaningLogic(
+                        removeSpurious=self.removeSpuriousCheckbox.isChecked(),
+                        cleanResin=self.cleanResinCheckbox.isChecked(),
+                        selectedPxNode=self.pxForCleaningInput.currentNode(),
+                        smartReg=self.smartRegCheckbox.isChecked(),
+                    )
+                    logic.run(tmpReferenceNode, tmpOutNode, roiSegNode, modelKind, kernelSize, self.cliQueue)
+
+            self.cliQueue.run()
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to complete execution. {e}")
             tmpPrefix = prefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
-            self.applyButton.enabled = True
+            clearPattern("TMP_P*_ROCK_AREA*")
+            self.applyCancelButtons.applyBtn.setEnabled(True)
+            self.applyCancelButtons.cancelBtn.setEnabled(False)
             raise
 
-        self.progressBar.setCommandLineModuleNode(self.cliNode)
+    def _onCancel(self):
+        if self.cliQueue is None:
+            return
+        self.cliQueue.stop(cancelled=True)
 
     def resetUI(self):
         self._checkRequirementsForApply()
-        if self.cliNode:
-            del self.cliNode
-            self.cliNode = None
+        if self.cliQueue:
+            del self.cliQueue
+            self.cliQueue = None
 
     def _updateWidgetsVisibility(self):
         self._checkRequirementsForApply()
@@ -812,6 +901,12 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.classifierInput.visible = self.loadClassifierRadio.isChecked()
         self.userClassifierInput.visible = self.userClassifierRadio.isChecked()
+
+        if self.classifierInput.visible:
+            self.pxInputCombobox.currentItemChanged.connect(self._onPxSelected)
+        else:
+            self.poreCleaningOptionsWidget.visible = False
+            self.pxInputCombobox.currentItemChanged.disconnect()
 
         method = self._currentMethod()
         if method and method != "random_forest":
@@ -880,6 +975,11 @@ def setupResultInScene(segmentationNode, referenceNode, imageLogMode, soiNode=No
             slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
 
 
+def hideTmpOutput(caller, event, params):
+    if caller.GetStatus() == slicer.vtkMRMLCommandLineModuleNode.Completed:
+        slicer.util.setSliceViewerLayers(label=None)
+
+
 class ClassifierProps:
     """Properties that determine whether specified inputs are compatible
     with a pre-trained classifier.
@@ -901,6 +1001,81 @@ class ClassifierProps:
     @staticmethod
     def prettify(dict_):
         return "\n".join(f"{key}: {val}" for key, val in sorted(dict_.items()))
+
+
+class PoreCleaningLogic(LTracePluginLogic):
+    def __init__(self, removeSpurious, cleanResin, selectedPxNode, smartReg):
+        self.removeSpurious = removeSpurious
+        self.cleanResin = cleanResin
+        self.selectedPxNode = selectedPxNode
+        self.smartReg = smartReg
+
+    def run(self, referenceNode, outNode, soiNode, modelKind, bayesianKernelSize, cliQueue):
+        if self.removeSpurious:
+            cliConf = {
+                "input": referenceNode.GetID(),
+                "output": outNode.GetID(),
+                "poreSegmentation": outNode.GetID(),
+                "poreSegModel": "unet" if modelKind == "torch" else {3: "sbayes", 7: "bbayes"}[bayesianKernelSize],
+            }
+            cliQueue.create_cli_node(
+                slicer.modules.removespuriouscli,
+                cliConf,
+                progress_text="Removing spurious detections",
+                modified_callback=hideTmpOutput,
+            )
+
+        if self.cleanResin:
+            tmpPpRockAreaNode = helpers.createTemporaryVolumeNode(slicer.vtkMRMLLabelMapVolumeNode, "TMP_PP_ROCK_AREA")
+            cliQueue.create_cli_node(
+                slicer.modules.smartforegroundcli,
+                parameters={"input": referenceNode.GetID(), "outputRock": tmpPpRockAreaNode.GetID()},
+                progress_text="Getting PP rock area",
+                modified_callback=hideTmpOutput,
+            )
+
+            cliConf = {
+                "ppImage": referenceNode.GetID(),
+                "poreSegmentation": outNode.GetID(),
+                "output": outNode.GetID(),
+                "ppRockArea": tmpPpRockAreaNode.GetID(),
+            }
+
+            tmpPxForCleaningNode = self.selectedPxNode
+
+            if self.selectedPxNode is not None:
+                if soiNode is not None:
+                    tmpPxForCleaningNode = prepareTemporaryInputs(
+                        [tmpPxForCleaningNode],
+                        tmpPxForCleaningNode.GetName(),
+                        soiNode=soiNode,
+                        referenceNode=self.selectedPxNode,
+                    )[0][0]
+
+                cliConf.update({"pxImage": tmpPxForCleaningNode.GetID()})
+
+                if self.smartReg:
+                    tmpPxRockAreaNode = helpers.createTemporaryVolumeNode(
+                        slicer.vtkMRMLLabelMapVolumeNode, "TMP_PX_ROCK_AREA"
+                    )
+                    cliQueue.create_cli_node(
+                        slicer.modules.smartforegroundcli,
+                        parameters={
+                            "input": tmpPxForCleaningNode.GetID(),
+                            "outputRock": tmpPxRockAreaNode.GetID(),
+                        },
+                        progress_text="Getting PX rock area",
+                        modified_callback=hideTmpOutput,
+                    )
+
+                    cliConf.update({"pxRockArea": tmpPxRockAreaNode.GetID(), "smartReg": True})
+
+            cliQueue.create_cli_node(
+                slicer.modules.cleanresincli,
+                cliConf,
+                progress_text="Cleaning pore resin",
+                modified_callback=hideTmpOutput,
+            )
 
 
 class SegmenterLogic(LTracePluginLogic):
@@ -993,6 +1168,7 @@ class SegmenterLogic(LTracePluginLogic):
         outputPrefix,
         params,
         enableKeepFeatures,
+        cliQueue,
     ):
         if not inputClassifierNode and not segmentationNode:
             slicer.util.errorDisplay("Please select a valid Segmentation Node as Annotation input.")
@@ -1055,9 +1231,9 @@ class SegmenterLogic(LTracePluginLogic):
         cliConf["xargs"] = json.dumps(params)
 
         # End Setup Outputs -----------------------------------------------------------------------------
-        cliNode = slicer.cli.run(slicer.modules.segmentercli, None, cliConf, wait_for_completion=False)
 
-        def onSucess(caller):
+        def onSucess():
+            caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
                     slicer.vtkMRMLSegmentationNode, outputPrefix.replace("{type}", "Segmentation")
@@ -1138,20 +1314,27 @@ class SegmenterLogic(LTracePluginLogic):
                 self.progressUpdate(0)
                 raise
 
-        def onFinish(caller):
+        def onFinish():
+            caller = cliQueue.get_current_node()
             print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             self.progressUpdate(1.0)
             self.onFinish()
 
-        ehandler = CLIEventHandler()
-        ehandler.onSucessEvent = onSucess
-        ehandler.onFinish = onFinish
+        def onCancel():
+            slicer.mrmlScene.RemoveNode(tmpOutNode)
 
-        cliNode.AddObserver("ModifiedEvent", ehandler)
+        def onFailure():
+            slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        return cliNode
+        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_finished.connect(onFinish)
+        cliQueue.signal_queue_cancelled.connect(onCancel)
+        cliQueue.signal_queue_failed.connect(onFailure)
+        cliQueue.create_cli_node(slicer.modules.segmentercli, cliConf)
+
+        return tmpReferenceNode, tmpOutNode
 
     def create_node(self, name, reference, data):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -1207,6 +1390,7 @@ class MonaiModelsLogic(LTracePluginLogic):
         soiNode,
         outputPrefix,
         deterministic,
+        cliQueue,
     ):
         tmpOutNode = helpers.createNode(slicer.vtkMRMLLabelMapVolumeNode, outputPrefix.replace("{type}", "TMP_OUTNODE"))
         slicer.mrmlScene.AddNode(tmpOutNode)
@@ -1257,9 +1441,9 @@ class MonaiModelsLogic(LTracePluginLogic):
             raise RuntimeError(message)
 
         # End Setup Outputs -----------------------------------------------------------------------------
-        cliNode = slicer.cli.run(slicer.modules.monaimodelscli, None, cliConf, wait_for_completion=False)
 
-        def onSucess(caller):
+        def onSucess():
+            caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
                     slicer.vtkMRMLSegmentationNode, outputPrefix.replace("{type}", "Segmentation")
@@ -1284,29 +1468,38 @@ class MonaiModelsLogic(LTracePluginLogic):
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
 
-                self.outNodeId = outNode.GetID()
-
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
+                clearPattern("TMP_P*_ROCK_AREA*")
                 self.progressUpdate(0)
                 raise
 
-        def onFinish(caller):
+        def onFinish():
+            caller = cliQueue.get_current_node()
             print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
+            clearPattern("TMP_P*_ROCK_AREA*")
             self.progressUpdate(1.0)
             self.onFinish()
 
-        ehandler = CLIEventHandler()
-        ehandler.onSucessEvent = onSucess
-        ehandler.onFinish = onFinish
+        def onCancel():
+            slicer.mrmlScene.RemoveNode(tmpOutNode)
 
-        cliNode.AddObserver("ModifiedEvent", ehandler)
+        def onFailure():
+            slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        return cliNode
+        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_finished.connect(onFinish)
+        cliQueue.signal_queue_cancelled.connect(onCancel)
+        cliQueue.signal_queue_failed.connect(onFailure)
+        cliQueue.create_cli_node(
+            slicer.modules.monaimodelscli, cliConf, progress_text="Segmenting pores", modified_callback=hideTmpOutput
+        )
+
+        return tmpReferenceNode, tmpOutNode
 
 
 class BayesianInferenceLogic(LTracePluginLogic):
@@ -1413,6 +1606,7 @@ class BayesianInferenceLogic(LTracePluginLogic):
         soiNode,
         outputPrefix,
         params,
+        cliQueue,
     ):
         if not inputModelDir and not segmentationNode:
             slicer.util.errorDisplay("Please select a valid Segmentation Node as Annotation input.")
@@ -1477,9 +1671,9 @@ class BayesianInferenceLogic(LTracePluginLogic):
         cliConf["xargs"] = json.dumps(params)
 
         # End Setup Outputs -----------------------------------------------------------------------------
-        cliNode = slicer.cli.run(slicer.modules.bayesianinferencecli, None, cliConf, wait_for_completion=False)
 
-        def onSucess(caller):
+        def onSucess():
+            caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
                     slicer.vtkMRMLSegmentationNode, outputPrefix.replace("{type}", "Segmentation")
@@ -1505,65 +1699,41 @@ class BayesianInferenceLogic(LTracePluginLogic):
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
 
-                self.outNodeId = outNode.GetID()
-
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
+                clearPattern("TMP_P*_ROCK_AREA*")
                 self.progressUpdate(0)
                 raise
 
-        def onFinish(caller):
+        def onFinish():
+            caller = cliQueue.get_current_node()
             print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
+            clearPattern("TMP_P*_ROCK_AREA*")
             self.progressUpdate(1.0)
             self.onFinish()
 
-        ehandler = CLIEventHandler()
-        ehandler.onSucessEvent = onSucess
-        ehandler.onFinish = onFinish
+        def onCancel():
+            slicer.mrmlScene.RemoveNode(tmpOutNode)
 
-        cliNode.AddObserver("ModifiedEvent", ehandler)
+        def onFailure():
+            slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        return cliNode
+        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_finished.connect(onFinish)
+        cliQueue.signal_queue_cancelled.connect(onCancel)
+        cliQueue.signal_queue_failed.connect(onFailure)
+        cliQueue.create_cli_node(
+            slicer.modules.bayesianinferencecli,
+            cliConf,
+            progress_text="Segmenting pores",
+            modified_callback=hideTmpOutput,
+        )
 
-
-class CLIEventHandler:
-    COMPlETED = "completed"
-    CANCELLED = "cancelled"
-
-    def __init__(self):
-        self.onSucessEvent = lambda cliNode: print("Completed")
-        self.onErrorEvent = lambda cliNode: print("Completed with Errors")
-        self.onCancelEvent = lambda cliNode: print("Cancelled")
-        self.onFinish = lambda cliNode: None
-
-        self.shouldProcess = True
-
-    def getStatus(self, caller):
-        return caller.GetStatusString().lower()
-
-    def __call__(self, cliNode, event):
-        if cliNode is None or not self.shouldProcess:
-            return
-
-        status = self.getStatus(cliNode)
-
-        if status == self.COMPlETED:
-            self.onSucessEvent(cliNode)
-
-        elif "error" in status:
-            self.onErrorEvent(cliNode)
-
-        elif status == self.CANCELLED:
-            self.onCancelEvent(cliNode)
-
-        if not cliNode.IsBusy():
-            self.onFinish(cliNode)
-            self.shouldProcess = False
-            cliNode.RemoveObservers("ModifiedEvent")
+        return tmpReferenceNode, tmpOutNode
 
 
 class RandomForestSettingsWidget(BaseSettingsWidget):
@@ -1660,7 +1830,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                 self.tableFilters.horizontalHeader().setStretchLastSection(qt.QHeaderView.Stretch)
                 self.tableFilters.verticalHeader().hide()
         else:
-            dialog = qt.QDialog(slicer.util.mainWindow())
+            dialog = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
             dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
             dialog.setWindowTitle("Feature already been added")
 
@@ -1696,7 +1866,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
             self.customFilters[filter_func] = True
             status = True
         else:
-            dialog = qt.QDialog(slicer.util.mainWindow())
+            dialog = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
             dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
             dialog.setWindowTitle("Customize applied filters")
 

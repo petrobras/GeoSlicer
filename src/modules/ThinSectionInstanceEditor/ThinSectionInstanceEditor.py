@@ -1,28 +1,25 @@
+import logging
 import os
+from enum import Enum
 from pathlib import Path
 
 import ctk
-from Customizer import Customizer
 import cv2
-import mrml
 import numpy as np
-import pandas as pd
 import qt
+import scipy
 import slicer
 import vtk
-import scipy
-import logging
 
 from ThinSectionInstanceEditorLib.widget.FilterableTableWidgets import GenericTableWidget
+from ltrace.algorithms.measurements import LabelStatistics2D
 from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, tryGetNode
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer.volume_operator import VolumeOperator
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from ltrace.slicer import ui
 from ltrace.slicer_utils import dataFrameToTableNode
-from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
-from ltrace.algorithms.measurements import LabelStatistics2D
 from ltrace.transforms import transformPoints
-from enum import Enum
 
 
 def calculate_instance_properties(mask, node):
@@ -49,11 +46,11 @@ def calculate_instance_properties(mask, node):
     # Statistics
     mask_filt = mask.squeeze()
     voxel_area = np.product(spacing)
-
+    # TODO check that the inspector API is not being used correctly
     volumeOperator = VolumeOperator(node)
     operator = LabelStatistics2D(mask_filt, spacing, direction=None, size_filter=0)
     pointsInRAS = np.array(np.where(mask_filt)).T
-    stats = operator(mask_filt, pointsInRAS)
+    stats = operator.strict_calculate(mask_filt, pointsInRAS)
     statistics["area (mm^2)"] = stats[2]
     statistics["max_feret (mm)"] = stats[4] * spacing[0]
     statistics["min_feret (mm)"] = stats[5] * spacing[0]
@@ -80,8 +77,8 @@ class ThinSectionInstanceEditor(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Thin Section Instance Editor"
-        self.parent.categories = ["Segmentation"]
+        self.parent.title = "Instance Editor"
+        self.parent.categories = ["Segmentation", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ThinSectionInstanceEditor.help()
@@ -124,7 +121,7 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        self.inputTableNodeComboBox = hierarchyVolumeInput(
+        self.inputTableNodeComboBox = ui.hierarchyVolumeInput(
             nodeTypes=["vtkMRMLTableNode"], onChange=self.onInputTableNodeChanged
         )
         self.inputTableNodeComboBox.setToolTip("Select the instance report table.")
@@ -155,29 +152,29 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
         editFormLayout = qt.QFormLayout(self.editCollapsibleButton)
 
         self.addSegmentButton = qt.QPushButton("Add")
-        self.addSegmentButton.setIcon(qt.QIcon(str(Customizer.ADD_ICON_PATH)))
+        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
         self.addSegmentButton.clicked.connect(self.onAddSegmentButtonClicked)
 
         self.paintButton = qt.QPushButton("Paint")
-        self.paintButton.setIcon(qt.QIcon(str(Customizer.EDIT_ICON_PATH)))
+        self.paintButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Edit.png"))
         self.paintButton.clicked.connect(self.onPaintButtonClicked)
 
         self.eraseButton = qt.QPushButton("Erase")
-        self.eraseButton.setIcon(qt.QIcon(str(ThinSectionInstanceEditor.RES_DIR / "Icons" / "EraseIcon.png")))
+        self.eraseButton.setIcon(qt.QIcon(getResourcePath("Icons") / "IconSet-dark" / "Eraser.png"))
         self.eraseButton.clicked.connect(self.onEraseButtonClicked)
 
         self.applySegmentButton = qt.QPushButton("Apply")
-        self.applySegmentButton.setIcon(qt.QIcon(str(Customizer.APPLY_ICON_PATH)))
+        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
         self.applySegmentButton.setEnabled(False)
         self.applySegmentButton.clicked.connect(self.onApplySegmentButtonClicked)
 
         self.cancelSegmentButton = qt.QPushButton("Cancel")
-        self.cancelSegmentButton.setIcon(qt.QIcon(str(Customizer.CANCEL_ICON_PATH)))
+        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
         self.cancelSegmentButton.setEnabled(False)
         self.cancelSegmentButton.clicked.connect(self.onCancelSegmentButtonClicked)
 
         self.declineSegmentButton = qt.QPushButton("Decline")
-        self.declineSegmentButton.setIcon(qt.QIcon(str(Customizer.DELETE_ICON_PATH)))
+        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Delete.png"))
         self.declineSegmentButton.clicked.connect(self.onDeclineSegmentButtonClicked)
 
         editButtonsHBoxLayout = qt.QHBoxLayout()
@@ -210,21 +207,21 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
         outputFormLayout.addRow(" ", None)
         reset_style_on_valid_text(self.outputSuffixLineEdit)
 
-        self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setFixedHeight(40)
-        self.applyButton.clicked.connect(self.onApplyButtonClicked)
-
-        self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setFixedHeight(40)
-        self.cancelButton.clicked.connect(self.onCancelButtonClicked)
-
-        buttonsHBoxLayout = qt.QHBoxLayout()
-        buttonsHBoxLayout.addWidget(self.applyButton)
-        buttonsHBoxLayout.addWidget(self.cancelButton)
-        formLayout.addRow(buttonsHBoxLayout)
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self.onApplyButtonClicked,
+            onCancelClick=self.onCancelButtonClicked,
+            applyTooltip="Apply changes",
+            cancelTooltip="Cancel",
+            applyText="Apply",
+            cancelText="Cancel",
+            enabled=True,
+            applyObjectName="Apply Button",
+            cancelObjectName=None,
+        )
+        formLayout.addWidget(self.applyCancelButtons)
 
         self.spacerItem = qt.QSpacerItem(10, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
-        self.layout.addItem(self.spacerItem)
+        formLayout.addItem(self.spacerItem)
 
         self.switchEditionMode(editMode=None)
 
@@ -291,9 +288,9 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
                 )
                 if self.applySegmentButton.enabled == True:
                     self.applySegmentButton.click()
-                self.applyButton.click()
+                self.applyCancelButtons.applyBtn.click()
             else:
-                self.cancelButton.click()
+                self.applyCancelButtons.cancelBtn.click()
 
         labelVolumeNode = slicer.mrmlScene.GetNodeByID(labelVolumeID)
         tableNodeID = labelVolumeNode.GetAttribute("ThinSectionInstanceTableNode")
@@ -436,17 +433,17 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
             self.layout.removeItem(self.spacerItem)
 
     def selectReferenceToTableNode(self, tableNode):
-        dialog = qt.QDialog(slicer.util.mainWindow())
+        dialog = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
         dialog.setWindowFlags(dialog.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
         dialog.setWindowTitle("Select corresponding reference and labelmap node")
         formLayout = qt.QFormLayout()
 
-        referenceNodeComboBox = hierarchyVolumeInput(
+        referenceNodeComboBox = ui.hierarchyVolumeInput(
             nodeTypes=["vtkMRMLVectorVolumeNode"],
         )
         referenceNodeComboBox.setToolTip("Select the corresponding reference node.")
 
-        labelMapNodeComboBox = hierarchyVolumeInput(
+        labelMapNodeComboBox = ui.hierarchyVolumeInput(
             nodeTypes=["vtkMRMLLabelMapVolumeNode"],
         )
         labelMapNodeComboBox.setToolTip("Select the corresponding labelmap node.")
@@ -755,7 +752,9 @@ class ThinSectionInstanceEditorLogic(LTracePluginLogic):
         updatedLabelMapNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
         updatedDataFrame = dataFrame
-        updatedDataFrame.drop(updatedDataFrame[updatedDataFrame.label.isin(self.declinedLabels)].index, inplace=True)
+        updatedDataFrame = updatedDataFrame.drop(
+            updatedDataFrame[updatedDataFrame.label.isin(self.declinedLabels)].index
+        )
         updatedTableNode = dataFrameToTableNode(updatedDataFrame)
         updatedTableNode.SetName(slicer.mrmlScene.GenerateUniqueName(tableNode.GetName() + "_" + outputSuffix))
         updatedTableNode.SetAttribute("InstanceEditor", tableNode.GetAttribute("InstanceEditor"))
@@ -822,7 +821,9 @@ class ThinSectionInstanceEditorLogic(LTracePluginLogic):
 
                 self.editedLabelMapNodeArray[0][mask == True] = new_label
                 k += 1
-            except TypeError:  # when single-pixel island happens a TypeError is catched by calculate_instance_properties()
+            except (
+                TypeError
+            ):  # when single-pixel island happens a TypeError is catched by calculate_instance_properties()
                 self.editedLabelMapNodeArray[0][mask == True] = 0
 
         return rowsData
@@ -893,7 +894,7 @@ class ThinSectionInstanceEditorLogic(LTracePluginLogic):
         return np.any([instanceIndex not in [0, value] for instanceIndex in instancesUnderBrush])
 
     def setMouseInteractionToViewTransform(self):
-        mouseModeToolBar = slicer.util.findChild(slicer.util.mainWindow(), "MouseModeToolBar")
+        mouseModeToolBar = slicer.util.findChild(slicer.modules.AppContextInstance.mainWindow, "MouseModeToolBar")
         mouseModeToolBar.interactionNode().SetCurrentInteractionMode(slicer.vtkMRMLInteractionNode.ViewTransform)
 
     def onMouseButtonClickedOrHeld(self, *args):

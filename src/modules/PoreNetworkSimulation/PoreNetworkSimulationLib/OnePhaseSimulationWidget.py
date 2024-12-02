@@ -1,10 +1,11 @@
 import qt
 
-from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
-from PoreNetworkSimulationLib.constants import *
+from .constants import *
 from ltrace.slicer import ui
 
 from ltrace.slicer.widget.help_button import HelpButton
+
+from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 
 
 class OnePhaseSimulationWidget(qt.QFrame):

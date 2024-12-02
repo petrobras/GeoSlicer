@@ -2,17 +2,13 @@
 
 Uma vez iniciada a execução do *script* principal, o programa itera sobre as imagens do diretório de entrada e executa uma série de operações. No geral, as operações salvam arquivos temporários em formato NRRD e retornam o caminho onde foram armazenados, de modo que possam ser utilizados pelas aplicações CLI do GeoSlicer em etapas posteriores.
 
-
-Caso o nome da imagem conste no arquivo `filter_images.csv` e o número de ilhas úteis conste como 0, a imagem é ignorada.
-
-
 ![](overview/overview.png)
 
 
 ## [ThinSectionLoader](ThinSectionLoader.py): Carregamento das imagens
 
 
-A imagem PP/c1 é carregada e salva em formato NRRD compatível com as aplicações em CLI executadas nas etapas posteriores. O cabeçalho do arquivo é diferente de acordo com o modelo de segmentação de poro escolhido (Bayesiano ou neural), visto que são administrados por diferentes CLI's. A menos que o nome da imagem conste no arquivo `not_use_px.csv`, a versão PX/c2 também é carregada para uso posterior, porém é mantida apenas em memória em vez de salva em disco.  
+A imagem PP/c1 é carregada e salva em formato NRRD compatível com as aplicações em CLI executadas nas etapas posteriores. O cabeçalho do arquivo é diferente de acordo com o modelo de segmentação de poro escolhido (Bayesiano ou neural), visto que são administrados por diferentes CLI's. Opcionalmente, a versão PX/c2 também é carregada para uso posterior.  
 
 
 ## [PoreSegmenter](PoreSegmenter.py): Segmentação binária de poros
@@ -21,18 +17,20 @@ A imagem PP/c1 é carregada e salva em formato NRRD compatível com as aplicaç�
 O CLI de segmentação binária de poro é invocado para operar a partir do caminho para o NRRD da imagem original, salvo pelo [ThinSectionLoader](ThinSectionLoader.py). O resultado é salvo em um novo NRRD.
 
 
-## [FragmentsSplitter](FragmentsSplitter.py): Isolamento dos fragmentos de interesse da rocha
+## [ForegroundSegmenter](ForegroundSegmenter.py): Isolamento dos fragmentos de interesse da rocha
+
+Normalmente, as imagens de seção delgada incluem grandes áreas de borda não-úteis para a análise da rocha. Além disso, muitas imagens possuem grandes regiões "vazias", preenchidas por resina de poro, que são detectadas pelo [PoreSegmenter](PoreSegmenter.py) mas que não correspondem de fato à porosidade da rocha, mas apenas à região em volta de seu(s) fragmento(s). Em alguns casos específicos, não todos mas apenas os *N* maiores fragmentos da seção de rocha interessam.
 
 
-Muitas imagens possuem grandes regiões "vazias", preenchidas por resina de poro, que são detectadas pelo [PoreSegmenter](PoreSegmenter.py) mas que não correspondem de fato à porosidade da rocha, mas apenas à região em volta de seu(s) fragmento(s). Em alguns casos específicos, não todos mas apenas os *N* maiores fragmentos da seção de rocha interessam. Os nomes das imagens que se encaixam nessa situação devem constar no arquivo `filter_images.csv`, juntamente ao valor de *N*. Para isolar os fragmentos úteis da rocha, a seguinte sequência de operações é aplicada:
+Este módulo permite isolar a área útil (não-borda) da rocha e, opcionalmente, separar seus fragmentos. Apenas para o segundo caso a segmentação prévia da resina de poro é necessária. O processo completo inclui a seguinte sequência de operações:
 
 
 * Primeiramente, o maior fragmento, correspondente à toda área da seção, é isolado das bordas da imagem;
-* Então, toda porosidade detectada que toque a borda da imagem é também descartada, pois é interpretada como resina de poro visível ao redor da área útil da rocha;
-* Por fim, caso a imagem conste entre as precisem considerar apenas os *N* maiores fragmentos, o tamanho (em pixeis) de cada fragmento da área útil restante é medido e apenas os *N* maiores são mantidos.
+* Então, no caso de separação dos fragmentos, toda porosidade detectada que toque a borda da imagem é também descartada, pois é interpretada como resina de poro visível ao redor da área útil da rocha;
+* Por fim, no caso opcional de se considerar apenas os *N* maiores fragmentos, o tamanho (em pixeis) de cada fragmento da área útil restante é medido e apenas os *N* maiores são mantidos.
 
 
-O NRRD dos poros detectados é atualizado descartando toda detecção não-contida na área  útil da rocha.
+No caso de separação dos fragmentos, o NRRD dos poros detectados é atualizado descartando toda detecção não-contida na área útil da rocha.
 
 
 ## [PoreCleaner](PoreCleaner.py): Remoção de poros espúrios e artefatos na resina
@@ -54,10 +52,10 @@ Os segmentadores de poro atuais do GeoSlicer tendem a gerar detecções espúria
 
 1. **Ter cor branca ou ter cor azul com pouca intensidade e saturação:** em geral, as bolhas são brancas ou, quando cobertas de material, têm um tom de azul quase negro. Os resíduos que eventualmente circundam as bolhas também tem um nível de azul pouco intenso;
 2. **Tocar na resina de poro:** a transição entre a resina e os artefatos é normalmente direta e suave. Como o modelo de segmentação de poro detecta bem a região de resina, o artefato precisa tocar nessa região. Consequentemente, o algoritmo atual não consegue detectar casos menos comuns em que o artefato tome 100% da área do poro;
-3. **Ser pouco visível na imagem PX/c2:** alguns elementos da rocha podem ser parecidos com os artefatos e também ter contato com a resina. Porém, no geral, os artefatos são pouco ou nada visíveis nas imagens PX/c2, enquanto os demais elementos são geralmente notáveis. Algumas imagens do poço RJS-702, porém, não têm um bom alinhamento natual ou facilmente corrigível entre as imagens PP e PX, dificultando essa correspondência de regiões. Esta etapa é então ignorada para essas imagens, listadas no arquivo `not_use_px.csv`, o que pode resultar em sobressegmentação dos poros por capturar falsos artefatos.
+3. **Ser pouco visível na imagem PX/c2:** alguns elementos da rocha podem ser parecidos com os artefatos e também ter contato com a resina. Porém, no geral, os artefatos são pouco ou nada visíveis nas imagens PX/c2, enquanto os demais elementos são geralmente notáveis. Note que essa análise exige um bom registro (alinhamento espacial) entre as imagens PP/c1 e PX/c2. O algoritmo tenta corrigir possíveis desalinhamentos centralizando uma imagem sobre a outra, opcionalmente considerando apenas a área útil (obtida através do recurso [ForegroundSegmenter](ForegroundSegmenter.py)) de cada uma.
 
 
-O NRRD de poros é novamente atualizado, desta vez com os poros "limpos".
+O NRRD de poros é novamente atualizado, desta vez com porosidade "limpa" com base no(s) recurso(s) aplicado(s).
 
 
 ## [OoidSegmenter](OoidSegmenter.py): Segmentação de oóides

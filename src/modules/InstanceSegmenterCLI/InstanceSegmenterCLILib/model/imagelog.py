@@ -185,9 +185,9 @@ class ImageLogSidewallSampleModel(Model):
         labels = propertiesDataFrame["label"].to_list()
         depths, problematicLabels = instances_depths(labelMapArray, labels, ijkToRASMatrix)
         problematicIndexes = propertiesDataFrame[propertiesDataFrame["label"].isin(problematicLabels)].index
-        propertiesDataFrame.drop(problematicIndexes, inplace=True)
+        propertiesDataFrame = propertiesDataFrame.drop(problematicIndexes)
         propertiesDataFrame["depth (m)"] = depths
-        propertiesDataFrame.sort_values(by=["depth (m)"], ascending=True, inplace=True)
+        propertiesDataFrame = propertiesDataFrame.sort_values(by=["depth (m)"], ascending=True)
 
         propertiesDataFrame = propertiesDataFrame[
             ["depth (m)", "diam (cm)", "circularity", "solidity", "azimuth (°)", "label"]

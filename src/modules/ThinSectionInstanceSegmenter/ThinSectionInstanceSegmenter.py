@@ -205,8 +205,8 @@ class ThinSectionInstanceSegmenter(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "ThinSection Instance Segmenter"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.title = "Instance Segmenter"
+        self.parent.categories = ["Segmentation", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ThinSectionInstanceSegmenter.help()
         self.parent.dependencies = []
@@ -299,7 +299,7 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
         self.inputsSelector.soiInput.objectName = "SOI ComboBox"
         self.inputsSelector.referenceInput.enabled = True
         self.inputsSelector.referenceInput.objectName = "Input Volume ComboBox"
-        self.inputsSelector.referenceInput.setNodeTypes(["vtkMRMLVectorVolumeNode"])
+        self.inputsSelector.referenceInput.selectorWidget.setNodeTypes(["vtkMRMLVectorVolumeNode"])
 
         hbox = qt.QHBoxLayout(widget)
         inferenceTypeLabel = qt.QLabel("Inference:")
@@ -411,20 +411,22 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
         widget = qt.QWidget()
         vlayout = qt.QVBoxLayout(widget)
 
-        self.applyButton = ui.ButtonWidget(
-            text="Apply", tooltip="Run segmenter on input data limited by ROI", onClick=self._onApplyClicked
+        self.applyCancelButtons = ui.ApplyCancelButtons(
+            onApplyClick=self._onApplyClicked,
+            onCancelClick=self._onCancel,
+            applyTooltip="Run segmenter on input data limited by ROI",
+            cancelTooltip="Cancel",
+            applyText="Apply",
+            cancelText="Cancel",
+            enabled=False,
+            applyObjectName="Apply Button",
+            cancelObjectName=None,
         )
-        self.applyButton.objectName = "Apply Button"
-
-        self.applyButton.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 0px}")
-        self.applyButton.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
-
-        self.applyButton.enabled = False
 
         self.progressBar = LocalProgressBar()
 
         hlayout = qt.QHBoxLayout()
-        hlayout.addWidget(self.applyButton)
+        hlayout.addWidget(self.applyCancelButtons)
         hlayout.setContentsMargins(0, 8, 0, 8)
 
         vlayout.addLayout(hlayout)
@@ -457,8 +459,14 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
         self.chunk_size_spinbox.setMaximum(max_size)
 
     def _checkRequirementsForApply(self):
-        if self.cliNode == None or not self.cliNode.IsBusy():
-            self.applyButton.enabled = self.refNode is not None
+        if self.cliNode is None or not self.cliNode.IsBusy():
+            self.applyCancelButtons.setEnabled(self.refNode is not None)
+
+    def _onCancel(self):
+        if self.cliNode is None:
+            return
+        self.cliNode.Cancel()
+        self.resetUI()
 
     def _onApplyClicked(self):
         if self.outputPrefix.text.strip() == "":
@@ -469,7 +477,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             slicer.util.errorDisplay("Please select an input node.")
             return
 
-        self.applyButton.enabled = False
+        self.applyCancelButtons.applyBtn.setEnabled(False)
+        self.applyCancelButtons.cancelBtn.setEnabled(True)
 
         prefix = self.outputPrefix.text + "_{type}"
 
@@ -494,7 +503,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             model_dir = model_dir.as_posix()
             if self.remoteRadioButton.checked:
                 self.cliNode = logic.dispatch(model_dir, refNode, soiNode, prefix, params, classes)
-                self.applyButton.enabled = True
+                self.applyCancelButtons.applyBtn.setEnabled(True)
+                self.applyCancelButtons.cancelBtn.setEnabled(False)
             else:
                 self.cliNode = logic.run(model_dir, refNode, soiNode, prefix, params, classes)
                 if self.cliNode:
@@ -507,7 +517,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             slicer.util.errorDisplay(f"Failed to complete execution. {e}")
             tmpPrefix = prefix.replace("{type}", "TMP_*")
             clearPattern(tmpPrefix)
-            self.applyButton.enabled = True
+            self.applyCancelButtons.applyBtn.setEnabled(True)
+            self.applyCancelButtons.cancelBtn.setEnabled(False)
             raise
 
     def resetUI(self):
@@ -520,12 +531,9 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
         self._addPretrainedModelsIfAvailable()
 
     def _addPretrainedModelsIfAvailable(self):
-        env = slicer.util.selectedModule()
-        envs = tuple(map(lambda x: x.value, NodeEnvironment))
+        env = helpers.getCurrentEnvironment().value
 
-        if env not in envs:
-            return
-
+        assert env is not None, "Missing environment definition"
         if self.modelInput.count == 0:
             try:
                 model_dirs = get_trained_models_with_metadata(env)

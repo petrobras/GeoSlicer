@@ -6,12 +6,12 @@ import re
 import numpy as np
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer import helpers
+from ltrace.slicer import helpers, export, netcdf
 from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.utils.callback import Callback
 from collections import OrderedDict
 from pathlib import Path
-from Export import ExportLogic, Callback
-from NetCDFExport import exportNetcdf
+
 
 # Checks if closed source code is available
 try:
@@ -33,7 +33,7 @@ class MicroCTExport(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Micro CT Export"
-        self.parent.categories = ["Micro CT"]
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MicroCTExport.help()
 
@@ -89,6 +89,7 @@ class MicroCTExportWidget(LTracePluginWidget):
 
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+
         self.logic = MicroCTExportLogic()
 
     def _addRow(self, name, widget):
@@ -106,7 +107,6 @@ class MicroCTExportWidget(LTracePluginWidget):
 
     def setup(self):
         LTracePluginWidget.setup(self)
-
         self.gridLayout = qt.QGridLayout()
         self.layout.addLayout(self.gridLayout)
 
@@ -164,6 +164,7 @@ class MicroCTExportWidget(LTracePluginWidget):
         self._addRow(None, self.warningLabel)
 
         self.exportDirButton = ctk.ctkDirectoryButton()
+        self.exportDirButton.setMaximumWidth(374)
         self.exportDirButton.directoryChanged.connect(self._updateInterface)
         self._addRow("Export directory", self.exportDirButton)
         self._addSpace()
@@ -307,7 +308,14 @@ class MicroCTExportLogic(LTracePluginLogic):
     def export(self, imageFormat, imageDict, tableNode, outputDir, imageName, callback):
         if tableNode:
             callback.on_update("Exporting table…", 0)
-            self._exportTable(tableNode, outputDir, "CSV")
+
+            tableBrowserNode = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(tableNode)
+            if tableBrowserNode:
+                tableSequenceNode = tableBrowserNode.GetSequenceNode(tableNode)
+                for sequence_index in range(tableSequenceNode.GetNumberOfDataNodes()):
+                    self._exportTable(tableSequenceNode.GetNthDataNode(sequence_index), outputDir, "CSV")
+            else:
+                self._exportTable(tableNode, outputDir, "CSV")
 
         imageDict = self._convertToNodes(imageDict)
 
@@ -334,12 +342,26 @@ class MicroCTExportLogic(LTracePluginLogic):
                     names.append(self.TYPE_TO_NC_NAME[type_])
                     dtypes.append(self.TYPE_TO_DTYPE[type_])
 
-                exportNetcdf(path, images, nodeNames=names, nodeDtypes=dtypes, callback=callback)
+                netcdf.exportNetcdf(path, images, nodeNames=names, nodeDtypes=dtypes, callback=callback)
             else:
                 for i, (type_, image) in enumerate(imageDict.items()):
                     callback.on_update(f"Exporting {type_} image…", i * 100 / len(imageDict))
                     dtype = self.TYPE_TO_DTYPE[type_]
-                    self._exportImage(image, imageName, type_, dtype, outputDir, imageFormat)
+
+                    browserNode = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(image)
+                    if browserNode:
+                        sequenceNode = browserNode.GetSequenceNode(image)
+                        for sequence_index in range(sequenceNode.GetNumberOfDataNodes()):
+                            self._exportImage(
+                                sequenceNode.GetNthDataNode(sequence_index),
+                                f"{imageName}_{sequence_index}",
+                                type_,
+                                dtype,
+                                outputDir,
+                                imageFormat,
+                            )
+                    else:
+                        self._exportImage(image, imageName, type_, dtype, outputDir, imageFormat)
 
         helpers.removeTemporaryNodes()
         callback.on_update("Export complete", 100)
@@ -456,7 +478,6 @@ class MicroCTExportLogic(LTracePluginLogic):
         return nodeDict
 
     def _exportImage(self, image, imageName, imageType, imageDtype, outputDir, imageFormat):
-        logic = ExportLogic()
         nodeDir = Path(outputDir)
 
         if imageType == "BASINS":
@@ -471,20 +492,19 @@ class MicroCTExportLogic(LTracePluginLogic):
 
         if isinstance(image, slicer.vtkMRMLLabelMapVolumeNode) and imageType in self.SEGMENTATION_TYPES:
             format_ = {
-                MicroCTExport.FORMAT_RAW: ExportLogic.LABEL_MAP_FORMAT_RAW,
+                MicroCTExport.FORMAT_RAW: export.LABEL_MAP_FORMAT_RAW,
             }[imageFormat]
-            logic.exportLabelMap(image, outputDir, nodeDir, format_, imageName, imageType, imageDtype)
+            export.exportLabelMap(image, outputDir, nodeDir, format_, imageName, imageType, imageDtype)
         elif isinstance(image, slicer.vtkMRMLScalarVolumeNode):
             format_ = {
-                MicroCTExport.FORMAT_RAW: ExportLogic.SCALAR_VOLUME_FORMAT_RAW,
-                MicroCTExport.FORMAT_TIF: ExportLogic.SCALAR_VOLUME_FORMAT_TIF,
+                MicroCTExport.FORMAT_RAW: export.SCALAR_VOLUME_FORMAT_RAW,
+                MicroCTExport.FORMAT_TIF: export.SCALAR_VOLUME_FORMAT_TIF,
             }[imageFormat]
-            logic.exportScalarVolume(image, outputDir, nodeDir, format_, imageName, imageType, imageDtype)
+            export.exportScalarVolume(image, outputDir, nodeDir, format_, imageName, imageType, imageDtype)
 
     def _exportTable(self, table, outputDir, tableFormat):
-        logic = ExportLogic()
         nodeDir = Path(outputDir)
         format_ = {
-            MicroCTExport.FORMAT_CSV: ExportLogic.TABLE_FORMAT_CSV,
+            MicroCTExport.FORMAT_CSV: export.TABLE_FORMAT_CSV,
         }[tableFormat]
-        logic.exportTable(table, outputDir, nodeDir, format_)
+        export.exportTable(table, outputDir, nodeDir, format_)

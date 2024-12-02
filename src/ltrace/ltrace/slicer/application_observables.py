@@ -8,3 +8,4 @@ class ApplicationObservables(qt.QObject):
     applicationLoadFinished = qt.Signal()
     aboutToQuit = qt.Signal()
     moduleWidgetEnter = qt.Signal(object)
+    environmentChanged = qt.Signal()

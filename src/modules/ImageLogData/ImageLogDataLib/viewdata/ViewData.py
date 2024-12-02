@@ -18,6 +18,9 @@ class ViewData:
         self.primaryNodeId = primaryNodeId
         self.viewControllerSettingsToolButtonToggled = True
 
+    def to_json(self):
+        return {}
+
 
 class SliceViewData(ViewData):
     VIEW_NAME_PREFIX = "ImageLogSliceView"
@@ -55,18 +58,19 @@ class GraphicViewData(ViewData):
 
     def __init__(self):
         super().__init__()
-        color = "#000000"
+        primaryColor = "#000000"
+        secondaryColor = "#FF0000"
         self.primaryTableNodeColumnList = []
         self.primaryTableNodeColumn = ""
         self.primaryTableNodePlotType = LINE_PLOT_TYPE
-        self.primaryTableNodePlotColor = color
+        self.primaryTableNodePlotColor = primaryColor
         self.primaryTableHistogram = False
         self.primaryTableScaleHistogram = 1
         self.secondaryTableNodeId = None
         self.secondaryTableNodeColumnList = []
         self.secondaryTableNodeColumn = ""
         self.secondaryTableNodePlotType = LINE_PLOT_TYPE
-        self.secondaryTableNodePlotColor = color
+        self.secondaryTableNodePlotColor = secondaryColor
         self.secondaryTableHistogram = False
         self.logMode = False
 
@@ -93,6 +97,3 @@ class EmptyViewData(ViewData):
 
     def __init__(self):
         super().__init__()
-
-    def to_json(self):
-        return super().to_json()

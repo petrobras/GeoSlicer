@@ -1,21 +1,14 @@
-import numpy as np
-import os
-import lasio
-import slicer
-from ltrace.slicer.helpers import (
-    getVolumeNullValue,
-    arrayFromVisibleSegmentsBinaryLabelmap,
-)
-from ImageLogExportLib.ImageLogCSV import _arrayPartsFromNode
-from pathlib import Path
-import pandas as pd
 import datetime
-import re
+import numpy as np
+import pandas as pd
 import logging
-from dataclasses import dataclass
-from DLISImportLib.DLISImportLogic import WELL_NAME_TAG, UNITS_TAG
-
 import ltrace.image.lasGeologFile as lasGeologFile
+import re
+import slicer
+
+from ltrace.constants import DLISImportConst
+from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE
+from ltrace.slicer.helpers import getVolumeNullValue, arrayFromVisibleSegmentsBinaryLabelmap, arrayPartsFromNode
 
 
 def retrieve_depth_curve(node_list):
@@ -126,7 +119,7 @@ def add_curve(lasfile, las_data, las_info):
 
     data = las_data["data"].squeeze()
 
-    data[data == las_info["null_value"]] = -999.25  # TODO MUSA-75 Update invalid data handling policy
+    data[data == las_info["null_value"]] = ANP_880_2022_DEFAULT_NULL_VALUE
 
     if data.ndim > 1:
         if data.ndim == 1:
@@ -153,7 +146,7 @@ def _extract_las_data_from_node(node):
         las_data["step"] = spacing[2]
         las_data["origin"] = origin[2]
     elif isinstance(node, slicer.vtkMRMLTableNode):
-        depths, las_data["data"] = _arrayPartsFromNode(node)
+        depths, las_data["data"] = arrayPartsFromNode(node)
         las_data["step"] = depths[1] - depths[0]
         las_data["origin"] = depths[0]
     else:
@@ -173,15 +166,15 @@ def extract_las_info_from_node(node):
     units_from_name = units_search.group(1) if units_search else "NONE"
     units = units_from_name
 
-    if node.GetAttribute(UNITS_TAG) is not None:
-        units = node.GetAttribute(UNITS_TAG)
+    if node.GetAttribute(DLISImportConst.UNITS_TAG) is not None:
+        units = node.GetAttribute(DLISImportConst.UNITS_TAG)
         if units_from_name == "NONE":
             logging.info(
-                f"Node name ({node.GetName()}) doesn't include its units ({node.GetAttribute(UNITS_TAG)}) in it."
+                f"Node name ({node.GetName()}) doesn't include its units ({node.GetAttribute(DLISImportConst.UNITS_TAG)}) in it."
             )
-        elif node.GetAttribute(UNITS_TAG) != units_from_name:
+        elif node.GetAttribute(DLISImportConst.UNITS_TAG) != units_from_name:
             logging.warning(
-                f"Units informed in {node.GetName()} ({node.GetAttribute(UNITS_TAG)}) metadata are different from the units implied by the node name ({units_from_name}). {node.GetAttribute(UNITS_TAG)} will be considered as the units."
+                f"Units informed in {node.GetName()} ({node.GetAttribute(DLISImportConst.UNITS_TAG)}) metadata are different from the units implied by the node name ({units_from_name}). {node.GetAttribute(DLISImportConst.UNITS_TAG)} will be considered as the units."
             )
     else:
         units = units_from_name
@@ -192,15 +185,15 @@ def extract_las_info_from_node(node):
 
     #  well name
     well_from_node_name = node.GetName().split("_")[0] if len(node.GetName().split("_")) > 1 else ""
-    if node.GetAttribute(WELL_NAME_TAG) is not None:
-        las_info["well_name"] = node.GetAttribute(WELL_NAME_TAG)
+    if node.GetAttribute(DLISImportConst.WELL_NAME_TAG) is not None:
+        las_info["well_name"] = node.GetAttribute(DLISImportConst.WELL_NAME_TAG)
         if well_from_node_name == "":
             logging.info(
-                f"Node name ({node.GetName()}) doesn't have the well name ({node.GetAttribute(WELL_NAME_TAG)}) prepended to it."
+                f"Node name ({node.GetName()}) doesn't have the well name ({node.GetAttribute(DLISImportConst.WELL_NAME_TAG)}) prepended to it."
             )
-        elif node.GetAttribute(WELL_NAME_TAG) != well_from_node_name:
+        elif node.GetAttribute(DLISImportConst.WELL_NAME_TAG) != well_from_node_name:
             logging.warning(
-                f"Well name informed in {node.GetName()} ({node.GetAttribute(WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {node.GetAttribute(WELL_NAME_TAG)} will be considered as the well name."
+                f"Well name informed in {node.GetName()} ({node.GetAttribute(DLISImportConst.WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {node.GetAttribute(DLISImportConst.WELL_NAME_TAG)} will be considered as the well name."
             )
     else:
         las_info["well_name"] = well_from_node_name
@@ -209,10 +202,10 @@ def extract_las_info_from_node(node):
 
     las_info["data_name"] = node.GetName().replace("[" + units + "]", "")
     new_data_name = las_info["data_name"]
-    if node.GetAttribute(WELL_NAME_TAG):
-        new_data_name = las_info["data_name"].replace(node.GetAttribute(WELL_NAME_TAG) + "_", "")
+    if node.GetAttribute(DLISImportConst.WELL_NAME_TAG):
+        new_data_name = las_info["data_name"].replace(node.GetAttribute(DLISImportConst.WELL_NAME_TAG) + "_", "")
     if len(new_data_name) == 0:
-        new_data_name = node.GetAttribute(WELL_NAME_TAG)
+        new_data_name = node.GetAttribute(DLISImportConst.WELL_NAME_TAG)
     las_info["data_name"] = new_data_name
 
     las_info["null_value"] = (

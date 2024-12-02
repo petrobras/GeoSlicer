@@ -1,7 +1,15 @@
+from pathlib import Path
+
 import qt
 import slicer
 import vtk
-from pathlib import Path
+import pyqtgraph.exporters
+import pyqtgraph as pg
+
+from ltrace.slicer_utils import getResourcePath
+
+GRAPHIC_VIEW_DATA = "GraphicViewData"
+SLICE_VIEW_DATA = "SliceViewData"
 
 
 def _captureRenderWindow(renderWindow, isTransparent, fileName):
@@ -65,6 +73,13 @@ def _captureSliceView(sliceName, isTransparent, fileName):
         renderWindow.SetAlphaBitPlanes(alphaBitPlanes)
 
 
+def _captureGraphView(viewIdentifier, fileName):
+    plotItem = slicer.util.getModuleWidget("ImageLogData").getGraphicViewPlotItem(viewIdentifier)
+    if isinstance(plotItem, pg.PlotItem):
+        exporter = pg.exporters.ImageExporter(plotItem.scene())
+        exporter.export(fileName)
+
+
 class ScreenshotWidget(qt.QDialog):
     VIEW_OPTION = ["Red", "Green", "Yellow"]
     THREED_VIEW_OPTION = "3D View"
@@ -75,16 +90,22 @@ class ScreenshotWidget(qt.QDialog):
     IS_TRANSPARENT_SETTINGS_KEY = "/".join((SETTINGS_NAME, "isTransparent"))
     SAVE_DIRECTORY_SETTINGS_KEY = "/".join((SETTINGS_NAME, "saveDirectory"))
 
-    def __init__(self, icon):
+    ICON = "ScreenShot.png"
+
+    def __init__(self):
         super().__init__(
             0,
             qt.Qt.WindowSystemMenuHint | qt.Qt.WindowTitleHint | qt.Qt.WindowCloseButtonHint,
         )
 
-        self.iconPath = icon
-        self.setWindowTitle("Screenshot")
+        self.setWindowTitle("ScreenShot")
         self.setAttribute(qt.Qt.WA_DeleteOnClose)
         self.saved_lines = []
+
+        try:
+            self.imagelogViews = slicer.util.getModuleWidget("ImageLogData").getVisibleViews()
+        except:
+            self.imagelogViews = None
 
         self.setup()
 
@@ -93,7 +114,16 @@ class ScreenshotWidget(qt.QDialog):
 
         # View option
         self.viewCombobox = qt.QComboBox()
-        options = (self.THREED_VIEW_OPTION,) + slicer.app.layoutManager().sliceViewNames()
+
+        imagelogOptions = []
+        if self.imagelogViews:
+            self.imagelogValidIds = []
+            for key, value in self.imagelogViews.items():
+                if value["type"] in [GRAPHIC_VIEW_DATA, SLICE_VIEW_DATA]:
+                    imagelogOptions.append(value["name"])
+                    self.imagelogValidIds.append(key)
+
+        options = [self.THREED_VIEW_OPTION] + self.VIEW_OPTION + imagelogOptions
         for option in options:
             self.viewCombobox.addItem(option)
         self.viewCombobox.currentText = slicer.app.settings().value(self.VIEW_SETTINGS_KEY, self.THREED_VIEW_OPTION)
@@ -103,12 +133,17 @@ class ScreenshotWidget(qt.QDialog):
         layout.addRow("Transparent background:", self.transparentCheck)
 
         # Annotations options
+        self.annotationsOptionsWidget = qt.QWidget()
+        annotationsOptionsLayout = qt.QFormLayout(self.annotationsOptionsWidget)
+        annotationsOptionsLayout.setContentsMargins(0, 0, 0, 0)
+
         hbox_line = qt.QHBoxLayout()
+        hbox_line.setSpacing(10)
         line_left = qt.QFrame()
         line_left.setFrameShape(qt.QFrame.HLine)
         line_left.setFrameShadow(qt.QFrame.Sunken)
         hbox_line.addWidget(line_left)
-        text_label = qt.QLabel("  Add Annotations")
+        text_label = qt.QLabel("Add Annotations")
         hbox_line.addWidget(text_label)
         line_right = qt.QFrame()
         line_right.setFrameShape(qt.QFrame.HLine)
@@ -117,10 +152,10 @@ class ScreenshotWidget(qt.QDialog):
         line.setFrameShape(qt.QFrame.HLine)
         line.setFrameShadow(qt.QFrame.Sunken)
         hbox_line.addWidget(line_right)
-        layout.addRow(hbox_line)
+        annotationsOptionsLayout.addRow(hbox_line)
 
         self.input = qt.QLineEdit("Click Add")
-        layout.addRow("Annotation:", self.input)
+        annotationsOptionsLayout.addRow("Annotation:", self.input)
 
         hbox = qt.QHBoxLayout()
         self.radio_left = qt.QRadioButton("Left")
@@ -130,14 +165,14 @@ class ScreenshotWidget(qt.QDialog):
         hbox.addWidget(self.radio_left)
         hbox.addWidget(self.radio_center)
         hbox.addWidget(self.radio_right)
-        layout.addRow("Text Position:", hbox)
+        annotationsOptionsLayout.addRow("Text Position:", hbox)
 
         self.fontSizeSlider = slicer.qMRMLSliderWidget()
         self.fontSizeSlider.maximum = 100
         self.fontSizeSlider.minimum = 12
         self.fontSizeSlider.value = 15
         self.fontSizeSlider.singleStep = 1
-        layout.addRow("Font Size:", self.fontSizeSlider)
+        annotationsOptionsLayout.addRow("Font Size:", self.fontSizeSlider)
 
         textButtons = qt.QHBoxLayout()
         addTextButton = qt.QPushButton("Add")
@@ -147,8 +182,9 @@ class ScreenshotWidget(qt.QDialog):
         textButtons.addWidget(addTextButton)
         textButtons.addWidget(removeTextButton)
         textButtons.setAlignment(qt.Qt.AlignCenter)
-        layout.addRow(textButtons)
+        annotationsOptionsLayout.addRow(textButtons)
 
+        layout.addRow(self.annotationsOptionsWidget)
         layout.addRow(line)
         layout.addRow(qt.QFrame())
 
@@ -160,7 +196,7 @@ class ScreenshotWidget(qt.QDialog):
         buttonBox.rejected.connect(self.onReject)
         layout.addRow(buttonBox)
 
-        self.viewCombobox.currentIndexChanged.connect(lambda font: self.clearAll())
+        self.viewCombobox.currentIndexChanged.connect(self.viewIndexChange)
         self.radio_left.clicked.connect(lambda: self.clearAll())
         self.radio_center.clicked.connect(lambda: self.clearAll())
         self.radio_right.clicked.connect(lambda: self.clearAll())
@@ -168,7 +204,7 @@ class ScreenshotWidget(qt.QDialog):
         addTextButton.clicked.connect(self.addText)
         removeTextButton.clicked.connect(self.removeText)
 
-        self.setWindowIcon(qt.QIcon(self.iconPath))
+        self.setWindowIcon(qt.QIcon(getResourcePath("Icons") / self.ICON))
 
     def addText(self):
         input_text = self.input.text
@@ -182,6 +218,15 @@ class ScreenshotWidget(qt.QDialog):
             del self.saved_lines[-1]
             self.renderText()
 
+    def viewIndexChange(self, index):
+        self.annotationsOptionsWidget.setEnabled(True)
+        if index > 3:
+            id = self.imagelogValidIds[index - 4]
+            if self.imagelogViews[id]["type"] == GRAPHIC_VIEW_DATA:
+                self.annotationsOptionsWidget.setEnabled(False)
+
+        self.clearAll()
+
     def clearAll(self):
         textColor = (1.0, 1.0, 1.0)
         for viewName in self.VIEW_OPTION:
@@ -192,11 +237,18 @@ class ScreenshotWidget(qt.QDialog):
     def renderText(self):
         textColor = (1.0, 1.0, 1.0)
         viewName = self.viewCombobox.currentText
+        viewIndex = self.viewCombobox.currentIndex
         text = self.get_saved_text()
-        if viewName == self.THREED_VIEW_OPTION:
+        if viewIndex == 0:  # 3D VIEW
             self.renderIn3DView(text, textColor)
-        else:
+
+        elif viewIndex in [1, 2, 3]:  # RED, GREEN or YELLOW Camera
             self.renderInView(text, viewName, textColor)
+
+        else:  # ImageLog Views
+            id = self.imagelogValidIds[viewIndex - 4]
+            if self.imagelogViews[id]["type"] == SLICE_VIEW_DATA:
+                self.renderInView(text, f"ImageLogSliceView{id}", textColor)
 
     def renderInView(self, text, viewName, textColor):
         lm = slicer.app.layoutManager()
@@ -244,6 +296,7 @@ class ScreenshotWidget(qt.QDialog):
 
     def onSaveAs(self):
         viewName = self.viewCombobox.currentText
+        viewIndex = self.viewCombobox.currentIndex
         isTransparent = self.transparentCheck.checked
         directory = slicer.app.settings().value(
             self.SAVE_DIRECTORY_SETTINGS_KEY,
@@ -259,10 +312,18 @@ class ScreenshotWidget(qt.QDialog):
         slicer.app.settings().setValue(self.IS_TRANSPARENT_SETTINGS_KEY, str(isTransparent))
         slicer.app.settings().setValue(self.SAVE_DIRECTORY_SETTINGS_KEY, directory)
 
-        if viewName == self.THREED_VIEW_OPTION:
+        if viewIndex == 0:  # 3D VIEW
             _capture3DView(isTransparent, fileName)
-        else:
+
+        elif viewIndex in [1, 2, 3]:  # RED, GREEN or YELLOW Camera
             _captureSliceView(viewName, isTransparent, fileName)
+
+        else:  # ImageLog Views
+            id = self.imagelogValidIds[viewIndex - 4]
+            if self.imagelogViews[id]["type"] == GRAPHIC_VIEW_DATA:
+                _captureGraphView(id, fileName)
+            else:
+                _captureSliceView(f"ImageLogSliceView{id}", isTransparent, fileName)
 
         self.accept()
 

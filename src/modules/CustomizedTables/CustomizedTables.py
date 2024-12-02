@@ -7,7 +7,10 @@ import numexpr as ne
 import numpy as np
 import qt
 import slicer
+
+from ltrace.slicer.helpers import svgToQIcon
 from ltrace.slicer_utils import *
+from ltrace.slicer_utils import getResourcePath
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources", "Icons")
 CHARTS_ICON_PATH = os.path.join(RESOURCES_PATH, "Charts.png")
@@ -22,7 +25,7 @@ class CustomizedTables(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Tables"
-        self.parent.categories = ["LTrace Tools"]
+        self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedTables.help()
@@ -83,7 +86,7 @@ class CustomizedTablesWidget(LTracePluginWidget):
         plotButton = plotLayoutItem.widget()
         plotButton.setVisible(False)
 
-        icon = qt.QIcon(str(CHARTS_ICON_PATH))
+        icon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Charts.svg")
         self.chartsButton = qt.QToolButton()
         self.chartsButton.text = "Charts"
         self.chartsButton.icon = icon

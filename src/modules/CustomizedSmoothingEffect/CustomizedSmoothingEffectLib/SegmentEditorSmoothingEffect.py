@@ -13,17 +13,41 @@ import traceback
 
 from ltrace.slicer.helpers import getSourceVolume
 from pathlib import Path
-from scipy import ndimage
 from SegmentEditorEffects import *
+from scipy import ndimage
+from slicer.i18n import tr as _
 from vtk.util import numpy_support
+
+
+def _batch_sum_conv_3d(array, kernel_size):
+    assert array.ndim == 4
+    maxValue = kernel_size[0] * kernel_size[1] * kernel_size[2]
+    if maxValue <= 255:
+        array = array.astype(np.uint8)
+    elif maxValue <= 65535:
+        array = array.astype(np.uint16)
+    else:
+        array = array.astype(np.uint32)
+
+    kernel_x = np.ones(kernel_size[2], dtype=array.dtype)
+    kernel_y = np.ones(kernel_size[1], dtype=array.dtype)
+    kernel_z = np.ones(kernel_size[0], dtype=array.dtype) if kernel_size[0] > 1 else None
+
+    array = ndimage.convolve1d(array, kernel_x, axis=1, mode="reflect")
+    array = ndimage.convolve1d(array, kernel_y, axis=2, mode="reflect")
+    if kernel_z is not None:
+        array = ndimage.convolve1d(array, kernel_z, axis=3, mode="reflect")
+
+    return array
 
 
 class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
     """SmoothingEffect is an Effect that smoothes a selected segment"""
 
     def __init__(self, scriptedEffect):
-        scriptedEffect.name = "Smoothing"
         AbstractScriptedSegmentEditorPaintEffect.__init__(self, scriptedEffect)
+        scriptedEffect.name = "Smoothing"
+        scriptedEffect.title = _("Smoothing")
 
     def clone(self):
         import qSlicerSegmentationsEditorEffectsPythonQt as effects
@@ -42,12 +66,10 @@ class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
         return """<html>Make segment boundaries smoother<br> by removing extrusions and filling small holes. The effect can be either applied locally
 (by painting in viewers) or to the whole segment (by clicking Apply button). Available methods:<p>
 <ul style="margin: 0">
-<li><b>Median:</b> removes small details while keeps smooth contours mostly unchanged. Applied to selected segment only.</li>
+<li><b>Median:</b> removes small details while keeps smooth contours mostly unchanged. Applied to one or more segments at once, preserving segment boundaries.</li>
 <li><b>Opening:</b> removes extrusions smaller than the specified kernel size. Applied to selected segment only.</li>
 <li><b>Fill holes:</b> fills contiguous empty spaces smaller than the specified kernel size.</li>
 <li><b>Gaussian:</b> smoothes all contours, tends to shrink the segment. Applied to selected segment only.</li>
-<li><b>Joint smoothing:</b> smoothes multiple segments at once, preserving watertight interface between them. Masking settings are bypassed.
-If segments overlap, segment higher in the segments table will have priority. <b>Applied to all visible segments.</b></li>
 </ul><p></html>"""
 
     def setupOptionsFrame(self):
@@ -56,7 +78,7 @@ If segments overlap, segment higher in the segments table will have priority. <b
         self.methodSelectorComboBox.addItem("Opening (remove extrusions)", MORPHOLOGICAL_OPENING)
         self.methodSelectorComboBox.addItem("Fill holes", MORPHOLOGICAL_CLOSING)
         self.methodSelectorComboBox.addItem("Gaussian", GAUSSIAN)
-        self.methodSelectorComboBox.addItem("Joint smoothing", JOINT_TAUBIN)
+        # self.methodSelectorComboBox.addItem("Joint smoothing", JOINT_TAUBIN)
         self.scriptedEffect.addLabeledOptionsWidget("Smoothing method:", self.methodSelectorComboBox)
 
         self.kernelSizeMMSpinBox = slicer.qMRMLSpinBox()
@@ -155,8 +177,8 @@ If segments overlap, segment higher in the segments table will have priority. <b
         self.gaussianStandardDeviationMMSpinBox.setVisible(smoothingMethod == GAUSSIAN)
         self.jointTaubinSmoothingFactorLabel.setVisible(smoothingMethod == JOINT_TAUBIN)
         self.jointTaubinSmoothingFactorSlider.setVisible(smoothingMethod == JOINT_TAUBIN)
-        self.applyToAllVisibleSegmentsLabel.setVisible(smoothingMethod != JOINT_TAUBIN)
-        self.applyToAllVisibleSegmentsCheckBox.setVisible(smoothingMethod != JOINT_TAUBIN)
+        self.applyToAllVisibleSegmentsLabel.setVisible(smoothingMethod == MEDIAN)
+        self.applyToAllVisibleSegmentsCheckBox.setVisible(smoothingMethod == MEDIAN)
 
     def getKernelSizePixel(self):
         selectedSegmentLabelmapSpacing = [1.0, 1.0, 1.0]
@@ -238,11 +260,6 @@ If segments overlap, segment higher in the segments table will have priority. <b
     def onApply(self, maskImage=None, maskExtent=None):
         """maskImage: contains nonzero where smoothing will be applied"""
         smoothingMethod = self.scriptedEffect.parameter("SmoothingMethod")
-        applyToAllVisibleSegments = (
-            int(self.scriptedEffect.parameter("ApplyToAllVisibleSegments")) != 0
-            if self.scriptedEffect.parameter("ApplyToAllVisibleSegments")
-            else False
-        )
 
         if smoothingMethod != JOINT_TAUBIN:
             # Make sure the user wants to do the operation, even if the segment is not visible
@@ -258,27 +275,6 @@ If segments overlap, segment higher in the segments table will have priority. <b
                 return
             if smoothingMethod == JOINT_TAUBIN:
                 self.smoothMultipleSegments(maskImage, maskExtent)
-            elif applyToAllVisibleSegments:
-                # Smooth all visible segments
-                inputSegmentIDs = vtk.vtkStringArray()
-                segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-                segmentationNode.GetDisplayNode().GetVisibleSegmentIDs(inputSegmentIDs)
-                segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
-                segmentEditorNode = segmentEditorWidget.mrmlSegmentEditorNode()
-                # store which segment was selected before operation
-                selectedStartSegmentID = segmentEditorNode.GetSelectedSegmentID()
-                if inputSegmentIDs.GetNumberOfValues() == 0:
-                    logging.info("Smoothing operation skipped: there are no visible segments.")
-                    return
-                for index in range(inputSegmentIDs.GetNumberOfValues()):
-                    segmentID = inputSegmentIDs.GetValue(index)
-                    self.showStatusMessage(
-                        f"Smoothing {segmentationNode.GetSegmentation().GetSegment(segmentID).GetName()}..."
-                    )
-                    segmentEditorNode.SetSelectedSegmentID(segmentID)
-                    self.smoothSelectedSegment(maskImage, maskExtent)
-                # restore segment selection
-                segmentEditorNode.SetSelectedSegmentID(selectedStartSegmentID)
             else:
                 self.smoothSelectedSegment(maskImage, maskExtent)
         finally:
@@ -417,44 +413,65 @@ If segments overlap, segment higher in the segments table will have priority. <b
                     clippedSelectedSegmentLabelmap = selectedSegmentLabelmap
 
                 if smoothingMethod == MEDIAN:
-                    # Median filter does not require a particular label value
+                    applyToVisible = (
+                        int(self.scriptedEffect.parameter("ApplyToAllVisibleSegments")) != 0
+                        if self.scriptedEffect.parameter("ApplyToAllVisibleSegments")
+                        else False
+                    )
                     if maskExtent:
                         smoothingFilter = vtk.vtkImageMedian3D()
                         smoothingFilter.SetInputData(clippedSelectedSegmentLabelmap)
+                    elif applyToVisible:
+                        useVtk = False
+
+                        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+                        visibleSegmentIds = vtk.vtkStringArray()
+                        segmentationNode.GetDisplayNode().GetVisibleSegmentIDs(visibleSegmentIds)
+
+                        nSegments = visibleSegmentIds.GetNumberOfValues()
+                        if nSegments == 0:
+                            return
+
+                        segmentIds = [visibleSegmentIds.GetValue(i) for i in range(nSegments)]
+                        firstSegment = slicer.util.arrayFromSegmentBinaryLabelmap(segmentationNode, segmentIds[0]) > 0
+
+                        batches = np.zeros((nSegments + 1, *firstSegment.shape), dtype=bool)
+                        batches[0] = ~firstSegment
+                        batches[1] = firstSegment
+
+                        for i, segmentId in enumerate(segmentIds[1:]):
+                            array = slicer.util.arrayFromSegmentBinaryLabelmap(segmentationNode, segmentId) > 0
+                            # 0 is background, 1 was already set
+                            batches[i + 2] = array
+                            batches[0] &= ~array
+                        batches = _batch_sum_conv_3d(batches, kernel_size=kernelSizePixel)
+                        labelmap_array = np.argmax(batches, axis=0)
+
+                        for i, segmentId in enumerate(segmentIds):
+                            array = (labelmap_array == (i + 1)).astype(np.uint8)
+                            selectedSegmentLabelmap.GetPointData().SetScalars(numpy_support.numpy_to_vtk(array.ravel()))
+                            self.scriptedEffect.modifySegmentByLabelmap(
+                                segmentationNode,
+                                segmentId,
+                                selectedSegmentLabelmap,
+                                slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
+                            )
                     else:
                         useVtk = False
                         scalars = selectedSegmentLabelmap.GetPointData().GetScalars()
-                        dims = selectedSegmentLabelmap.GetDimensions()
-                        array = numpy_support.vtk_to_numpy(scalars).reshape(dims, order="F")
+                        dims = selectedSegmentLabelmap.GetDimensions()[::-1]  # Fortran to C order
+                        array = numpy_support.vtk_to_numpy(scalars).reshape(dims)
                         array = array > 0
 
+                        array = _batch_sum_conv_3d(array[np.newaxis, ...], kernel_size=kernelSizePixel)
                         maxValue = kernelSizePixel[0] * kernelSizePixel[1] * kernelSizePixel[2]
-                        if maxValue <= 255:
-                            array = array.astype(np.uint8)
-                        elif maxValue <= 65535:
-                            array = array.astype(np.uint16)
-                        else:
-                            array = array.astype(np.uint32)
-
-                        kernel_x = np.ones(kernelSizePixel[0], dtype=array.dtype)
-                        kernel_y = np.ones(kernelSizePixel[1], dtype=array.dtype)
-                        kernel_z = np.ones(kernelSizePixel[2], dtype=array.dtype)
-
-                        array = ndimage.convolve1d(array, kernel_x, axis=0, mode="constant", cval=0)
-                        array = ndimage.convolve1d(array, kernel_y, axis=1, mode="constant", cval=0)
-                        array = ndimage.convolve1d(array, kernel_z, axis=2, mode="constant", cval=0)
-
                         threshold = maxValue // 2
                         array = (array > threshold).astype(np.uint8)
 
-                        selectedSegmentLabelmap.GetPointData().SetScalars(
-                            numpy_support.numpy_to_vtk(array.ravel(order="F"))
-                        )
-                        bypassMasking = True
+                        selectedSegmentLabelmap.GetPointData().SetScalars(numpy_support.numpy_to_vtk(array.ravel()))
                         self.scriptedEffect.modifySelectedSegmentByLabelmap(
                             selectedSegmentLabelmap,
                             slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
-                            bypassMasking,
                         )
                 else:
                     # We need to know exactly the value of the segment voxels, apply threshold to make force the selected label value
@@ -472,10 +489,11 @@ If segments overlap, segment higher in the segments table will have priority. <b
 
                     if not maskImage and smoothingMethod == MORPHOLOGICAL_CLOSING:
                         # Invert + islands + invert pipeline
-                        bypassMasking = True
-
                         selectedSegmentLabelmap = self.scriptedEffect.selectedSegmentLabelmap()
-                        invertedSelectedSegmentLabelmap = self.getInvertedBinaryLabelmap(selectedSegmentLabelmap)
+                        originalLabelmap = slicer.vtkOrientedImageData()
+                        originalLabelmap.ShallowCopy(selectedSegmentLabelmap)
+                        invertedSelectedSegmentLabelmap = self.getInvertedBinaryLabelmap(originalLabelmap)
+                        bypassMasking = True
                         self.scriptedEffect.modifySelectedSegmentByLabelmap(
                             invertedSelectedSegmentLabelmap,
                             slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
@@ -506,9 +524,19 @@ If segments overlap, segment higher in the segments table will have priority. <b
                         slicer.mrmlScene.RemoveNode(segmentEditorNode)
 
                         selectedSegmentLabelmap = self.scriptedEffect.selectedSegmentLabelmap()
-                        invertedSelectedSegmentLabelmap = self.getInvertedBinaryLabelmap(selectedSegmentLabelmap)
+                        resultLabelmap = self.getInvertedBinaryLabelmap(selectedSegmentLabelmap)
+
+                        # Selected segment was used as a buffer
+                        # Now we restore it without masking and apply the result with masking
+                        bypassMasking = True
                         self.scriptedEffect.modifySelectedSegmentByLabelmap(
-                            invertedSelectedSegmentLabelmap,
+                            originalLabelmap,
+                            slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
+                            bypassMasking,
+                        )
+                        bypassMasking = False
+                        self.scriptedEffect.modifySelectedSegmentByLabelmap(
+                            resultLabelmap,
                             slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
                             bypassMasking,
                         )

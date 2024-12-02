@@ -1,26 +1,26 @@
-import importlib
-import sys
-import os
-
-from pathlib import Path
 import ctk
 import pyqtgraph as pg
 import qt
 import slicer
+import importlib
+import os
+import sys
 
-from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
+from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulationWidget
 from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
 from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
-from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulationWidget
-from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE, ONE_ANGLE, MULTI_ANGLE
+from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE
+
+from pathlib import Path
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
+    getResourcePath,
 )
-from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.PoreNetworkSimulationTest import PoreNetworkSimulationTest
@@ -37,11 +37,11 @@ class PoreNetworkSimulation(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "PoreNetworkSimulation"
-        self.parent.categories = ["Micro CT"]
+        self.parent.title = "PNM Simulation"
+        self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PoreNetworkSimulation.help()
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/PNSimulation.html').as_posix()}"
         self.parent.acknowledgementText = ""
 
     @classmethod
@@ -145,7 +145,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def onReload(self):
-        importlib.reload(sys.modules["PoreNetworkSimulationLib.widgets"])
+        importlib.reload(sys.modules["ltrace.slicer.widget.simulation"])
         importlib.reload(sys.modules["PoreNetworkSimulationLib.TwoPhaseSimulationWidget"])
         importlib.reload(sys.modules["PoreNetworkSimulationLib.OnePhaseSimulationWidget"])
         importlib.reload(sys.modules["MercurySimulationLib.MercurySimulationWidget"])
