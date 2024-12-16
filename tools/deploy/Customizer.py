@@ -194,6 +194,7 @@ class Customizer(LTracePlugin):
         slicer.modules.MultiThresholdEffectInstance.registerEditorEffect()
         slicer.modules.SampleSegmentationEffectInstance.registerEditorEffect()
         slicer.modules.SmartForegroundEffectInstance.registerEditorEffect()
+        slicer.modules.QEMSCANMaskEffectInstance.registerEditorEffect()
 
     def on_load_finished(self):
         slicer.app.setRenderPaused(True)

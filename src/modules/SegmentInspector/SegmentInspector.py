@@ -193,7 +193,22 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.methodSelector.objectName = "Methods Selector"
         self.methodSelector.selector.objectName = "Methods ComboBox"
 
+        self.poreRadioBtn = qt.QRadioButton("Pore")
+        self.grainRadioBtn = qt.QRadioButton("Grain")
+        self.poreRadioBtn.setChecked(True)
+
+        componentLayout = qt.QHBoxLayout()
+        componentLayout.addStretch(1)
+        componentLayout.addWidget(self.poreRadioBtn, 3)
+        componentLayout.addWidget(self.grainRadioBtn, 3)
+        componentLayout.addStretch(3)
+
+        tooltip = "Specify whether the selected input segments represent pores or grains. This affects the labels of the size classes."
+        self.poreRadioBtn.setToolTip(tooltip)
+        self.grainRadioBtn.setToolTip(tooltip)
         formLayout.addRow(self.methodSelector)
+        formLayout.addRow("Component of interest:", componentLayout)
+        formLayout.addRow(" ", None)
 
         return widget
 
@@ -349,6 +364,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
                 roiSegNode.GetDisplayNode().SetVisibility(False)
 
             params = self.methodSelector.currentWidget().toJson()
+            params["is_pore"] = self.poreRadioBtn.isChecked()
 
             cli = self.logic.runSelectedMethod(
                 segmentationNode,

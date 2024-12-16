@@ -925,7 +925,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         if not self.edition_labelmap:
             logging.info(f"No temporary node found, creating and using {edition_labelmap_name}")
             self.edition_labelmap = clone_volume(input_node, edition_labelmap_name, copy_names=False)
-            self.input_selector.sortFilterProxyModel().invalidateFilter()
+            self.input_selector.selectorWidget.sortFilterProxyModel().invalidateFilter()
 
         self.edition_labelmap.SetHideFromEditors(True)
 

@@ -24,8 +24,8 @@ markdown2==2.5.0
 markupsafe==2.0.1
 matplotlib==3.9.2
 mkl==2022.2.1
-mmcv @ https://download.openmmlab.com/mmcv/dist/cpu/torch1.12.0/mmcv-2.0.0-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
-mmcv @ https://download.openmmlab.com/mmcv/dist/cu102/torch1.12.0/mmcv-2.0.0-cp39-cp39-manylinux1_x86_64.whl ; platform_system == "Linux"
+mmcv @ https://download.openmmlab.com/mmcv/dist/cu116/torch1.12.0/mmcv-2.0.0-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
+mmcv @ https://download.openmmlab.com/mmcv/dist/cu116/torch1.12.0/mmcv-2.0.0-cp39-cp39-manylinux1_x86_64.whl ; platform_system == "Linux"
 mmdet==3.1.0
 mmengine==0.8.4
 monai==1.1.0
@@ -68,7 +68,8 @@ sympy==1.10.1
 #tbb>=2021.6.0
 tensorflow==2.8.2
 toolz==0.11.1
-torch==1.12.1
+torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
+torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-linux_x86_64.whl ; platform_system == "Linux"
 trimesh==3.9.35
 widgetsnbextension==3.5.2
 xarray==2022.3.0

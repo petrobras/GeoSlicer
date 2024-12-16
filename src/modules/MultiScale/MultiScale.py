@@ -38,7 +38,7 @@ class MultiScale(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multi-Scale Image Generation"
+        self.parent.title = "Multiscale Image Generation"
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]

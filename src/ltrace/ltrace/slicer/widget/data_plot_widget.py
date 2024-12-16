@@ -2,7 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 
-from ltrace.algorithms.measurements import PORE_SIZE_CATEGORIES
+from ltrace.algorithms.measurements import PORE_SIZE_CATEGORIES, GRAIN_SIZE_CATEGORIES
 from ltrace.slicer.widget.custom_gradient_legend import CustomGradientLegend
 from ltrace.slicer.widget.customized_pyqtgraph.AngleAxisItem import AngleAxisItem
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
@@ -150,11 +150,12 @@ class DataPlotWidget(pg.QtWidgets.QWidget):
         zData = zData[~nan_index]
 
         if graphData.hasNames(zAxisParameter):
-            if "pore_size_class" in zAxisParameter:
+            if "_size_class" in zAxisParameter:
+                categories = PORE_SIZE_CATEGORIES if "pore_size_class" in zAxisParameter else GRAIN_SIZE_CATEGORIES
                 zMin = max(zMin, 0)
-                zMax = min(zMax, len(PORE_SIZE_CATEGORIES) - 1)
+                zMax = min(zMax, len(categories) - 1)
 
-                labelmap = {lb: i for i, lb in enumerate(PORE_SIZE_CATEGORIES) if zMin <= i <= zMax}
+                labelmap = {lb: i for i, lb in enumerate(categories) if zMin <= i <= zMax}
             else:
                 # TODO return a labelmap
                 namedLabels = graphData.getLabelNames(zAxisParameter).unique()
@@ -187,8 +188,9 @@ class DataPlotWidget(pg.QtWidgets.QWidget):
         def namedTicks(axiskey, axis):
             ax = self.__plotItem.getAxis(axis)
             if graphData.hasNames(axiskey):
-                if "pore_size_class" in axiskey:
-                    ticks = [(i, lb) for i, lb in enumerate(PORE_SIZE_CATEGORIES)]
+                if "_size_class" in axiskey:
+                    categories = PORE_SIZE_CATEGORIES if "pore_size_class" in zAxisParameter else GRAIN_SIZE_CATEGORIES
+                    ticks = [(i, lb) for i, lb in enumerate(categories)]
                 else:
                     ticks = sorted(set(zip(xData, graphData.getLabelNames(axiskey))), key=lambda it: it[0])
                 ax.setTicks([ticks])

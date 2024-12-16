@@ -51,6 +51,25 @@ PORE_SIZE_CATEGORIES = [
     "Megaporo grande",
 ]
 
+GRAIN_SIZE_INTERVALS = [0.004, 0.008, 0.016, 0.031, 0.062, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 64.0, 256.0, np.inf]
+
+GRAIN_SIZE_CATEGORIES = [
+    "Argila",
+    "Silte muito fino",
+    "Silte fino",
+    "Silte médio",
+    "Silte grosso",
+    "Areia muito fina",
+    "Areia fina",
+    "Areia média",
+    "Areia grossa",
+    "Areia muito grossa",
+    "Grânulo",
+    "Seixo",
+    "Bloco ou Calhau",
+    "Matacão",
+]
+
 CLASS_LABEL_SUFFIX = ["[label]", "[ID]", "[CID]"]
 
 GENERIC_PROPERTIES = [
@@ -159,13 +178,12 @@ def surfaceArea(points, shards, label):
     return memopt_mesh_area(points, shards, label)
 
 
-def poreSizeClassification(poreSize):
-    # Returns the pore size class and the pore size class label
-    for i, classSize in enumerate(PORE_SIZE_INTERVALS):
-        if poreSize <= classSize:
+def sizeClassification(size, intervals):
+    for i, classSize in enumerate(intervals):
+        if size <= classSize:
             return i
 
-    raise ValueError(f"This pore size is not comparable. Expected a number, received {type(poreSize)} [{poreSize}]")
+    raise ValueError(f"This pore size is not comparable. Expected a number, received {type(size)} [{size}]")
 
 
 def mergeLabelsIntoMask(labelmap, labels_):
@@ -610,10 +628,11 @@ class LabelStatistics3D:
         "pore_size_class",
     )
 
-    def __init__(self, im, spacing, size_filter=None, seed=None):
+    def __init__(self, im, spacing, is_pore, size_filter=None, seed=None):
         self.im = im
         self.spacing = np.array(spacing, copy=True)
         self.voxel_size = np.prod(self.spacing)
+        self.is_pore = is_pore
         self.size_filter = size_filter
         self.rng = np.random.default_rng(seed or 251972032)
         self._space = max(self.spacing)
@@ -669,7 +688,8 @@ class LabelStatistics3D:
 
             sphere_diameter_from_volume = (6 * volume_mm / np.pi) ** (1 / 3)
 
-            pore_size_class = poreSizeClassification(feretMax)
+            intervals = PORE_SIZE_INTERVALS if self.is_pore else GRAIN_SIZE_INTERVALS
+            pore_size_class = sizeClassification(feretMax, intervals)
 
         except (sp.spatial.qhull.QhullError, TypeError, ValueError) as e:
             return None
@@ -753,11 +773,12 @@ class LabelStatistics2D:
         "pore_size_class",
     )
 
-    def __init__(self, im, spacing, direction, size_filter=0):
+    def __init__(self, im, spacing, direction, is_pore, size_filter=0):
         self.im = im
         self.spacing = np.array(spacing, copy=True)
         self.voxel_size = np.prod(self.spacing)
         self.direction = direction
+        self.is_pore = is_pore
         self.size_filter = size_filter
         self.radius = min(self.spacing) * 1.75
 
@@ -799,7 +820,8 @@ class LabelStatistics2D:
 
             gamma = perimeter / (2 * np.sqrt(np.pi * area_mm))
 
-            pore_size_class = poreSizeClassification(diameter)
+            intervals = PORE_SIZE_INTERVALS if self.is_pore else GRAIN_SIZE_INTERVALS
+            pore_size_class = sizeClassification(diameter, intervals)
 
         except (sp.spatial.qhull.QhullError, TypeError, ValueError) as e:
             return None

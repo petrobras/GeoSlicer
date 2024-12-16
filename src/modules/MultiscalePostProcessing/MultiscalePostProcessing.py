@@ -25,7 +25,7 @@ class MultiscalePostProcessing(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Multi-Scale Post-Processing"
+        self.parent.title = "Multiscale Post-Processing"
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MultiscalePostProcessing.help()
@@ -246,7 +246,11 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
                 self.changePoreValueSelector(False)
                 self.singleShotWidget.mainInput.setCurrentNode(None)
             else:
-                self.singleShotWidget.mainInput.setCurrentNode(node)
+                self.singleShotWidget.updateSegmentList(
+                    helpers.getSegmentList(
+                        node,
+                    )
+                )
                 self.changePoreValueSelector(True)
 
             self.outputPrefix.text = "Porosity_per_realization_table"
@@ -264,10 +268,12 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.isSegment = isSegment
         if isSegment:
             self.poreSegmentLabel.show()
+            self.singleShotWidget.segmentListGroup[1].show()
             self.porosityValueSpinBox.hide()
             self.poreValueLabel.hide()
         else:
             self.poreSegmentLabel.hide()
+            self.singleShotWidget.segmentListGroup[1].hide()
             self.porosityValueSpinBox.show()
             self.poreValueLabel.show()
 

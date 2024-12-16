@@ -18,6 +18,7 @@ from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
 from ltrace.units import global_unit_registry as ureg
 from ltrace.utils.callback import Callback
 from ltrace.utils.ProgressBarProc import ProgressBarProc
+from ltrace.slicer.cli_queue import CliQueue
 
 import ctk
 import qt
@@ -383,7 +384,28 @@ class SmartSeg(FlowStep):
         layout.addRow(self.modelInfo)
         self.modelComboBox.currentIndexChanged.connect(self.onModelChanged)
 
+        cleaningSection = ctk.ctkCollapsibleButton()
+        cleaningSection.text = "Cleaning"
+        cleaningLayout = qt.QVBoxLayout(cleaningSection)
+
+        self.removeSpuriousCheckbox = qt.QCheckBox("Remove spurious")
+        self.removeSpuriousCheckbox.toolTip = "Detect and remove spurious predictions."
+        self.removeSpuriousCheckbox.checked = True
+        self.removeSpuriousCheckbox.objectName = "Remove Spurious CheckBox"
+
+        self.cleanResinCheckbox = qt.QCheckBox("Clean resin")
+        self.cleanResinCheckbox.toolTip = "Detect and clean bubbles and residues in pore resin."
+        self.cleanResinCheckbox.checked = True
+        self.cleanResinCheckbox.objectName = "Clean Resin CheckBox"
+
+        cleaningLayout.addWidget(self.removeSpuriousCheckbox)
+        cleaningLayout.addWidget(self.cleanResinCheckbox)
+
+        layout.addRow(cleaningSection)
+
+        self.stepLabel = qt.QLabel()
         self.progressBar = LocalProgressBar()
+        layout.addRow(self.stepLabel)
         layout.addRow(self.progressBar)
 
         return widget
@@ -442,19 +464,25 @@ class SmartSeg(FlowStep):
 
         extraNodes = [self.state.px if self.hasPx else None, None]
         outputPrefix = self.state.pp.GetName() + "_{type}"
+
+        cliQueue = CliQueue(update_display=False, progress_bar=self.progressBar, progress_label=self.stepLabel)
+
+        kernelSize = None
         if modelKind == "torch":
-            self.logic = Segmenter.MonaiModelsLogic(False, onFinish=self.onFinish, parent=self.widget)
-            self.cliNode = self.logic.run(
+            self.logic = Segmenter.MonaiModelsLogic(False, parent=self.widget)
+            tmpReferenceNode, tmpOutNode = self.logic.run(
                 self.modelComboBox,
                 self.state.pp,
                 extraNodes,
                 self.state.soi,
                 outputPrefix,
                 False,
+                cliQueue,
             )
         elif modelKind == "bayesian":
-            self.logic = Segmenter.BayesianInferenceLogic(False, onFinish=self.onFinish, parent=self.widget)
-            self.cliNode = self.logic.run(
+            self.logic = Segmenter.BayesianInferenceLogic(False, parent=self.widget)
+            kernelSize = metadata["kernel_size"]
+            tmpReferenceNode, tmpOutNode = self.logic.run(
                 self.modelComboBox.currentData,
                 None,
                 self.state.pp,
@@ -462,25 +490,31 @@ class SmartSeg(FlowStep):
                 self.state.soi,
                 outputPrefix,
                 None,
+                cliQueue,
             )
-        if self.cliNode is None:
-            return
-        self.progressBar.setCommandLineModuleNode(self.cliNode)
+        self.logic.node_created.connect(self.onFinish)
+        cleaningLogic = Segmenter.PoreCleaningLogic(
+            removeSpurious=self.removeSpuriousCheckbox.isChecked(),
+            cleanResin=self.cleanResinCheckbox.isChecked(),
+            selectedPxNode=self.state.px,
+            smartReg=False,
+        )
+        cleaningLogic.run(tmpReferenceNode, tmpOutNode, self.state.soi, modelKind, kernelSize, cliQueue)
+        cliQueue.run()
         self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_ON_STATE, self.NEXT_IN_PROGRESS_STATE)
 
-    def onFinish(self):
-        if self.cliNode.GetStatusString() == "Completed":
-            result = slicer.mrmlScene.GetNodeByID(self.logic.outNodeId)
-            if result.GetSegmentation().GetNumberOfSegments() == 0:
-                slicer.util.warningDisplay(
-                    "The resulting segmentation is empty. Try another segmentation model, adjust the SOI, or skip this step and segment manually.",
-                    windowTitle="Empty Segmentation",
-                )
-                return
-            self.state.segmentation = result
-            self.state.addToDir(self.state.segmentation)
-            self.onModelChanged(self.modelComboBox.currentIndex)
-            self.nav.next()
+    def onFinish(self, node_id):
+        result = slicer.mrmlScene.GetNodeByID(node_id)
+        if result.GetSegmentation().GetNumberOfSegments() == 0:
+            slicer.util.warningDisplay(
+                "The resulting segmentation is empty. Try another segmentation model, adjust the SOI, or skip this step and segment manually.",
+                windowTitle="Empty Segmentation",
+            )
+            return
+        self.state.segmentation = result
+        self.state.addToDir(self.state.segmentation)
+        self.onModelChanged(self.modelComboBox.currentIndex)
+        self.nav.next()
 
 
 class ManualSeg(FlowStep):
@@ -572,6 +606,21 @@ class Inspector(FlowStep):
         self.segmentSelector.targetBox.hide()
         layout.addRow(self.segmentSelector)
 
+        self.poreRadioBtn = qt.QRadioButton("Pore")
+        self.grainRadioBtn = qt.QRadioButton("Grain")
+        self.poreRadioBtn.setChecked(True)
+
+        componentLayout = qt.QHBoxLayout()
+        componentLayout.addStretch(1)
+        componentLayout.addWidget(self.poreRadioBtn, 3)
+        componentLayout.addWidget(self.grainRadioBtn, 3)
+        componentLayout.addStretch(3)
+
+        tooltip = "Specify whether the selected input segments represent pores or grains. This affects the labels of the size classes."
+        self.poreRadioBtn.setToolTip(tooltip)
+        self.grainRadioBtn.setToolTip(tooltip)
+        layout.addRow("Component of interest:", componentLayout)
+
         progressLayout = qt.QHBoxLayout()
         self.progressBar = LocalProgressBar()
         progressLayout.addWidget(self.progressBar, 1)
@@ -630,6 +679,7 @@ class Inspector(FlowStep):
                 "direction": [],
                 "generate_throat_analysis": False,
                 "voxel_size": None,
+                "is_pore": self.poreRadioBtn.isChecked(),
             }
         elif method == self.SEPARATE_OBJECTS:
             params = {"method": "islands", "size_min_threshold": 0.0, "direction": []}

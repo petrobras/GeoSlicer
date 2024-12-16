@@ -7,10 +7,12 @@ import vtk
 import qt
 
 import slicer
-from SegmentEditorEffects import *
+
 import numpy as np
 
 from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+
+from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
 
 
 class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):

@@ -169,25 +169,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
                 )[0].astype(bool)
                 mask &= segmentArray
 
-            maskImage = vtk.vtkImageData()
-            maskImage.SetDimensions(cols, rows, 1)
-            maskImage.SetSpacing(sourceVolumeNode.GetSpacing())
-            maskImage.SetOrigin(sourceVolumeNode.GetOrigin())
-
-            maskData = vn.numpy_to_vtk(num_array=mask.ravel(), deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
-            maskData.SetNumberOfComponents(1)
-            maskImage.GetPointData().SetScalars(maskData)
-
-            modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
-            originalImageToWorldMatrix = vtk.vtkMatrix4x4()
-            modifierLabelmap.GetImageToWorldMatrix(originalImageToWorldMatrix)
-            modifierLabelmap.DeepCopy(maskImage)
-
-            # Apply changes
-            self.scriptedEffect.modifySelectedSegmentByLabelmap(
-                modifierLabelmap,
-                slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
-            )
+            helpers.modifySelectedSegmentByMaskArray(self.scriptedEffect, mask, sourceVolumeNode)
             slicer.util.setSliceViewerLayers(background=sourceVolumeNode, foreground=None, fit=True)
 
             self.scriptedEffect.saveStateForUndo()
@@ -213,8 +195,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             self.cliQueue.signal_queue_finished.connect(onFinish)
 
             sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
-            sourceImageData = sourceVolumeNode.GetImageData()
-            cols, rows, _ = sourceImageData.GetDimensions()  # x, y, z
 
             segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
             segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()

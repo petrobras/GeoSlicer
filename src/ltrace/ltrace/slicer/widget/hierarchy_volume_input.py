@@ -135,11 +135,13 @@ class HierarchyVolumeInput(qt.QWidget):
         return self.selectorWidget.currentItem()
 
     def setCurrentNode(self, node):
+        self._connectItemChangedHandler()
         self.refreshAttributeFilter()
         if node is None or isinstance(node, slicer.vtkMRMLNode):
             self.selectorWidget.setCurrentItem(self.subjectHierarchy.GetItemByDataNode(node))
 
     def setCurrentItem(self, itemId: int):
+        self._connectItemChangedHandler()
         self.selectorWidget.setCurrentItem(itemId)
 
     def addNodeAttributeIncludeFilter(self, attribute_name, attribute_value):

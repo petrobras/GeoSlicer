@@ -18,6 +18,7 @@ import stat
 import tempfile
 import time
 import vtk
+import vtk.util.numpy_support as vn
 
 from ltrace import transforms
 from ltrace.slicer.node_attributes import (
@@ -2371,3 +2372,33 @@ def arrayPartsFromNode(node: slicer.vtkMRMLNode) -> tuple[np.ndarray, np.ndarray
                 values = np.flipud(values)
 
     return depthColumn, values
+
+
+def maskImageFromMaskArray(maskArray, referenceNode):
+    maskImage = vtk.vtkImageData()
+    maskImage.SetDimensions(*referenceNode.GetImageData().GetDimensions())
+    maskImage.SetSpacing(referenceNode.GetSpacing())
+    maskImage.SetOrigin(referenceNode.GetOrigin())
+
+    maskData = vn.numpy_to_vtk(num_array=maskArray.ravel(), deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
+    maskData.SetNumberOfComponents(1)
+    maskImage.GetPointData().SetScalars(maskData)
+
+    return maskImage
+
+
+def modifySelectedSegmentByMaskImage(scriptedEffect, maskImage):
+    modifierLabelmap = scriptedEffect.defaultModifierLabelmap()
+    originalImageToWorldMatrix = vtk.vtkMatrix4x4()
+    modifierLabelmap.GetImageToWorldMatrix(originalImageToWorldMatrix)
+    modifierLabelmap.DeepCopy(maskImage)
+
+    # Apply changes
+    scriptedEffect.modifySelectedSegmentByLabelmap(
+        modifierLabelmap,
+        slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet,
+    )
+
+
+def modifySelectedSegmentByMaskArray(scriptedEffect, maskArray, referenceNode):
+    modifySelectedSegmentByMaskImage(scriptedEffect, maskImageFromMaskArray(maskArray, referenceNode))

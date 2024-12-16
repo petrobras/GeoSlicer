@@ -3,6 +3,7 @@
 
 from __future__ import print_function
 import os
+from pathlib import Path
 import pickle
 import time
 import warnings
@@ -69,17 +70,13 @@ def remove_spurious(image, binary_seg, pore_model):
     if split_pores.max() > 0:
         # Há um modelo RandomForest de remoção de poros espúrios para cada modelo de segmentação de poros
         with open(
-            os.path.join(
-                __file__,
-                "..",
-                "..",
-                "PoreStatsCLI",
-                "Libs",
-                "pore_stats",
-                "models",
-                "spurious_removal",
-                f"spurious_{pore_model}.pkl",
-            ),
+            Path(__file__).parent.parent
+            / "PoreStatsCLI"
+            / "Libs"
+            / "pore_stats"
+            / "models"
+            / "spurious_removal"
+            / f"spurious_{pore_model}.pkl",
             "rb",
         ) as pkl:
             scaler_and_model = pickle.load(pkl)

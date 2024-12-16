@@ -88,7 +88,7 @@ class OverviewSection(ctk.ctkCollapsibleButton):
                 color: {'#ffffff' if isDark else '#000000'};
             }}
             QListWidget::item:hover {{
-                background-color: {'#26C252' if isDark else '#d9ebff'};
+                background-color: {'#37403A' if isDark else '#d9ebff'};
             }}
         """
         )

@@ -121,6 +121,13 @@ nav:
           - Cycles Visualization: "Modules/PNM/cycles.md"
           - Krel EDA: "Modules/PNM/krelEDA.md"
           - Production Prediction: "Modules/PNM/production.md"
+      - Multiscale:
+          - Introdução e Fluxos: "Modules/Multiscale/MultiscaleWorkflows.md"
+          - Geolog Integration: "Modules/Multiscale/GeologEnv.md"
+          - Multiscale Image Generation: "Modules/Multiscale/Multiscale.md"
+          - Multiscale Post Processing: "Modules/Multiscale/MultiscalePostProcessing.md"
+          - Image Log Inpaint: "Modules/Multiscale/ImageLogInpaint.md"
+          - Image Log Crop: "Modules/Multiscale/ImageLogCropVolume.md"
 #  - Suporte:
 #      - Error Log: "Support_and_assistance/error_log.md"
 #      - Reportar Erros: "Support_and_assistance/log_bundle.md"

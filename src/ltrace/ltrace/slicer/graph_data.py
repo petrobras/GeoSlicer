@@ -9,6 +9,7 @@ from ltrace.algorithms.measurements import (
     CLASS_LABEL_SUFFIX,
     get_pore_size_class_label_field,
     PORE_SIZE_CATEGORIES,
+    GRAIN_SIZE_CATEGORIES,
 )
 from ltrace.slicer.helpers import tryGetNode
 from pyqtgraph import QtCore
@@ -312,13 +313,21 @@ class GraphData(QtCore.QObject):
     @staticmethod
     def handleLegacyPoreSizeClassVersions(columns, columnData):
         """Handles projects generated before v1.15.1. These projects do not have the column of labels (numerics) for the pore classes."""
+
+        if columnData.empty:
+            is_pore_data = True
+        else:
+            is_pore_data = "poro" in str(columnData.iloc[0])
+
+        categories = PORE_SIZE_CATEGORIES if is_pore_data else GRAIN_SIZE_CATEGORIES
+
         try:
             ## Handle even older legacy projects (column with _label as suffix)
             idx = get_pore_size_class_label_field(columns)
             return columns[idx], None
         except ValueError:
-            labelColumnName = f"pore_size_class[label]"
-            newLabelColumnData = columnData.replace(PORE_SIZE_CATEGORIES, np.arange(0, len(PORE_SIZE_CATEGORIES), 1))
+            labelColumnName = f"{'pore' if is_pore_data else 'grain'}_size_class[label]"
+            newLabelColumnData = columnData.replace(categories, np.arange(0, len(categories), 1))
 
             return labelColumnName, newLabelColumnData
 

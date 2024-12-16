@@ -1,33 +1,61 @@
 QPushButton {
-    background-color: #535353; /* Button color */
+    background-color: hsv(0, 0%, 33%);
     color: #ffffff; /* Button text color for readability */
     padding: 4px 8px;
     border-radius: 4px;
 }
 
-.actionButtonBackground {background-color: #26C252;}
-
-
-QPushButton:hover {
-    background-color: #37403A; /* Slightly lighter green on hover */
+QPushButton:enabled::hover {
+  background-color: hsv(0, 0%, 35%);
 }
 
-QPushButton:pressed {
-    background-color: #1e8e41; /* Darker shade on button press */
+QPushButton:enabled::pressed {
+  background-color: hsv(0, 0%, 30%);
 }
 
-QLineEdit, QTextEdit {
-    background-color: #535353;
-    border: 1px solid #666666;
+QPushButton.actionButtonBackground:enabled {
+    background-color: hsv(136, 80%, 76%);
+}
+
+
+QPushButton.actionButtonBackground:hover {
+    background-color: hsv(136, 70%, 80%);
+}
+
+QPushButton.actionButtonBackground:pressed {
+    background-color: hsv(136, 70%, 70%);
+}
+
+QLineEdit {
+    padding: 4px 4px 4px 8px;
+    border: none;
+    border-top-right-radius: 4px;
+    border-top-left-radius: 4px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+QLineEdit:enabled {
+    background-color: hsv(0, 0%, 27%);
+    border-bottom: 1px solid hsv(0, 0%, 60%);
+}
+
+QTextEdit {
     border-radius: 4px;
-    padding: 4px;
 }
 
-QTextEdit#pythonConsole {
-    background-color: #333333; /* Console background color */
-    border-radius: 0px;
+QTextEdit:enabled {
+    background-color: hsv(0, 0%, 27%);
 }
 
+QLineEdit:focus {
+    border-bottom: 2px solid #26C252;
+}
+
+QPushButton:disabled, QLineEdit::disabled, QTextEdit::disabled {
+  background-color: hsv(0, 0%, 27%);
+  color: hsv(0, 0%, 60%);
+}
 
 QListView, QTableView {
     background-color: #333333; /* Match general background */
@@ -37,14 +65,124 @@ QListView, QTableView {
     selection-color: #ffffff; /* Text color when selected */
 }
 
+QWidget {
+    selection-background-color: hsv(136, 80%, 50%);
+}
+  
+QListWidget {
+    padding: 4px;
+    selection-background-color: hsv(136, 70%, 60%);
+}
+  
+QListWidget:disabled {
+    color: hsv(0, 0%, 50%);
+}
+  
+QComboBox {
+    padding: 3px 3px 3px 8px;
+    background-color: hsv(0, 0%, 33%);
+    border: none;
+    color: white;
+    border-radius: 4px;
+}
+  
+QComboBox:disabled {
+    background-color: hsv(0, 0%, 27%);
+    color: hsv(0, 0%, 70%);
+}
+  
+  
+QComboBox::down-arrow {
+    image: url($iconPath/triangle_down_enabled.svg);
+    width: 10px;
+    height: 10px;
+}
+  
+QComboBox::down-arrow:disabled {
+    image: url($iconPath/triangle_down_disabled.svg);
+}
+  
+QComboBox::drop-down {
+    width: 20px;
+    border: none;
+    padding: 0px 8px;
+}
+  
+QComboBox:hover {
+    background-color: hsv(0, 0%, 35%);
+}
+  
+QComboBox QAbstractItemView {
+    border: none;
+    background-color: hsv(0, 0%, 25%);
+    padding: 0px 0px 4px 4px;
+}
+  
+QComboBox:on {
+    background-color: hsv(0, 0%, 25%);
+}
+
+QComboBox:editable {
+    border: none;
+    border-radius: 0px;
+    border-top-right-radius: 4px;
+    border-top-left-radius: 4px;
+}
+
+QComboBox:editable:enabled {
+    background-color: hsv(0, 0%, 27%);
+    border-bottom: 1px solid hsv(0, 0%, 60%);
+}
+
+QComboBox:editable:focus {
+    border-bottom: 2px solid #26C252;
+}
+
+ctkPathLineEdit QToolButton {
+    background-color: hsv(0, 0%, 33%);
+    border: none;
+    margin: 0px 4px;
+    border-radius: 4px;
+    padding: 0px 4px;
+}
+
+ctkPathLineEdit QToolButton:hover {
+    background-color: hsv(0, 0%, 35%);
+}
+
+ctkPathLineEdit QToolButton:pressed {
+    background-color: hsv(0, 0%, 30%);
+}
+  
 QScrollBar:vertical, QScrollBar:horizontal {
     background: #535353; /* Scrollbar background */
-    width: 10px;
+    width: 12px;
 }
 
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
-    background: #26C252; /* Scrollbar handle */
-    border-radius: 4px;
+    background: hsv(0, 0%, 60%); /* Scrollbar handle */
+    border-radius: 6px;
+    padding: 4px;
+}
+
+QScrollBar::sub-line, QScrollBar::add-line {
+    border: none;
+}
+
+QScrollBar::up-arrow, QScrollBar::down-arrow, 
+QScrollBar::left-arrow, QScrollBar::right-arrow {
+    width: 8px;
+    height: 8px;
+    border-radius: 6px;
+    background: none;
+}
+
+QScrollBar::up-arrow {
+    image: url($iconPath/triangle_up_enabled.svg);
+}
+
+QScrollBar::down-arrow {
+    image: url($iconPath/triangle_down_enabled.svg);
 }
 
 /* -~- Checkboxes -~- */

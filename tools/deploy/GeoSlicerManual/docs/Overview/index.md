@@ -28,4 +28,5 @@ O GeoSlicer é uma plataforma de código aberto, desenvolvida em Python e basead
 - [Manual Segmentation (2D)](../Modules/Thin_section/Registration.md)
 - [Auto Registration (2D)](../Modules/Thin_section/AutoRegistration.md)
 - [PNM Simulation](../Modules/PNM/PNSimulation.md)
+- [Multiscale](../Modules/Multiscale/Multiscale.md)
 </div>

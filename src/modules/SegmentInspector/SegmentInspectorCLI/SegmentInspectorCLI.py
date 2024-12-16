@@ -31,6 +31,7 @@ from ltrace.algorithms.measurements import (
     calculate_statistics_on_segments,
     LabelStatistics3D,
     PORE_SIZE_CATEGORIES,
+    GRAIN_SIZE_CATEGORIES,
 )
 from ltrace.pore_networks.generalized_network_extractor import generate_pore_network_label_map
 from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
@@ -327,11 +328,12 @@ def main(args):
     if result is not None:
         number_of_partitions = result.regions.max()
         if "all" in products or "report" in products:
+            is_pore = params.get("is_pore", True)
             if result.regions.ndim == 2:
                 directionVector = params.get("direction", None)
-                operator = LabelStatistics2D(result.regions, spacing, directionVector, size_min_threshold)
+                operator = LabelStatistics2D(result.regions, spacing, directionVector, is_pore, size_min_threshold)
             else:
-                operator = LabelStatistics3D(result.regions, spacing, size_min_threshold)
+                operator = LabelStatistics3D(result.regions, spacing, is_pore, size_min_threshold)
 
             df, nlabels = calculate_statistics_on_segments(
                 result.regions,
@@ -373,7 +375,8 @@ def main(args):
 
                 if args.outputReport:
                     df = addUnitsToDataFrameParameters(df)
-                    categ = {i: v for i, v in enumerate(PORE_SIZE_CATEGORIES)}
+                    categ = PORE_SIZE_CATEGORIES if is_pore else GRAIN_SIZE_CATEGORIES
+                    categ = {i: v for i, v in enumerate(categ)}
                     df.pore_size_class = df.pore_size_class.replace(categ)
                     print(f"writing df to tableNode, {args.outputReport}")
                     writeToTable(df, args.outputReport)

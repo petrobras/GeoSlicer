@@ -9,7 +9,6 @@ import qt
 import slicer
 from ltrace.slicer.helpers import copy_display
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widgets import PixelLabel
 from ltrace.slicer_utils import *
 
 
@@ -100,9 +99,6 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
         self.xNeighborhoodSpinBox.toolTip = "The size of the neighborhood in the X dimension."
         xBoxLayout = qt.QHBoxLayout()
         xBoxLayout.addWidget(self.xNeighborhoodSpinBox)
-        xPixelLabel = PixelLabel(value_input=self.xNeighborhoodSpinBox, node_input=self.inputVolumeComboBox)
-        xPixelLabel.setSizePolicy(qt.QSizePolicy.Maximum, qt.QSizePolicy.Fixed)
-        xBoxLayout.addWidget(xPixelLabel)
         parametersFormLayout.addRow("X Neighborhood:", xBoxLayout)
 
         self.yNeighborhoodSpinBox = qt.QSpinBox()
@@ -110,9 +106,6 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
         self.yNeighborhoodSpinBox.toolTip = "The size of the neighborhood in the Y dimension."
         yBoxLayout = qt.QHBoxLayout()
         yBoxLayout.addWidget(self.yNeighborhoodSpinBox)
-        yPixelLabel = PixelLabel(value_input=self.yNeighborhoodSpinBox, node_input=self.inputVolumeComboBox)
-        yPixelLabel.setSizePolicy(qt.QSizePolicy.Maximum, qt.QSizePolicy.Fixed)
-        yBoxLayout.addWidget(yPixelLabel)
         parametersFormLayout.addRow("Y Neighborhood:", yBoxLayout)
 
         self.zNeighborhoodSpinBox = qt.QSpinBox()
@@ -120,9 +113,6 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
         self.zNeighborhoodSpinBox.toolTip = "The size of the neighborhood in the Z dimension."
         zBoxLayout = qt.QHBoxLayout()
         zBoxLayout.addWidget(self.zNeighborhoodSpinBox)
-        zPixelLabel = PixelLabel(value_input=self.zNeighborhoodSpinBox, node_input=self.inputVolumeComboBox)
-        zPixelLabel.setSizePolicy(qt.QSizePolicy.Maximum, qt.QSizePolicy.Fixed)
-        zBoxLayout.addWidget(zPixelLabel)
         parametersFormLayout.addRow("Z Neighborhood:", zBoxLayout)
 
         parametersFormLayout.addRow(" ", None)

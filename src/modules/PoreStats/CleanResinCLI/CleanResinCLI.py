@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-import os
+from pathlib import Path
 import time
 
 import cv2
@@ -41,23 +41,19 @@ def clean_resin(image, binary_seg, px_image, pp_rock_area, px_rock_area, decide_
         blue_channel = image[:, :, 2]
         blue_channel = cv2.equalizeHist(blue_channel)
 
-        # with open(os.path.join(__file__, '..', '..', "PoreStatsCLI", "Libs", "pore_stats", 'models', 'pore_residues', 'blue_channel.pkl'), 'rb') as pkl:
+        # with open(Path(__file__).parent.parent / "PoreStatsCLI" / "Libs" / "pore_stats" / "models" / "pore_residues" / "blue_channel.pkl", 'rb') as pkl:
         #    kmeans = pickle.load(pkl)
 
         # Usando joblib em vez de pickle para aproveitar a compressão do modelo (K-Means pickle fica muito grande)
         # O modelo joblib foi salvo usando a mesma versão do Python usado para executar este script (PythonSlicer). Divergência de versão causa erro.
         kmeans = joblib.load(
-            os.path.join(
-                __file__,
-                "..",
-                "..",
-                "PoreStatsCLI",
-                "Libs",
-                "pore_stats",
-                "models",
-                "pore_residues",
-                "blue_channel.pkl",
-            )
+            Path(__file__).parent.parent
+            / "PoreStatsCLI"
+            / "Libs"
+            / "pore_stats"
+            / "models"
+            / "pore_residues"
+            / "blue_channel.pkl"
         )
 
         clusters = kmeans.predict(blue_channel.flatten().reshape(-1, 1))
@@ -134,9 +130,13 @@ def clean_resin(image, binary_seg, px_image, pp_rock_area, px_rock_area, decide_
             px_hsv = cv2.cvtColor(cv2.GaussianBlur(px, (99, 99), 9), cv2.COLOR_RGB2HSV)
 
             kmeans = joblib.load(
-                os.path.join(
-                    __file__, "..", "..", "PoreStatsCLI", "Libs", "pore_stats", "models", "pore_residues", "px_hsv.pkl"
-                )
+                Path(__file__).parent.parent
+                / "PoreStatsCLI"
+                / "Libs"
+                / "pore_stats"
+                / "models"
+                / "pore_residues"
+                / "px_hsv.pkl"
             )
             clusters = kmeans.predict(px_hsv.flatten().reshape(-1, 3))
             test_px_pores_mask = clusters.reshape(px_hsv.shape[:2]) == 3

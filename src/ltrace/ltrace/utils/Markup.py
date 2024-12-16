@@ -83,8 +83,7 @@ class Markup(qt.QObject):
                 if self.update_instruction:
                     self.update_instruction(self, point_index)
                 if interaction_node.GetCurrentInteractionMode() != 1:
-                    self.stop_picking()
-                    self.__reset_markups_node()
+                    interaction_node.SetCurrentInteractionMode(1)
 
         self.__reset_markups_node()
         self.__removeInteractionObserverTags()

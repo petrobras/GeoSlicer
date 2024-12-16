@@ -19,7 +19,6 @@ from ltrace.slicer.lazy import lazy
 from ltrace.slicer.module_info import ModuleInfo
 from ltrace.slicer.module_utils import fetchModulesFrom, mapByCategory
 from ltrace.slicer.project_manager import ProjectManager, handleCopySuffixOnClonedNodes
-from ltrace.slicer.tracking.tracking_manager import TrackingManager
 from ltrace.slicer.widget.custom_toolbar_buttons import addMenuRaw, addAction, addActionWidget
 from ltrace.slicer.widget.docked_data import DockedData
 from ltrace.slicer.widget.fuzzysearch import FuzzySearchDialog, LinearSearchModel
@@ -27,6 +26,12 @@ from ltrace.slicer_utils import LTracePlugin, getResourcePath
 from ltrace.constants import ImageLogConst
 from pathlib import Path
 from typing import List, Any, Tuple, Dict
+
+try:
+    from ltrace.slicer.tracking.tracking_manager import TrackingManager
+except ImportError:
+    TrackingManager = lambda *args, **kwargs: None
+
 
 toBool = slicer.util.toBool
 
@@ -58,10 +63,7 @@ class AppContext(LTracePlugin):
         self.fuzzySearchModel = LinearSearchModel()
         self.fuzzySearch = FuzzySearchDialog(self.fuzzySearchModel, parent=self.mainWindow)
 
-        try:
-            self.__trackingManager = TrackingManager()
-        except Exception as e:
-            self.__trackingManager = None
+        self.__trackingManager = TrackingManager()
 
         self.___projectManager = ProjectManager(folderIconPath=getResourcePath("Icons") / "ProjectIcon.ico")
 

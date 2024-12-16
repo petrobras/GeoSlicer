@@ -206,7 +206,7 @@ label[for="__drawer"] {
     border-radius: 10px;
 }
 
-.video-wrapper:hover .floating-video {
+.floating-video:hover {
     transform: scale(2);
     transform-origin: right top;
     /* Scale towards the left */

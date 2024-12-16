@@ -88,7 +88,10 @@ class SheetExporter:
                     statistics["quantity"] = len(g_indexes)
                     statistics["percentage (%)"] = 100 * len(g_indexes) / len(property_values)
 
-                    sheet = pd.concat([sheet, statistics.to_frame().T], ignore_index=True)
+                    if sheet.empty:
+                        sheet = statistics.to_frame().T.copy()
+                    else:
+                        sheet = pd.concat([sheet, statistics.to_frame().T], ignore_index=True)
 
                 sheet = sheet.sort_values(by=["quantity", "area (mm^2)"], ascending=[False, True])
                 sheet.to_excel(sheet_writer, sheet_name=sheet_name, index=False)

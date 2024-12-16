@@ -48,6 +48,8 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor = None
         self.__tag = None
 
+        self.color_effects = ["Smart foreground", "Color threshold"]
+
     def setup(self):
         LTracePluginWidget.setup(self)
 
@@ -142,6 +144,8 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureColorSupport(color_support=color_support)
 
+        self.editor.effectByName("QEMSCAN mask").self().onSourceVolumeNodeChanged()
+
     def configureEffectsForThinSectionEnvironment(self):
         self.selectParameterNodeByTag("ThinSectionEnv")
 
@@ -159,10 +163,10 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
                 "Mask Image",
                 "Connectivity",
                 "Level tracing",
-                "Smart foreground",
-                "Color threshold",
+                "QEMSCAN mask",
                 "Boundary removal",
             ]
+            + self.color_effects
         )
         self.editor.unorderedEffectsVisible = False
 
@@ -187,20 +191,21 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             "Boundary removal",
             "Expand segments",
             "Sample segmentation",
-            "Smart foreground",
         ]
         if color_support:
-            effects.append("Color threshold")
+            effects.extend(self.color_effects)
         self.editor.setEffectNameOrder(effects)
         self.editor.unorderedEffectsVisible = False
 
     def configureColorSupport(self, color_support=False):
         effects = self.editor.effectNameOrder()
         effects = list(effects)
-        if color_support and "Color threshold" not in effects:
-            effects.append("Color threshold")
-        elif not color_support and "Color threshold" in effects:
-            effects.remove("Color threshold")
+        if color_support and not any(color_effect in effects for color_effect in self.color_effects):
+            effects.extend(self.color_effects)
+        elif not color_support:
+            for color_effect in self.color_effects:
+                if color_effect in effects:
+                    effects.remove(color_effect)
         self.editor.setEffectNameOrder(effects)
         self.editor.unorderedEffectsVisible = False
 

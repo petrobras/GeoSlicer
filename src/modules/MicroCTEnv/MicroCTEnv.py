@@ -65,7 +65,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 ],
             ),
             (
-                "Multi-Scale",
+                "Multiscale",
                 [
                     "MultiScale",
                     "MultiscalePostProcessing",

@@ -88,14 +88,6 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.deleteAction.triggered.disconnect()
         self.deleteAction.triggered.connect(confirmDeleteSelectedItems)
 
-        # hack to workaround currentItemChanged firing twice
-        self.subjectHierarchyTreeView.currentItemsChanged.connect(self.currentItemChanged)
-
-        # Add observer
-        self.endSceneObserver = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.EndCloseEvent, lambda *args: self.currentItemChanged(None)
-        )
-
         self.subjectHierarchyTreeView.setMinimumHeight(310)
         self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
         self.formLayout.addRow(self.subjectHierarchyTreeView)
@@ -119,6 +111,14 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.segmentationWidget = SegmentationWidget()
         self.formLayout.addRow(self.segmentationWidget)
         self.segmentationWidget.setVisible(False)
+
+        # hack to workaround currentItemChanged firing twice
+        self.subjectHierarchyTreeView.currentItemsChanged.connect(self.currentItemChanged)
+
+        # Add observer
+        self.endSceneObserver = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.EndCloseEvent, lambda *args: self.currentItemChanged(None)
+        )
 
     def currentItemChanged(self, itemID_bogus):
         # hack to workaround currentItemChanged firing twice

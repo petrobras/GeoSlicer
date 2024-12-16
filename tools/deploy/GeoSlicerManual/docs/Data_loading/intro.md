@@ -25,8 +25,8 @@ Os módulos de carregamento existentes são:
 - **_Core_**:
     - **_Multicore_**: Carrega imagens de testemunhos de poços em lote.
 - **_Multiscale_**:
+    - **_GeoLog Integration_**: Carrega imagens de diferentes tipos diretamente do programa Geolog
     - **_Loader_**: Carrega imagens de perfis de poços
     - **_Importer_**: Carrega perfis de poços em CSV, JPG, PNG e TIFF.
     - **_Micro CT Loader_**: Carrega imagens de micro CT.
-    - **_Core Photograph Loader_**: Carrega a imagem central das fotografias das caixas centrais e construa um volume
-      com a imagem completa do núcleo.
+    - **_Multicore_**: Carrega imagens de testemunhos de poços em lote.

@@ -1232,7 +1232,7 @@ class SegmenterLogic(LTracePluginLogic):
 
         # End Setup Outputs -----------------------------------------------------------------------------
 
-        def onSucess():
+        def onSuccess():
             caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
@@ -1328,7 +1328,7 @@ class SegmenterLogic(LTracePluginLogic):
         def onFailure():
             slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_successful.connect(onSuccess)
         cliQueue.signal_queue_finished.connect(onFinish)
         cliQueue.signal_queue_cancelled.connect(onCancel)
         cliQueue.signal_queue_failed.connect(onFailure)
@@ -1357,6 +1357,8 @@ class SegmenterLogic(LTracePluginLogic):
 
 
 class MonaiModelsLogic(LTracePluginLogic):
+    node_created = qt.Signal(str)
+
     def __init__(self, imageLogMode, parent=None, onFinish=None):
         super().__init__(parent)
 
@@ -1442,7 +1444,7 @@ class MonaiModelsLogic(LTracePluginLogic):
 
         # End Setup Outputs -----------------------------------------------------------------------------
 
-        def onSucess():
+        def onSuccess():
             caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
@@ -1468,6 +1470,8 @@ class MonaiModelsLogic(LTracePluginLogic):
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
 
+                self.node_created.emit(outNode.GetID())
+
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
@@ -1491,7 +1495,7 @@ class MonaiModelsLogic(LTracePluginLogic):
         def onFailure():
             slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_successful.connect(onSuccess)
         cliQueue.signal_queue_finished.connect(onFinish)
         cliQueue.signal_queue_cancelled.connect(onCancel)
         cliQueue.signal_queue_failed.connect(onFailure)
@@ -1503,6 +1507,8 @@ class MonaiModelsLogic(LTracePluginLogic):
 
 
 class BayesianInferenceLogic(LTracePluginLogic):
+    node_created = qt.Signal(str)
+
     def __init__(self, imageLogMode, parent=None, onFinish=None):
         super().__init__(parent)
 
@@ -1672,7 +1678,7 @@ class BayesianInferenceLogic(LTracePluginLogic):
 
         # End Setup Outputs -----------------------------------------------------------------------------
 
-        def onSucess():
+        def onSuccess():
             caller = cliQueue.get_current_node()
             try:
                 outNode = helpers.createNode(
@@ -1699,6 +1705,8 @@ class BayesianInferenceLogic(LTracePluginLogic):
                 else:
                     slicer.util.setSliceViewerLayers(background=referenceNode, fit=True)
 
+                self.node_created.emit(outNode.GetID())
+
             except Exception as e:
                 print("Handle errors on state: %s" % caller.GetStatusString())
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
@@ -1722,7 +1730,7 @@ class BayesianInferenceLogic(LTracePluginLogic):
         def onFailure():
             slicer.util.errorDisplay(f"Operation failed on {cliQueue.get_error_message()}")
 
-        cliQueue.signal_queue_successful.connect(onSucess)
+        cliQueue.signal_queue_successful.connect(onSuccess)
         cliQueue.signal_queue_finished.connect(onFinish)
         cliQueue.signal_queue_cancelled.connect(onCancel)
         cliQueue.signal_queue_failed.connect(onFailure)

@@ -861,6 +861,7 @@ def loadEffects(modules):
         "MultiThresholdEffect",
         "SampleSegmentationEffect",
         "SmartForegroundEffect",
+        "QEMSCANMaskEffect",
     ]
 
     loadModules([modules[effect] for effect in effects if effect in modules], permanent=True, favorite=False)
@@ -883,6 +884,7 @@ def registerEffects():
     slicer.modules.MultiThresholdEffectInstance.registerEditorEffect()
     slicer.modules.SampleSegmentationEffectInstance.registerEditorEffect()
     slicer.modules.SmartForegroundEffectInstance.registerEditorEffect()
+    slicer.modules.QEMSCANMaskEffectInstance.registerEditorEffect()
 
 
 def loadFoundations(modules):
@@ -1292,6 +1294,7 @@ def configure(rebuild_index=False):
         stylesheet = style.read()
         stylesheet = Template(stylesheet).substitute(iconPath=getResourcePath("Icons/IconSet-widgets").as_posix())
         slicer.app.styleSheet = stylesheet
+        slicer.app.pythonConsole().setStyleSheet("QTextEdit { background-color: #1e1e1e; }")
 
     # set default module: Data
     slicer.util.selectModule("CustomizedData")
