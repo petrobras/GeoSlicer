@@ -88,12 +88,15 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 addAction(relatedModules[module], self.modulesToolbar)
             elif isinstance(module, tuple):
                 name, modules = module
-                addMenu(
-                    svgToQIcon(getResourcePath("Icons") / "IconSet-svg" / f"{name}.svg"),
-                    name,
-                    [relatedModules[m] for m in modules],
-                    self.modulesToolbar,
-                )
+                modules = [relatedModules.get(m, None) for m in modules]
+                modules = [m for m in modules if m is not None]
+                if modules:
+                    addMenu(
+                        svgToQIcon(getResourcePath("Icons") / "IconSet-svg" / f"{name}.svg"),
+                        name,
+                        modules,
+                        self.modulesToolbar,
+                    )
             elif callable(module):
                 module()
 

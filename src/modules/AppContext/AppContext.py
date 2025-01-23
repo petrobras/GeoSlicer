@@ -168,13 +168,18 @@ class ModuleManager:
         )
 
     def addLoadersMenu(self, toolbar):
+
         loaders = [
             "BIAEPBrowser",
             "OpenRockData",
             "NetCDF",
         ]
 
-        toolModules = [self.availableModules[m] for m in loaders]
+        toolModules = []
+
+        for m in loaders:
+            if m in self.availableModules:
+                toolModules.append(self.availableModules[m])
 
         addMenuRaw(
             svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Database.svg"),

@@ -909,9 +909,6 @@ def loadFoundations(modules):
         "SegmentationEnv",
     ]
 
-    if slicer_is_in_developer_mode():
-        corePlugins.append("TestsModule")
-
     coreModules = [modules[m] for m in corePlugins]
 
     loadModules(coreModules, permanent=True, favorite=False)

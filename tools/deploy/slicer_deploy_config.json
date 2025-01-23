@@ -102,7 +102,9 @@
         "src/modules/PolynomialShadingCorrectionBigImage",
         "src/modules/BoundaryRemovalBigImage",
         "src/ltrace/ltrace/slicer/tracking",
-        "src/ltrace/ltrace/remote/hosts/biaep/"
+        "src/ltrace/ltrace/remote/hosts/biaep/",
+        "tools/pipeline",
+        "tools/jenkins"
     ],
 
     "Patches" : {
