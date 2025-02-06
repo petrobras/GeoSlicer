@@ -21,6 +21,7 @@ import vtk
 import vtk.util.numpy_support as vn
 
 from ltrace import transforms
+from ltrace.slicer.module_utils import clone_or_update_repo
 from ltrace.slicer.node_attributes import (
     NodeEnvironment,
     NodeTemporarity,
@@ -2327,6 +2328,27 @@ class LazyLoad:
             self.module = importlib.import_module(self.moduleName)
         return getattr(self.module, name)
 
+
+class LazyLoad2:
+    def __init__(self, importPath: str):
+        self.importPath = importPath
+        path_ = importPath.split(".")
+        self.moduleName = path_[0]
+        self.targetModuleName = path_[-1]
+        self.module = None
+
+    def __getattr__(self, name):
+        if not self.module:
+            moduleInfo = slicer.modules.AppContextInstance.modules.availableModules[self.moduleName]
+            libraryPath = Path(moduleInfo.searchPath)
+            for el in libraryPath.iterdir():
+                if el.is_dir() and (el / "__init__.py").exists():
+                    sys.path.append(el.as_posix())
+            sys.path.append(libraryPath.as_posix())
+
+            self.module = importlib.import_module(self.targetModuleName)
+
+        return getattr(self.module, name)
 
 def checkUniqueNames(nodes):
     nodeNames = set()

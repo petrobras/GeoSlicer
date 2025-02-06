@@ -76,7 +76,7 @@ authors:
   email: robim.pacheco@ltrace.com.br
   affiliation: "LTrace Geociências"
   orcid: ""
-title: "GeoSlicerPublic"
-version: 2.3.2
-date-released: "2024-02-04"
-url: "https://www.ltrace.com.br/geoslicer/"
+title: "GeoSlicer - Integrated Open-Source Digital Rocks Platform"
+version: 2.5.5
+date-released: "2025-02-04"
+url: "https://github.com/petrobras/GeoSlicer"

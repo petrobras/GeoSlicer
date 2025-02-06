@@ -1049,6 +1049,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Fit button
         fitButton = qt.QPushButton()
+        fitButton.setObjectName("Fit All Button")
         fitButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Fit.png"))
         fitButton.clicked.connect(self.fit)
         fitButton.setFixedWidth(25)
@@ -1056,8 +1057,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         # Adjust to real aspect ratio button
         fitRealAspectRatio = qt.QPushButton()
+        fitRealAspectRatio.setObjectName("Fit Real Button")
         fitRealAspectRatio.setIcon(qt.QIcon(getResourcePath("Icons") / "FitRealAspectRatio.png"))
-        fitRealAspectRatio.clicked.connect(self.fitToAspectRatio)
+        fitRealAspectRatio.clicked.connect(lambda state: self.fitToAspectRatio())
         fitRealAspectRatio.setFixedWidth(25)
         fitRealAspectRatio.setToolTip("Adjust the views to their real aspect ratio.")
 

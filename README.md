@@ -187,3 +187,11 @@ If you want to avoid the pre-commit hook to trigger, use '--no-verify' or '-n' f
 git commit -m 'Example' -n
 ```
 
+## Citations
+[//]: # (APA style references for papers citing GeoSlicer with hyperlink to doi/url at the year when available)
+
+- Carneiro, I., Zanellato, D., Figueiredo, L., & Bordignon, F. (2023). Comparison of geostatistical and machine learning methods for reconstructing 3D images of carbonate rocks. 6th Brazil Interpore Chapter Conference on Porous Media.
+
+- Carneiro, I., Sapucaia, V., Bordignon, F., Figueiredo, L., Honório, B., & Matias, J. (2024). Application of MPS to Image Log and CoreCT Images Inpainting. 85th EAGE Annual Conference & Exhibition, [2024](https://www.earthdoc.org/content/papers/10.3997/2214-4609.2024101489)(1), 1-5.
+
+- Carneiro, I., Souza, J., Zanellato, D., Mei, M., Sapucaia, V., Figueiredo, L., Bordignon, F., Matias, J., Honório, Bruno César Zanardo, & Surmas, R. (2024). Multiscale analysis of carbonate rocks for the digital rocks platform GeoSlicer, an open source plugin. ROG.e 2024, [2024](https://biblioteca.ibp.org.br/pt-BR/search/49511)(2975).

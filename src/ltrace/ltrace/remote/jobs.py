@@ -30,10 +30,15 @@ class JobManager:
 
     @classmethod
     def mount(cls, job: JobExecutor):
-        if job.job_type not in cls.compilers:
-            return job
+        try:
+            if job.job_type not in cls.compilers:
+                return job
 
-        return cls.compilers[job.job_type](job)
+            job = cls.compilers[job.job_type](job)
+        except Exception as e:
+            logging.error(f"Failed to mount job {job.uid}. Cause: {repr(e)}")
+
+        return job
 
     @classmethod
     def register(cls, key: str, compiler: Callable):

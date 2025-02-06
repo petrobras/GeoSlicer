@@ -12,7 +12,7 @@ from ltrace.slicer import widgets
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from slicer.ScriptedLoadableModule import *
 
-from MonaiLabelRemoteTask.MonaiLabelServerHandler import MonaiLabelServerHandler
+from ltrace.remote.handlers import MonaiLabelServerHandler
 from ltrace.remote.connections import JobExecutor
 from ltrace.remote.jobs import JobManager
 
@@ -350,15 +350,3 @@ class MonaiLabelServerLogic(LTracePluginLogic):
         self.PID = None
         self.process = None
 
-
-def monai_job_compiler(job: JobExecutor):
-    details = job.details
-    IP = details.get("nodeIP", "")
-    appPath = details.get("appPath", "")
-    datasetPath = details.get("datasetPath", "")
-    job.task_handler = MonaiLabelServerHandler(app_folder=appPath, dataset_folder=datasetPath)
-
-    return job
-
-
-JobManager.register("monai", monai_job_compiler)

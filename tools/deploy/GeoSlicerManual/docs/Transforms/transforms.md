@@ -18,7 +18,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_crop.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_crop.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Recorte de Volume</p>
@@ -43,7 +43,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_image_tools.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_image_tools.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Ferramentas de imagem</p>
@@ -69,7 +69,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_manual_registration.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_manual_registration.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Registro</p>

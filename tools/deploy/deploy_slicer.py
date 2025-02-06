@@ -207,6 +207,9 @@ def generic_deploy(
     wd = os.getcwd()
     os.chdir(THIS_FOLDER / "GeoSlicerManual")
     output_manual_path_str = (THIS_FOLDER / "Resources" / "manual").as_posix()
+    # delete content inside output_manual_path_str
+    if os.path.exists(output_manual_path_str):
+        shutil.rmtree(output_manual_path_str)
     subprocess.check_call([sys.executable, "-m", "mkdocs", "build", "--site-dir", output_manual_path_str])
     os.chdir(wd)
 

@@ -196,7 +196,7 @@ class JobListItemWidget(qt.QWidget):
         if job.status == "COMPLETED":
             self.allowLoadData = True
             self.allowRestart = not self.allowLoadData
-        elif job.status == "IDLE":
+        elif job.status == "IDLE" or job.status == "NOT CONNECTED" or job.status == "GHOST":
             self.allowLoadData = False
             self.allowRestart = not self.allowLoadData
         else:
@@ -443,10 +443,22 @@ class JobMonitorWidget(LTracePluginWidget):
             self.addJob(job)
 
     def clearJob(self, job: JobExecutor):
-        if job.uid in self.listedJobs:
-            item = self.listedJobs[job.uid]
+        try:
+            if job and job.uid in self.listedJobs:
+                item = self.listedJobs[job.uid]
+                self.jobListWidget.takeItem(self.jobListWidget.row(item))
+                del self.listedJobs[job.uid]
+        except Exception as e:
+            logging.error(repr(e))
+
+    def forceDelete(self, uid: str):
+        try:
+            item = self.listedJobs[uid]
             self.jobListWidget.takeItem(self.jobListWidget.row(item))
-            del self.listedJobs[job.uid]
+            del self.listedJobs[uid]
+            JobManager.remove(uid)
+        except KeyError:
+            logging.error(f"Job {uid} does not exist")
 
     def loadResults(self, item: qt.QListWidgetItem, job: JobExecutor):
         self.logic.loadResults(job)

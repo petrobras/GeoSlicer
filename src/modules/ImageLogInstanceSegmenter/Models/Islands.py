@@ -337,8 +337,8 @@ class IslandsLogic(ModelLogic):
                     propertiesTableNode.AddNodeReferenceID("InstanceSegmenterLabelMap", outputLabelMapNode.GetID())
                     shNode.SetItemParent(shNode.GetItemByDataNode(propertiesTableNode), self.itemParent)
                     dataFrameToTableNode(propertiesDataFrame, tableNode=propertiesTableNode)
-                except Exception as err:
-                    logging.info(f"{err}\n{traceback.print_exc()}")
+                except Exception as error:
+                    logging.error(f"Error: {error}\n{traceback.print_exc()}")
                     if outputLabelMapNode:
                         slicer.mrmlScene.RemoveNode(outputLabelMapNode)
                     if propertiesTableNode:

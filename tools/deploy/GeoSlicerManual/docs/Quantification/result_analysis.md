@@ -23,7 +23,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_table.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_table.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Uso básico de tabelas </p>
@@ -61,7 +61,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_graphs.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_graphs.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Uso básico de gráficos </p>
@@ -76,7 +76,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_graphs.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_graphs.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: MultipleImageAnalysis </p>

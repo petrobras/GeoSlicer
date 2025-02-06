@@ -16,6 +16,8 @@ from ltrace.remote import errors
 
 from ltrace.slicer.widget.remote import login, accounts
 
+from JobLoader import register_job_loaders
+
 
 class RemoteService(LTracePlugin):
     SETTING_KEY = "RemoteService"
@@ -41,12 +43,14 @@ class RemoteService(LTracePlugin):
         JobManager.storage = self.job_file
         JobManager.connections = ConnectionManager  # TODO direct access not good
 
+        TargetManager.set_storage(self.hosts_file)
+        TargetManager.load_targets()
+
+        register_job_loaders()
+
         JobManager.load()
 
         JobManager.worker = start_monitor()
-
-        TargetManager.set_storage(self.hosts_file)
-        TargetManager.load_targets()
 
         JobManager.resume_all()
 

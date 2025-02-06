@@ -154,22 +154,58 @@ ctkPathLineEdit QToolButton:pressed {
     background-color: hsv(0, 0%, 30%);
 }
   
-QScrollBar:vertical, QScrollBar:horizontal {
-    background: #535353; /* Scrollbar background */
+QScrollBar:vertical {
+    background: #535353;
     width: 12px;
+    margin: 12px 0 12px 0; /* Creates space for arrows */
+}
+
+QScrollBar:horizontal {
+    background: #535353;
+    height: 12px;
+    margin: 0 12px 0 12px; /* Creates space for arrows */
 }
 
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
     background: hsv(0, 0%, 60%); /* Scrollbar handle */
     border-radius: 6px;
-    padding: 4px;
+    min-height: 20px;
+    min-width: 20px;
 }
 
-QScrollBar::sub-line, QScrollBar::add-line {
+QScrollBar::sub-line:vertical {
     border: none;
+    background: #535353;
+    height: 12px;
+    subcontrol-position: top;
+    subcontrol-origin: margin;
 }
 
-QScrollBar::up-arrow, QScrollBar::down-arrow, 
+QScrollBar::add-line:vertical {
+    border: none;
+    background: #535353;
+    height: 12px;
+    subcontrol-position: bottom;
+    subcontrol-origin: margin;
+}
+
+QScrollBar::sub-line:horizontal {
+    border: none;
+    background: #535353;
+    width: 12px;
+    subcontrol-position: left;
+    subcontrol-origin: margin;
+}
+
+QScrollBar::add-line:horizontal {
+    border: none;
+    background: #535353;
+    width: 12px;
+    subcontrol-position: right;
+    subcontrol-origin: margin;
+}
+
+QScrollBar::up-arrow, QScrollBar::down-arrow,
 QScrollBar::left-arrow, QScrollBar::right-arrow {
     width: 8px;
     height: 8px;
@@ -179,6 +215,14 @@ QScrollBar::left-arrow, QScrollBar::right-arrow {
 
 QScrollBar::up-arrow {
     image: url($iconPath/triangle_up_enabled.svg);
+}
+
+QScrollBar::left-arrow {
+    image: url($iconPath/triangle_left_enabled.svg);
+}
+
+QScrollBar::right-arrow {
+    image: url($iconPath/triangle_right_enabled.svg);
 }
 
 QScrollBar::down-arrow {

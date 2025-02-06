@@ -67,7 +67,7 @@ class SegmentInspector(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/SegmentInspector.html').as_posix()}"
+            f"file:///{(getResourcePath('manual') / 'Modules/Quantification/segment_inspector.html').as_posix()}"
         )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 

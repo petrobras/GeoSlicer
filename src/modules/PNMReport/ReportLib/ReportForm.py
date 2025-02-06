@@ -88,13 +88,13 @@ class ReportForm(BaseArgsForm):
         self.addArg(
             "Sensibility Test Parameters: ",
             parameterWidget,
-            BaseArgsForm._createSetter(self.parameterInputWidget, "currentText", {"Local": "none", "Remote": None}),
+            BaseArgsForm._createSetter(self.parameterInputWidget, "setCurrentNode", {"Local": None, "Remote": None}),
         )
 
         self.addArg(
             "Subscale Pressure Model: ",
             self.subscaleModelWidget.microscale_model_dropdown,
-            BaseArgsForm._createSetter(self.parameterInputWidget, "currentText", {"Local": "none", "Remote": None}),
+            BaseArgsForm._createSetter(self.parameterInputWidget, "setCurrentNode", {"Local": None, "Remote": None}),
         )
         self.subscaleModelWidget.microscale_model_dropdown.objectName = "MicroscaleDropdown"
 

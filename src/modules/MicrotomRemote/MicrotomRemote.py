@@ -20,15 +20,13 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLo
 from ltrace.slicer.application_observables import ApplicationObservables
 from pathlib import Path
 
-from RemoteTasks.OneResultSlurm import OneResultSlurmHandler
+from ltrace.remote.handlers import OneResultSlurmHandler
 
-try:
-    from PNMReport import ReportForm, ReportLogic, StreamlitServer
-except ImportError:
-    ReportForm = None
-    ReportLogic = None
-    StreamlitServer = None
+from ltrace.slicer.helpers import LazyLoad2
 
+ReportForm = LazyLoad2("PNMReport.ReportLib.ReportForm")
+ReportLogic = LazyLoad2("PNMReport.ReportLib.ReportLogic")
+StreamlitServer = LazyLoad2("PNMReport.ReportLib.StreamlitServer")
 
 # Checks if closed source code is available
 try:
@@ -645,7 +643,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.distribWidget = DirectedDistributionForm()
 
         if ReportForm is not None:
-            self.pnmReportWidget = ReportForm()
+            self.pnmReportWidget = ReportForm.ReportForm()
             self.pnmReportWidget.objectName = "PNMReportForm"
             self.configWidget.addWidget(self.pnmReportWidget)
         else:
@@ -777,7 +775,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.ioResultsComboBox.addWidget(self.ioThreadsButton)
 
         self.progressBar = LocalProgressBar()
-        self.ioThreadsButton.clicked.connect(lambda: slicer.util.selectModule("JobMonitor"))
+        self.ioThreadsButton.clicked.connect(lambda: slicer.modules.AppContextInstance.rightDrawer.show(1))
 
         ioPageFormLayout = qt.QFormLayout()
         # ioPageFormLayout.addRow('Store result at (optional) : ', self.ioFileOutputLineEdit)
@@ -826,7 +824,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.streamlitAdvancedSection.hide()
 
         if StreamlitServer is not None:
-            self.server = StreamlitServer(self.simOptions, self.serverStatus, self.toggleServerButton)
+            self.server = StreamlitServer.StreamlitServer(self.simOptions, self.serverStatus, self.toggleServerButton)
             self.server.objectName = "StreamlitServerManager"
 
             advancedFormLayout = qt.QFormLayout(self.streamlitAdvancedSection)
@@ -951,7 +949,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             for key, widget in self.modeSelectors.items():
                 widget.show()
             self.canBtn.show()
-            self.logicType = ReportLogic
+            self.logicType = ReportLogic.ReportLogic
 
             for widget in self.hideWhenInputIsScalar:
                 widget.visible = False
@@ -1123,7 +1121,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
         msg.setDefaultButton(qt.QMessageBox.No)
         if msg.exec_() == qt.QMessageBox.Yes:
-            slicer.util.selectModule("JobMonitor")
+            slicer.modules.AppContextInstance.rightDrawer.show(1)
 
     def onExecuteClicked(self):
         uid = None
@@ -1547,9 +1545,9 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 nodes.append(node)
 
             try:
-                output_file_dir = Path(slicer.app.temporaryPath).absolute() / f"{sim_info['simulator']}.csv"
-                df = self.loadCustomLog(Path(output_file_dir))
-                output_file_dir.unlink()
+                output_file_dir = Path(slicer.app.temporaryPath) / f"{sim_info['simulator']}.csv"
+                df = self.loadCustomLog(output_file_dir)
+                #output_file_dir.unlink()
 
                 if df is not None:
                     tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
@@ -1796,82 +1794,4 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
         return slicer.modules.RemoteServiceInstance.cli.run(managed_cmd, name=job_name, job_type="microtom")
 
 
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.jobs import JobManager
 
-
-def microtom_job_compiler(job: JobExecutor):
-    details = job.details
-    simulator = details.get("simulator", "psd")
-    outputPrefix = details.get("output_prefix", "output")
-    direction = details.get("direction", "z")
-    tag = details.get("geoslicer_tag", "")
-    referenceNodeId = details.get("reference_volume_node_id", None)
-
-    try:
-        if referenceNodeId:
-            node = slicer.util.getNode(referenceNodeId)
-            if node is None:
-                raise ValueError("Reference node not found")
-    except Exception:
-        referenceNodeId = None
-
-    shared_path = Path(r"geoslicer/remote/jobs")
-
-    # TODO make this conditions shared with dispatch code
-    if simulator == "krel":
-        collector = KrelCompiler()
-        task_handler = OneResultSlurmHandler(
-            simulator,
-            collector,
-            None,
-            shared_path,
-            "",
-            "cpu",
-            {"direction": direction},
-            outputPrefix,
-            referenceNodeId,
-            tag,
-            post_args=dict(diameters=details.get("diameters", None), direction=direction),
-        )
-
-    elif "kabs" in simulator:
-        collector = StokesKabsCompiler()
-        task_handler = OneResultSlurmHandler(
-            simulator,
-            collector,
-            None,
-            shared_path,
-            "",
-            "cpu",
-            {"direction": direction},
-            outputPrefix,
-            referenceNodeId,
-            tag,
-            post_args=dict(load_volumes=details.get("load_volumes", None), direction=direction),
-        )
-
-    else:
-        collector = PorosimetryCompiler()
-
-        task_handler = OneResultSlurmHandler(
-            simulator,
-            collector,
-            None,
-            shared_path,
-            "",
-            "cpu",
-            {"direction": direction},
-            outputPrefix,
-            referenceNodeId,
-            tag,
-            post_args=dict(vfrac=details.get("vfrac", None), direction=direction),
-        )
-    task_handler.jobid = str(job.details["job_id"][0])
-    task_handler.jobs = [str(j) for j in job.details["job_id"]]
-    job.task_handler = task_handler
-
-    return job
-
-
-JobManager.register("microtom", microtom_job_compiler)

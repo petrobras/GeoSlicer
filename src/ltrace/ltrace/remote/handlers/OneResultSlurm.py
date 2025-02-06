@@ -14,8 +14,6 @@ import microtom
 
 from ltrace.readers.microtom.utils import parse_command_stdout, node_to_mct_format
 
-import slicer
-
 
 def truncate_relative_path_on(dirname: str, path: Path):
     relindex = 0
@@ -346,7 +344,7 @@ class OneResultSlurmHandler:
             slurm_out = self.get_slurm_log(uid)
             caller.set_state(
                 uid,
-                "GHOST",
+                "NOT CONNECTED",
                 0,
                 message="Execution cannot be cancelled.",
                 traceback={"traceback": traceback, **slurm_out},
@@ -377,12 +375,6 @@ class OneResultSlurmHandler:
         }
         print(sim_info)
         self.collector(sim_info)
-
-        slicer.util.selectModule("MicroCTEnv")
-        slicer.modules.MicroCTEnvWidget.mainTab.setCurrentIndex(0)
-        slicer.modules.MicroCTEnvWidget.mainTab.widget(0).setCurrentIndex(0)
-
-        # self.cleanup(caller, uid, client)
 
     def confirm_results(self, strict=True):
         done = []

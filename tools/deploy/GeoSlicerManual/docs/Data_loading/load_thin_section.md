@@ -19,7 +19,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thin_section_loader.webm" type="video/webm">
+            <source src="../assets/videos/thin_section_loader.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: Thin Section Loader </p>
@@ -47,7 +47,7 @@
     </div>
     <div class="video-wrapper">
         <video class="floating-video" controls>
-            <source src="../../assets/videos/thing_section_QEMSCAN_loader.webm" type="video/webm">
+            <source src="../assets/videos/thing_section_QEMSCAN_loader.webm" type="video/webm">
             Sorry, your browser does not support the video tag.
         </video>
         <p class="video-caption">Video: QEMSCAN Loader </p>

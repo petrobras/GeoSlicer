@@ -1,4 +1,5 @@
 import logging
+import shutil
 
 from pathlib import Path
 
@@ -91,31 +92,38 @@ def loadModules(modules, permanent=False, favorite=False):
         slicer.app.userSettings().setValue("Modules/FavoriteModules", favorites)
 
 
-def fetchModulesFrom(path, depth=1):
+def fetchModulesFrom(path, depth=1, name="LTrace"):
+    from ltrace.slicer_utils import base_version
+
     if path is None:
         return {}
 
-    try:
-        if path.suffix == ".git":
-            # Clone or update the repository
-            from ltrace.slicer_utils import base_version
+    candidates = {}
 
+    try:
+        if isinstance(path, str) and path.endswith(".git"):
             geoslicer_version = base_version()
-            dest = Path(slicer.app.slicerHome) / "lib" / f"GeoSlicer-{geoslicer_version}" / "qt-scripted-extern-modules"
+            dest = Path(slicer.app.slicerHome) / "lib" / geoslicer_version / "qt-scripted-extern-modules"
             dest.mkdir(parents=True, exist_ok=True)
-            path = clone_or_update_repo(path, dest, branch="master")
+
+            try:
+                # Clone or update the repository
+                path = clone_or_update_repo(path, dest, branch="master")
+            except RuntimeError as re:
+                if len(candidates) == 0:
+                    shutil.rmtree(dest, ignore_errors=True)
 
         # Get list of modules in specified path
         modules = ModuleInfo.findModules(path, depth)
 
         candidates = {m.key: m for m in modules}
-        return candidates
-    except RuntimeError as re:
-        logging.warning(repr(re))
+
     except Exception as e:
         logging.warning(f"Failed to load modules: {e}")
 
-    return {}
+    logging.info(f"{name} modules loaded: {len(candidates)}")
+
+    return candidates
 
 
 def mapByCategory(modules):
@@ -131,7 +139,7 @@ def mapByCategory(modules):
     return groupedModulesByCategories
 
 
-def clone_or_update_repo(remote_url: Path, destination_dir: Path, branch: str = "master") -> None:
+def clone_or_update_repo(remote_url: str, destination_dir: Path, branch: str = "master") -> None:
     """
     Clone the repository from `remote_url` into `destination_dir`.
     If the repository already exists, update it by pulling the latest changes.

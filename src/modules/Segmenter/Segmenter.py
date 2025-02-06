@@ -33,12 +33,13 @@ from ltrace.slicer.helpers import (
     highlight_error,
     hex2Rgb,
     getCurrentEnvironment,
+    BlockSignals,
 )
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer.widgets import BaseSettingsWidget, PixelLabel
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.slicer.cli_queue import CliQueue
 
 # Checks if closed source code is available
@@ -160,7 +161,9 @@ class Segmenter(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Segmenter/Automatic/automatic_thinSection.html').as_posix()}"
+        self.parent.helpText = (
+            f"file:///{(getResourcePath('manual') / 'Filtering_and_Segmentation/Segmentation/auto_segmentation.html').as_posix()}"
+        )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 
     @classmethod
@@ -172,6 +175,7 @@ class SegmenterWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
 
+        self.__currentEnvironment = None
         self.cliQueue = None
         self.refNodeId = None
         self.filterUpdateThread = None
@@ -180,6 +184,8 @@ class SegmenterWidget(LTracePluginWidget):
         self.imageLogMode = False
         self.deterministicPreTrainedModels = False
         self.poreCleaningOptionsWidget = None
+
+        self.exclusiveSections = []
 
         self.hideWhenCreatingClassifier = []
         self.hideWhenLoadingClassifier = []
@@ -203,12 +209,23 @@ class SegmenterWidget(LTracePluginWidget):
         # Add vertical spacer
         self.layout.addStretch(1)
 
+        self.exclusiveSections.append(
+            (
+                self.poreCleaningOptionsWidget,
+                lambda: (
+                    self.__currentEnvironment == NodeEnvironment.THIN_SECTION.value
+                    and SegmenterLogic.cleaningAvailable(self.classifierInput.currentData)
+                ),
+            )
+        )
+
         self._initWidgetsStates()
 
     def _setupClassifierSection(self):
         widget = ctk.ctkCollapsibleButton()
         widget.text = "Classifier"
         layout = qt.QVBoxLayout(widget)
+        layout.setSpacing(4)
 
         textNodeType = "vtkMRMLTextNode"
         self.userClassifierInput = slicer.qMRMLNodeComboBox()
@@ -237,31 +254,49 @@ class SegmenterWidget(LTracePluginWidget):
         self.classifierInfo.setOpenExternalLinks(True)
         self.classifierInfo.setTextInteractionFlags(qt.Qt.TextBrowserInteraction)
         self.classifierInfo.setWordWrap(True)
-        self.classifierInfoGroupBox = ctk.ctkCollapsibleGroupBox()
-        self.classifierInfoGroupBox.setLayout(qt.QVBoxLayout())
-        self.classifierInfoGroupBox.layout().addWidget(self.classifierInfo)
+
+        self.classifierInfoGroupBox = ctk.ctkCollapsibleButton()
+        self.classifierInfoGroupBox.text = "Attributes"
+        self.classifierInfoGroupBox.flat = True
         self.classifierInfoGroupBox.collapsed = True
+        infoLayout = qt.QVBoxLayout(self.classifierInfoGroupBox)
+        infoLayout.addWidget(self.classifierInfo)
+
         self.hideWhenCreatingClassifier.append(self.classifierInfoGroupBox)
 
         self.createClassifierRadio = qt.QRadioButton("Model Training")
-        self.createClassifierRadio.toggled.connect(self._onCreateClassifierToggled)
         self.createClassifierRadio.objectName = "Create Classifier Radio"
-        scripted_modules_path = helpers.get_scripted_modules_path()
+        manual_path = getResourcePath("manual") / "Modules" / "Segmenter"
         createClassifierHelpButton = HelpButton(
-            f"### Model Training\n\nTrain a model from scratch using a partially annotated image as input. The model is then used to fully segment the image. This method is more flexible, as you can choose parameters, filters and annotation for a custom use case.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
+            "### Model Training\n\nTrain a model from scratch using a partially annotated image as input. "
+            "The model is then used to fully segment the image. This method is more flexible, "
+            "as you can choose parameters, filters and annotation for a custom use case."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=(manual_path / "Semiauto" / "semiauto.html").as_posix()),
         )
         self.loadClassifierRadio = qt.QRadioButton("Pre-trained Models")
-        self.loadClassifierRadio.toggled.connect(self._onLoadClassifierRadioToggled)
         self.loadClassifierRadio.objectName = "Load Classifier Radio"
+
+        def loadClassifierUrlReplacer(url):
+            if helpers.getCurrentEnvironment() == NodeEnvironment.MICRO_CT:
+                return url.format(path_to_manual=(manual_path / "Automatic" / f"automatic_microCT.html").as_posix())
+
+            return url.format(path_to_manual=(manual_path / "Automatic" / f"automatic_thinSection.html").as_posix())
+
         self.loadClassifierHelpButton = HelpButton(
-            f"### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained for a specific use case and only requires an image as input. Select a model to view its information.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/qt-scripted-modules/Resources/manual/Segmenter/Automatic/automatic_[ENV].html)"
+            "### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained "
+            "for a specific use case and only requires an image as input. Select a model to view its information."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=loadClassifierUrlReplacer
         )
 
         self.userClassifierRadio = qt.QRadioButton("User Custom Pre-trained Models")
         self.userClassifierRadio.objectName = "User Classifier Radio"
-        self.userClassifierRadio.toggled.connect(self._onUserClassifierRadioToggled)
         self.userClassifierHelpButton = HelpButton(
-            f"### User Custom Pre-trained Models\n\nUse a model that was previously trained using the 'Model Training' option. Input image must have the same number of channels that was used in training.\n\n-----\n[Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
+            "### User Custom Pre-trained Models\n\nUse a model that was previously trained using the 'Model Training' "
+            "option. Input image must have the same number of channels that was used in training."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=(manual_path / "Semiauto" / "semiauto.html").as_posix()),
         )
 
         hbox = qt.QHBoxLayout(widget)
@@ -279,9 +314,18 @@ class SegmenterWidget(LTracePluginWidget):
         hbox.addWidget(self.userClassifierHelpButton)
         layout.addLayout(hbox)
 
-        layout.addWidget(self.classifierInput)
-        layout.addWidget(self.userClassifierInput)
-        layout.addWidget(self.classifierInfoGroupBox)
+        vboxClassifierInput = qt.QVBoxLayout()
+        vboxClassifierInput.addWidget(self.classifierInput)
+        vboxClassifierInput.addWidget(self.userClassifierInput)
+        vboxClassifierInput.addWidget(self.classifierInfoGroupBox)
+        # set space on the top and bottom of vboxClassifierInput
+        vboxClassifierInput.setContentsMargins(0, 8, 0, 8)
+
+        layout.addLayout(vboxClassifierInput)
+
+        self.createClassifierRadio.toggled.connect(self._onCreateClassifierToggled)
+        self.loadClassifierRadio.toggled.connect(self._onLoadClassifierRadioToggled)
+        self.userClassifierRadio.toggled.connect(self._onUserClassifierRadioToggled)
 
         return widget
 
@@ -376,8 +420,8 @@ class SegmenterWidget(LTracePluginWidget):
             combobox = self.inputComboboxes[i]
             label = self.inputLabels[i]
 
-            combobox.objectName = f"Volume {i+1} ComboBox"
-            label.setText(f"Input volume #{i+1}: ")
+            combobox.objectName = f"Volume {i + 1} ComboBox"
+            label.setText(f"Input volume #{i + 1}: ")
 
             if i > 0:
                 self.inputsSelector.formLayout.addRow(label, combobox)
@@ -468,18 +512,43 @@ class SegmenterWidget(LTracePluginWidget):
 
         return widget
 
+    def _showExclusiveSections(self):
+        for section, evaluator in self.exclusiveSections:
+            section.visible = evaluator()
+
     def _onCleanResinClicked(self):
         self.pxForCleaningInput.visible = self.cleanResinCheckbox.checked
         self.pxForCleaningInputLabel.visible = self.cleanResinCheckbox.checked
         self._onPxForCleaningSelected()
 
+    def _onCreateClassifierToggled(self):
+        self._updateWidgetsVisibility()
+        checked = self.createClassifierRadio.isChecked()
+        if checked:
+            self._restoreInputBoxes()
+        else:
+            self.inputsSelector.mainInput.setCurrentNode(None)
+            self.inputsSelector.soiInput.enabled = True
+            self.inputsSelector.referenceInput.enabled = True
+            self._onChangedClassifier(checked)
+
     def _onLoadClassifierRadioToggled(self):
+        if self.loadClassifierRadio.checked:
+            self._addPretrainedModelsIfAvailable()
+            self._showExclusiveSections()
+            self._onChangedClassifier()
+
         self._onCleanResinClicked()
-        self._onChangedClassifier()
         self._updateWidgetsVisibility()
 
     def _onUserClassifierRadioToggled(self):
-        self._onChangedUserClassifier(self.userClassifierInput.currentNode())
+        if self.userClassifierRadio.checked:
+            self._addPretrainedModelsIfAvailable()
+            self._showExclusiveSections()
+            self._onChangedClassifier()
+
+            self._onChangedUserClassifier(self.userClassifierInput.currentNode())
+
         self._updateWidgetsVisibility()
         self._restoreInputBoxes()
 
@@ -520,27 +589,29 @@ class SegmenterWidget(LTracePluginWidget):
         # self.loadClassifierHelpButton.updateMessage(message)
 
         # Add pretrained models
-        if self.classifierInput.count == 0:
-            self._addPretrainedModelsIfAvailable()
+        self._addPretrainedModelsIfAvailable()
+        self._showExclusiveSections()
         self._updateWidgetsVisibility()
 
     def _addPretrainedModelsIfAvailable(self):
-        env = getCurrentEnvironment().value
-        envs = tuple(map(lambda x: x.value, NodeEnvironment))
-
-        if env not in envs:
+        current_env = getCurrentEnvironment().value
+        if self.classifierInput.count > 0 and current_env == self.__currentEnvironment:
             return
 
-        self.classifierInput.clear()
+        with BlockSignals(self.classifierInput):
 
-        model_dirs = get_trained_models_with_metadata(env)
-        for model_dir in model_dirs:
-            try:
-                metadata = get_metadata(model_dir)
-                if metadata["is_segmentation_model"]:
-                    self.classifierInput.addItem(metadata["title"], model_dir.as_posix())
-            except RuntimeError as error:
-                logging.error(error)
+            self.classifierInput.clear()
+
+            model_dirs = get_trained_models_with_metadata(current_env)
+            for model_dir in model_dirs:
+                try:
+                    metadata = get_metadata(model_dir)
+                    if metadata["is_segmentation_model"]:
+                        self.classifierInput.addItem(metadata["title"], model_dir.as_posix())
+                except Exception as e:
+                    logging.error(f"Error loading model: {e}\n from {model_dir}")
+
+            self.__currentEnvironment = current_env
 
     def _onChangedClassifier(self, selected=None):
         if self.classifierInput.currentData is None:
@@ -582,11 +653,11 @@ class SegmenterWidget(LTracePluginWidget):
             model_inputs_description += [f"{space}- {name}:"]
             spatial_dims = description.get("spatial_dims")
             if spatial_dims is not None:
-                model_inputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+                model_inputs_description += [f"{2 * space}- Dimensions: {spatial_dims}"]
 
             n_channels = description.get("n_channels", 1)
             if n_channels is not None:
-                model_inputs_description += [f"{2*space}- Channels: {n_channels}"]
+                model_inputs_description += [f"{2 * space}- Channels: {n_channels}"]
         model_inputs_description = "\n".join(model_inputs_description)
 
         model_outputs_description = [f"**Outputs ({len(model_outputs)}):**", "\n"]
@@ -599,18 +670,18 @@ class SegmenterWidget(LTracePluginWidget):
             ]
             spatial_dims = description.get("spatial_dims")
             if spatial_dims is not None:
-                model_outputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+                model_outputs_description += [f"{2 * space}- Dimensions: {spatial_dims}"]
 
             if is_segmentation:
                 models_classes = description.get("model_classes", 1)
                 if models_classes is not None:
-                    model_outputs_description += [f"{2*space}- Classes:"]
+                    model_outputs_description += [f"{2 * space}- Classes:"]
                     for model_class in model_classes:
-                        model_outputs_description += [f"{4*space}- {model_class}"]
+                        model_outputs_description += [f"{4 * space}- {model_class}"]
             else:
                 n_channels = description.get("n_channels", 1)
                 if n_channels is not None:
-                    model_outputs_description += [f"{2*space}- Channels: {n_channels}"]
+                    model_outputs_description += [f"{2 * space}- Channels: {n_channels}"]
         model_outputs_description = "\n".join(model_outputs_description)
 
         msg = "\n\n".join(
@@ -624,75 +695,65 @@ class SegmenterWidget(LTracePluginWidget):
         html = markdown.markdown(msg)
         self.classifierInfo.setText(html)
         self.classifierInfo.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        summary = f"Model info: {len(model_classes)} segments"
-        self.classifierInfoGroupBox.setTitle(summary)
+        summary = f"Output classes: {len(model_classes)}"
+        self.classifierInfoGroupBox.text = summary
 
         for i, combobox in enumerate(self.inputComboboxes):
             if i >= len(model_inputs):
                 combobox.setCurrentNode(None)
 
         self.inputsSelector.mainInput.setCurrentNode(None)
-        self.poreCleaningOptionsWidget.visible = model_classes == ["Pore"]
+        self._showExclusiveSections()
         self.pxForCleaningInput.enabled = len(model_inputs) == 1
         if not self.pxForCleaningInput.enabled:
             self._onPxSelected()
 
     def _onChangedUserClassifier(self, selected):
-        isNodeTypeValid = selected and selected.IsA("vtkMRMLTextNode")
-        if isNodeTypeValid:
-            content = pickle.loads(getBinary(selected))
-            model_classes = [classes[1] for classes in content["colors"]]
-            model_classes = "\n    * ".join(model_classes)
-            model = content["model"]
-            msg = f"""
-* **Model type:** {model.__class__.__name__}
-* **Classes:**
-    * {model_classes}
-* **Number of input images:** {content['props']['Number of Extra images']+1}
-* **Color channels:** {content['props']['Total color channels']}
-"""
-            html = markdown.markdown(msg)
-            self.classifierInfo.setText(html)
-            self.classifierInfoGroupBox.setTitle(
-                f"Model info: {model.__class__.__name__}, {len(content['colors'])} segments"
-            )
-        else:
+        validNode = selected and selected.IsA("vtkMRMLTextNode")
+        if not validNode:
             self.classifierInfo.setText(
                 'There are no user classifiers available. You can create one using the "Model Training" option.'
             )
-            self.classifierInfoGroupBox.setTitle("Model info: No user classifier selected")
+            self.classifierInfoGroupBox.text = "Output classes: None"
+            return
+
+        content = pickle.loads(getBinary(selected))
+        model_classes = [classes[1] for classes in content["colors"]]
+        model_classes = "\n    * ".join(model_classes)
+        model = content["model"]
+        msg = f"""
+* **Model type:** {model.__class__.__name__}
+* **Classes:**
+* {model_classes}
+* **Number of input images:** {content['props']['Number of Extra images'] + 1}
+* **Color channels:** {content['props']['Total color channels']}
+"""
+        html = markdown.markdown(msg)
+        self.classifierInfo.setText(html)
+        self.classifierInfoGroupBox.text = f"Model: {model.__class__.__name__}, {len(content['colors'])} classes"
 
     def _restoreInputBoxes(self):
         for i in range(len(self.inputLabels)):
             label = self.inputLabels[i]
             combobox = self.inputComboboxes[i]
 
-            label.setText(f"Input volume #{i+1}: ")
+            label.setText(f"Input volume #{i + 1}: ")
 
             if i > 0:
                 # only extra (i>0) volume comboboxes are hidden
                 label.visible = True
                 combobox.visible = True
 
-    def _onCreateClassifierToggled(self, checked):
-        self._updateWidgetsVisibility()
-
-        if checked:
-            self._restoreInputBoxes()
-        else:
-            self.inputsSelector.mainInput.setCurrentNode(None)
-            self.inputsSelector.soiInput.enabled = True
-            self.inputsSelector.referenceInput.enabled = True
-            self._onChangedClassifier(checked)
-
     def _onInputSelected(self, node):
         pass
 
     def _onReferenceSelected(self, node):
         self.refNodeId = node.GetID() if node is not None else None
+
+        self._checkRequirementsForApply()
+
         if node is None:
             return
-        self._checkRequirementsForApply()
 
         spacing = min([x for x in node.GetSpacing()])
         minSide = min(filter(lambda i: i != 1, node.GetImageData().GetDimensions())) * spacing
@@ -1087,6 +1148,16 @@ class SegmenterLogic(LTracePluginLogic):
         self.progressUpdate = lambda value: print(value * 100, "%")
         self.filtered_volume_node_id = None
         self.filtered_volume_list = []
+
+    @staticmethod
+    def cleaningAvailable(selectedClassifier):
+        print(selectedClassifier)
+        metadata = get_metadata(selectedClassifier)
+        model_outputs = metadata["outputs"]
+        model_output_names = list(model_outputs.keys())
+        model_output = model_outputs[model_output_names[0]]
+        model_classes = model_output["class_names"]
+        return len(model_classes) == 1 and model_classes[0] == "Pore"
 
     @staticmethod
     def createLabelmapNode(segmentationNode, referenceNode, soiNode, outputPrefix):
@@ -1500,7 +1571,10 @@ class MonaiModelsLogic(LTracePluginLogic):
         cliQueue.signal_queue_cancelled.connect(onCancel)
         cliQueue.signal_queue_failed.connect(onFailure)
         cliQueue.create_cli_node(
-            slicer.modules.monaimodelscli, cliConf, progress_text="Segmenting pores", modified_callback=hideTmpOutput
+            slicer.modules.monaimodelscli,
+            cliConf,
+            progress_text="Executing phase segmentation",
+            modified_callback=hideTmpOutput,
         )
 
         return tmpReferenceNode, tmpOutNode
@@ -1737,7 +1811,7 @@ class BayesianInferenceLogic(LTracePluginLogic):
         cliQueue.create_cli_node(
             slicer.modules.bayesianinferencecli,
             cliConf,
-            progress_text="Segmenting pores",
+            progress_text="Executing phase segmentation",
             modified_callback=hideTmpOutput,
         )
 
@@ -2272,6 +2346,9 @@ class BayesianInferenceSettingsWidget(BaseSettingsWidget):
             self.pixel_label.connect_node_input(self.image_input)
 
     def getValuesAsDict(self):
+        if not self.kernelSize.text:
+            raise ValueError("Kernel size must be filled")
+
         kernel_size_px = math.ceil(float(self.kernelSize.text) / self.spacing)
         return {
             "method": self.METHOD,

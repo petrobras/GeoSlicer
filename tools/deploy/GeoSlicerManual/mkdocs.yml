@@ -71,7 +71,7 @@ nav:
   - Filtragem e Segmentação:
       - Filtros: "Filtering_and_Segmentation/Filters/apply_filters.md"
       - Segmentação:
-            - Introdução: "Filtering_and_Segmentation/Segmentation/intro.md"
+#            - Introdução: "Filtering_and_Segmentation/Segmentation/intro.md"
             - Segmentação Manual: "Filtering_and_Segmentation/Segmentation/manual_segmentation.md"
             - Segmentação Automática (IA): "Filtering_and_Segmentation/Segmentation/auto_segmentation.md"
 #            - Segmentação Semiautomática: "Filtering_and_Segmentation/Segmentation/semiautomatic_segmentation.md"
@@ -93,12 +93,11 @@ nav:
   - Execução Remota (HPC/Cluster):
       - Introdução: "Remote_computing/intro.md"
   - Módulos:
-      - Imagens Tomográficas (3D): "Modules/Thin_section/AutoRegistration.md"
+      - Segment Editor: "Modules/Thin_section/SegmentEditor.md"
+      - Crop: "Modules/Thin_section/Crop.md"
+      - Export: "Modules/Thin_section/Export.md"
       - Lâminas (2D):
           - Auto Registration: "Modules/Thin_section/AutoRegistration.md"
-          - Crop: "Modules/Thin_section/Crop.md"
-          - Editor de Segmentação: "Modules/Thin_section/SegmentEditor.md"
-          - Export: "Modules/Thin_section/Export.md"
           - Fluxos:
             - Fluxo PP: "Modules/Thin_section/Fluxo PP.md"
             - Fluxo PP/PX: "Modules/Thin_section/Fluxo PP PX.md"

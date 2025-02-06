@@ -4,7 +4,7 @@ Dois problemas merecem especial atenção quando o assunto é a microtomografia 
 
 ## Arquitetura U-Net
 
-O GeoSlicer implementa segmentadores para ambos os problemas acima por meio de redes neurais pré-treinadas do tipo U-Net, a qual foi introduzida na [segmentação multifásica de lâminas](./automatic_thinSection.md) delgadas. As configurações de rede U-Net utilizadas nesta seção são mostradas na Tabela 1.
+O GeoSlicer implementa segmentadores para ambos os problemas acima por meio de redes neurais pré-treinadas do tipo U-Net, a qual foi introduzida na [segmentação multifásica de lâminas](./automatic_ThinSection) delgadas. As configurações de rede U-Net utilizadas nesta seção são mostradas na Tabela 1.
 
 <center>
 

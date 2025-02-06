@@ -77,7 +77,7 @@ O procedimento da inferência Bayesiana nos permite incluir esse novo conhecimen
 $$ P(A|B) = \frac{P(B|A)P(A)}{P(B)}, $$
 onde $P(B)$ é uma normalização. Essa fórmula é conhecida como lei ou **regra de Bayes**.
 
-Para maiores detalhes teóricos a respeito da técnica utilizada e referenciais sobre o tema, recomendamos a leitura do tópico [Inferência Bayesiana](../Automatic/automatic_thinSection.md#teoria).
+Para maiores detalhes teóricos a respeito da técnica utilizada e referenciais sobre o tema, recomendamos a leitura do tópico [Inferência Bayesiana](../Automatic/automatic_ThinSection#teoria).
 
 ### Aplicação na segmentação de imagens
 

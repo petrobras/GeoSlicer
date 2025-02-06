@@ -17,10 +17,10 @@ from scipy.spatial import distance
 
 from ltrace.pore_networks.visualization_model import PORE_TYPE, TUBE_TYPE
 from ltrace.slicer.graph_data import DataFrameGraphData
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, LazyLoad
+from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.transforms import transformPoints
 
 NUMBER_OF_VIEWS = 2

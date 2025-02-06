@@ -71,7 +71,9 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         self.inputTableNodeComboBox = hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLTableNode"], onChange=self.onInputTableNodeChanged
+            nodeTypes=["vtkMRMLTableNode"],
+            onChange=self.onInputTableNodeChanged,
+            hasNone=True,
         )
         # self.inputTableNodeComboBox.addNodeAttributeFilter("InstanceSegmenter")
         self.inputTableNodeComboBox.setToolTip("Select the instance segmenter report table.")
@@ -323,6 +325,10 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
         self.parametersCollapsibleButton.setVisible(False)
         self.editCollapsibleButton.setVisible(False)
 
+        if self.tableWidget:
+            self.parametersFormLayout.removeWidget(self.tableWidget)
+            self.tableWidget.deleteLater()
+
         tableNode = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
         if tableNode:
             if tableNode.GetAttribute("InstanceSegmenter") is None:
@@ -331,10 +337,6 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
                 return
 
             self.logic.setTableNode(tableNode)
-
-            if self.tableWidget:
-                self.parametersFormLayout.removeWidget(self.tableWidget)
-                self.tableWidget.deleteLater()
 
             instanceType = self.logic.getInstanceType()
             if "side" in instanceType:
@@ -390,18 +392,16 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
 
     def __init__(self):
         LTracePluginLogic.__init__(self)
-        self.imageLogDataLogic = None
+
+        self.imageLogDataLogic = slicer.util.getModuleLogic("ImageLogData")
+        self.imageLogDataLogic.viewsRefreshed.connect(self.viewsRefreshed)
+
         self.labelMapNode = None
-        self.tableNode = None
         self.originalLabelMapNodeArray = None
         self.declinedLabels = []
         self.brushSize = None
         self.editObservers = []
         self.saveObserver = None
-
-    def setImageLogDataLogic(self, imageLogDataLogic):
-        self.imageLogDataLogic = imageLogDataLogic
-        self.imageLogDataLogic.viewsRefreshed.connect(self.viewsRefreshed)
 
     def centerToDepth(self, depth):
         self.imageLogDataLogic.setDepth(depth)

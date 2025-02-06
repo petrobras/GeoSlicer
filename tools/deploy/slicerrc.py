@@ -38,7 +38,9 @@ os.environ["TESSDATA_PREFIX"] = Path(f"{slicer.app.slicerHome}/bin/Tesseract-OCR
 RUN_MODE = os.environ.get("GEOSLICER_RUN_MODE", "development")
 APP_NAME = slicer.app.applicationName
 APP_HOME = Path(slicer.app.slicerHome)
-ICON_DIR = APP_HOME / "LTrace" / "Resources" / "Icons"
+RESOURCES_PATH = APP_HOME / "LTrace" / "Resources"
+ICON_DIR = RESOURCES_PATH / "Icons"
+MANUAL_FILE_PATH = RESOURCES_PATH / "manual" / "index.html"
 APP_TOOLBARS = {toolbar.name: toolbar for toolbar in slicer.util.mainWindow().findChildren("QToolBar")}
 GEOSLICER_MODULES_DIR = Path(getJsonData()["GEOSLICER_MODULES"])
 
@@ -350,7 +352,7 @@ def setDialogToolBar():
 
     dialogToolBar.addAction(
         qt.QIcon((ICON_DIR / "IconSet-dark" / "CloudJobs.svg").as_posix()),
-        "Cluster Jobs",
+        "Task Monitor",
         lambda clicked: getAppContext().rightDrawer.show(1),
     )
 
@@ -374,11 +376,18 @@ def setDialogToolBar():
 
     setToolbars([APP_TOOLBARS[tb] for tb in verticalToolBars], toolbarArea, qt.Qt.Vertical)
 
-    firstAction = APP_TOOLBARS["DialogToolBar"].actions()[0]
-    firstAction.setIcon(helpers.svgToQIcon(ICON_DIR / "IconSet-dark" / "Console.svg"))
-    spacer = ui_Spacer(layoutType=qt.QVBoxLayout)
-    spacer.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Expanding)
-    APP_TOOLBARS["DialogToolBar"].insertWidget(firstAction, spacer)
+    def findConsoleAction():
+        for action in dialogToolBar.actions():
+            if action.text == "&Python Console":
+                return action
+        return None
+
+    action = findConsoleAction()
+    if action:
+        action.setIcon(helpers.svgToQIcon(ICON_DIR / "IconSet-dark" / "Console.svg"))
+        spacer = ui_Spacer(layoutType=qt.QVBoxLayout)
+        spacer.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Expanding)
+        dialogToolBar.insertWidget(action, spacer)
 
 
 def setMarkupToolBar():
@@ -571,10 +580,19 @@ def updateHelpMenu():
     aboutAction = qt.QAction(createIcon("About.svg"), "About GeoSlicer", helpMenu)
     aboutAction.triggered.connect(__onAboutGeoSlicerClicked)
 
+    # Manual
+    def __openGeoslicerManual():
+        qt.QDesktopServices.openUrl(qt.QUrl(f"file:///{MANUAL_FILE_PATH}"))
+
+    geoslicerIcon = qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / "CircleHelp.svg").as_posix())
+    manualHelpAction = qt.QAction(geoslicerIcon, "Getting Started", helpMenu)
+    manualHelpAction.triggered.connect(__openGeoslicerManual)
+
     order = [
         actions["&Keyboard Shortcuts"],
         bugReportAction,
         "Separator",
+        manualHelpAction,
         aboutAction,
     ]
 
@@ -918,14 +936,14 @@ def loadFoundations(modules):
     loadModules(cliModules, permanent=True, favorite=False)
 
 
-def tryPetrobrasPlugins():
-    try:
-        if not slicer_is_in_developer_mode():
-            from ltrace.slicer.helpers import install_git_module
-
-            install_git_module("https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git")
-    except Exception as e:
-        logging.warning("Petrobras GeoSlicer plugins not installed. Cause: " + str(e))
+# def tryPetrobrasPlugins():
+#     try:
+#         if not slicer_is_in_developer_mode():
+#             from ltrace.slicer.helpers import install_git_module
+#
+#             install_git_module("https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git")
+#     except Exception as e:
+#         logging.warning("Petrobras GeoSlicer plugins not installed. Cause: " + str(e))
 
 
 def setGPUStatus():
@@ -1251,6 +1269,9 @@ def configure(rebuild_index=False):
     slicer.util.setModulePanelTitleVisible(True)
     slicer.util.setModuleHelpSectionVisible(False)
 
+    mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
+
+    setExtentionManagerOff()
     setHelpModule()
     setStatusBar()
     setMenu()
@@ -1258,7 +1279,6 @@ def configure(rebuild_index=False):
     setModulesToolBar()
     setMainToolBar()
     setMarkupToolBar()
-    setExtentionManagerOff()
     setCustomCaptureToolBar()
     setRightToolBar(True)
     setDialogToolBar()
@@ -1300,8 +1320,6 @@ def configure(rebuild_index=False):
 
     setModulePanelVisible(True)
 
-    mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
-
     def _showDataLoaders():
         showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
         ApplicationObservables().applicationLoadFinished.disconnect(_showDataLoaders)
@@ -1316,7 +1334,7 @@ def createIndex():
         pb.setMessage("Indexing installed modules...")
         pb.setProgress(0)
 
-        ltracePlugins = fetchModulesFrom(path=GEOSLICER_MODULES_DIR)
+        ltracePlugins = fetchModulesFrom(path=GEOSLICER_MODULES_DIR, name="GeoSlicer")
 
         pb.setProgress(10)
         pb.setMessage("Indexing installed commands...")
@@ -1325,13 +1343,13 @@ def createIndex():
         if not cliDir.exists():
             cliDir = GEOSLICER_MODULES_DIR
 
-        ltracePlugins.update(fetchModulesFrom(path=cliDir, depth=2))
+        ltracePlugins.update(fetchModulesFrom(path=cliDir, depth=2, name="GeoSlicer CLI"))
 
         pb.setProgress(20)
         pb.setMessage("Saving indexing...")
 
         # TODO how to control that externally
-        petroPlugins = fetchModulesFrom(path="https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git", depth=2)
+        petroPlugins = fetchModulesFrom(path="https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git", depth=2, name="External")
 
         allPlugins = {**ltracePlugins, **petroPlugins}
 
@@ -1391,8 +1409,6 @@ def bootstrap(userSettings):
         setDefaultSegmentationTerminology(userSettings)
 
         createIndex()
-
-        tryPetrobrasPlugins()
 
         slicer.app.revisionUserSettings().setValue(f"{APP_NAME}/Booted", True)
 

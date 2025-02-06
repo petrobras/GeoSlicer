@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import qt
 import slicer
+import traceback
 
 from ltrace.file_utils import read_csv
 from ltrace.slicer.helpers import (
@@ -350,6 +351,7 @@ class SidewallSampleLogic(ModelLogic):
                     shNode.SetItemParent(shNode.GetItemByDataNode(propertiesTableNode), self.itemParent)
                     dataFrameToTableNode(propertiesDataFrame, tableNode=propertiesTableNode)
                 except Exception as error:
+                    logging.error(f"Error: {error}\n{traceback.print_exc()}")
                     if outputLabelMapNode:
                         slicer.mrmlScene.RemoveNode(outputLabelMapNode)
                     if propertiesTableNode:
@@ -358,7 +360,6 @@ class SidewallSampleLogic(ModelLogic):
                     slicer.util.errorDisplay(
                         "A problem has occurred during the segmentation. Please check your input files."
                     )
-                    logging.info(str(error))
 
             elif status == "Cancelled":
                 if outputLabelMapNode:
@@ -373,7 +374,9 @@ class SidewallSampleLogic(ModelLogic):
                     slicer.mrmlScene.RemoveNode(propertiesTableNode)
                 self.outputLabelMapNodeId = None
 
-    def aggregateNominalToRealDepthsInformation(self, nominalDepthsDataFrame, propertiesDataFrame, depthThreshold):
+    def aggregateNominalToRealDepthsInformation(
+        self, nominalDepthsDataFrame: pd.DataFrame, propertiesDataFrame: pd.DataFrame, depthThreshold
+    ):
         if self.nominalDepthsDataFrame is not None:
             nominalToRealDepthsDataFrame = propertiesDataFrame
 
@@ -389,7 +392,7 @@ class SidewallSampleLogic(ModelLogic):
             )
 
             # now use pd.Series and stack, with reset_index drop and rename, for finally merge
-            df_C = (
+            df_C: pd.DataFrame = (
                 df_A.set_index(["index_A", "n depth (m)", "desc", "cond"])["list_B"]
                 .apply(pd.Series, dtype="float64")
                 .stack()
@@ -412,7 +415,7 @@ class SidewallSampleLogic(ModelLogic):
                     df_B[~df_B["depth (m)"].isin(df_C["depth (m)"])],
                 ]
             ).fillna(0)
-            df_C = df_C["cond"].replace(0, "")
+            df_C["cond"] = df_C["cond"].replace(0, "")
 
             df_C = df_C.drop(columns=["index_A", "index_B", "difference (m)"])
             df_C = df_C.reset_index(drop=True)
