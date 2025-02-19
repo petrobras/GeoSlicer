@@ -349,4 +349,3 @@ class MonaiLabelServerLogic(LTracePluginLogic):
 
         self.PID = None
         self.process = None
-

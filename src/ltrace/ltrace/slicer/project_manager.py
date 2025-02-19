@@ -359,23 +359,22 @@ class ProjectManager(qt.QObject):
         except (PermissionError, IOError):
             return False
 
-    def getWritableStorageInfo(self, userHome: Path) -> int:
+    def getWritableStorageInfo(self, storageDestination: Path) -> int:
         """Get writable storage information for the user home directory."""
 
-        if self.__hasWriteAccess(userHome):
-            usage = psutil.disk_usage(userHome.as_posix())
+        if self.__hasWriteAccess(storageDestination):
+            usage = psutil.disk_usage(storageDestination.as_posix())
             return usage.free
         else:
-            logging.error(f"Warning: No write access to {userHome}!")
+            logging.error(f"Warning: No write access to {storageDestination}!")
             return 0
 
     def __validateProjectIsWritable(self, scenePath: str) -> bool:
         """Checks if project can be written and if has enough space for expected files sizes"""
         try:
-            userHomeDirectory = Path.home()
-            hdSize = self.getWritableStorageInfo(userHomeDirectory)
+            hdSize = self.getWritableStorageInfo(Path(scenePath).parent)
             sceneSize = self.__listAllStorableNodes(scenePath)
-
+            print(f"hdSize: {hdSize}, sceneSize: {sceneSize}", scenePath)
             if hdSize <= sceneSize:
                 logging.error(
                     f"Not enough space in drive ({naturalsize(hdSize)}) for scene ({naturalsize(sceneSize)})."

@@ -7,6 +7,7 @@ from ltrace.remote.jobs import JobManager
 from ltrace.remote.handlers import OneResultSlurmHandler
 from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
 
+
 def microtom_job_loader(job: JobExecutor):
     print("Job received", job)
     details = job.details
@@ -80,4 +81,3 @@ def microtom_job_loader(job: JobExecutor):
     job.task_handler = task_handler
     print(job, task_handler)
     return job
-

@@ -2350,6 +2350,7 @@ class LazyLoad2:
 
         return getattr(self.module, name)
 
+
 def checkUniqueNames(nodes):
     nodeNames = set()
     for node in nodes:

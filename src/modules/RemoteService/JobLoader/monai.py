@@ -9,5 +9,3 @@ def monai_job_loader(job: JobExecutor):
     job.task_handler = MonaiLabelServerHandler(app_folder=appPath, dataset_folder=datasetPath)
 
     return job
-
-

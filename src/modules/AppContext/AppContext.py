@@ -205,7 +205,6 @@ class ProjectEventsLogic:
         self.nodeAddedObserverHandler = None
 
     def __del__(self):
-        super().__del__()
         slicer.mrmlScene.RemoveObserver(self.startCloseSceneObserverHandler)
         slicer.mrmlScene.RemoveObserver(self.endCloseSceneObserverHandler)
         slicer.mrmlScene.RemoveObserver(self.nodeAddedObserverHandler)

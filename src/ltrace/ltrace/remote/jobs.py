@@ -21,6 +21,7 @@ class JobManager:
     worker: Thread = None
     endstates = set(("FAILED", "CANCELLED", "IDLE", "DONE"))
     compilers = {}
+    keep_working: bool = True
 
     read_lock = Lock()
 
@@ -38,7 +39,9 @@ class JobManager:
         except Exception as e:
             logging.error(f"Failed to mount job {job.uid}. Cause: {repr(e)}")
 
-        return job
+    @staticmethod
+    def keepWorking():
+        return JobManager.keep_working
 
     @classmethod
     def register(cls, key: str, compiler: Callable):
@@ -281,7 +284,7 @@ class JobManager:
 
 def start_monitor():
     def jobspy():
-        while True:
+        while JobManager.keepWorking():
             try:
                 uid, event = JobManager.agenda.get()
                 JobManager.communicate(uid, event)

@@ -3,7 +3,7 @@ import os
 import re
 import shutil
 from datetime import datetime
-from pathlib import Path, PurePosixPath, WindowsPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 import numpy as np
@@ -21,7 +21,7 @@ from ltrace.slicer.helpers import (
     generateName,
     separateLabelmapVolumeIntoSlices,
     maskInputWithROI,
-    LazyLoad2
+    LazyLoad2,
 )
 
 ThinSectionInstanceSegmenter = LazyLoad2("ThinSectionInstanceSegmenter.ThinSectionInstanceSegmenter")
@@ -30,7 +30,7 @@ Segmenter = LazyLoad2("Segmenter.Segmenter")
 
 class ThinSectionInstanceSegmenterExecutionHandler:
     REMOTE_DIR = PurePosixPath("/nethome/drp")
-    NFS_DIR = WindowsPath("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp")
+    NFS_DIR = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp")
 
     job_id_pattern = re.compile("job_id = ([a-zA-Z0-9]+)")
 
@@ -386,7 +386,9 @@ class ResultHandler:
                         helpers.updateSegmentationFromLabelMap(outNode, labelmapVolumeNode=node)
                         Segmenter.revertColorTable(invmap, outNode)
 
-                        Segmenter.setupResultInScene(outNode, referenceNode, None, croppedReferenceNode=tmpReferenceNode)
+                        Segmenter.setupResultInScene(
+                            outNode, referenceNode, None, croppedReferenceNode=tmpReferenceNode
+                        )
                         outNode.GetDisplayNode().SetVisibility(True)
 
                         slicer.mrmlScene.RemoveNode(node)

@@ -7,17 +7,26 @@ from ltrace.slicer.helpers import get_scripted_modules_path, svgToQIcon
 from ltrace.slicer_utils import getResourcePath
 import re
 
+
 def is_url(url: str) -> bool:
     if url is None:
         return False
 
     return re.match(r"^(?:https|file)s?://", url) is not None
 
+
 class HelpButton(qt.QToolButton):
 
     DEFAULT_URL = (getResourcePath("manual") / "index.html").as_posix()
 
-    def __init__(self, message: str = None, url: str = None, replacer: typing.Union[None, typing.Callable] = None, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        message: str = None,
+        url: str = None,
+        replacer: typing.Union[None, typing.Callable] = None,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
 
         if not is_url(url):

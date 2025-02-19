@@ -342,6 +342,3 @@ class ImageLogCustomSegmenterLogic(LTracePluginLogic):
         job_name = f"segmentation: {outputPrefix} ({coi}, {depthInterval})"
 
         slicer.modules.RemoteServiceInstance.cli.run(cmd_handler, name=job_name, job_type="pucnet")
-
-
-

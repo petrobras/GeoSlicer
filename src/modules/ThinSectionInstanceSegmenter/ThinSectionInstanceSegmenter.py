@@ -850,12 +850,6 @@ class ThinSectionInstanceSegmenterLogic(LTracePluginLogic):
         slicer.modules.RemoteServiceInstance.cli.run(cmd_handler, name=job_name, job_type="instseg")
 
 
-
-
-
-
-
-
 class CLIEventHandler:
     COMPlETED = "completed"
     CANCELLED = "cancelled"

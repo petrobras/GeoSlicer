@@ -1349,7 +1349,9 @@ def createIndex():
         pb.setMessage("Saving indexing...")
 
         # TODO how to control that externally
-        petroPlugins = fetchModulesFrom(path="https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git", depth=2, name="External")
+        petroPlugins = fetchModulesFrom(
+            path="https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git", depth=2, name="External"
+        )
 
         allPlugins = {**ltracePlugins, **petroPlugins}
 

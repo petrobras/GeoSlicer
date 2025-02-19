@@ -15,6 +15,7 @@ from ltrace.remote.targets import TargetManager, Host
 from ltrace.remote import errors
 
 from ltrace.slicer.widget.remote import login, accounts
+from ltrace.slicer.application_observables import ApplicationObservables
 
 from JobLoader import register_job_loaders
 
@@ -51,10 +52,16 @@ class RemoteService(LTracePlugin):
         JobManager.load()
 
         JobManager.worker = start_monitor()
+        ApplicationObservables().aboutToQuit.connect(self.__joinJobManageWorker)
 
         JobManager.resume_all()
 
         self.cli = RemoteServiceLogic()
+
+    def __joinJobManageWorker(self):
+        JobManager.keep_working = False
+        JobManager.worker.join()
+        JobManager.worker = None
 
 
 # Not Implemented

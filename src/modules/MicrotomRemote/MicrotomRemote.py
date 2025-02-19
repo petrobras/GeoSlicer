@@ -1547,7 +1547,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             try:
                 output_file_dir = Path(slicer.app.temporaryPath) / f"{sim_info['simulator']}.csv"
                 df = self.loadCustomLog(output_file_dir)
-                #output_file_dir.unlink()
+                # output_file_dir.unlink()
 
                 if df is not None:
                     tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
@@ -1792,6 +1792,3 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
         job_name = f"{simulator}: {outputPrefix} ({direction})"
 
         return slicer.modules.RemoteServiceInstance.cli.run(managed_cmd, name=job_name, job_type="microtom")
-
-
-

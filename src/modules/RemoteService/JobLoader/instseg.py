@@ -36,5 +36,3 @@ def instseg_loader(job: JobExecutor):
     job.task_handler = task_handler
     print("JOB ok:", job)
     return job
-
-

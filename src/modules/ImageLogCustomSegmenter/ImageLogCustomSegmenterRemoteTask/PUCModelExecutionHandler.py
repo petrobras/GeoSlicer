@@ -2,7 +2,7 @@ from datetime import datetime
 import shutil
 from typing import Any, Callable
 import re
-from pathlib import Path, PurePosixPath, WindowsPath
+from pathlib import Path, PurePosixPath
 
 import slicer
 
@@ -14,7 +14,7 @@ from ltrace.remote import utils as slurm_utils
 class PUCModelExecutionHandler:
     REMOTE_DIR = PurePosixPath("/nethome/drp")
     # TODO handle linux cases
-    NFS_DIR = WindowsPath("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp")
+    NFS_DIR = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp")
 
     job_id_pattern = re.compile("job_id = ([a-zA-Z0-9]+)")
 

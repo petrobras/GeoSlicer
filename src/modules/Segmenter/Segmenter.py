@@ -161,9 +161,7 @@ class Segmenter(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Filtering_and_Segmentation/Segmentation/auto_segmentation.html').as_posix()}"
-        )
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Filtering_and_Segmentation/Segmentation/auto_segmentation.html').as_posix()}"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
 
     @classmethod
@@ -287,7 +285,7 @@ class SegmenterWidget(LTracePluginWidget):
             "### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained "
             "for a specific use case and only requires an image as input. Select a model to view its information."
             "\n\n-----\n[More]({path_to_manual})",
-            replacer=loadClassifierUrlReplacer
+            replacer=loadClassifierUrlReplacer,
         )
 
         self.userClassifierRadio = qt.QRadioButton("User Custom Pre-trained Models")
