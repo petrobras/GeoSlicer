@@ -1,3 +1,5 @@
+import time
+import typing
 from collections import OrderedDict
 import logging
 from queue import Queue
@@ -36,8 +38,11 @@ class JobManager:
                 return job
 
             job = cls.compilers[job.job_type](job)
+            return job
+
         except Exception as e:
             logging.error(f"Failed to mount job {job.uid}. Cause: {repr(e)}")
+            raise
 
     @staticmethod
     def keepWorking():
@@ -49,40 +54,46 @@ class JobManager:
 
     @classmethod
     def manage(cls, job: JobExecutor):
-        if job.uid not in cls.jobs:
-            cls.jobs[job.uid] = job
-
-            for observer in cls.observers:
-                observer(job, "JOB_MANAGED")
+        try:
+            if job.uid not in cls.jobs:
+                cls.jobs[job.uid] = job
+                logging.info("Managing the job: " + str(job.uid))
+                for observer in cls.observers:
+                    observer(job, "JOB_MANAGED")
+        except Exception as e:
+            import traceback
+            logging.error(f"Failed to manage job {job.uid}. Cause: {repr(e)}")
+            logging.error(traceback.format_exc())
 
     @classmethod
     def broadcast(cls, event, **kwargs):
         raise NotImplementedError("Broadcasting not implemented yet")
 
-    @classmethod
-    def send(cls, uid, event, **kwargs):
-        try:
-            job = cls.jobs.get(uid)
-            client = cls.connections.connect(job.host)  # TODO client should be optional
-            if job.task_handler:
-                job.task_handler(cls, uid, event, client=client, **kwargs)
-        except Exception as e:
-            logging.error(f"Failed to send event {event} to job {uid}. Cause: {repr(e)}")
+    # @classmethod
+    # def send(cls, uid, event, retry=False, **kwargs):
+    #     try:
+    #         job = cls.jobs.get(uid)
+    #         client = cls.connections.connect(job.host)  # TODO client should be optional
+    #         if job.task_handler:
+    #             job.task_handler(cls, uid, event, client=client, **kwargs)
+    #     except errors.SSHException as e:
+    #         logging.warning(f"Failed to send event {event} to job {uid}. Cause: {repr(e)}")
+    #         if retry:
+    #             time.sleep(1)  # avoid flooding the queue
+    #             cls.agenda.put((uid, event))  # pass retry here
+    #     except Exception as e:
+    #         logging.error(f"Failed to send event {event} to job {uid}. Cause: {repr(e)}")
+    #         raise
 
     @classmethod
-    def communicate(cls, uid, event, **kwargs):
+    def locked_send(cls, uid, event, **kwargs):
         with cls.read_lock:
             try:
                 job = cls.jobs.get(uid, None)
                 if job and (job.status not in cls.endstates):
-                    cls.send(uid, event, **kwargs)
-            except errors.SSHException as e:
-                print("communicate function failed ON CONNECTION: ", repr(e))
-                cls.agenda.put((uid, event))
+                    job.process(event, cls, cls.connections, **kwargs)
             except Exception as e:
-                print("communicate function failed: ", repr(e))
-            finally:
-                pass
+                print(f"Failed to deliver event {event} to job {uid}. Cause: {repr(e)}")
 
     @classmethod
     def add_observer(cls, observer: Callable):
@@ -91,18 +102,23 @@ class JobManager:
 
     @classmethod
     def set_state(
-        cls,
-        uid,
-        status,
-        progress=None,
-        message=None,
-        traceback=None,
-        start_time=None,
-        end_time=None,
-        details: Dict = None,
+            cls,
+            uid,
+            status,
+            progress=None,
+            message=None,
+            traceback: typing.Union[str, Dict, None] = None,
+            start_time=None,
+            end_time=None,
+            details: Dict = None,
     ):
+        job = cls.jobs.get(uid)
+
+        if job is None:
+            logging.info(f"Job {uid} removed. Skipping this state change.")
+            return
+
         try:
-            job = cls.jobs.get(uid)
             job.status = status
             job.progress = progress or job.progress
             job.message = message or job.message
@@ -130,17 +146,10 @@ class JobManager:
 
             for observer in cls.observers:
                 observer(job, "JOB_MODIFIED")
-        except AttributeError:
-            logging.info("Job not existing anymore, skipping set_state")
-            import traceback
-
-            traceback.print_exc()
-            logging.info("---------------")
         except Exception as e:
             import traceback
-
             traceback.print_exc()
-            logging.error(f"on jobs.JobManager.set_state = {repr(e)}")
+            logging.error(f"Failed to set state for job {uid}. Cause: {repr(e)}")
         finally:
             pass
 
@@ -178,23 +187,28 @@ class JobManager:
 
     @classmethod
     def resume(cls, job):
+
+        if job is None or not isinstance(job, JobExecutor):
+            return
+
+        uid = job.uid
+
         try:
             client = ConnectionManager.connect(job.host)
+            mounted_job = cls.mount(job)
 
-            job = cls.mount(job)
+            cls.manage(mounted_job)
 
-            cls.manage(job)
+            if client and mounted_job and mounted_job.status == "IDLE":
+                cls.set_state(uid, status="RUNNING")
 
-            if client and job and job.status == "IDLE":
-                cls.set_state(job.uid, status="RUNNING")
-
-            cls.schedule(job.uid, "PROGRESS")
+            cls.schedule(uid, "PROGRESS")
             return True
         except errors.AuthException as e:
             logging.warning(repr(e))
-            if job.host.rsa_key:
+            if mounted_job.host.rsa_key:
                 cls.set_state(
-                    job.uid,
+                    uid,
                     status="IDLE",
                     traceback={
                         "[ERROR] Authentication failed": "Please check your credentials (Identity file) and reconnect manually."
@@ -202,7 +216,7 @@ class JobManager:
                 )
             else:
                 cls.set_state(
-                    job.uid,
+                    uid,
                     status="IDLE",
                     traceback={"[ERROR] Authentication failed": "Password required, please reconnect manually."},
                 )
@@ -210,7 +224,7 @@ class JobManager:
         except errors.BadHostKeyException as e:
             logging.warning(repr(e))
             cls.set_state(
-                job.uid,
+                uid,
                 status="IDLE",
                 traceback={
                     "[ERROR] Authentication failed": "Please check your credentials (Identity file) and reconnect manually."
@@ -221,7 +235,7 @@ class JobManager:
             # TODO return for accounts instead of login
             import traceback
 
-            cls.set_state(job.uid, status="IDLE", traceback={"[ERROR] Unable to connect": traceback.format_exc()})
+            cls.set_state(uid, status="IDLE", traceback={"[ERROR] Unable to connect": traceback.format_exc()})
 
             return False
 
@@ -232,7 +246,7 @@ class JobManager:
                 job.status = "IDLE"
 
     @classmethod
-    def load(cls):
+    def load_jobs(cls):
         try:
             jobfile = cls.storage
             djobs = cls.loadjson(jobfile)
@@ -283,65 +297,19 @@ class JobManager:
 
 
 def start_monitor():
-    def jobspy():
+    def monitor():
         while JobManager.keepWorking():
             try:
                 uid, event = JobManager.agenda.get()
-                JobManager.communicate(uid, event)
+                if event == "SHUTDOWN":
+                    break
+
+                JobManager.locked_send(uid, event)
             except:
                 pass
 
-    t = Thread(target=jobspy, daemon=False)
+    t = Thread(target=monitor, daemon=False)
     t.start()
 
     return t
 
-    # @classmethod
-    # def _persist(cls):
-    #     if cls.storage is None:
-    #         raise ValueError("No storage path set.")
-
-    #     data = []
-    #     for job in cls.jobs.values():
-    #         blob = pickle.dumps(cls.jobs).encode('utf-8')
-
-    #         djob = {
-    #             "host": asdict(job.host),
-    #             "uid": job.uid,
-    #             "handler": blob,
-    #             "status": job.status,
-    #             "progress": job.progress,
-    #             "message": job.message,
-    #             "traceback": job.traceback
-    #         }
-
-    #         data.append(djob)
-
-    #     content = {"jobs": data}
-
-    #     cls.targets_storage.parent.mkdir(parents=True, exist_ok=True)
-
-    #     with open(cls.targets_storage, "w") as file:
-    #         json.dump(content, file, indent=2)
-
-    # @classmethod
-    # def load_from_remote(cls):
-    #     if cls.targets_storage is None:
-    #         raise ValueError("No storage path set.")
-
-    #     if not cls.targets_storage.exists():
-    #         logging.warning(f"Target storage {cls.targets_storage} does not exist. Starting with empty targets.")
-    #         cls.targets = {}
-    #         return
-
-    #     try:
-    #         with open(cls.targets_storage, "r") as file:
-    #             content = json.load(file)
-    #             cls.targets = {host["name"]: Host(**host) for host in content["hosts"]}
-    #     except Exception as e:
-    #         logging.error(f"Error loading targets: {e}")
-    #         cls.targets = {}
-
-    # @classmethod
-    # def load(cls):
-    #     pass

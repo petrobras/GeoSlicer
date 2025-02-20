@@ -326,8 +326,10 @@ class MonaiLabelServerLogic(LTracePluginLogic):
         self.widget.startServerButton.setEnabled(True)
         self.widget.stopServerButton.setEnabled(False)
 
-        if JobManager.jobs[self.UID].status == "RUNNING":
-            JobManager.send(self.UID, "CANCEL")
+        serverJob = JobManager.jobs[self.UID]
+        if serverJob.status == "RUNNING":
+            JobManager.locked_send(self.UID, "CANCEL")
+            serverJob.process("CANCEL", JobManager, JobManager.connections)
             self.UID = None
 
     def onStopLocalServer(self):

@@ -51,7 +51,7 @@ class VariogramAnalysis(LTracePlugin):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent.title = "Variogram Analysis"
-        self.parent.categories = ["Segmentation"]
+        self.parent.categories = ["Segmentation", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = """

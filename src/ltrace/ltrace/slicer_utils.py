@@ -217,8 +217,8 @@ class LTraceEnvironmentMixin:
     def enter(self):
         pass
 
-    def setupTools(self):
-        self.getModuleManager().addToolsMenu(self.__modulesToolbar)
+    def setupTools(self, tools: list):
+        self.getModuleManager().addToolsMenu(self.__modulesToolbar, tools)
 
     def setupLoaders(self):
         self.getModuleManager().addLoadersMenu(self.__modulesToolbar)

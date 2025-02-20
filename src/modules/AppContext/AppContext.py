@@ -150,13 +150,9 @@ class ModuleManager:
 
         return {m.key: m for m in result}
 
-    def addToolsMenu(self, toolbar):
-        tools = [
-            "VolumeCalculator",
-            "CustomizedTables",
-            "TableFilter",
-            "Charts",
-        ]
+    def addToolsMenu(self, toolbar, tools=None):
+        if tools is None:
+            return
 
         toolModules = [self.availableModules[m] for m in tools]
 

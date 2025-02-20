@@ -1170,6 +1170,7 @@ def createLabelmapInput(
                 name,
                 environment=tag,
                 uniqueName=uniqueName,
+                hidden=False
             )
             for index in topSegments:
                 vtkSegmentIds.InsertNextValue(segmentation.GetNthSegmentID(index - 1))
@@ -1229,7 +1230,7 @@ def createLabelmapInput(
 
 def get_associated_color_node(node):
     if isinstance(node, slicer.vtkMRMLDisplayableNode):
-        return source_color_node.GetDisplayNode().GetColorNode()
+        return node.GetDisplayNode().GetColorNode()
     elif isinstance(node, slicer.vtkMRMLColorNode):
         return node
     else:
@@ -2425,3 +2426,83 @@ def modifySelectedSegmentByMaskImage(scriptedEffect, maskImage):
 
 def modifySelectedSegmentByMaskArray(scriptedEffect, maskArray, referenceNode):
     modifySelectedSegmentByMaskImage(scriptedEffect, maskImageFromMaskArray(maskArray, referenceNode))
+
+
+def addNodesToScene(nodes):
+    colormapNodeID = slicer.util.getNode("Viridis").GetID()
+
+    for node in nodes:
+        try:
+            if node.IsA("vtkMRMLTableNode"):
+                makeTemporaryNodePermanent(node, show=True)
+                autoDetectColumnType(node)
+            else:
+                node.GetDisplayNode().SetAndObserveColorNodeID(colormapNodeID)
+                node.GetDisplayNode().ScalarVisibilityOn()
+                makeTemporaryNodePermanent(node, show=True)
+                node.GetDisplayNode().SetVisibility(True)
+
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to load the results.")
+            logging.error(f"ERROR :: Cause: {repr(e)}")
+
+def setNodesHierarchy(nodes, referenceNode, projectDirName=None):
+    folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+    parentItemId = folderTree.GetSceneItemID()
+    if referenceNode:
+        itemTreeId = folderTree.GetItemByDataNode(referenceNode)
+        parentItemId = folderTree.GetItemParent(itemTreeId)
+
+    dirLabel = "Microtom Results"
+    foundResultDir = folderTree.GetItemByName(dirLabel)
+    if not foundResultDir:
+        foundResultDir = folderTree.CreateFolderItem(parentItemId, dirLabel)
+
+    if projectDirName:  # override foundResultDir
+        foundResultDir = folderTree.CreateFolderItem(foundResultDir, projectDirName)
+
+    for node in nodes:
+        folderTree.CreateItem(foundResultDir, node)
+
+
+def showMissingResults(missingResults):
+    if not missingResults:
+        return
+    missing = "\n".join([f" - {ifile} ({errmsg})" for ifile, errmsg in missingResults])
+    slicer.util.infoDisplay(f"Failed to load the following results:\n{missing}")
+
+
+def countLabelsOnLabelMapNode(node: slicer.vtkMRMLLabelMapVolumeNode) -> int:
+    """Count the number of unique labels on the labelmap node."""
+    try:
+        if not isinstance(node, slicer.vtkMRMLDisplayableNode):
+            raise ValueError("No displayable node provided.")
+
+        return node.GetDisplayNode().GetColorNode().GetNumberOfColors()
+
+    except ValueError as e:
+
+        if not isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            return getCountForLabels(node).get("total", 0)
+    except Exception as e:
+        logging.error(f"Error counting labels: {e}")
+
+    return 99999  # Return a large number to avoid being processed
+
+
+def compare_borders_3D(node_array: np.ndarray, offset=50):
+    if node_array.ndim != 3:
+        raise ValueError("Expected a 3D array.")
+
+    xf = set(np.unique(node_array[0:offset, :, :]))
+    xe = set(np.unique(node_array[-offset:, :, :]))
+    yf = set(np.unique(node_array[:, 0:offset, :]))
+    ye = set(np.unique(node_array[:, -offset:, :]))
+    zf = set(np.unique(node_array[:, :, 0:offset]))
+    ze = set(np.unique(node_array[:, :, -offset:]))
+
+    return xf.intersection(xe), yf.intersection(ye), zf.intersection(ze)
+
+
+

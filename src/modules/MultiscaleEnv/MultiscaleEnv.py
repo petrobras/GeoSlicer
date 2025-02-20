@@ -85,7 +85,13 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         self.modulesToolbar.actions()[1].setVisible(False)
         self.modulesToolbar.actions()[11].setVisible(False)
 
-        self.setupTools()
+        self.setupTools(tools=[
+            "VolumeCalculator",
+            "CustomizedTables",
+            "TableFilter",
+            "Charts",
+            "VariogramAnalysis"
+        ])
 
         self.addImageLogViewOption()
 

@@ -1326,6 +1326,8 @@ def configure(rebuild_index=False):
 
     ApplicationObservables().applicationLoadFinished.connect(_showDataLoaders)
 
+    slicer.modules.RemoteServiceInstance.setupRemoteService()
+
     expandSceneFolder()
 
 

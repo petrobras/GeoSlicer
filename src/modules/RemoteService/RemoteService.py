@@ -45,22 +45,24 @@ class RemoteService(LTracePlugin):
         JobManager.connections = ConnectionManager  # TODO direct access not good
 
         TargetManager.set_storage(self.hosts_file)
+
+        self.cli = RemoteServiceLogic()
+
+    def setupRemoteService(self):
         TargetManager.load_targets()
 
         register_job_loaders()
 
-        JobManager.load()
+        JobManager.load_jobs()
 
         JobManager.worker = start_monitor()
         ApplicationObservables().aboutToQuit.connect(self.__joinJobManageWorker)
-
+        logging.info("Remote Service setup complete " + str(len(JobManager.jobs)))
         JobManager.resume_all()
-
-        self.cli = RemoteServiceLogic()
 
     def __joinJobManageWorker(self):
         JobManager.keep_working = False
-        JobManager.worker.join()
+        JobManager.schedule("", "SHUTDOWN")
         JobManager.worker = None
 
 

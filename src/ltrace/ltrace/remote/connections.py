@@ -3,7 +3,9 @@ from typing import Any, Callable, Dict
 
 import datetime
 import logging
+import time
 
+from ltrace.remote import errors
 from ltrace.remote.hosts.base import Host
 from ltrace.remote.hosts import PROTOCOL_HANDLERS
 
@@ -63,6 +65,23 @@ class JobExecutor:
             "traceback": self.traceback,
             "details": self.details,
         }
+
+    def process(self, event, tasker, connection_pool, **kwargs):
+
+        retry = kwargs.get("retry", False)
+
+        try:
+            client = connection_pool.connect(self.host)  # TODO client should be optional
+            if self.task_handler:
+                self.task_handler(tasker, self.uid, event, client=client, **kwargs)
+        except errors.SSHException as e:
+            logging.warning(f"Failed to send event {event} to job {self.uid}. Cause: {repr(e)}")
+            if retry:
+                time.sleep(1)  # avoid flooding the queue
+                tasker.agenda.put((self.uid, event))  # pass retry here
+        except Exception as e:
+            logging.error(f"Failed to send event {event} to job {self.uid}. Cause: {repr(e)}")
+            raise
 
 
 class ConnectionManager:

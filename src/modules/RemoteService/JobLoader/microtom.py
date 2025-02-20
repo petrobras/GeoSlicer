@@ -9,7 +9,6 @@ from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKab
 
 
 def microtom_job_loader(job: JobExecutor):
-    print("Job received", job)
     details = job.details
     simulator = details.get("simulator", "psd")
     outputPrefix = details.get("output_prefix", "output")

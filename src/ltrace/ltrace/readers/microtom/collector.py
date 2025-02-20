@@ -52,13 +52,11 @@ class BaseResultCompiler:
     def __call__(self, results):
         nodes, ref_node, project_name = self.compile(results)  # TODO better way to inform the parent node?
 
-        mct_logic = slicer.modules.MicrotomRemoteWidget.logic  # TODO move those functions to ltrace library
-
-        mct_logic.addNodesToScene(nodes)
-        mct_logic.setNodesHierarchy(nodes, ref_node, projectDirName=project_name)
+        helpers.addNodesToScene(nodes)
+        helpers.setNodesHierarchy(nodes, ref_node, projectDirName=project_name)
 
         if len(self.missing_results) > 0:
-            mct_logic.showMissingResults(self.missing_results)
+            helpers.showMissingResults(self.missing_results)
 
         return nodes, ref_node, project_name
 

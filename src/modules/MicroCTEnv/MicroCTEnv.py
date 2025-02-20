@@ -100,7 +100,14 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             elif callable(module):
                 module()
 
-        self.setupTools()
+        self.setupTools(tools=[
+            "VolumeCalculator",
+            "CustomizedTables",
+            "TableFilter",
+            "Charts",
+            "VariogramAnalysis"
+        ])
+
         self.setupLoaders()
 
         self.getModuleManager().setEnvironment(("Volumes", "MicroCTEnv"))

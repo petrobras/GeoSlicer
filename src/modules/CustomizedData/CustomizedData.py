@@ -7,6 +7,7 @@ import traceback
 
 from pathlib import Path
 
+from ltrace.slicer import helpers
 from ltrace.slicer_utils import *
 
 from CustomizedDataLib import *
@@ -145,8 +146,9 @@ class CustomizedDataWidget(LTracePluginWidget):
                     self.tableWidget.setNode(node)
                     self.tableWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLLabelMapVolumeNode:
-                self.labelMapWidget.setNode(node)
-                self.labelMapWidget.setVisible(True)
+                if helpers.countLabelsOnLabelMapNode(node) <= 50:
+                    self.labelMapWidget.setNode(node)
+                    self.labelMapWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLSegmentationNode:
                 if node.GetSegmentation().GetNumberOfSegments() <= 50:  # Performance reasons
                     self.segmentationWidget.setNode(node)

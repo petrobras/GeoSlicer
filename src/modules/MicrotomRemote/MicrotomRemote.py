@@ -1310,48 +1310,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 return n
         return None
 
-    def addNodesToScene(self, nodes):
-        colormapNodeID = slicer.util.getNode("Viridis").GetID()
 
-        for node in nodes:
-            try:
-                if node.IsA("vtkMRMLTableNode"):
-                    helpers.makeTemporaryNodePermanent(node, show=True)
-                    helpers.autoDetectColumnType(node)
-                else:
-                    node.GetDisplayNode().SetAndObserveColorNodeID(colormapNodeID)
-                    node.GetDisplayNode().ScalarVisibilityOn()
-                    helpers.makeTemporaryNodePermanent(node, show=True)
-                    node.GetDisplayNode().SetVisibility(True)
-
-            except Exception as e:
-                slicer.util.errorDisplay(f"Failed to load the results.")
-                logging.error(f"ERROR :: Cause: {repr(e)}")
-
-    def setNodesHierarchy(self, nodes, referenceNode, projectDirName=None):
-        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-
-        parentItemId = folderTree.GetSceneItemID()
-        if referenceNode:
-            itemTreeId = folderTree.GetItemByDataNode(referenceNode)
-            parentItemId = folderTree.GetItemParent(itemTreeId)
-
-        dirLabel = "Microtom Results"
-        foundResultDir = folderTree.GetItemByName(dirLabel)
-        if not foundResultDir:
-            foundResultDir = folderTree.CreateFolderItem(parentItemId, dirLabel)
-
-        if projectDirName:  # override foundResultDir
-            foundResultDir = folderTree.CreateFolderItem(foundResultDir, projectDirName)
-
-        for node in nodes:
-            folderTree.CreateItem(foundResultDir, node)
-
-    def showMissingResults(self, missingResults):
-        if not missingResults:
-            return
-        missing = "\n".join([f" - {ifile} ({errmsg})" for ifile, errmsg in missingResults])
-        slicer.util.infoDisplay(f"Failed to load the following results:\n{missing}")
 
     def _writeOutputs(self, jsonDict, nth_run):
         simulator = jsonDict["simulator"]
@@ -1559,8 +1518,8 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 logging.error(f"Failed to load runtime log. Path: {output_file_dir.as_posix()}. Cause: {repr(e)}.")
 
             if sequenceIndex < 1:
-                self.addNodesToScene(nodes)
-                self.setNodesHierarchy(nodes, referenceNode, projectDirName=f"{prefix}_{simulator}")
+                helpers.addNodesToScene(nodes)
+                helpers.setNodesHierarchy(nodes, referenceNode, projectDirName=f"{prefix}_{simulator}")
 
             if sequenceIndex > -1:
                 self.findSequenceAndAddNode(prefix, nodes, sequenceIndex)

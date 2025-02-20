@@ -540,11 +540,11 @@ class JobMonitorLogic(LTracePluginLogic):
             self.widget.updateJob(job)
 
     def cancelJob(self, job):
-        JobManager.send(job.uid, "CANCEL")
+        job.process("CANCEL", JobManager, JobManager.connections)
 
     def loadResults(self, job):
         if job.status == "COMPLETED":
-            JobManager.send(job.uid, "COLLECT")
+            job.process("COLLECT", JobManager, JobManager.connections)
         elif job.status == "IDLE":
             slicer.modules.RemoteServiceInstance.cli.resume(job)
 
