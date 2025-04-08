@@ -1,27 +1,14 @@
-from typing import List
-from collections import namedtuple, Counter
-import multiprocessing
 import json
+from collections import namedtuple
 from pathlib import Path
-import dask.array as da
-from loguru import logger
-from ltrace.slicer import helpers
-import scipy.ndimage as spim
-import scipy.spatial as sptl
-from skimage.feature import peak_local_max
-from skimage.segmentation import watershed
-from skimage.morphology import square, cube
-from recordtype import recordtype
+from typing import List
 
-import pandas as pd
 import numpy as np
-from scipy import ndimage
-from numba import njit, prange
-from porespy.filters import snow_partitioning
-
 import slicer
+from recordtype import recordtype
+from scipy import ndimage
 
-from porespy.tools import extend_slice
+from ltrace.slicer import helpers
 from ltrace.slicer.helpers import (
     createOutput,
     createTemporaryNode,

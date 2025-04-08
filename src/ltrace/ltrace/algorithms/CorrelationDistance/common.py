@@ -65,9 +65,11 @@ def get_subvolume_slices(data_shape, base, subvolume_size, dim_it_counters, divi
         new_range += (
             slice(
                 base[dim_index],
-                base[dim_index] + subvolume_size[dim_index]
-                if dim_it_counters[dim_index] < divisor[dim_index] - 1
-                else data_shape[dim_index],
+                (
+                    base[dim_index] + subvolume_size[dim_index]
+                    if dim_it_counters[dim_index] < divisor[dim_index] - 1
+                    else data_shape[dim_index]
+                ),
             ),
         )
     return new_range

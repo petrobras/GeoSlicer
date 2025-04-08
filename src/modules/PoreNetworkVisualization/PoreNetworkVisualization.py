@@ -91,6 +91,10 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.layout.addWidget(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
+        self.comboBoxVariable = qt.QComboBox()
+        self.comboBoxVariable.addItems(["saturation", "condW", "condO"])
+        parametersFormLayout.addRow("Variable", self.comboBoxVariable)
+
         # show zero in log krel
         self.showZeroLogCheck = qt.QCheckBox()  # .isChecked()
         parametersFormLayout.addRow("Show zero log Krel", self.showZeroLogCheck)
@@ -271,11 +275,12 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
 
         # connections
         self.inputSelector.currentItemChanged.connect(self.onChangeModel)
-        self.stepSlider.connect("valueChanged(double)", self.onChangeStep)
-        self.speedSlider.connect("valueChanged(double)", self.animationSetup)
+        self.comboBoxVariable.currentIndexChanged.connect(self.onChangeVariable)
+        self.stepSlider.valueChanged.connect(self.onChangeStep)
+        self.speedSlider.valueChanged.connect(self.onSpeedSliderChanged)
         self.timer.timeout.connect(self.nextStep)
-        self.runAnimationCheck.connect("stateChanged(int)", self.animationSetup)
-        self.showZeroLogCheck.connect("stateChanged(int)", self.onChangeModel)
+        self.runAnimationCheck.stateChanged.connect(self.onRunAnimationCheckChanged)
+        self.showZeroLogCheck.stateChanged.connect(self.onShowZeroLogCheck)
         self.thresholdSlider.slider.connect("valuesChanged(double, double)", self.onSaturationThresholdChanged)
         for axis in ("X", "Y", "Z"):
             self.sliders[f"clip{axis}Slider"].slider.connect(
@@ -379,6 +384,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
             self.subvolumePlotItem.getAxis("left").setWidth(max_width)
             self.subvolumeLogPlotItem.getAxis("left").setWidth(max_width)
             self.onChangeStep(0)
+            self.onChangeVariable()
 
     def nextStep(self):
         new_step = self.stepSlider.value + 1
@@ -390,6 +396,15 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         else:
             self.stepSlider.value = new_step
 
+    def onSpeedSliderChanged(self, value) -> None:
+        self.animationSetup()
+
+    def onRunAnimationCheckChanged(self, status):
+        self.animationSetup(status)
+
+    def onShowZeroLogCheck(self, status):
+        self.onChangeModel()
+
     def animationSetup(self, status):
         if self.runAnimationCheck.isChecked():
             self.timer.start(1000 / self.speedSlider.value)
@@ -400,7 +415,9 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         if self.inputSelector.currentNode():
             table_sw = self.data_points[int(new_step)]
             table_cycle = int(self.data_cycles[int(new_step)])
-            self.inputSelector.currentNode().GetDisplayNode().SetActiveScalarName(f"saturation_{int(new_step)}")
+            self.inputSelector.currentNode().GetDisplayNode().SetActiveScalarName(
+                f"{self.comboBoxVariable.currentText}_{int(new_step)+1}"
+            )
 
             nearest_index = self.getNearestIndex(table_cycle, table_sw)
 
@@ -472,6 +489,26 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
                 [current_sw_value],
                 [max(current_krw_value, krw_max / 10**20)],
             )
+
+    def onChangeVariable(self):
+        current_node = self.inputSelector.currentNode()
+
+        if not current_node:
+            return
+
+        current_node.SetDisplayVisibility(True)
+        if self.comboBoxVariable.currentText == "saturation":
+            current_node.GetDisplayNode().SetScalarRangeFlag(0)
+            current_node.GetDisplayNode().SetScalarRange(0, 1)
+            current_node.GetDisplayNode().SetThresholdRange(0, 1)
+            rgbColorNode = slicer.util.getNode("RedGreenBlue")
+            current_node.GetDisplayNode().SetAndObserveColorNodeID(rgbColorNode.GetID())
+        else:
+            current_node.GetDisplayNode().SetScalarRangeFlag(1)
+            viridisColorNode = slicer.util.getNode("Viridis")
+            current_node.GetDisplayNode().SetAndObserveColorNodeID(viridisColorNode.GetID())
+
+        self.onChangeStep(self.stepSlider.value)
 
     def onSaturationThresholdChanged(self, currentMin, currentMax):
         if self.inputSelector.currentNode():

@@ -102,6 +102,12 @@ def transformPoints(transformationMatrix, points, returnInt=False):
     return pointsTransformed
 
 
+def transformRect(transformMatrix: vtk.vtkMatrix4x4, rasRectPoints: np.ndarray, dtype=np.int32):
+    operatorArray = np.zeros(16)
+    transformMatrix.DeepCopy(operatorArray, transformMatrix)
+    return np.dot(operatorArray.reshape(-1, 4), rasRectPoints.T).T.astype(dtype)
+
+
 def volume_ras_to_ijk(ras, volume_node, as_int=True, inverse=False):
     """
     Transforms RAS coordinates associated with a volume node to their

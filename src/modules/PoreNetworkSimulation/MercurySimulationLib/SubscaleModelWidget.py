@@ -10,6 +10,7 @@ from ltrace.slicer.ui import (
     DirOrFileWidget,
     floatParam,
 )
+from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import dataframeFromTable
 from ltrace.file_utils import read_csv
 
@@ -25,12 +26,49 @@ class SubscaleModelWidget(qt.QWidget):
 
         for widget in (
             FixedRadiusWidget,
+            TruncatedGaussianWidget,
             LeverettNewWidget,
             LeverettOldWidget,
             PressureCurveWidget,
             ThroatRadiusCurveWidget,
         ):
             self.parameter_widgets[widget.STR] = widget()
+
+        porositymodifier_helpbutton = HelpButton(
+            "Modifies subscale porosity.\n"
+            "Values lower than 1 increase subscale porosity.\n"
+            "Values higher than 1 decrease subscale porosity.\n"
+            'Considering an effective porosity "p*", a real'
+            ' porosity "p" and a calibration factor "c":'
+            " If c <= 1 :"
+            "    p\\* = 1 - (1-p) \\* c"
+            " If c > 1:"
+            "    p\\* = p / c"
+        )
+        self.porositymodifier_edit = floatParam(1.0)
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.porositymodifier_edit)
+        hbox.addWidget(porositymodifier_helpbutton)
+        layout.addRow(
+            "Capillary porosity modifier",
+            hbox,
+        )
+
+        shapefactor_helpbutton = HelpButton(
+            "Defines Shape factor of subresolution capillary elements.\n"
+            "Values must be between 0.01 and 0.09.\n"
+            "Values under or equal to 0.04 result in triangular cross"
+            " section, values greater or equal than 0.071 result in circular"
+            " cross section."
+        )
+        self.subresolution_shapefactor_edit = floatParam(0.040)
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.subresolution_shapefactor_edit)
+        hbox.addWidget(shapefactor_helpbutton)
+        layout.addRow(
+            "Capillary pore shape factor",
+            hbox,
+        )
 
         self.microscale_model_dropdown = qt.QComboBox()
         self.microscale_model_dropdown.objectName = "Subscale Model Selector"
@@ -52,6 +90,8 @@ class SubscaleModelWidget(qt.QWidget):
     def getParams(self):
         subres_model_name = self.microscale_model_dropdown.currentText
         subres_params = self.parameter_widgets[subres_model_name].get_params()
+        subres_shape_factor = float(self.subresolution_shapefactor_edit.text)
+        subres_porositymodifier = float(self.porositymodifier_edit.text)
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             subres_params = {
@@ -61,6 +101,8 @@ class SubscaleModelWidget(qt.QWidget):
         return {
             "subres_model_name": subres_model_name,
             "subres_params": subres_params,
+            "subres_shape_factor": subres_shape_factor,
+            "subres_porositymodifier": subres_porositymodifier,
         }
 
     def setParams(self, params):
@@ -90,7 +132,46 @@ class FixedRadiusWidget(qt.QWidget):
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
-        func = self.logic.get_capillary_pressure_function(params, pore_network, volume)
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
+        return func
+
+
+class TruncatedGaussianWidget(qt.QWidget):
+    STR = "Truncated Gaussian"
+
+    def __init__(self):
+        super().__init__()
+        layout = qt.QFormLayout(self)
+        self.logic = MercurySimulationLogic.TruncatedGaussianLogic()
+
+        self.mean_radius = ui.floatParam()
+        self.mean_radius.text = 0.10
+        layout.addRow("Mean radius (mm): ", self.mean_radius)
+
+        self.micropore_std = ui.floatParam()
+        self.micropore_std.text = 0.02
+        layout.addRow("Radius standard deviation: ", self.micropore_std)
+
+        self.minimum_radius = ui.floatParam()
+        self.minimum_radius.text = 0.05
+        layout.addRow("Min radius cutoff (mm): ", self.minimum_radius)
+
+        self.maximum_radius = ui.floatParam()
+        self.maximum_radius.text = 0.15
+        layout.addRow("Max radius cutoff (mm): ", self.maximum_radius)
+
+    def get_params(self):
+        params = {
+            "mean radius": float(self.mean_radius.text),
+            "standard deviation": float(self.micropore_std.text),
+            "min radius": float(self.minimum_radius.text),
+            "max radius": float(self.maximum_radius.text),
+        }
+        return params
+
+    def get_subradius_function(self, pore_network, volume):
+        params = self.get_params()
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 
 
@@ -166,7 +247,7 @@ class ThroatRadiusCurveWidget(qt.QWidget):
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
-        func = self.logic.get_capillary_pressure_function(params, pore_network, volume)
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 
 
@@ -242,7 +323,7 @@ class PressureCurveWidget(qt.QWidget):
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
-        func = self.logic.get_capillary_pressure_function(params, pore_network, volume)
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 
 
@@ -296,7 +377,7 @@ class LeverettWidgetBase(qt.QWidget):
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
-        func = self.logic.get_capillary_pressure_function(params, pore_network, volume)
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 
 
@@ -358,4 +439,5 @@ SubscaleLogicDict = {
     LeverettOldWidget.STR: MercurySimulationLogic.LeverettOldLogic,
     PressureCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
     ThroatRadiusCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
+    TruncatedGaussianWidget.STR: MercurySimulationLogic.TruncatedGaussianLogic,
 }

@@ -97,7 +97,7 @@ def numericInput(value=100.0, onChange=None):
     widget.singleStep = 0.1
     widget.value = value
     if onChange:
-        widget.connect("valueChanged(double)", onChange)
+        widget.valueChanged.connect(onChange)
 
     edit = widget.findChild(qt.QLineEdit)
     validator = qt.QDoubleValidator(edit)

@@ -1,13 +1,18 @@
 import vtk
 import slicer
 import logging
+import h5py
+import re
 import xarray as xr
 import logging
 import numpy as np
+import pandas as pd
 
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from PIL import ImageColor
+from pint import UnitRegistry
 from ltrace.readers import microtom
 from ltrace.slicer import export
 from ltrace.slicer.helpers import (
@@ -19,11 +24,11 @@ from ltrace.slicer.helpers import (
     updateSegmentationFromLabelMap,
     getSourceVolume,
     safe_convert_array,
-    checkUniqueNames,
 )
 from ltrace.utils.callback import Callback
 from scipy import ndimage
 from typing import List, Tuple
+from ltrace.slicer.data_utils import dataFrameToTableNode, tableNodeToDataFrame
 
 MIN_CHUNKING_SIZE_BYTES = 2**33  # 8 GiB
 CHUNK_SIZE_BYTES = 2**21  # 2 MiB
@@ -35,6 +40,49 @@ class DataArrayTransform:
     transform: np.ndarray
     ras_min: np.ndarray
     ras_max: np.ndarray
+
+
+def _sanitize_var_name(name: str) -> str:
+    # Add _ if first char is not alphanumeric or underscore
+    if not name or (not (name[0].isalnum() or name[0] == "_")):
+        name = "_" + name
+
+    # Trim trailing spaces
+    name = name.rstrip()
+
+    # Replace / with similar symbol
+    name = name.replace("/", "\u2215")
+
+    # Replace consecutive underscores with single underscore
+    # ('__' is reserved for table columns, e.g. table_name__column_name)
+    name = re.sub("_+", "_", name)
+
+    # Remove ASCII control characters (codes 0-31 and 127)
+    result = ""
+    for char in name:
+        if ord(char) > 31 and ord(char) != 127:
+            result += char
+
+    # Ensure not empty
+    if not result:
+        return "_"
+    return result
+
+
+def _deduplicate_names(names):
+    unique_names = []
+    name_counts = defaultdict(int)
+    for name in names:
+        if name in unique_names:
+            name_counts[name] += 1
+            name = f"{name}_{name_counts[name]}"
+        unique_names.append(name)
+    return unique_names
+
+
+def _sanitize_var_names(names):
+    names = [_sanitize_var_name(name) for name in names]
+    return _deduplicate_names(names)
 
 
 def _crop_value(array: xr.DataArray, value: int):
@@ -95,6 +143,9 @@ def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode) -> None:
 def nc_labels_to_color_node(labels, name="nc_labels"):
     colors = []
     colorNames = []
+    if isinstance(labels, str):
+        # This happens when there are no labels
+        labels = [labels]
     for label in labels[1:]:
         try:
             seg_name, index, color = label.split(",")
@@ -109,22 +160,59 @@ def nc_labels_to_color_node(labels, name="nc_labels"):
     return color_table
 
 
+def extract_pixel_sizes_from_hdf5(file_path):
+    ureg = UnitRegistry()
+
+    base_path = "Beamline Parameters/snapshot/after/beamline-state/beam-optics/measured"
+
+    with h5py.File(file_path, "r") as f:
+
+        def get_param_as_mm(param_name):
+            param_path = f"{base_path}/{param_name}"
+
+            try:
+                value = f[f"{param_path}/value"][()]
+            except KeyError:
+                return 1
+
+            try:
+                units = f[f"{param_path}/units"][()]
+                units = units.decode("utf-8") if isinstance(units, bytes) else units
+            except KeyError:
+                units = "mm"
+
+            quantity = value * ureg(units)
+            value_in_mm = quantity.to("mm").magnitude
+
+            return value_in_mm
+
+        x_mm = get_param_as_mm("pixel-size-x")
+        y_mm = get_param_as_mm("pixel-size-y")
+        z_mm = x_mm
+        return x_mm, y_mm, z_mm
+
+
 def import_dataset(dataset, images="all"):
     has_reference = []
     other = []
+    column_items = []
 
     for name, array in dataset.items():
+        if array.dims[0].startswith("table__"):
+            column_items.append((name, array))
+            continue
+
         add_to = has_reference if "reference" in array.attrs else other
         add_to.append((name, array))
 
     # Import nodes with references last so the nodes they reference are already loaded
-    all_items = other + has_reference
+    array_items = other + has_reference
 
     role = slicer.vtkMRMLSegmentationNode.GetReferenceImageGeometryReferenceRole()
     imported = {}
     first_scalar = None
     first_label_map = None
-    for name, array in all_items:
+    for name, array in array_items:
         if images != "all" and name not in images:
             continue
 
@@ -196,6 +284,17 @@ def import_dataset(dataset, images="all"):
 
         makeTemporaryNodePermanent(node, show=True)
         autoDetectColumnType(node)
+        yield node
+
+    tables = defaultdict(list)
+    for name, column in column_items:
+        table_name, column_name = name.split("__")
+        tables[table_name].append((column_name, column))
+
+    for table_name, columns in tables.items():
+        df = pd.DataFrame({col_name: col.data for col_name, col in columns})
+        node = dataFrameToTableNode(df)
+        node.SetName(table_name)
         yield node
 
 
@@ -340,12 +439,12 @@ def exportNetcdf(
     warnings = []
 
     callback.on_update("Starting…", 0)
-    if not nodeNames:
-        checkUniqueNames(dataNodes)
 
     arrays = {}
+    table_arrays = {}
     coords = {}
     nodeNames = nodeNames or [node.GetName() for node in dataNodes]
+    nodeNames = _sanitize_var_names(nodeNames)
     nodeDtypes = nodeDtypes or [None] * len(dataNodes)
 
     id_to_name_map = {node.GetID(): name for node, name in zip(dataNodes, nodeNames)}
@@ -356,6 +455,24 @@ def exportNetcdf(
 
     for node, dtype in zip(dataNodes, nodeDtypes):
         name = id_to_name_map[node.GetID()]
+
+        if isinstance(node, slicer.vtkMRMLTableNode):
+            dim_name = f"table__{name}"
+            if save_in_place and dim_name in existing_dataset.dims:
+                continue
+
+            df = tableNodeToDataFrame(node)
+
+            # Need to deduplicate here otherwise to_xarray will fail
+            names = list(df.columns)
+            df.columns = _sanitize_var_names(names)
+
+            ds = df.to_xarray()
+            ds = ds.rename({"index": dim_name})
+            for col_name, data_array in ds.items():
+                table_arrays[f"{name}__{col_name}"] = data_array
+            continue
+
         if save_in_place and name in existing_dataset:
             continue
         is_ref = node == referenceItem
@@ -418,10 +535,10 @@ def exportNetcdf(
 
         output_transform_with_color = _add_color(output_transform_no_color)
 
-    if not arrays:
+    if not arrays and not table_arrays:
         raise ValueError("No images to export.\n" + "\n".join(warnings))
 
-    progress_range = np.arange(5, 90, 85 / len(arrays))
+    progress_range = np.arange(5, 90, 85 / len(arrays)) if arrays else []
     data_arrays = {}
     for (name, (data_array, transform, _)), progress in zip(arrays.items(), progress_range):
         callback.on_update(f'Processing "{name}"…', round(progress))
@@ -489,6 +606,8 @@ def exportNetcdf(
                 coord_name = f"{dim}_{name}" if name != "microtom" else dim
                 coords[coord_name] = np.linspace(origin, origin + spacing * (size - 1), size)
     dataset = xr.Dataset(data_arrays, coords=coords)
+    table_dataset = xr.Dataset(table_arrays)
+    dataset.update(table_dataset)
 
     if save_in_place:
         for var in dataset:
@@ -504,3 +623,27 @@ def exportNetcdf(
     dataset.to_netcdf(exportPath, encoding=encoding, format="NETCDF4")
 
     return warnings
+
+
+def import_file(path: Path, callback=lambda *args, **kwargs: None):
+    """Imports an h5 or nc file."""
+    pixel_sizes = None
+    if path.suffix in (".h5", ".hdf5"):
+        pixel_sizes = extract_pixel_sizes_from_hdf5(path)
+
+    dataset = xr.open_dataset(path)
+    dataset_name = path.with_suffix("").name
+
+    folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    scene_id = folderTree.GetSceneItemID()
+    current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
+    folderTree.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
+
+    nodes = []
+    for node, progress in zip(import_dataset(dataset), np.arange(10, 100, 90 / len(dataset))):
+        if pixel_sizes:
+            node.SetSpacing(*pixel_sizes)
+        callback("Loading...", progress)
+        _ = folderTree.CreateItem(current_dir, node)
+        nodes.append(node)
+    return nodes

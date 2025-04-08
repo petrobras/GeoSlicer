@@ -23,6 +23,7 @@ from ltrace.slicer.helpers import (
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
 from ltrace.slicer_utils import (
     is_tensorflow_gpu_enabled,
     dataFrameToTableNode,
@@ -45,11 +46,10 @@ class SidewallSampleWidget(ModelWidget):
         ],
     )
 
-    def __init__(self, instanceSegmenterClass, instanceSegmenterWidget, identifier, *args, **kwargs):
+    def __init__(self, instanceSegmenterClass, instanceSegmenterWidget, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.instanceSegmenterClass = instanceSegmenterClass
         self.instanceSegmenterWidget = instanceSegmenterWidget
-        self.identifier = identifier
         self.setup()
 
     def cleanup(self):
@@ -67,6 +67,10 @@ class SidewallSampleWidget(ModelWidget):
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
         formLayout.setContentsMargins(0, 0, 0, 0)
 
+        self.modelSelector = TrainedModelSelector(["ImageLogInstanceSegmenter"])
+        self.modelSelector.setObjectName("sidewallModelSelectorComboBox")
+        formLayout.addRow("Select model:", self.modelSelector)
+
         # Input section
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
         inputCollapsibleButton.setText("Input")
@@ -78,7 +82,7 @@ class SidewallSampleWidget(ModelWidget):
         self.amplitudeImageNodeComboBox = hierarchyVolumeInput(
             nodeTypes=["vtkMRMLScalarVolumeNode"], onChange=self.onAmplitudeImageNodeChanged
         )
-        self.amplitudeImageNodeComboBox.setObjectName("sidewallSampleAmplitudeImageNodeComboBox" + self.identifier)
+        self.amplitudeImageNodeComboBox.setObjectName("sidewallSampleAmplitudeImageNodeComboBox")
         self.amplitudeImageNodeComboBox.setToolTip("Select the amplitude image.")
         inputFormLayout.addRow("Amplitude image:", self.amplitudeImageNodeComboBox)
         self.amplitudeImageNodeComboBox.resetStyleOnValidNode()
@@ -86,7 +90,7 @@ class SidewallSampleWidget(ModelWidget):
         self.transitTimeImageNodeComboBox = hierarchyVolumeInput(
             nodeTypes=["vtkMRMLScalarVolumeNode"], onChange=self.onTransitTimeImageNodeChanged
         )
-        self.transitTimeImageNodeComboBox.setObjectName("sidewallSampleTransitTimeImageNodeComboBox" + self.identifier)
+        self.transitTimeImageNodeComboBox.setObjectName("sidewallSampleTransitTimeImageNodeComboBox")
         self.transitTimeImageNodeComboBox.setToolTip("Select the transit time image.")
         inputFormLayout.addRow("Transit time image:", self.transitTimeImageNodeComboBox)
         inputFormLayout.addRow(" ", None)
@@ -100,31 +104,45 @@ class SidewallSampleWidget(ModelWidget):
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         self.nominalDepthsPathLineEdit = ctk.ctkPathLineEdit()
-        self.nominalDepthsPathLineEdit.setObjectName("sidewallSampleNominalDepthsPathLineEdit" + self.identifier)
+        self.nominalDepthsPathLineEdit.setObjectName("sidewallSampleNominalDepthsPathLineEdit")
         self.nominalDepthsPathLineEdit.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Readable
-        self.nominalDepthsPathLineEdit.nameFilters = ("CSV (*.csv)",)
+        self.nominalDepthsPathLineEdit.nameFilters = ["CSV or XLSX (*.csv *.xlsx)"]
         self.nominalDepthsPathLineEdit.setToolTip("Input CSV file with nominal depths.")
         self.nominalDepthsPathLineEdit.settingKey = "ImageLogInstanceSegmenter/NominalDepthsPath"
         self.nominalDepthsPathLineEdit.setCurrentPath("")
-        nominalDepthsCombo = self.nominalDepthsPathLineEdit.children()[3]
-        nominalDepthsCombo.currentTextChanged.connect(self.onNominalDepthsPathChanged)
-        parametersFormLayout.addRow("       Nominal depths file (CSV):", self.nominalDepthsPathLineEdit)
+        self.nominalDepthsPathLineEdit.currentPathChanged.connect(self.onNominalDepthsPathChanged)
+        nominalDepthsLabel = qt.QLabel("Nominal depths file:")
+        nominalDepthsLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
+        parametersFormLayout.addRow(nominalDepthsLabel, self.nominalDepthsPathLineEdit)
 
         self.depthThresholdFrame = qt.QFrame()
+        self.depthThresholdFrame.setVisible(False)
+
         depthThresholdLayout = qt.QFormLayout(self.depthThresholdFrame)
         depthThresholdLayout.setLabelAlignment(qt.Qt.AlignRight)
         depthThresholdLayout.setContentsMargins(0, 0, 0, 0)
+
+        self.depthSelectorComboBox = qt.QComboBox()
+        self.depthSelectorComboBox.setObjectName("depthColumnSelectorComboBox")
+        depthSelectorLabel = qt.QLabel("Select file depth column:")
+        depthSelectorLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
+        depthThresholdLayout.addRow(depthSelectorLabel, self.depthSelectorComboBox)
+
         self.depthThresholdSpinBox = qt.QDoubleSpinBox()
-        self.depthThresholdSpinBox.setObjectName("sidewallSampleDepthThresholdSpinBox" + self.identifier)
+        self.depthThresholdSpinBox.setObjectName("sidewallSampleDepthThresholdSpinBox")
         self.depthThresholdSpinBox.setRange(0.1, 10)
         self.depthThresholdSpinBox.setDecimals(1)
         self.depthThresholdSpinBox.setSingleStep(0.1)
         self.depthThresholdSpinBox.setValue(float(self.getDepthThreshold()))
         self.depthThresholdSpinBox.setToolTip("Threshold to associate a nominal depth with an instance real depth.")
-        depthThresholdLayout.addRow("Nominal depths threshold (m):", self.depthThresholdSpinBox)
-        self.depthThresholdFrame.setVisible(False)
+        depthThresholdLabel = qt.QLabel("Nominal depths threshold (m):")
+        depthThresholdLayout.addRow(depthThresholdLabel, self.depthThresholdSpinBox)
         parametersFormLayout.addRow(self.depthThresholdFrame)
         parametersFormLayout.addRow(" ", None)
+
+        labelWidth = depthThresholdLabel.sizeHint.width()
+        nominalDepthsLabel.setFixedWidth(labelWidth)
+        depthSelectorLabel.setFixedWidth(labelWidth)
 
         # Output section
         outputCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -134,18 +152,18 @@ class SidewallSampleWidget(ModelWidget):
         outputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         self.outputPrefixLineEdit = qt.QLineEdit()
-        self.outputPrefixLineEdit.setObjectName("sidewallSampleOutputPrefixLineEdit" + self.identifier)
+        self.outputPrefixLineEdit.setObjectName("sidewallSampleOutputPrefixLineEdit")
         outputFormLayout.addRow("Output prefix:", self.outputPrefixLineEdit)
         outputFormLayout.addRow(" ", None)
         reset_style_on_valid_text(self.outputPrefixLineEdit)
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setObjectName("sidewallSampleApplyButton" + self.identifier)
+        self.applyButton.setObjectName("sidewallSampleApplyButton")
         self.applyButton.setFixedHeight(40)
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setObjectName("Sidewall Sample Cancel Button " + self.identifier)
+        self.cancelButton.setObjectName("Sidewall Sample Cancel Button")
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
@@ -178,10 +196,24 @@ class SidewallSampleWidget(ModelWidget):
                 )
 
     def onNominalDepthsPathChanged(self, path):
-        self.depthThresholdFrame.setVisible(path.strip() != "")
+        self.depthSelectorComboBox.clear()
+        if Path(path).is_file():
+            self.depthThresholdFrame.setVisible(path.strip() != "")
+
+            if Path(path).suffix == ".csv":
+                headers = pd.read_csv(path, nrows=0).columns.tolist()
+            else:
+                headers = pd.read_excel(path, nrows=1).columns.tolist()
+
+            for item in headers:
+                self.depthSelectorComboBox.addItem(item)
 
     def onApplyButtonClicked(self):
         try:
+            if self.modelSelector.currentData is None:
+                highlight_error(self.modelSelector)
+                self.modelSelector.triggerMissingModel()
+                return
             if self.amplitudeImageNodeComboBox.currentNode() is None:
                 highlight_error(self.amplitudeImageNodeComboBox)
                 return
@@ -192,17 +224,21 @@ class SidewallSampleWidget(ModelWidget):
                 highlight_error(self.outputPrefixLineEdit)
                 return
 
+            remove_highlight(self.modelSelector)
             remove_highlight(self.amplitudeImageNodeComboBox)
             remove_highlight(self.transitTimeImageNodeComboBox)
             remove_highlight(self.outputPrefixLineEdit)
 
-            nominalDepthsDataFrame = self.logic.readNominalDepthsCSV(self.nominalDepthsPathLineEdit.currentPath)
+            nominalDepthsDataFrame = self.logic.readNominalDepthsFile(
+                self.nominalDepthsPathLineEdit.currentPath, self.depthSelectorComboBox.currentText
+            )
             save_path(self.nominalDepthsPathLineEdit)
+
             self.instanceSegmenterClass.set_setting("model", self.instanceSegmenterWidget.modelComboBox.currentData)
             self.instanceSegmenterClass.set_setting("depthThreshold", self.depthThresholdSpinBox.value)
 
             segmentParameters = self.SegmentParameters(
-                model=self.instanceSegmenterWidget.modelComboBox.currentData,
+                model=self.modelSelector.getSelectedModelH5(),
                 amplitudeImageNode=self.amplitudeImageNodeComboBox.currentNode(),
                 transitTimeImageNode=self.transitTimeImageNodeComboBox.currentNode(),
                 nominalDepthsDataFrame=nominalDepthsDataFrame,
@@ -232,25 +268,30 @@ class SidewallSampleLogic(ModelLogic):
         self.progressBar = progressBar
         self.outputLabelMapNodeId = None
 
-    def readNominalDepthsCSV(self, csvFilePath):
-        if csvFilePath.strip() == "":
+    def readNominalDepthsFile(self, filePath, depthColumnName):
+        if filePath.strip() == "":
             return None
 
         try:
-            nominalDepthsDataFrame = read_csv(csvFilePath)
+            if Path(filePath).suffix == ".csv":
+                nominalDepthsDataFrame = read_csv(filePath)
+            else:
+                nominalDepthsDataFrame = pd.read_excel(filePath)
+
         except:
             raise MaskRCNNInfo("Invalid nominal depths file.")
 
         # stripping newlines from header
         nominalDepthsDataFrame = nominalDepthsDataFrame.rename(columns=lambda x: re.sub("\n", "", x))
+
         # renaming prof
-        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(
-            columns=lambda x: re.sub("[P|p]rof(\s*\(m\))?", "n depth (m)", x)
-        )
+        nominalDepthsDataFrame = nominalDepthsDataFrame.rename(columns={depthColumnName: "n depth (m)"})
+
         # renaming descida|corrida to desc
         nominalDepthsDataFrame = nominalDepthsDataFrame.rename(
             columns=lambda x: re.sub("([D|d]escida)|([C|c]orrida)", "desc", x)
         )
+
         # renaming condicao to cond
         nominalDepthsDataFrame = nominalDepthsDataFrame.rename(columns=lambda x: re.sub("[C|c]ondicao", "cond", x))
 
@@ -409,12 +450,16 @@ class SidewallSampleLogic(ModelLogic):
             df_C["difference (m)"] = df_C["difference (m)"].abs()
 
             # add the info from df_A and df_B without corresponding in the other df
-            df_C = pd.concat(
-                [
-                    pd.concat([df_C, df_A[~df_A["n depth (m)"].isin(df_C["n depth (m)"])].drop(columns="list_B")]),
-                    df_B[~df_B["depth (m)"].isin(df_C["depth (m)"])],
-                ]
-            ).fillna(0)
+            df_C = (
+                pd.concat(
+                    [
+                        pd.concat([df_C, df_A[~df_A["n depth (m)"].isin(df_C["n depth (m)"])].drop(columns="list_B")]),
+                        df_B[~df_B["depth (m)"].isin(df_C["depth (m)"])],
+                    ]
+                )
+                .infer_objects(copy=False)
+                .fillna(0)
+            )
             df_C["cond"] = df_C["cond"].replace(0, "")
 
             df_C = df_C.drop(columns=["index_A", "index_B", "difference (m)"])
@@ -424,7 +469,9 @@ class SidewallSampleLogic(ModelLogic):
 
             zeroLabelsSeries = df_C.loc[df_C["label"] == 0, "label"]
             nextLabelValue = df_C["label"].max() + 1
-            df_C.loc[df_C["label"] == 0, "label"] = list(range(nextLabelValue, nextLabelValue + len(zeroLabelsSeries)))
+            df_C.loc[df_C["label"] == 0, "label"] = np.arange(
+                nextLabelValue, nextLabelValue + len(zeroLabelsSeries), dtype=np.int64
+            )
         else:
             df_C = propertiesDataFrame
             df_C["n depth (m)"] = 0.0

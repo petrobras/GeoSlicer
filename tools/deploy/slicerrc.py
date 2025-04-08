@@ -13,6 +13,7 @@ import slicer
 import slicer.util
 
 from ltrace.slicer.about.about_dialog import AboutDialog
+from ltrace.slicer.ai_models.widget import AIModelsPathDialog
 from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData
 from ltrace.slicer.app.custom_3dview import customize_3d_view as customize3DView
 from ltrace.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
@@ -82,6 +83,11 @@ def toggleMenuBar():
     # Toggle the visibility of the menu bar
     menubar = slicer.util.mainWindow().menuBar()
     menubar.setVisible(not menubar.isVisible())
+
+
+def modelsPathDialog():
+    dialog = AIModelsPathDialog(slicer.util.mainWindow())
+    dialog.exec_()
 
 
 def ltraceBugReport():
@@ -368,6 +374,12 @@ def setDialogToolBar():
         partial(slicer.modules.RemoteServiceInstance.cli.initiateConnectionDialog, keepDialogOpen=True),
     )
 
+    dialogToolBar.addAction(
+        qt.QIcon((ICON_DIR / "IconSet-dark" / "FolderPlus.svg").as_posix()),
+        "Models Path",
+        modelsPathDialog,
+    )
+
     # dialogToolBar.addAction(
     #     qt.QIcon((ICON_DIR / "IconSet-dark" / "Settings.svg").as_posix()),
     #     "Settings",
@@ -512,7 +524,6 @@ def updateFileMenu():
 
         fileMenu.addAction(action)
 
-    actions["Recent"].visible = slicer_is_in_developer_mode()
     actions["Save Data"].setText("Save Scene")
     actions["&Add Data"].setIcon(createIcon("AddData.svg"))
 

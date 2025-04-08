@@ -12,12 +12,14 @@ import uuid
 from collections import defaultdict
 
 from functools import partial
+from ltrace.image.optimized_transforms import connected_image
 from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
 from ltrace.slicer import ui, helpers, widgets, data_utils as du
 from ltrace.slicer.node_attributes import Tag, NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 from pathlib import Path
 
 from ltrace.remote.handlers import OneResultSlurmHandler
@@ -27,7 +29,6 @@ from ltrace.slicer.helpers import LazyLoad2
 ReportForm = LazyLoad2("PNMReport.ReportLib.ReportForm")
 ReportLogic = LazyLoad2("PNMReport.ReportLib.ReportLogic")
 StreamlitServer = LazyLoad2("PNMReport.ReportLib.StreamlitServer")
-
 # Checks if closed source code is available
 try:
     from Test.MicrotomRemoteTest import MicrotomRemoteTest
@@ -588,7 +589,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         optionsLayout.addWidget(btn2)
         btn2.toggled.connect(self._onModeClicked)
         panel2 = widgets.BatchInputWidget(objectNamePrefix="Microtom Remote Batch")
-        panel2.onDirSelected = self._onInputSelected
+        panel2.onDirSelected = self._onBatchInputSelected
         self.modeWidgets[widgets.BatchInputWidget.MODE_NAME] = panel2
         self.optionsStack.addWidget(self.modeWidgets[widgets.BatchInputWidget.MODE_NAME])
 
@@ -823,7 +824,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.streamlitAdvancedSection.collapsed = True
         self.streamlitAdvancedSection.hide()
 
-        if StreamlitServer is not None:
+        if StreamlitServer.StreamlitServer is not None:
             self.server = StreamlitServer.StreamlitServer(self.simOptions, self.serverStatus, self.toggleServerButton)
             self.server.objectName = "StreamlitServerManager"
 
@@ -1019,6 +1020,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         if node is None or isinstance(node, str):
             self.simBtn.enabled = False
+            self.canBtn.enabled = False
             return
 
         # Get name first to avoid using reference node name
@@ -1030,6 +1032,20 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                 return
 
         self.outputPrefix.setText(nodeName)
+        self.simBtn.enabled = True
+        self.canBtn.enabled = False
+
+    def _onBatchInputSelected(self, path):
+        if ReportForm is None:
+            return
+
+        if not path:
+            self.simBtn.enabled = False
+            self.canBtn.enabled = False
+            return
+
+        self.outputPrefix.setText(self.pnmReportWidget.report_folder)
+        self.restartApplyButton()
 
     def _onReferenceSelected(self, node):
 
@@ -1309,8 +1325,6 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             if n.GetAttribute(NodeEnvironment.name()) == str(workspace):
                 return n
         return None
-
-
 
     def _writeOutputs(self, jsonDict, nth_run):
         simulator = jsonDict["simulator"]
@@ -1641,6 +1655,19 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
 
             if not outputPrefix:
                 outputPrefix = nodeName
+
+            if "kabs" in simulator or "krel" in simulator:
+                array = slicer.util.arrayFromVolume(inputVolumeNode)
+                axis = params["direction"]
+                with ProgressBarProc() as pb:
+                    pb.setMessage("Checking if pore space is connected...")
+                    is_connected = np.any(connected_image(array, direction=axis))
+                if not is_connected:
+                    slicer.util.errorDisplay(
+                        f"Cannot run simulation: pore space is not connected.\n"
+                        f"Make sure the selected segments connect the opposite faces over the '{axis}' axis."
+                    )
+                    return None
 
             if mode == "Remote":
                 uid = self.dispatch(simulator, inputVolumeNode, outputPrefix, tag, referenceNode, params)

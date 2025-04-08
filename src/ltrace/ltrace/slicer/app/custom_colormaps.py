@@ -145,7 +145,7 @@ def cmapToColormap(cmap, nTicks=256):
         elif ("red" in colordata) and isinstance(colordata["red"], collections.Callable):
             indices = np.linspace(0.0, 1.0, nTicks)
             luts = [
-                np.clip(np.array(colordata[rgb](indices), dtype=np.float), 0, 1) * 255
+                np.clip(np.array(colordata[rgb](indices), dtype=np.float64), 0, 1) * 255
                 for rgb in ("red", "green", "blue")
             ]
             return list(zip(indices, list(zip(*luts))))

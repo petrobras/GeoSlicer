@@ -1,3 +1,6 @@
+import gc
+import logging
+
 import vtk
 import qt
 import slicer
@@ -121,10 +124,6 @@ class GlobalProgressBar(qt.QWidget):
 class LocalProgressBar(qt.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        layout = qt.QFormLayout()
-        self.progressBar = slicer.qSlicerCLIProgressBar()
-        layout.addWidget(self.progressBar)
-        self.setLayout(layout)
 
         self.module = None
         self.tabIndex = None
@@ -135,6 +134,11 @@ class LocalProgressBar(qt.QWidget):
         self.running = False
         self.goBackAction = None
         self.refToGlobal = None
+
+        layout = qt.QFormLayout(self)
+        self.progressBar = slicer.qSlicerCLIProgressBar()
+
+        layout.addWidget(self.progressBar)
 
     def setCommandLineModuleNode(self, cliNode):
 
@@ -219,3 +223,65 @@ class LocalProgressBar(qt.QWidget):
         self.completed = 0
         self.refToGlobal.disableWhenJobIsCompleted()
         self.changeAction()
+
+
+import multiprocessing.shared_memory as shm
+import struct
+
+
+class CompanionProgressBar(LocalProgressBar):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.shared_mem = None
+        self.buffer_size = struct.calcsize("d")
+
+    def isRunning(self):
+        if self.shared_mem:
+            try:
+                shm.SharedMemory(name=self.shared_mem.name)
+                return True
+            except FileNotFoundError:
+                return False
+        return False
+
+    def start(self, namespace, timeout=300):
+
+        if self.shared_mem:
+            raise RuntimeError("Shared memory already exists")
+
+        self.shared_mem = shm.SharedMemory(name=namespace, create=True, size=self.buffer_size)
+
+        cliArgs = {
+            "namespace": namespace,
+            "timeout": timeout,
+        }
+
+        cliNode = slicer.cli.run(slicer.modules.companionprogressbarcli, None, cliArgs, wait_for_completion=False)
+        self.setCommandLineModuleNode(cliNode)
+
+    def update(self, progress: float):
+        # Write the float value to the shared memory block
+        logging.debug(f"Updating progress: {progress}")
+        self.shared_mem.buf[:8] = struct.pack("d", progress)
+        slicer.app.processEvents()
+
+    def processStopped(self):
+        if self.shared_mem:
+            self.shared_mem.close()
+            self.shared_mem.unlink()
+
+        self.shared_mem = None
+        gc.collect()
+
+    def _onCLIModified(self, caller, event):
+        super()._onCLIModified(caller, event)
+
+        if caller.GetStatusString() == "Completed":
+            self.processStopped()
+        elif caller.GetStatusString() == "Completed with errors":
+            logging.error(f"CLI error: {caller.GetErrorText()}")
+            self.processStopped()
+        elif caller.GetStatusString() == "Cancelled":
+            logging.info("CLI cancelled")
+            self.processStopped()

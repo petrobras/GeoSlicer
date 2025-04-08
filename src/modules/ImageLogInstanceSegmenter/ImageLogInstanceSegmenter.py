@@ -4,7 +4,6 @@ from pathlib import Path
 
 import qt
 
-from ltrace.assets_utils import get_trained_models
 from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
@@ -22,21 +21,10 @@ except ImportError:
     ImageLogInstanceSegmenterTest = None  # tests not deployed to final version or closed source
 
 
+MODEL_IMAGE_LOG_SIDEWALL = "ImageLogSidewall"
 MODEL_IMAGE_LOG_STOPS = "ImageLogStops"
 MODEL_IMAGE_LOG_ISLANDS = "ImageLogIslands"
 MODEL_IMAGE_LOG_SNOW = "ImageLogSnow"
-
-MODEL_TITLES = {
-    "synth_side": "Sidewall Sample Mask RCNN (trained on synthetic data)",
-    "side_1": "Petrobras Sidewall Sample Mask RCNN 1",
-    "side_2": "Petrobras Sidewall Sample Mask RCNN 2",
-}
-
-MODEL_IDENTIFIER = {
-    "synth_side": "Synthetic",
-    "side_1": "V1",
-    "side_2": "V2",
-}
 
 
 class ImageLogInstanceSegmenter(LTracePlugin):
@@ -71,21 +59,14 @@ class ImageLogInstanceSegmenterWidget(LTracePluginWidget):
         form.setLabelAlignment(qt.Qt.AlignRight)
         self.layout.addLayout(form)
 
-        models = get_trained_models("ImageLogEnv")
-
         self.modelComboBox = qt.QComboBox()
         self.modelComboBox.setObjectName("modelComboBox")
 
         # Add to stackedWidgets at the same time as adding to modelComboBox to guarantee the match
-        # TODO Figure out a way for users to add custom models
         self.stackedWidgets = qt.QStackedWidget()
-        for model in models:
-            modelFile = model.stem
-            modelName = MODEL_TITLES.get(modelFile, None)
-            if modelName:
-                widget = SidewallSampleWidget(ImageLogInstanceSegmenter, self, MODEL_IDENTIFIER[modelFile])
-                self.stackedWidgets.addWidget(widget)
-                self.modelComboBox.addItem("Image Log: " + modelName, modelFile)
+        self.sidewallModelWidget = SidewallSampleWidget(ImageLogInstanceSegmenter, self)
+        self.stackedWidgets.addWidget(self.sidewallModelWidget)
+        self.modelComboBox.addItem("Image Log: Sidewall", MODEL_IMAGE_LOG_SIDEWALL)
 
         self.stopsModelWidget = StopsWidget()
         self.stackedWidgets.addWidget(self.stopsModelWidget)

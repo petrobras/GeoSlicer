@@ -4,10 +4,11 @@ chardet==5.0.0
 cudnn-python-wrappers==1.0.0
 Cython==0.29.28
 dask-image==0.4.0
-dask[complete]==2.30.0
+dask[complete]==2021.1.0
 distinctipy==1.1.5
 dlisio==1.0.1
 drd==0.1.2
+dliswriter==1.0.1
 h5netcdf==1.1.0
 h5py==3.6.0
 h5pyd==0.14.1
@@ -72,5 +73,5 @@ torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-wi
 torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-linux_x86_64.whl ; platform_system == "Linux"
 trimesh==3.9.35
 widgetsnbextension==3.5.2
-xarray==2022.3.0
+xarray==2022.12.0
 zarr==2.5.0

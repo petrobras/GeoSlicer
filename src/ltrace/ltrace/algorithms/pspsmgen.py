@@ -25,7 +25,6 @@ CUBE_MODES = "Random", "Regular", "Biased"
 
 class Psgen:
     class Spheres:
-
         """
         Sphere class has functions to build sphere models to reproduce
         microfabrics of Pre-Salt rocks composed of spherulites or particles

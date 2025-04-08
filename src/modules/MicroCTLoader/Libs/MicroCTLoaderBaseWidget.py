@@ -44,6 +44,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
     def __init__(self, parent) -> None:
         super().__init__(parent)
         self.moduleName = "MicroCTLoader"
+        self.is3dBatch = False
 
     def exit(self):
         self.rawWidget.exit()
@@ -97,6 +98,11 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.loadAsLabelmapCheckBox.setToolTip(
             "If selected, a labelmap volume will be created instead of scalar volume."
         )
+        self.loadAsSequenceCheckBox = qt.QCheckBox("Load volumes as sequence")
+        self.loadAsSequenceCheckBox.setToolTip(
+            "If selected, the multiple 3D volumes import will output a single sequence instead of multiple singular volumes."
+        )
+        self.loadAsSequenceCheckBox.setEnabled(False)
 
         self.widthDirectionCheckbox = qt.QCheckBox("Width (x)")
         self.widthDirectionCheckbox.setChecked(True)
@@ -128,6 +134,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         outputLayout.addRow("", self.centerVolumeCheckbox)
         outputLayout.addRow("", self.loadAsLabelmapCheckBox)
+        outputLayout.addRow("", self.loadAsSequenceCheckBox)
         outputLayout.addRow(self.invertLabel, self.optionsWidgets)
         outputLayout.addRow(" ", None)
 
@@ -249,10 +256,13 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         self.enableProcessing(True)
 
-        if path.suffix == ".nc":  # File path is a NetCDF file
+        self.is3dBatch = False
+
+        if path.suffix in (".nc", ".h5", ".hdf5"):
             self._setImageSpacingVisibility(False)
             self._setInvertWidgetVisibility(False)
-            message = "Will import image(s) from NetCDF file"
+            filetype = "NetCDF" if path.suffix == ".nc" else "HDF5"
+            message = f"Will import image(s) from {filetype} file"
             self.loadButton.enabled = True
         elif path.suffix == ".raw":
             self.rawWidget.visible = True
@@ -285,11 +295,14 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
                     self._setInvertWidgetVisibility(True)
                 elif sliceCount > 1:
                     if is3dBatch:
+                        self.is3dBatch = True
                         message = f"Will import {sliceCount} volumes"
                         self._setInvertWidgetVisibility(True)
                     else:
                         message = f"Will import a volume with {sliceCount} slices from {images[0].name}"
                         self._setInvertWidgetVisibility(isFile)
+
+        self._setLoadAsSequenceEnabled(self.is3dBatch)
 
         self.pathInfoLabel.setText(message)
 
@@ -327,6 +340,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
                 centerVolume=self.centerVolumeCheckbox.isChecked(),
                 invertDirections=invertDirections,
                 loadAsLabelmap=self.loadAsLabelmapCheckBox.isChecked(),
+                loadAsSequence=self.loadAsSequenceCheckBox.isChecked(),
             )
         except LoadInfo as e:
             slicer.util.infoDisplay(str(e))
@@ -334,9 +348,15 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         finally:
             callback("", 100)
 
+    def _setLoadAsSequenceEnabled(self, enabled):
+        self.loadAsSequenceCheckBox.setEnabled(enabled)
+        if not enabled:
+            self.loadAsSequenceCheckBox.setChecked(qt.Qt.Unchecked)
+
     def _setInvertWidgetVisibility(self, isVisible):
         self.centerVolumeCheckbox.setVisible(isVisible)
         self.loadAsLabelmapCheckBox.setVisible(isVisible)
+        self.loadAsSequenceCheckBox.setVisible(isVisible)
         if not isVisible:
             self.loadAsLabelmapCheckBox.setChecked(qt.Qt.Unchecked)
         self.optionsWidgets.setVisible(isVisible)

@@ -45,7 +45,13 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             "CustomResampleScalarVolume",
             self.setupSegmentation,
             "MicrotomRemote",
-            "SegmentationModelling",
+            (
+                "Microporosity",
+                [
+                    "SegmentationModelling",
+                    "PorosityMappingFromSaturation",
+                ],
+            ),
             "StreamlinedModelling",
             (
                 "Register",
@@ -57,11 +63,13 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             (
                 "Pore Network",
                 [
-                    "PoreNetworkCompare",
                     "PoreNetworkExtractor",
+                    "PoreNetworkSimulation",
+                    "PoreNetworkKabsREV",
+                    "PoreNetworkVisualization",
                     "PoreNetworkKrelEda",
                     "PoreNetworkProduction",
-                    "PoreNetworkSimulation",
+                    "PoreNetworkCompare",
                 ],
             ),
             (
@@ -75,10 +83,12 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 "BigImage",
                 [
                     "BigImage",
+                    "StreamlinedSegmentation",
                     "PolynomialShadingCorrectionBigImage",
                     "BoundaryRemovalBigImage",
                     "ExpandSegmentsBigImage",
                     "MultipleThresholdBigImage",
+                    "StreamlinedSegmentation",
                 ],
             ),
         ]
@@ -100,13 +110,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             elif callable(module):
                 module()
 
-        self.setupTools(tools=[
-            "VolumeCalculator",
-            "CustomizedTables",
-            "TableFilter",
-            "Charts",
-            "VariogramAnalysis"
-        ])
+        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts", "VariogramAnalysis"])
 
         self.setupLoaders()
 

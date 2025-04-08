@@ -102,7 +102,8 @@ class HierarchyVolumeInput(qt.QWidget):
             selectedNode = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
 
             if selectedNode is None and not self.foldersAllowed:
-                self.selectorWidget.setCurrentItem(0)
+                if not self.selectorWidget.noneEnabled:
+                    self.selectorWidget.setCurrentItem(0)
                 return
 
             if selectedNode and (

@@ -25,7 +25,9 @@ from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import Graph
 from PoreNetworkKrelEdaLib.export.PoreNetworkKrelEdaExport import PoreNetworkKrelEdaExportWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.crossed_plots import CrossedError, CrossedParameters
 from PoreNetworkKrelEdaLib.visualization_widgets.curves_plot import CurvesPlot
+from PoreNetworkKrelEdaLib.visualization_widgets.pressure_plot import PressurePlot
 from PoreNetworkKrelEdaLib.visualization_widgets.ca_distribution_plot import CaDistributionPlot
+from PoreNetworkKrelEdaLib.visualization_widgets.wettability_index_plot import WettabilityIndexPlot
 from PoreNetworkKrelEdaLib.visualization_widgets.heatmap_plots import (
     ParameterErrorCorrelation,
     ParameterResultCorrelation,
@@ -110,6 +112,8 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
         self.__visualizationTypeSelector = ui.StackedSelector(text="Visualization type:")
         self.__visualizationTypeSelector.addWidget(CurvesPlot(data_manager=self.data_manager))
+        self.__visualizationTypeSelector.addWidget(PressurePlot(data_manager=self.data_manager))
+        self.__visualizationTypeSelector.addWidget(WettabilityIndexPlot(data_manager=self.data_manager))
         self.__visualizationTypeSelector.addWidget(CrossedError(data_manager=self.data_manager))
         self.__visualizationTypeSelector.addWidget(CrossedParameters(data_manager=self.data_manager))
         self.__visualizationTypeSelector.addWidget(ParameterResultCorrelation(data_manager=self.data_manager))
@@ -212,8 +216,11 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         currentWidget = self.__visualizationTypeSelector.currentWidget()
 
         curvesWidget = self.__visualizationTypeSelector.widget(0)
+        pressureWidget = self.__visualizationTypeSelector.widget(1)
         number_of_simulations = self.data_manager.get_number_of_simulations()
-        invalid_combination = currentWidget != curvesWidget and number_of_simulations == 1
+        invalid_combination = (
+            currentWidget != curvesWidget and currentWidget != pressureWidget
+        ) and number_of_simulations == 1
 
         if self.data_manager.is_valid() and not invalid_combination:
             currentWidget.setVisible(True)

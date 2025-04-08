@@ -19,6 +19,7 @@ from Output import SegmentInspectorVariablesOutput as SegmentInspectorVariablesO
 from Output.BasicPetrophysicsOutput import generate_basic_petrophysics_output
 from Output.SegmentInspectorVariablesOutput import SegmentInspectorVariablesOutput
 from ltrace.algorithms.partition import InvalidSegmentError, runPartitioning, ResultInfo
+from ltrace.assets_utils import get_model_by_name
 from ltrace.slicer import ui, helpers, widgets
 from ltrace.slicer.helpers import (
     tryGetNode,
@@ -427,6 +428,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
     def __update_apply_button_state(self):
         valid_output_prefix = self.outputPrefix.text.replace(" ", "") != ""
         valid_input_config = False
+        valid_deep_watershed = True
         input_mode_widget = self.modeWidgets[self.currentMode]
 
         if self.currentMode == widgets.SingleShotInputWidget.MODE_NAME:
@@ -437,7 +439,14 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         elif self.currentMode == widgets.BatchInputWidget.MODE_NAME:
             valid_input_config = input_mode_widget.ioFileInputLineEdit.currentPath != ""
 
-        self.applyCancelButtons.applyBtn.setEnabled(valid_output_prefix and valid_input_config)
+        if self.methodSelector.selector.currentText == "Deep Watershed":
+            try:
+                get_model_by_name("deep_ws_3d")
+                get_model_by_name("deep_ws_2d")
+            except:
+                valid_deep_watershed = False
+
+        self.applyCancelButtons.applyBtn.setEnabled(valid_output_prefix and valid_input_config and valid_deep_watershed)
 
     def __on_output_prefix_changed(self, text):
         modeWidget: widgets.SingleShotInputWidget = self.modeWidgets[self.currentMode]
@@ -841,6 +850,14 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.onSelect = onSelect or (lambda: None)
         self.__currentReferenceNodeId = None
         self.setup()
+
+        try:
+            get_model_by_name("deep_ws_3d")
+            get_model_by_name("deep_ws_2d")
+        except:
+            self.setEnabled(False)
+        else:
+            self.setEnabled(True)
 
     def setup(self):
         formLayout = qt.QFormLayout(self)

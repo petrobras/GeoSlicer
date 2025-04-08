@@ -1,40 +1,34 @@
 import numpy as np
+import scipy as sp
 import openpnm
 import pandas as pd
 import slicer
 import pickle
 
-import itertools
+import random
+import string
 import json
 import logging
 import os
 import shutil
 from pathlib import Path
 
-from ltrace.pore_networks.functions import geo2spy, spy2geo
+from ltrace.pore_networks.functions import (
+    geo2spy,
+    spy2geo,
+    estimate_radius,
+    estimate_pressure,
+)
 from ltrace.slicer_utils import (
     LTracePluginLogic,
     dataFrameToTableNode,
     slicer_is_in_developer_mode,
 )
 
-HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
-HG_CONTACT_ANGLE = 140  # º
-
-
-def estimate_radius(capilary_pressure):
-    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
-    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / capilary_pressure
-
-
-def estimate_pressure(radius):
-    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
-    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / radius
-
 
 class MercurySimulationLogic(LTracePluginLogic):
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.prefix = None
@@ -48,7 +42,14 @@ class MercurySimulationLogic(LTracePluginLogic):
         self.callback = callback
         self.prefix = prefix
 
-        self.temp_dir = f"{slicer.app.temporaryPath}/porenetworksimulationcli"
+        hash = "".join(
+            random.choices(
+                string.ascii_letters,
+                k=22,
+            )
+        )
+        directory_name = f"pnm_cli_{hash}"
+        self.temp_dir = f"{slicer.app.temporaryPath}/{directory_name}"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         os.mkdir(self.temp_dir)
 
@@ -407,11 +408,35 @@ class FixedRadiusLogic:
         pass
 
     @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, volume):
         for required_param in cls.required_params:
             params[required_param]
 
-        return lambda _: estimate_pressure(params["radius"])
+        return lambda _: params["radius"]
+
+
+class TruncatedGaussianLogic:
+    required_params = (
+        "mean radius",
+        "standard deviation",
+        "min radius",
+        "max radius",
+    )
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def get_capillary_radius_function(cls, params, pore_network, volume):
+        for required_param in cls.required_params:
+            params[required_param]
+
+        loc = params["mean radius"]
+        scale = params["standard deviation"]
+        a_trunc = params["min radius"]
+        b_trunc = params["max radius"]
+        a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
+        return lambda _: sp.stats.truncnorm.rvs(a, b, size=1)[0] * scale + loc
 
 
 class LeverettOldLogic:
@@ -424,7 +449,7 @@ class LeverettOldLogic:
         pass
 
     @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, volume):
         for required_param in cls.required_params:
             params[required_param]
 
@@ -451,12 +476,12 @@ class LeverettOldLogic:
             params["Sw"][highest_pc_index],
         )
 
-        def pressure_function(phi):
+        def radius_function(phi):
             phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
             estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimated_pressure
+            return estimate_radius(estimated_pressure)
 
-        return pressure_function
+        return radius_function
 
     @classmethod
     def _get_cumulative_dist_function(cls, x, y):
@@ -488,7 +513,7 @@ class LeverettNewLogic:
         pass
 
     @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, volume):
         for required_param in cls.required_params:
             params[required_param]
 
@@ -514,12 +539,12 @@ class LeverettNewLogic:
             params["Sw"][highest_pc_index],
         )
 
-        def pressure_function(phi):
+        def radius_function(phi):
             phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
             estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimated_pressure
+            return estimate_radius(estimated_pressure)
 
-        return pressure_function
+        return radius_function
 
     @classmethod
     def _get_cumulative_dist_function(cls, x, y):
@@ -551,7 +576,7 @@ class PressureCurveLogic:
         pass
 
     @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, volume):
         for required_param in cls.required_params:
             params[required_param]
         pnm_radii = pore_network["throat.equivalent_diameter"] / 2
@@ -588,12 +613,12 @@ class PressureCurveLogic:
             Fvol,
         )
 
-        def pressure_function(phi):
+        def radius_function(phi):
             phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
             estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimated_pressure
+            return estimate_radius(estimated_pressure)
 
-        return pressure_function
+        return radius_function
 
     @classmethod
     def _get_cumulative_dist_function(cls, x, y):

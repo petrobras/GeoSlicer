@@ -11,11 +11,11 @@ import joblib
 import slicer
 import slicer.util
 import mrml
+import numpy as np
 
 from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-
-import numpy as np
 from skimage.segmentation import watershed
+from pathlib import Path
 
 
 def incrementalProgressUpdate(progress, addition):
@@ -47,13 +47,13 @@ def clean_resin(image, binary_seg, px_image, pp_rock_area, px_rock_area, decide_
         # Usando joblib em vez de pickle para aproveitar a compressão do modelo (K-Means pickle fica muito grande)
         # O modelo joblib foi salvo usando a mesma versão do Python usado para executar este script (PythonSlicer). Divergência de versão causa erro.
         kmeans = joblib.load(
-            Path(__file__).parent.parent
+            Path(__file__).parents[1]
             / "PoreStatsCLI"
             / "Libs"
             / "pore_stats"
             / "models"
             / "pore_residues"
-            / "blue_channel.pkl"
+            / "blue_channel.pkl",
         )
 
         clusters = kmeans.predict(blue_channel.flatten().reshape(-1, 1))
@@ -128,15 +128,16 @@ def clean_resin(image, binary_seg, px_image, pp_rock_area, px_rock_area, decide_
         best_method = None
         for method, px in reg_px.items():
             px_hsv = cv2.cvtColor(cv2.GaussianBlur(px, (99, 99), 9), cv2.COLOR_RGB2HSV)
+            from pathlib import Path
 
             kmeans = joblib.load(
-                Path(__file__).parent.parent
+                Path(__file__).parents[1]
                 / "PoreStatsCLI"
                 / "Libs"
                 / "pore_stats"
                 / "models"
                 / "pore_residues"
-                / "px_hsv.pkl"
+                / "px_hsv.pkl",
             )
             clusters = kmeans.predict(px_hsv.flatten().reshape(-1, 3))
             test_px_pores_mask = clusters.reshape(px_hsv.shape[:2]) == 3

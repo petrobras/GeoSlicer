@@ -9,3 +9,4 @@ class ApplicationObservables(qt.QObject):
     aboutToQuit = qt.Signal()
     moduleWidgetEnter = qt.Signal(object)
     environmentChanged = qt.Signal()
+    modelPathUpdated = qt.Signal()

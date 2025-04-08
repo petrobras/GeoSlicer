@@ -198,8 +198,9 @@ def findPeaks(values: np.ndarray, default=None):
         return default
 
     if np.issubdtype(values.dtype, np.integer):
-        bins = np.bincount(values)
-        largerBin = np.argmax(bins)
+        min_ = np.min(values)
+        bins = np.bincount(values - min_)
+        largerBin = np.argmax(bins + min_)
     else:
         hist, edges = np.histogram(values, bins="auto")
         largerBin = edges[np.argmax(hist)]
@@ -300,7 +301,7 @@ def microporosity(
         a = microporosityLowerLimit or macroPorosityPeak or extendPeak(textureVoxelArray, np.min(micropores), "lower")
 
         # truncate negative values on zero
-        outputVoxelArray[mask] = np.clip((b - micropores.astype(np.float)) / (b - a), backgroundPorosity, 1)
+        outputVoxelArray[mask] = np.clip((b - micropores.astype(np.float64)) / (b - a), backgroundPorosity, 1)
 
         layers["Microporosity Voxels"] = mask.sum()
         m = layers.get("Microporosity Weighted", 0)  # check if solid has being set first

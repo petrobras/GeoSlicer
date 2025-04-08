@@ -90,21 +90,15 @@
         "src/ltrace/ltrace/assets/private/",
         "tests/",
         "src/modules/TestsModule/",
-        "src/submodules/dliswriter/",
         "src/ltrace/ltrace/image/dlis.py",
-        "src/modules/ImageLogExport/DliswriterCLI/",
         "src/modules/ImageLogExport/ImageLogExportLib/widgets/ImageLogExportClosedSourceWidget.py",
         "src/ltrace/ltrace/slicer/lazy/protocols/biaep.py",
         "src/modules/MicroCTLoader/Libs/MicroCTLoaderExtendedWidget.py",
-        "src/modules/BigImage",
-        "src/modules/VirtualSegmentation/",
-        "src/modules/ExpandSegmentsBigImage",
-        "src/modules/PolynomialShadingCorrectionBigImage",
-        "src/modules/BoundaryRemovalBigImage",
         "src/ltrace/ltrace/slicer/tracking",
         "src/ltrace/ltrace/remote/hosts/biaep/",
         "tools/pipeline",
-        "tools/jenkins"
+        "tools/jenkins",
+        "src/ltrace/ltrace/slicer/ai_models/pdefs.py"
     ],
 
     "Patches" : {

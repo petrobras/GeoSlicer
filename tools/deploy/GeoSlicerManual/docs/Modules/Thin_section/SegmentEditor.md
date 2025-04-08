@@ -70,7 +70,7 @@ Sinalizado: o usuário pode selecionar manualmente esse estado para qualquer fin
 Os efeitos operam clicando no botão Aplicar na seção de opções do efeito ou clicando e/ou arrastando nas visualizações de fatias ou 3D.
 
 
-### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_paint.png) Pintura
+### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_paint.png) <a id=#pintura>Pintura</a>
 
 *   Escolha o raio (em milímetros) do pincel a ser aplicado.
     
@@ -84,7 +84,7 @@ Os efeitos operam clicando no botão Aplicar na seção de opções do efeito ou
     
 
 
-### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_draw.png) Desenho
+### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_draw.png) <a id=#desenho>Desenho</a>
 
 *   Clique com o botão esquerdo para criar pontos individuais de um contorno.
     
@@ -166,7 +166,7 @@ Métodos disponíveis:
 *   Suavização conjunto: suaviza múltiplos segmentos de uma vez, preservando a interface estanque entre eles. Se os segmentos se sobrepuserem, o segmento mais alto na tabela de segmentos terá prioridade. Aplicado a todos os segmentos visíveis.
     
 
-### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_scissors.png) Tesoura
+### ![](https://github.com/Slicer/Slicer/releases/download/docs-resources/module_segmenteditor_scissors.png) <a id=#tesoura>Tesoura</a>
 
 Recorta segmentos para a região especificada ou preenche regiões de um segmento (geralmente usado com mascaramento). As regiões podem ser desenhadas tanto na visualização de fatia quanto nas visualizações 3D.
 
@@ -223,3 +223,25 @@ Esse efeito de edição de segmentação chamado "Color threshold", permite a se
 ### ![](../../assets/images/thin_section/modulos/segment_editor/conectivity_effect.png) Conectividade
 
 Esse efeito de "Conectividade" permite a seleção de segmentos no Geoslicer, permitindo aos usuários calcular regiões conectadas dentro de um segmento em uma direção específica. O efeito inclui parâmetros configuráveis como saltos de conectividade, direção e nome de saída, tornando-o uma ferramenta versátil para tarefas detalhadas de segmentação. Ele lida de forma eficiente com a análise de componentes conectados e gera um novo segmento baseado nas configurações definidas pelo usuário.
+
+### ![](../../assets/images/thin_section/modulos/segment_editor/smart_foreground_effect.png) Primeiro plano inteligente
+
+Segmenta automaticamente a área útil de uma imagem ou volume, isto é, a região que corresponde de fato à amostra, rejeitando as regiões de borda. Habilitando-se o recurso de fragmentação (atualmente disponível apenas para lâminas), eventuais fissuras entre fragmentos de rocha também deixam de ser consideradas área util. Este efeito é conveniente para fluxos de trabalho em que as áreas adjacentes à rocha possam influenciar negativamente, como, por exemplo, determinar a taxa de porosidade da amostra.
+
+* `Operação`:
+
+    * `Preencher internamente`: segmenta toda a área útil da imagem/volume;
+
+    * `Apagar externamente`: dado um segmento qualquer já preenchido, exclui toda sua região que resida fora da área útil.
+
+* `Fragmentação`:
+
+    * `Dividir`: habilita/desabilita o recurso de fragmentação. Recomendado apenas para imagens de lâminas de luz polarizada (PP). Uma vez habilitado, permite escolher entre:
+
+        * `Manter todos`: considera todos os fragmentos como área útil;
+
+        * `Filtrar os N maiores`: apenas os _N_ fragmentos de maior área serão preservados, sendo _N_ o valor especificado pelo usuário.
+
+
+
+

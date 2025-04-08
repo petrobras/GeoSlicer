@@ -18,6 +18,7 @@ class TwoPhaseSimulation:
         self,
         cwd: Path,
         statoil_dict: dict,
+        snapshot_file: str,
         params: dict,
         num_tests: int,
         timeout_enabled: bool,
@@ -25,6 +26,7 @@ class TwoPhaseSimulation:
     ):
         self.cwd = cwd
         self.statoil_file_strings = self.create_statoil_file_strings(statoil_dict)
+        self.snapshot_file = snapshot_file
         self.params_dict = params
         self.num_tests = num_tests
         self.timeout_enabled = timeout_enabled
@@ -38,10 +40,144 @@ class TwoPhaseSimulation:
         self.simulator = simulator
 
     def run(self, max_subprocesses=8):
+        params_list = self.get_params_list(self.params_dict)
+
+        # Check if drainage should be reused
+        """
+        if self.simulator == PORE_FLOW:
+            params_group_list = self.__get_unchanged_drainage_parameters(params_list)
+            reuse_drainage = True
+            for params_group in params_group_list:
+                if len(params_group) <= 2 * max_subprocesses:
+                    reuse_drainage = False
+                    break
+        else:
+            reuse_drainage = False
+        """
+        reuse_drainage = False
+
+        # Perform parallel simulations
+        if reuse_drainage:
+            drainage_params = []
+            for params_group in params_group_list:
+                drainage_param = params_group[0].copy()
+                drainage_param["create_drainage_snapshot"] = "T"
+                drainage_param["skip_imbibition"] = True
+                drainage_params.append(drainage_param)
+
+            drainage_result_list = []
+            for drainage_result in self.run_simulations(drainage_params, None, max_subprocesses):
+                drainage_result_list.append(drainage_result)
+
+            for drainage_result in drainage_result_list:
+                params_group = params_group_list[drainage_result["id"]]
+                for simulation_result in self.run_simulations(
+                    params_group,
+                    drainage_result["snapshot"],
+                    max_subprocesses,
+                ):
+                    simulation_result["table"] = self.__merge_results(
+                        simulation_result["table"], drainage_result["table"]
+                    )
+                    yield simulation_result
+        else:
+            for simulation_result in self.run_simulations(
+                params_list,
+                self.snapshot_file,
+                max_subprocesses,
+            ):
+                yield simulation_result
+
+    def run_simulations(self, params_list, snapshot_file, max_subprocesses=8):
+        subprocess_manager = SimulationSubprocessManager(
+            self.timeout_enabled,
+            self.simulator,
+            self.subprocess_timeout_s,
+            self.num_tests,
+            self.cwd,
+            self.write_debug_files,
+            self.statoil_file_strings,
+        )
+        for simulation_result in subprocess_manager.run_simulations(params_list, snapshot_file, max_subprocesses):
+            yield simulation_result
+
+    @staticmethod
+    def create_statoil_file_strings(statoil_dict):
+        output = {}
+        for name in ("link1", "link2", "link3", "node1", "node2", "node3"):
+            output[name] = "\n".join(statoil_dict[name]) + "\n"
+        return output
+
+    @staticmethod
+    def get_params_list(params: dict):
+        sensibility_variables = {}
+
+        for key, value in params.items():
+            if type(value) == list:
+                sensibility_variables[key] = value
+
+        combinations = []
+        for key, value in sensibility_variables.items():
+            combinations.append(itertools.product([key], value))
+        combinations = itertools.product(*combinations)
+
+        params_list = []
+        for combination in combinations:
+            new_params = params.copy()
+            for key, value in combination:
+                new_params[key] = value
+            for i in ("init", "second", "equil", "frac"):
+                center = new_params[f"{i}_contact_angle"]
+                width = new_params[f"{i}_contact_angle_range"]
+                new_params[f"{i}_contact_angle_min"] = max(center - width / 2, 0)
+                new_params[f"{i}_contact_angle_max"] = min(center + width / 2, 180)
+            center = new_params["frac_cluster_count"]
+            width = new_params["frac_cluster_count_range"]
+            new_params["frac_cluster_count_min"] = round(max(center - width / 2, 0))
+            new_params["frac_cluster_count_max"] = round(center + width / 2)
+            params_list.append(new_params)
+
+        return params_list
+
+    def __merge_results(self, simulation_result, drainage_result):
+        return {key: simulation_result[key] + drainage_result[key] for key in simulation_result}
+
+    def __get_unchanged_drainage_parameters(self, params_list):
+        return self.__group_dictionaries_by_keys(
+            params_list,
+            ["init_contact_angle", "init_contact_angle_range", "init_contact_angle_min", "init_contact_angle_max"],
+        )
+
+    @staticmethod
+    def __group_dictionaries_by_keys(dictionary_list, keys):
+        grouped = {}
+        for dictionary in dictionary_list:
+            group_key = tuple(dictionary.get(key) for key in keys)
+            if group_key not in grouped:
+                grouped[group_key] = []
+            grouped[group_key].append(dictionary)
+        return list(grouped.values())
+
+
+class SimulationSubprocessManager:
+    def __init__(
+        self, timeout_enabled, simulator, subprocess_timeout_s, num_tests, cwd, write_debug_files, statoil_file_strings
+    ):
+        self.timeout_enabled = timeout_enabled
+        self.simulator = simulator
+        self.subprocess_timeout_s = subprocess_timeout_s
+        self.num_tests = num_tests
+        self.cwd = cwd
+        self.write_debug_files = write_debug_files
+        self.statoil_file_strings = statoil_file_strings
+
+        self.subprocess_id_count = 0
+
+    def run_simulations(self, params_list, snapshot_file, max_subprocesses=8):
         LOOP_REFRESH_RATE_S = 0.01
         SUBPROCESS_RETRY_LIMIT = 0
 
-        params_iterator = self.get_params_iterator(self.params_dict)
+        params_iterator = iter(params_list)
 
         running_subprocesses = []
         finished_subprocesses = []
@@ -72,7 +208,13 @@ class TwoPhaseSimulation:
             # Listening to terminate, cleanup
             for subprocess in finished_subprocesses:
                 subprocess.finish()
-                simulation_result = self.create_result(subprocess.params, subprocess.get_cycle_result(), subprocess.cwd)
+                simulation_result = self.__create_result(
+                    subprocess.id,
+                    subprocess.params,
+                    subprocess.get_cycle_result(),
+                    subprocess.cwd,
+                    subprocess.get_snapshot_file(),
+                )
                 i += 1
                 progressUpdate(value=0.1 + (i / self.num_tests) * 0.85)
                 yield simulation_result
@@ -84,7 +226,10 @@ class TwoPhaseSimulation:
                 continue
 
             # Get a new set of parameters
-            params = next(params_iterator)
+            try:
+                params = next(params_iterator)
+            except StopIteration:
+                params = None
 
             # Listening to finish or wait processes to finish
             if params is None and len(running_subprocesses) == 0 and len(finished_subprocesses) == 0:
@@ -94,12 +239,12 @@ class TwoPhaseSimulation:
                 continue
 
             # Start a new process in the loop if passed all above conditions
-            subprocess = self.run_subprocess(params.copy())
+            subprocess = self.__run_subprocess(params.copy(), snapshot_file)
             running_subprocesses.append(subprocess)
             time.sleep(LOOP_REFRESH_RATE_S)
 
-    def run_subprocess(self, params):
-        directory_name = self.generate_directory_name(22)
+    def __run_subprocess(self, params, snapshot_file):
+        directory_name = self.__generate_directory_name(22)
         directory_path = self.cwd / directory_name
         directory_path.mkdir(parents=True, exist_ok=True)
         if self.simulator == PNFLOW:
@@ -109,10 +254,8 @@ class TwoPhaseSimulation:
         subprocess = simulator_class(
             params=params,
             cwd=str(directory_path),
-            link1=self.statoil_file_strings["link1"],
-            link2=self.statoil_file_strings["link2"],
-            node1=self.statoil_file_strings["node1"],
-            node2=self.statoil_file_strings["node2"],
+            statoil_data=self.statoil_file_strings,
+            snapshot_file=snapshot_file,
             id=self.subprocess_id_count,
             write_debug_files=self.write_debug_files,
         )
@@ -120,48 +263,12 @@ class TwoPhaseSimulation:
         subprocess.start()
         return subprocess
 
-    def generate_directory_name(self, length):
+    @staticmethod
+    def __create_result(id, params, cycle_results, cwd, snapshot_file):
+        return {"id": id, "input_params": params, "table": cycle_results, "cwd": cwd, "snapshot": snapshot_file}
+
+    @staticmethod
+    def __generate_directory_name(length):
         characters = string.ascii_letters
         directory_name = "".join(random.choices(characters, k=length))
         return directory_name
-
-    def create_result(self, params, cycle_results, cwd):
-        return {"input_params": params, "table": cycle_results, "cwd": cwd}
-
-    @staticmethod
-    def create_statoil_file_strings(statoil_dict):
-        output = {}
-        for name in ("link1", "link2", "node1", "node2"):
-            output[name] = "\n".join(statoil_dict[name]) + "\n"
-        return output
-
-    @staticmethod
-    def get_params_iterator(params: dict):
-        sensibility_variables = {}
-
-        for key, value in params.items():
-            if type(value) == list:
-                sensibility_variables[key] = value
-
-        combinations = []
-        for key, value in sensibility_variables.items():
-            combinations.append(itertools.product([key], value))
-        combinations = itertools.product(*combinations)
-
-        mutable_params = params.copy()
-        for combination in combinations:
-            for key, value in combination:
-                mutable_params[key] = value
-            for i in ("init", "second", "equil", "frac"):
-                center = mutable_params[f"{i}_contact_angle"]
-                width = mutable_params[f"{i}_contact_angle_range"]
-                mutable_params[f"{i}_contact_angle_min"] = max(center - width / 2, 0)
-                mutable_params[f"{i}_contact_angle_max"] = min(center + width / 2, 180)
-            center = mutable_params["frac_cluster_count"]
-            width = mutable_params["frac_cluster_count_range"]
-            mutable_params["frac_cluster_count_min"] = round(max(center - width / 2, 0))
-            mutable_params["frac_cluster_count_max"] = round(center + width / 2)
-            yield mutable_params
-
-        while True:
-            yield None

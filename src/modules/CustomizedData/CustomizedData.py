@@ -146,9 +146,10 @@ class CustomizedDataWidget(LTracePluginWidget):
                     self.tableWidget.setNode(node)
                     self.tableWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLLabelMapVolumeNode:
-                if helpers.countLabelsOnLabelMapNode(node) <= 50:
-                    self.labelMapWidget.setNode(node)
-                    self.labelMapWidget.setVisible(True)
+                srange = node.GetImageData().GetScalarRange()
+                colors = srange[1] - srange[0] + 1
+                self.labelMapWidget.setNode(node, hideTable=colors > 50)
+                self.labelMapWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLSegmentationNode:
                 if node.GetSegmentation().GetNumberOfSegments() <= 50:  # Performance reasons
                     self.segmentationWidget.setNode(node)

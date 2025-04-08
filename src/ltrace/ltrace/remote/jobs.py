@@ -62,6 +62,7 @@ class JobManager:
                     observer(job, "JOB_MANAGED")
         except Exception as e:
             import traceback
+
             logging.error(f"Failed to manage job {job.uid}. Cause: {repr(e)}")
             logging.error(traceback.format_exc())
 
@@ -102,15 +103,15 @@ class JobManager:
 
     @classmethod
     def set_state(
-            cls,
-            uid,
-            status,
-            progress=None,
-            message=None,
-            traceback: typing.Union[str, Dict, None] = None,
-            start_time=None,
-            end_time=None,
-            details: Dict = None,
+        cls,
+        uid,
+        status,
+        progress=None,
+        message=None,
+        traceback: typing.Union[str, Dict, None] = None,
+        start_time=None,
+        end_time=None,
+        details: Dict = None,
     ):
         job = cls.jobs.get(uid)
 
@@ -148,6 +149,7 @@ class JobManager:
                 observer(job, "JOB_MODIFIED")
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             logging.error(f"Failed to set state for job {uid}. Cause: {repr(e)}")
         finally:
@@ -312,4 +314,3 @@ def start_monitor():
     t.start()
 
     return t
-

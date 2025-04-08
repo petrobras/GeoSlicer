@@ -14,6 +14,7 @@ from ltrace.slicer.app.drawer import ExpandDataDrawer
 from ltrace.slicer.app.onboard import showDataLoaders, loadEnvironmentByName
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
+from ltrace.slicer.debounce_caller import DebounceCaller
 from ltrace.slicer.helpers import BlockSignals, svgToQIcon
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.module_info import ModuleInfo
@@ -199,6 +200,7 @@ class ProjectEventsLogic:
         self.startCloseSceneObserverHandler = None
         self.endCloseSceneObserverHandler = None
         self.nodeAddedObserverHandler = None
+        self.__updateRecentProjectsDebounce = None
 
     def __del__(self):
         slicer.mrmlScene.RemoveObserver(self.startCloseSceneObserverHandler)
@@ -206,7 +208,6 @@ class ProjectEventsLogic:
         slicer.mrmlScene.RemoveObserver(self.nodeAddedObserverHandler)
 
     def register(self):
-        self.__projectManager.setup()
         self.__projectManager.projectChangedSignal.connect(
             partial(updateWindowTitle, versionString=getApplicationVersion())
         )
@@ -229,6 +230,14 @@ class ProjectEventsLogic:
             slicer.mrmlScene.EndImportEvent, self.__onEndImportEvent
         )
 
+        self.endImportSceneObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.NodeAddedEvent, self.__onNodeAddedEvent
+        )
+
+        self.__updateRecentProjectsDebounce = DebounceCaller(
+            parent=slicer.modules.AppContextInstance.mainWindow, intervalMs=10, callback=self.setupRecentlyLoadedMenu
+        )
+
         lazy.register_eye_event()
         self.__projectManager.projectChangedSignal.connect(lazy.register_eye_event)
 
@@ -245,6 +254,12 @@ class ProjectEventsLogic:
             if fileDialog.exec():
                 paths = fileDialog.selectedFiles()
                 projectFilePath = paths[0]
+                if Path(projectFilePath).as_posix() == Path(slicer.mrmlScene.GetURL()).as_posix():
+                    return True
+
+                if not self.onCloseScene():
+                    return False
+
                 status = self.__projectManager.load(projectFilePath)
                 if not status:
                     slicer.util.errorDisplay(
@@ -312,28 +327,32 @@ class ProjectEventsLogic:
 
         return status
 
-    def onCloseScene(self):
-        """Handle close scene event"""
+    def onCloseScene(self) -> bool:
+        """Handle close scene event"
+
+        Returns:
+            bool: True if scene was saved successfully, otherwise returns False
+        """
 
         def wrapper(save=False):
             if save:
                 status = self.saveScene()
                 if status != SaveStatus.SUCCEED:
                     # saveScene handles possible errors and warns the user
-                    return
+                    return False
 
                 if status == SaveStatus.IN_PROGRESS:
                     logging.debug("Unexpected state from the saving process.")
-                    return
+                    return False
 
             self.__projectManager.close()
             updateWindowTitle(versionString=getApplicationVersion())
+            return True
 
         mainWindow = slicer.modules.AppContextInstance.mainWindow
         isModified = mainWindow.isWindowModified()
         if not isModified:
-            wrapper(save=False)
-            return
+            return wrapper(save=False)
 
         messageBox = qt.QMessageBox(mainWindow)
         messageBox.setWindowTitle("Close scene")
@@ -345,10 +364,10 @@ class ProjectEventsLogic:
         messageBox.exec_()
 
         if messageBox.clickedButton() == cancelButton:
-            return
+            return False
 
         shouldSave = messageBox.clickedButton() == saveButton
-        wrapper(save=shouldSave)
+        return wrapper(save=shouldSave)
 
     def __beginSceneClosing(self, *args):
         """Handle the beginning of the scene closing process"""
@@ -394,6 +413,12 @@ class ProjectEventsLogic:
         if not fileName:
             return
 
+        if Path(fileName) == Path(slicer.mrmlScene.GetURL()):
+            return
+
+        if not self.onCloseScene():
+            return
+
         status = self.__projectManager.load(fileName)
         if not status:
             slicer.util.errorDisplay(
@@ -407,16 +432,30 @@ class ProjectEventsLogic:
         fileMenu = slicer.modules.AppContextInstance.mainWindow.findChild("QMenu", "FileMenu")
         recentMenu = fileMenu.findChild("QMenu", "RecentlyLoadedMenu")
 
-        for action in recentMenu.actions():
+        recentMenuActions = {action.text: action for action in recentMenu.actions()}
+        for action in recentMenuActions.values():
             if action.text == "Clear History":
                 continue
 
             try:
+                if action.text and Path(action.text).suffix != ".mrml":
+                    recentMenu.removeAction(action)
+                    continue
+
                 action.triggered.disconnect()
                 action.triggered.connect(partial(self.onRecentLoadedActionTriggered, action))
             except Exception as error:
                 logging.error(error)
 
+        if len(recentMenu.actions()) <= 2:  # Clear History and separator
+            recentMenuActions["Clear History"].triggered()
+
+    def __updateRecentLoadedMenu(self) -> None:
+        # Assure method is called only after the file history update from the last project load.
+        self.__updateRecentProjectsDebounce()
+
     def __onEndImportEvent(self, *args, **kwargs) -> None:
-        # Assure method is called after the file history update from the last project load.
-        qt.QTimer.singleShot(10, self.setupRecentlyLoadedMenu)
+        self.__updateRecentLoadedMenu()
+
+    def __onNodeAddedEvent(self, *args, **kwargs) -> None:
+        self.__updateRecentLoadedMenu()

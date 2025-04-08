@@ -180,15 +180,19 @@ class KrelCycleCurves:
         self.number_of_simulations = len([i for i in self.cycle_df.columns if re.search("Kro_\\d+", i)])
         self.krw_data = {}
         self.kro_data = {}
+        self.pressure_data = {}
         self.sw_data = list(self.cycle_df[f"Sw"])
         for id in range(self.number_of_simulations):
             if f"Krw_{id}" in self.cycle_df.columns:
                 self.krw_data[id] = list(self.cycle_df[f"Krw_{id}"])
             if f"Kro_{id}" in self.cycle_df.columns:
                 self.kro_data[id] = list(self.cycle_df[f"Kro_{id}"])
+            if f"Pc_{id}" in self.cycle_df.columns:
+                self.pressure_data[id] = list(self.cycle_df[f"Pc_{id}"])
         if "Kro_middle" in self.cycle_df.columns:
             self.krw_data["middle"] = list(self.cycle_df[f"Krw_middle"])
             self.kro_data["middle"] = list(self.cycle_df[f"Kro_middle"])
+            self.pressure_data["middle"] = list(self.cycle_df[f"Pc_middle"])
 
     def get_number_of_simulations(self):
         return self.number_of_simulations
@@ -208,5 +212,40 @@ class KrelCycleCurves:
         else:
             return None
 
+    def get_pressure_data(self, simulation_id):
+        if simulation_id in self.pressure_data:
+            return self.pressure_data[simulation_id]
+        else:
+            return None
+
     def get_dataframe(self):
         return self.cycle_df
+
+
+class PressureResultCurves:
+    def __init__(self, pressure_result_node):
+        self.parameters_df = dataframeFromTable(pressure_result_node)
+        self.pressure_curve_list = {}
+
+        if pressure_result_node is None:
+            return
+
+        for cycle_id in range(1, 4):
+            cycle_node_id = pressure_result_node.GetAttribute(f"cycle_table_{cycle_id}_id")
+            cycle_node = slicer.mrmlScene.GetNodeByID(cycle_node_id)
+            self.pressure_curve_list[cycle_id] = KrelCycleCurves(cycle_node)
+
+    def get_number_of_simulations(self):
+        if len(self.pressure_curve_list.values()) > 0:
+            return list(self.pressure_curve_list.values())[0].get_number_of_simulations()
+        else:
+            return 0
+
+    def get_cycle(self, cycle_id):
+        return self.pressure_curve_list[cycle_id]
+
+    def get_parameters_df(self):
+        return self.parameters_df
+
+    def get_cycle_df(self, cycle_id):
+        return self.pressure_curve_list[cycle_id].get_dataframe()

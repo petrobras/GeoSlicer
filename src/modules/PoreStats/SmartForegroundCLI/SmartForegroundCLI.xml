@@ -31,14 +31,13 @@
   </parameters>
 
   <parameters advanced="false">
-      <image>
-        <name>outputFrags</name>
-        <longflag>outputfrags</longflag>
-        <label>Output Fragments</label>
-        <description><![CDATA[Output Fragments Segmentation.]]></description>
-        <channel>output</channel>
+      <boolean>
+        <name>is3d</name>
+        <longflag>is3d</longflag>
+        <label>Input is 3D</label>
+        <description><![CDATA[Whether the input image is 3D.]]></description>
         <default></default>
-      </image>
+      </boolean>
 
       <image>
         <name>poreSegmentation</name>

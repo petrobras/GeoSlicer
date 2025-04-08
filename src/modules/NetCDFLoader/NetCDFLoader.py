@@ -7,7 +7,9 @@ import xarray as xr
 import numpy as np
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
 from ltrace.slicer.helpers import save_path
-from ltrace.slicer.netcdf import import_dataset
+from ltrace.slicer.netcdf import import_file
+
+from importlib import reload
 from pathlib import Path
 
 
@@ -35,7 +37,7 @@ class NetCDFLoaderWidget(LTracePluginWidget):
         LTracePluginWidget.setup(self)
 
         self.file_selector = ctk.ctkPathLineEdit()
-        self.file_selector.nameFilters = ["*.nc"]
+        self.file_selector.nameFilters = ["NetCDF / HDF5 files (*.nc *.h5 *.hdf5)"]
         self.file_selector.settingKey = "NetCDFLoader/LoadPath"
 
         self.apply_button = qt.QPushButton("Load")
@@ -70,17 +72,7 @@ class NetCDFLoaderWidget(LTracePluginWidget):
             self.on_progress("Importing…", 0)
             dataset_path = Path(self.file_selector.currentPath)
             save_path(self.file_selector)
-            dataset = xr.open_dataset(dataset_path)
-            dataset_name = dataset_path.with_suffix("").name
-
-            folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            scene_id = folderTree.GetSceneItemID()
-            current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
-            folderTree.SetItemAttribute(current_dir, "netcdf_path", dataset_path.as_posix())
-
-            for node, progress in zip(import_dataset(dataset), np.arange(0, 1, 1 / len(dataset))):
-                self.on_progress(f"Imported {node.GetName()}", progress)
-                _ = folderTree.CreateItem(current_dir, node)
+            import_file(dataset_path, self.on_progress)
 
             self.on_progress("Import complete", 1)
 

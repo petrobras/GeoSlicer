@@ -6,13 +6,12 @@ import vtk
 from ltrace.slicer.app.layouts import customLayout
 from ltrace.slicer.side_by_side_image_layout import setupViews, SideBySideImageManager
 from ltrace.slicer_utils import LTracePlugin
+from ltrace.constants import SIDE_BY_SIDE_IMAGE_LAYOUT_ID, SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID
 
 
 class SideBySideLayoutView(LTracePlugin):
     SETTING_KEY = "SideBySideLayoutView"
 
-    SIDE_BY_SIDE_IMAGE_LAYOUT_ID = 200
-    SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID = 201
     SIDE_BY_SIDE_IMAGE_GROUP = 70
     SIDE_BY_SIDE_SEGMENTATION_GROUP = 71
 
@@ -79,7 +78,7 @@ class SideBySideLayoutView(LTracePlugin):
                 group=self.SIDE_BY_SIDE_IMAGE_GROUP,
             ),
         )
-        customLayout(self.SIDE_BY_SIDE_IMAGE_LAYOUT_ID, layoutXML, "Side by side", self.resource("SideBySideImage.png"))
+        customLayout(SIDE_BY_SIDE_IMAGE_LAYOUT_ID, layoutXML, "Side by side", self.resource("SideBySideImage.png"))
 
     def sideBySideSegmentationLayout(self):
         layout_template = self.side_by_side_layout_template()
@@ -104,7 +103,7 @@ class SideBySideLayoutView(LTracePlugin):
             ),
         )
         customLayout(
-            self.SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID,
+            SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID,
             layoutXML,
             "Side by side segmentation",
             self.resource("SideBySideSegmentation.png"),
@@ -113,7 +112,7 @@ class SideBySideLayoutView(LTracePlugin):
         layout = slicer.app.layoutManager()
 
         def onLayoutChanged(id_):
-            if id_ == self.SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID:
+            if id_ == SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID:
                 self.updateSideBySideSegmentation()
                 self._linkViews(("SideBySideSegmentationSlice", "SideBySideImageSlice"))
                 self._useSameBackgroundAs("Red", "SideBySideImageSlice")
@@ -132,7 +131,7 @@ class SideBySideLayoutView(LTracePlugin):
             else:
                 self.exitSideBySideSegmentation()
 
-            if id_ == self.SIDE_BY_SIDE_IMAGE_LAYOUT_ID:
+            if id_ == SIDE_BY_SIDE_IMAGE_LAYOUT_ID:
                 self._linkViews(("SideBySideSlice1", "SideBySideSlice2"))
                 self._useSameBackgroundAs("Red", "SideBySideSlice1")
                 self._useSameBackgroundAs("Red", "SideBySideSlice2")
@@ -143,12 +142,13 @@ class SideBySideLayoutView(LTracePlugin):
                 self.sideBySideImageManager.enterLayout()
             elif self.sideBySideImageManager:
                 self.sideBySideImageManager.exitLayout()
+                self.disableSliceVisibilityIn3DView(viewNames=["SideBySideSlice1", "SideBySideSlice2"])
 
         @vtk.calldata_type(vtk.VTK_OBJECT)
         def onNodeAdded(caller, event, callData):
             if (
                 isinstance(callData, slicer.vtkMRMLSegmentationNode)
-                and layout.layout == self.SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID
+                and layout.layout == SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID
             ):
                 self.updateSideBySideSegmentation()
 
@@ -179,6 +179,12 @@ class SideBySideLayoutView(LTracePlugin):
                 # Show segmentation on 'S' slice view only
                 displayNode.AddViewNodeID(segSliceId)
 
+    def disableSliceVisibilityIn3DView(self, viewNames):
+        for viewName in viewNames:
+            sliceNode = slicer.util.getFirstNodeByClassByName("vtkMRMLSliceNode", viewName)
+            if sliceNode:
+                sliceNode.SetSliceVisible(False)
+
     def exitSideBySideSegmentation(self):
         segNodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
         for segNode in segNodes:
@@ -191,6 +197,8 @@ class SideBySideLayoutView(LTracePlugin):
                 displayNode.SetOpacity(0.5)
                 # Show segmentation on any view
                 displayNode.RemoveAllViewNodeIDs()
+
+        self.disableSliceVisibilityIn3DView(viewNames=["SideBySideImageSlice", "SideBySideSegmentationSlice"])
 
     @staticmethod
     def _linkViews(viewNames):

@@ -127,6 +127,9 @@ def load_project(project_file_path, timeout_ms=300000):
     if not path.exists():
         raise ValueError("Project file not found!")
 
+    if path == Path(slicer.mrmlScene.GetURL()):
+        return True
+
     status = False
     with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=timeout_ms):
         status = ProjectManager().load(path)
@@ -136,7 +139,7 @@ def load_project(project_file_path, timeout_ms=300000):
 
 @contextlib.contextmanager
 def check_for_message_box(
-    message, should_accept: bool = True, timeout_sec: int = 2, buttonTextToClick: bool = None, closeOthers: bool = True
+    message, should_accept: bool = True, timeout_sec: int = 2, buttonTextToClick: str = None, closeOthers: bool = True
 ):
     """Context manager to handle the displaying of a QMessageBox during a test scenario
 
@@ -144,7 +147,7 @@ def check_for_message_box(
         message (str): the expected QMessageBox text
         should_accept (bool, optional): Accept if True, otherwise Reject the message box action. Defaults to True.
         timeout_sec (int, optional): Timeout to wait for the message box to appear, in seconds. Defaults to 2.
-        buttonTextToClick (bool, optional): The button text to click. Defaults to None.
+        buttonTextToClick (str, optional): The button text to click. Defaults to None.
         closeOthers (:bool, optional): Close other visible message boxes.
                                        It might help to disable it when chaining multiple contexts to check
                                        for a message box. Defaults to True.

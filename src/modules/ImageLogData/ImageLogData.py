@@ -1692,7 +1692,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if segmentationNode:
             if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                 segmentationDisplayNode = segmentationNode.GetDisplayNode()
-                segmentationDisplayNode.SetOpacity(value)
+                if segmentationDisplayNode is not None:
+                    segmentationDisplayNode.SetOpacity(value)
             elif type(segmentationNode) is slicer.vtkMRMLLabelMapVolumeNode:
                 sliceCompositeNode.SetLabelOpacity(value)
 

@@ -7,11 +7,11 @@ PARAMETERS = {
         "layout": "cycle_1",
     },
     "enforced_pc_1": {
-        "display_name": "Final cycle Pc (kPa)",
+        "display_name": "Final cycle Pc (Pa)",
         "dtype": "multifloat",
         "default_value": 200000.0,
         "layout": "cycle_1",
-        "conversion_factor": 1000,
+        "conversion_factor": 1,
     },
     "enforced_steps_1": {
         "display_name": "Sw step length",
@@ -27,11 +27,11 @@ PARAMETERS = {
         "layout": "cycle_2",
     },
     "enforced_pc_2": {
-        "display_name": "Final cycle Pc (kPa)",
+        "display_name": "Final cycle Pc (Pa)",
         "dtype": "multifloat",
         "default_value": -200000.0,
         "layout": "cycle_2",
-        "conversion_factor": 1000,
+        "conversion_factor": 1,
     },
     "enforced_steps_2": {
         "display_name": "Sw step length",
@@ -155,7 +155,7 @@ PARAMETERS = {
         "display_name": "Algorithm",
         "layout": "pore_fill",
         "dtype": "combobox",
-        "default_value": 1,
+        "default_value": 3,
         "display_names": {
             "blunt1": "blunt1",
             "blunt2": "blunt2",
@@ -181,6 +181,14 @@ PARAMETERS = {
     },
     "create_ca_distributions": {
         "display_name": "Create CA distribution nodes",
+        "layout": "options",
+        "dtype": "singlecheckbox",
+        "true_value": "T",
+        "false_value": "F",
+        "default_value": False,
+    },
+    "create_drainage_snapshot": {
+        "display_name": "Create drainage snapshot",
         "layout": "options",
         "dtype": "singlecheckbox",
         "true_value": "T",
@@ -378,3 +386,4 @@ del PARAMETERS["second_contact_angle_separation"]
 
 # del PARAMETERS["frac_contact_model"]
 del PARAMETERS["frac_contact_angle_separation"]
+PARAMETERS["equil_contact_angle"]["default_value"] = 120.0

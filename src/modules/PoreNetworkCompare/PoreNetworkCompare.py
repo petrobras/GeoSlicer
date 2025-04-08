@@ -107,7 +107,7 @@ class PoreNetworkCompareWidget(LTracePluginWidget):
         inputFormLayout.addRow("Cycle model:", self.inputCycleNodeModel)
         self.inputCycleNodeModel.resetStyleOnValidNode()
 
-        self.inputDrainageOilLabelmapsFolder = hierarchyVolumeInput(nodeTypes=["Directories"])
+        self.inputDrainageOilLabelmapsFolder = hierarchyVolumeInput(nodeTypes=["Directories"], allowFolders=True)
         self.inputDrainageOilLabelmapsFolder.setObjectName("inputDrainageOilLabelmapsFolder")
         self.inputDrainageOilLabelmapsFolder.setToolTip(
             "Select the input drainage oil labelmaps folder. This folder should contain a time series of labelmaps."
@@ -115,7 +115,7 @@ class PoreNetworkCompareWidget(LTracePluginWidget):
         inputFormLayout.addRow("Drainage oil labelmaps folder:", self.inputDrainageOilLabelmapsFolder)
         self.inputDrainageOilLabelmapsFolder.resetStyleOnValidNode()
 
-        self.inputImbibitionOilLabelmapsFolder = hierarchyVolumeInput(nodeTypes=["Directories"])
+        self.inputImbibitionOilLabelmapsFolder = hierarchyVolumeInput(nodeTypes=["Directories"], allowFolders=True)
         self.inputImbibitionOilLabelmapsFolder.setObjectName("inputImbibitionOilLabelmapsFolder")
         self.inputImbibitionOilLabelmapsFolder.setToolTip(
             "Select the input imbibition oil labelmaps folder. This folder should contain a time series of labelmaps."
@@ -191,7 +191,7 @@ class PoreNetworkCompareWidget(LTracePluginWidget):
         visualizationFormLayout = qt.QFormLayout(visualizationCollapsibleButton)
         visualizationFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        self.resultsFolder = hierarchyVolumeInput(nodeTypes=["Directories"])
+        self.resultsFolder = hierarchyVolumeInput(nodeTypes=["Directories"], allowFolders=True)
         self.resultsFolder.setObjectName("resultsFolder")
         self.resultsFolder.setToolTip("Select the Pore Network Compare results folder.")
         visualizationFormLayout.addRow("Results folder:", self.resultsFolder)

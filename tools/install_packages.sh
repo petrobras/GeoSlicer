@@ -20,6 +20,9 @@ python -m pip install -e "$repository_path"/src/submodules/biaep
 # Install py_pore_flow package
 python -m pip install -e "$repository_path"/src/submodules/py_pore_flow
 
+# Install py_pore_flow package
+python -m pip install -e "$repository_path"/src/submodules/pyflowsolver
+
 # Install tools package
 python -m pip install -e "$repository_path"/tools
 

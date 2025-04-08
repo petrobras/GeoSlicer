@@ -9,19 +9,15 @@ class TwoPhaseSubprocess:
         self,
         params: dict,
         cwd: str,
-        link1: str,
-        link2: str,
-        node1: str,
-        node2: str,
+        statoil_data: dict,
+        snapshot_file: str,
         id: int,
         write_debug_files: bool,
     ):
         self.params = self._process_parameters(params)
         self.cwd = cwd
-        self.link1 = link1
-        self.link2 = link2
-        self.node1 = node1
-        self.node2 = node2
+        self.statoil_data = statoil_data
+        self.snapshot_file = snapshot_file
         self.process = None
         self.id = id
         self.write_debug_files = write_debug_files
@@ -36,16 +32,17 @@ class TwoPhaseSubprocess:
             args=(
                 self.cwd,
                 self.params,
-                self.link1,
-                self.link2,
-                self.node1,
-                self.node2,
+                self.statoil_data,
+                self.snapshot_file,
                 self.write_debug_files,
             ),
         )
         self.start_time = time.time()
         self.run_count += 1
         self.process.start()
+
+    def join(self):
+        self.process.join()
 
     def terminate(self):
         if self.process.is_alive():
@@ -88,6 +85,10 @@ class TwoPhaseSubprocess:
     @abstractmethod
     def get_cycle_result(self):
         pass
+
+    @abstractmethod
+    def get_snapshot_file(self):
+        return None
 
     @staticmethod
     @abstractmethod

@@ -4,30 +4,16 @@ RUN choco install opencv --version=4.5.5 -y
 
 WORKDIR /slicerltrace
 
-COPY ./.git-blame-ignore-revs c:/slicerltrace/.git-blame-ignore-revs
-COPY ./.gitattributes c:/slicerltrace/.gitattributes
-COPY ./.gitignore c:/slicerltrace/.gitignore
-COPY ./.gitmodules c:/slicerltrace/.gitmodules
-COPY ./pyproject.toml c:/slicerltrace/pyproject.toml
-COPY ./tools c:/slicerltrace/tools
+COPY ./tests/unit/requirements.txt ./tests/unit/requirements.txt
+RUN python -m pip install -r ./tests/unit/requirements.txt
 
-RUN python -m pip install -r c:/slicerltrace/tools/deploy/requirements.txt
-RUN python -m pip install -r c:/slicerltrace/tools/pipeline/requirements.txt
-RUN python -m pip install -r c:/slicerltrace/tests/unit/requirements.txt
-RUN python -m pip install -e c:/slicerltrace/tools
+COPY ./tools/pipeline/requirements.txt ./tools/pipeline/requirements.txt
+RUN python -m pip install -r ./tools/pipeline/requirements.txt
 
-COPY ./src/ltrace/ c:/slicerltrace/src/ltrace/
-RUN python -m pip install -e c:/slicerltrace/src/ltrace
+COPY ./tools/deploy/requirements.txt ./tools/deploy/requirements.txt
+RUN python -m pip install -r ./tools/deploy/requirements.txt
 
-COPY ./src/modules/ c:/slicerltrace/src/modules/
-RUN python -m pip install -e c:/slicerltrace/src/modules
-RUN python -m pip install -r c:/slicerltrace/src/modules/MicrotomRemote/Libs/microtom/requirements.txt
-
-COPY ./src/submodules/ c:/slicerltrace/src/submodules/
-RUN python -m pip install -e c:/slicerltrace/src/submodules/porespy
-RUN python -m pip install -e c:/slicerltrace/src/submodules/biaep
-RUN python -m pip install -e c:/slicerltrace/src/submodules/py_pore_flow
-
-COPY ./tests/ c:/slicerltrace/tests/
+COPY ./src/ltrace/requirements.txt ./src/ltrace/requirements.txt
+RUN python -m pip install -r ./src/ltrace/requirements.txt
 
 CMD ["cmd", "/c", "ping", "-t", "localhost", ">", "NUL"]

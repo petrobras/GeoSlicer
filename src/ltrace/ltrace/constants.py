@@ -1,14 +1,13 @@
-from enum import Enum
-
-# TODO move global constants to this file
-
-# ImageLogData.py
-# docked_data.py
-
 """
 This module contains the constants used in the ltrace library and the GeoSlicer modules.
 """
+
+from enum import Enum
+
+
 MAX_LOOP_ITERATIONS = 100000
+SIDE_BY_SIDE_IMAGE_LAYOUT_ID = 200
+SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID = 201
 
 
 class ImageLogConst:

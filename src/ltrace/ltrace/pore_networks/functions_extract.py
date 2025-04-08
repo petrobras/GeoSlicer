@@ -50,24 +50,44 @@ def get_connected_array_from_node(inputVolume: slicer.vtkMRMLLabelMapVolumeNode)
     return input_array
 
 
-def porespy_extract(multiphase, watershed, scale, porosity_map=None):
+def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_blur=[0.4, 0.4], force_cpu=False):
 
     # Extracts PNM with porespy and "flattens" the data into a dict of 1d arrays
 
     if watershed is None:
+        "Only in multiscale can watershed be None"
         input_array = multiphase
-        snow_results = snow2(multiphase, porosity_map=porosity_map, voxel_size=scale, parallel_extraction=True)
+        if type(watershed_blur) is dict:
+            keys = list(watershed_blur.keys())
+            for key in keys:
+                watershed_blur[int(key)] = watershed_blur[key]
+        snow_results = snow2(
+            multiphase,
+            porosity_map=porosity_map,
+            voxel_size=scale,
+            parallel_extraction=True,
+            sigma=watershed_blur,
+            force_cpu=force_cpu,
+        )
         pn_properties = snow_results.network
         watershed_image = snow_results.regions
     else:
         input_array = watershed
         if multiphase is None:
-            pn_properties = regions_to_network_parallel(watershed, voxel_size=scale)
+            pn_properties = regions_to_network_parallel(
+                watershed,
+                voxel_size=scale,
+                force_cpu=force_cpu,
+            )
         else:
             watershed[multiphase == 0] = 0
             porosity_map[multiphase == 0] = 0
             pn_properties = regions_to_network_parallel(
-                watershed, phases=multiphase, porosity_map=porosity_map, voxel_size=scale
+                watershed,
+                phases=multiphase,
+                porosity_map=porosity_map,
+                voxel_size=scale,
+                force_cpu=force_cpu,
             )
         watershed_image = watershed
 
@@ -227,15 +247,70 @@ def porespy_extract(multiphase, watershed, scale, porosity_map=None):
 
     pn_properties["throat.subresolution_porosity"] = throat_phi
 
+    ### Volume properties
+    if porosity_map is not None:
+        input_volume_porosity = (porosity_map.sum() / porosity_map.size) / 100
+        input_resolved_porosity = (porosity_map[porosity_map == 100].sum() / porosity_map.size) / 100
+        input_subscale_porosity = (((0 < porosity_map) & (porosity_map < 100)) * porosity_map).sum() / (
+            porosity_map.size * 100
+        )
+    else:
+        input_volume_porosity = (input_array > 0).sum() / input_array.size
+        input_resolved_porosity = input_volume_porosity
+        input_subscale_porosity = 0.0
+
+    voxel_volume = scale[0] * scale[1] * scale[2]
+    input_total_volume = input_array.size * voxel_volume
+
+    pore_resolved_volume = pn_properties["pore.volume"][pn_properties["pore.phase"] == 1].sum()
+    pore_subscale_volume = (
+        pn_properties["pore.volume"][pn_properties["pore.phase"] > 1]
+        * pn_properties["pore.subresolution_porosity"][pn_properties["pore.phase"] > 1]
+    ).sum()
+    pore_total_volume = pore_resolved_volume + pore_subscale_volume
+
+    throat_resolved_volume = pn_properties["throat.volume"][pn_properties["throat.phases_0"] == 1].sum()
+    throat_resolved_volume += pn_properties["throat.volume"][pn_properties["throat.phases_1"] == 1].sum()
+    throat_subscale_volume = (
+        pn_properties["throat.volume"][pn_properties["throat.phases_0"] > 1]
+        * pn_properties["throat.subresolution_porosity"][pn_properties["throat.phases_0"] > 1]
+    ).sum()
+    throat_subscale_volume += (
+        pn_properties["throat.volume"][pn_properties["throat.phases_1"] > 1]
+        * pn_properties["throat.subresolution_porosity"][pn_properties["throat.phases_1"] > 1]
+    ).sum()
+    throat_total_volume = throat_resolved_volume + throat_subscale_volume
+
+    pn_properties["network.input_volume_porosity"] = input_volume_porosity
+    pn_properties["network.input_resolved_porosity"] = input_resolved_porosity
+    pn_properties["network.input_subscale_porosity"] = input_subscale_porosity
+    pn_properties["network.input_total_volume"] = input_total_volume
+    pn_properties["network.voxel_volume"] = voxel_volume
+
+    pn_properties["network.pore_resolved_volume"] = pore_resolved_volume
+    pn_properties["network.pore_subscale_volume"] = pore_subscale_volume
+    pn_properties["network.pore_total_volume"] = pore_total_volume
+    pn_properties["network.pore_resolved_porosity"] = pore_resolved_volume / input_total_volume
+    pn_properties["network.pore_subscale_porosity"] = pore_subscale_volume / input_total_volume
+    pn_properties["network.pore_total_porosity"] = pore_total_volume / input_total_volume
+
+    pn_properties["network.throat_resolved_volume"] = throat_resolved_volume
+    pn_properties["network.throat_subscale_volume"] = throat_subscale_volume
+    pn_properties["network.throat_total_volume"] = throat_total_volume
+    pn_properties["network.throat_resolved_porosity"] = throat_resolved_volume / input_total_volume
+    pn_properties["network.throat_subscale_porosity"] = throat_subscale_volume / input_total_volume
+    pn_properties["network.throat_total_porosity"] = throat_total_volume / input_total_volume
+
     return pn_properties
 
 
 def general_pn_extract(
     multiphaseNode: slicer.vtkMRMLLabelMapVolumeNode,
     watershedNode: slicer.vtkMRMLLabelMapVolumeNode,
-    prefix: str,
     method: str,
     porosity_map=None,
+    watershed_blur=0.4,
+    force_cpu=False,
 ):
     """
     Creates two table nodes describing the pore-network represented by multiphaseNode or by the watershedNode.
@@ -244,8 +319,6 @@ def general_pn_extract(
         The node containing the phases of each pixel (Solid, Pore and Subresolution).
     :param watershedNode:
         The node containing the watershed of the image used to separate pores.
-    :param prefix:
-        Created node names will be preceded by this string.
     :param method:
         Either "PoreSpy" or "PNExtract".
         PoreSpy mas receive a labeled volume (each pore must have an unique number),
@@ -273,11 +346,13 @@ def general_pn_extract(
         # Convert from adimensional voxel size to node scale
         # TODO: Deal with anisotropic data PL-1370
         scale = inputNode.GetSpacing()[::-1]
-        pn_properties = porespy_extract(
+        pn_properties = _porespy_extract(
             input_multiphase,
             input_watershed,
             scale,
             porosity_map=porosity_map,
+            watershed_blur=watershed_blur,
+            force_cpu=force_cpu,
         )
         if pn_properties is False:
             return False
@@ -290,13 +365,49 @@ def general_pn_extract(
 
     pn_throats = {}
     pn_pores = {}
+    pn_network = {}
     for i in pn_properties.keys():
-        if "pore" in i:
+        if "pore." in i:
             pn_pores[i] = pn_properties[i]
-        else:
+        elif "throat." in i:
             pn_throats[i] = pn_properties[i]
+        elif "network." in i:
+            pn_network[i] = pn_properties[i]
 
     df_pores = pd.DataFrame(pn_pores)
     df_throats = pd.DataFrame(pn_throats)
+    df_network = pd.DataFrame(pn_network, index=[0])
 
-    return df_pores, df_throats
+    return df_pores, df_throats, df_network
+
+
+def multiscale_extraction(
+    inputPorosityNode: slicer.vtkMRMLScalarVolumeNode,
+    inputWatershed: slicer.vtkMRMLLabelMapVolumeNode,
+    method: str,
+    watershed_blur: dict,
+    force_cpu=False,
+):
+    porosity_array = slicer.util.arrayFromVolume(inputPorosityNode)
+    if np.issubdtype(porosity_array.dtype, np.floating):
+        if porosity_array.max() <= 1:
+            porosity_array = (100 * porosity_array).astype(np.uint8)
+        else:
+            porosity_array = porosity_array.astype(np.uint8)
+
+    resolved_array = (porosity_array == 100).astype(np.uint8)
+    unresolved_array = np.logical_and(porosity_array > 0, porosity_array < 100).astype(np.uint8)
+    multiphase_array = resolved_array + (2 * unresolved_array)
+
+    slicer.util.updateVolumeFromArray(inputPorosityNode, multiphase_array)
+
+    extract_result = general_pn_extract(
+        inputPorosityNode,
+        inputWatershed,
+        method=method,
+        porosity_map=porosity_array,
+        watershed_blur=watershed_blur,
+        force_cpu=force_cpu,
+    )
+
+    return extract_result

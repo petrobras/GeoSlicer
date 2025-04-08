@@ -56,7 +56,7 @@ class DockedData(qt.QDockWidget):
 
         self.setWidget(self.tabs)
         slicer.app.layoutManager().layoutChanged.connect(self.onLayoutChanged)
-        self.onLayoutChanged()
+        self.onLayoutChanged(slicer.app.layoutManager().layout)
 
     def _createScrollableWidget(self, pluginWidgetName: str, copyWidget: bool = True) -> qt.QScrollArea:
         """Method to wrap the plugin's widget to a scroll area
@@ -85,8 +85,7 @@ class DockedData(qt.QDockWidget):
 
         self.tabs.setCurrentIndex(index)
 
-    def onLayoutChanged(self):
-        currentLayout = slicer.app.layoutManager().layout
+    def onLayoutChanged(self, currentLayout):
         explorerWidget = self.defaultData
         if currentLayout >= ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE:
             if self.imageLogData is None:

@@ -95,7 +95,7 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
             )
             fillValueEdit.minimum = vtk.vtkDoubleArray().GetDataTypeMin(vtk.VTK_DOUBLE)
             fillValueEdit.maximum = vtk.vtkDoubleArray().GetDataTypeMax(vtk.VTK_DOUBLE)
-            fillValueEdit.connect("valueChanged(double)", self.fillValueChanged)
+            fillValueEdit.valueChanged.connect(self.fillValueChanged)
 
         # Fill value layouts
         self.fillValueWidget = qt.QWidget()
@@ -369,7 +369,7 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         )
         self.updateGUIFromMRML()  # node reference changes are not observed, update GUI manually
 
-    def fillValueChanged(self):
+    def fillValueChanged(self, value):
         self.updateMRMLFromGUI()
 
     def onApply(self):

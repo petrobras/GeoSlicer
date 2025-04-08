@@ -55,12 +55,7 @@ class ThinSectionEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         addAction(relatedModules["MultipleImageAnalysis"], self.modulesToolbar)
         addAction(relatedModules["ThinSectionExport"], self.modulesToolbar)
 
-        self.setupTools(tools=[
-            "VolumeCalculator",
-            "CustomizedTables",
-            "TableFilter",
-            "Charts"
-        ])
+        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
         self.setupLoaders()
 
         self.getModuleManager().setEnvironment(("Thin Section", "ThinSectionEnv"))

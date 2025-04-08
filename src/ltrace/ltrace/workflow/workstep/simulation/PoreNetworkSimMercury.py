@@ -31,7 +31,7 @@ class PoreNetworkSimMercury(Workstep):
 
     def run(self, table_nodes):
         progressBar = LocalProgressBar()
-        logic = MercurySimulationLogic(progressBar)
+        logic = MercurySimulationLogic(None, progressBar)
 
         for idx, pore_node in enumerate(table_nodes):
             self.finished = False

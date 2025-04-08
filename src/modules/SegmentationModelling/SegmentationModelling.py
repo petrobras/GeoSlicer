@@ -158,6 +158,9 @@ class SegmentationModellingWidget(LTracePluginWidget):
         output_prefix = node.GetName() if node is not None else ""
         self.output_prefix_lineedit.setText(output_prefix)
 
+        if node and node.IsA("vtkMRMLLabelMapVolumeNode"):
+            self.method_selector.currentWidget().onSegmentationChanged(node)
+
         self.__update_apply_button_state()
         self.__draw_widget_content()
 

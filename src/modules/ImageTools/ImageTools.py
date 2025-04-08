@@ -1,12 +1,21 @@
 import os
+import slicer
+import numpy as np
+import qt
+
 from pathlib import Path
 
-import slicer.util
-
 from ImageToolsLib import *
-from ltrace.slicer import ui
+from ltrace.slicer import ui, helpers
+from ltrace.slicer.node_observer import NodeObserver
 from ltrace.slicer_utils import *
 from ltrace.slicer_utils import getResourcePath
+from typing import Union
+
+try:
+    from Test.ImageToolsTest import ImageToolsTest
+except ImportError:
+    ImageToolsTest = None
 
 
 class ImageTools(LTracePlugin):
@@ -37,15 +46,30 @@ class ImageToolsWidget(LTracePluginWidget):
     TOOL_HISTOGRAM_EQUALIZATION = 3
     TOOL_SHADING_CORRECTION = 4
 
-    def __init__(self, parent):
+    def __init__(self, parent) -> None:
         LTracePluginWidget.__init__(self, parent)
-        self.currentNode = None
         self.toolWidgets = {}
         self.currentToolWidget = None
         self.currentToolIndex = self.TOOL_NONE
         self.imageArray = None
+        self.__currentNodeObserver: NodeObserver = None
+        self.__referenceNodeObserver: NodeObserver = None
 
-    def setup(self):
+    @property
+    def currentNode(self) -> Union[None, slicer.vtkMRMLNode]:
+        if self.__currentNodeObserver is None:
+            return None
+
+        return self.__currentNodeObserver.node
+
+    @property
+    def referenceNode(self) -> Union[None, slicer.vtkMRMLNode]:
+        if self.__referenceNodeObserver is None:
+            return None
+
+        return self.__referenceNodeObserver.node
+
+    def setup(self) -> None:
         LTracePluginWidget.setup(self)
 
         frame = qt.QFrame()
@@ -62,6 +86,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.imageComboBox.setMRMLScene(slicer.mrmlScene)
         self.imageComboBox.setToolTip("Select an image.")
         self.imageComboBox.currentNodeChanged.connect(self.onImageComboBoxCurrentNodeChanged)
+        self.imageComboBox.objectName = "Image Combo Box"
 
         self.showImageButton = qt.QPushButton("Show image")
         self.showImageButton.setFixedWidth(150)
@@ -86,6 +111,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.toolComboBox.setVisible(False)
         self.toolComboBox.setToolTip("Select an image tool.")
         self.toolComboBox.currentIndexChanged.connect(self.onToolComboBoxCurrentIndexChanged)
+        self.toolComboBox.objectName = "Tool Combo Box"
         self.formLayout.addRow(self.toolLabel, self.toolComboBox)
 
         # Tool widgets
@@ -145,11 +171,11 @@ class ImageToolsWidget(LTracePluginWidget):
 
         self.layout.addStretch()
 
-    def addToolWidget(self, toolWidgetClass):
+    def addToolWidget(self, toolWidgetClass) -> None:
         self.toolWidgets[toolWidgetClass.__name__] = toolWidgetClass(self)
         self.formLayout.addRow(self.toolWidgets[toolWidgetClass.__name__])
 
-    def resetToolWidgets(self):
+    def resetToolWidgets(self) -> None:
         for key, value in self.toolWidgets.items():
             value.reset()
 
@@ -164,16 +190,22 @@ class ImageToolsWidget(LTracePluginWidget):
             self.toolComboBox.blockSignals(False)
             self.currentToolIndex = self.TOOL_NONE
 
-    def hideToolWidgets(self):
+    def hideToolWidgets(self) -> None:
         for key, value in self.toolWidgets.items():
             value.setVisible(False)
 
-    def onCancelButtonClicked(self):
-        slicer.util.updateVolumeFromArray(self.currentNode, self.imageArray)
+    def onCancelButtonClicked(self) -> None:
+        self.__cancelLastChanges()
+
+    def __cancelLastChanges(self) -> None:
+        self.resetWorkingNode()
         self.configureButtonsState()
         self.resetToolWidgets()
 
-    def onApplyButtonClicked(self):
+    def onApplyButtonClicked(self) -> None:
+        self.__commitChanges()
+
+    def __commitChanges(self) -> None:
         node = self.currentNode
         dataType = self.imageArray.dtype
         newArray = slicer.util.arrayFromVolume(node).copy()
@@ -187,12 +219,16 @@ class ImageToolsWidget(LTracePluginWidget):
         self.configureButtonsState()
         self.resetToolWidgets()
 
-    def onShowImageButtonClicked(self):
-        slicer.util.setSliceViewerLayers(background=self.imageComboBox.currentNode())
+    def onShowImageButtonClicked(self) -> None:
+        self.__showWorkingImage()
+
+    def __showWorkingImage(self) -> None:
+        slicer.util.setSliceViewerLayers(background=self.currentNode)
         slicer.util.resetSliceViews()
 
-    def onImageComboBoxCurrentNodeChanged(self, node):
-        if self.applyButton.isEnabled():
+    def onImageComboBoxCurrentNodeChanged(self, node) -> None:
+        invalidNode = self.referenceNode is None or self.currentNode is None
+        if not invalidNode and self.applyButton.isEnabled():
             message = "The current tool changes to the image were not applied and will be lost. Are you sure you want to exit the current tool?"
             if slicer.util.confirmYesNoDisplay(message):
                 slicer.util.updateVolumeFromArray(self.currentNode, self.imageArray)
@@ -200,34 +236,56 @@ class ImageToolsWidget(LTracePluginWidget):
                 self.cancelButton.enabled = False
             else:
                 self.imageComboBox.blockSignals(True)
-                self.imageComboBox.setCurrentNode(self.currentNode)
+                self.imageComboBox.setCurrentNode(self.referenceNode)
                 self.imageComboBox.blockSignals(False)
                 return
 
         saveImageAnswer = None
-        if slicer.mrmlScene.GetNumberOfUndoLevels() > 0 or slicer.mrmlScene.GetNumberOfRedoLevels() > 0:
+        if not invalidNode and (
+            slicer.mrmlScene.GetNumberOfUndoLevels() > 0 or slicer.mrmlScene.GetNumberOfRedoLevels() > 0
+        ):
             messageBox = qt.QMessageBox()
             saveImageAnswer = messageBox.question(
-                self.__mainWindow,
+                slicer.modules.AppContextInstance.mainWindow,
                 "GeoSlicer confirmation",
                 "Save the changes to the image before exiting?",
                 qt.QMessageBox.Yes | qt.QMessageBox.No | qt.QMessageBox.Cancel,
             )
             if saveImageAnswer == qt.QMessageBox.Cancel:
                 self.imageComboBox.blockSignals(True)
-                self.imageComboBox.setCurrentNode(self.currentNode)
+                self.imageComboBox.setCurrentNode(self.referenceNode)
                 self.imageComboBox.blockSignals(False)
+                return
             else:
                 if saveImageAnswer == qt.QMessageBox.Yes:
                     self.endUndoRedoState(False)
+                    self.__saveAllChanges()
                 else:
-                    self.endUndoRedoState(True)
+                    self.endUndoRedoState(False)
                 self.configureButtonsState()
 
         self.resetToolWidgets()
+        self.clearWorkingNode()
         if saveImageAnswer != qt.QMessageBox.Cancel:
             self.hideToolWidgets()
-            self.currentNode = node
+            if node is not None:
+                currentNode = helpers.clone_volume(
+                    node, name=f"{node.GetName()}_Processed", as_temporary=True, hidden=True, uniqueName=True
+                )
+                self.__referenceNodeObserver = NodeObserver(node, parent=self.parent)
+                self.__referenceNodeObserver.removedSignal.connect(self.onNodeRemoved)
+                self.__currentNodeObserver = NodeObserver(currentNode, parent=self.parent)
+                self.__currentNodeObserver.removedSignal.connect(self.onNodeRemoved)
+                self.imageArray = slicer.util.arrayFromVolume(currentNode).copy()
+            else:
+                currentNode = None
+                if self.__referenceNodeObserver is not None:
+                    del self.__referenceNodeObserver
+                    self.__referenceNodeObserver = None
+
+                if self.__currentNodeObserver is not None:
+                    del self.__currentNodeObserver
+                    self.__currentNodeObserver = None
 
             self.toolComboBox.blockSignals(True)
             self.toolComboBox.setCurrentIndex(self.TOOL_NONE)
@@ -235,19 +293,24 @@ class ImageToolsWidget(LTracePluginWidget):
             self.toolLabel.setVisible(node is not None)
             self.toolComboBox.setVisible(node is not None)
 
-            if node is not None and node.GetImageData() is not None:
-                node.GetDisplayNode().SetAutoWindowLevel(0)  # To avoid brightness adjustments cancellation
+            if currentNode is not None and currentNode.GetImageData() is not None:
+                currentNode.GetDisplayNode().SetAutoWindowLevel(0)  # To avoid brightness adjustments cancellation
                 self.imageArray = slicer.util.arrayFromVolume(node).copy()
                 self.showImageButton.enabled = True
                 self.startUndoRedoState()
+                self.__showWorkingImage()
             else:
                 self.showImageButton.enabled = False
 
-    def onToolComboBoxCurrentIndexChanged(self, index):
+    def onNodeRemoved(self) -> None:
+        self.__resetAllChanges()
+        self.imageComboBox.setCurrentNode(None)
+
+    def onToolComboBoxCurrentIndexChanged(self, index) -> None:
         if self.applyButton.isEnabled():
             message = "The current changes to the image are not applied and will be lost. Are you sure you want to exit the current tool?"
             if slicer.util.confirmYesNoDisplay(message):
-                slicer.util.updateVolumeFromArray(self.currentNode, self.imageArray)
+                self.resetWorkingNode()
                 self.applyButton.enabled = False
                 self.cancelButton.enabled = False
             else:
@@ -276,30 +339,31 @@ class ImageToolsWidget(LTracePluginWidget):
         self.currentToolWidget.setVisible(True)
         self.currentToolWidget.select()
 
-    def startUndoRedoState(self):
+    def startUndoRedoState(self) -> None:
         slicer.mrmlScene.SetUndoOn()
-        if self.currentNode is not None:
-            self.currentNode.UndoEnabledOn()
+        if (currentNode := self.currentNode) is not None:
+            currentNode.UndoEnabledOn()
 
-    def endUndoRedoState(self, resetImage):
+    def endUndoRedoState(self, resetImage) -> None:
         if resetImage:
             for i in range(slicer.mrmlScene.GetNumberOfUndoLevels()):
                 slicer.mrmlScene.Undo()
         slicer.mrmlScene.ClearUndoStack()
         slicer.mrmlScene.ClearRedoStack()
-        if self.currentNode:
-            self.currentNode.UndoEnabledOff()
+        if (currentNode := self.currentNode) is not None:
+            currentNode.UndoEnabledOff()
         slicer.mrmlScene.SetUndoOff()
 
-    def onUndoButtonClicked(self):
-        self.onUndoOrRedoButtonClicked(slicer.mrmlScene.Undo)
+    def onUndoButtonClicked(self) -> None:
+        self.undoRedoProcess(slicer.mrmlScene.Undo)
 
-    def onRedoButtonClicked(self):
-        self.onUndoOrRedoButtonClicked(slicer.mrmlScene.Redo)
+    def onRedoButtonClicked(self) -> None:
+        self.undoRedoProcess(slicer.mrmlScene.Redo)
 
-    def onUndoOrRedoButtonClicked(self, undoOrRedoFunction):
+    def undoRedoProcess(self, undoOrRedoFunction) -> None:
+        invalidNode = self.referenceNode is None or self.currentNode is None
         message = f"The current tool changes to the image were not applied and will be lost. Are you sure you want to {undoOrRedoFunction.__name__.lower()}?"
-        if self.applyButton.isEnabled():
+        if not invalidNode and self.applyButton.isEnabled():
             if slicer.util.confirmYesNoDisplay(message):
                 slicer.util.updateVolumeFromArray(self.currentNode, self.imageArray)
             else:
@@ -309,7 +373,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.resetToolWidgets()
         self.configureButtonsState()
 
-    def configureButtonsState(self):
+    def configureButtonsState(self) -> None:
         numberOfUndoLevels = slicer.mrmlScene.GetNumberOfUndoLevels()
         numberOfRedoLevels = slicer.mrmlScene.GetNumberOfRedoLevels()
         self.undoButton.enabled = numberOfUndoLevels
@@ -321,57 +385,35 @@ class ImageToolsWidget(LTracePluginWidget):
         self.applyButton.enabled = False
         self.cancelButton.enabled = False
 
-    def onSaveButtonClicked(self):
-        newNode = self.cloneVolume(self.currentNode)
-        self.endUndoRedoState(True)
+    def persistNode(self) -> None:
+        currentNode = self.currentNode
+        helpers.makeTemporaryNodePermanent(currentNode, save=True, show=True)
+        self.imageArray = slicer.util.arrayFromVolume(currentNode).copy()
+
+    def onSaveButtonClicked(self) -> None:
+        self.__saveAllChanges()
+
+    def __saveAllChanges(self) -> None:
+        self.persistNode()
+        self.endUndoRedoState(False)
         self.resetToolWidgets()
         self.startUndoRedoState()
         self.configureButtonsState()
+        self.clearWorkingNode(removeNode=False)
+        self.imageComboBox.setCurrentNode(None)
 
-        self.currentNode = newNode
-        self.imageArray = slicer.util.arrayFromVolume(self.currentNode).copy()
-        self.imageComboBox.setCurrentNode(self.currentNode)
+    def onResetButtonClicked(self) -> None:
+        self.__resetAllChanges()
 
-        self.onShowImageButtonClicked()
-
-    def cloneVolume(self, volume):
-        newVolumeName = slicer.mrmlScene.GenerateUniqueName(volume.GetName())
-        newVolume = slicer.mrmlScene.AddNewNodeByClass(volume.GetClassName(), newVolumeName)
-        slicer.util.updateVolumeFromArray(newVolume, slicer.util.arrayFromVolume(volume).copy())
-        newVolume.SetOrigin(volume.GetOrigin())
-        newVolume.SetSpacing(volume.GetSpacing())
-        directions = np.eye(3)
-        volume.GetIJKToRASDirections(directions)
-        newVolume.SetIJKToRASDirections(directions)
-
-        displayNode = volume.GetDisplayNode()
-        newVolume.CreateDefaultDisplayNodes()
-        newVolume.CreateDefaultStorageNode()
-        newVolumeDisplayNode = newVolume.GetDisplayNode()
-        newVolumeDisplayNode.AutoWindowLevelOff()
-        newVolumeDisplayNode.SetWindowLevel(displayNode.GetWindow(), displayNode.GetLevel())
-
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volume))
-        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(newVolume), itemParent)
-
-        return newVolume
-
-    def onResetButtonClicked(self):
+    def __resetAllChanges(self) -> None:
         self.endUndoRedoState(True)
-        self.imageArray = slicer.util.arrayFromVolume(self.currentNode).copy()
         self.startUndoRedoState()
         self.resetToolWidgets()
         self.configureButtonsState()
+        self.resetWorkingNode()
 
-    def reset(self):
+    def reset(self) -> None:
         self.endUndoRedoState(True)
-
-        node = self.currentNode
-        if node is not None:
-            slicer.util.updateVolumeFromArray(node, self.imageArray)
-            self.imageArray = None
-            self.currentNode = None
 
         self.imageComboBox.blockSignals(True)
         self.imageComboBox.setCurrentNode(None)
@@ -391,18 +433,19 @@ class ImageToolsWidget(LTracePluginWidget):
 
         self.configureButtonsState()
 
-    def exit(self):
+    def exit(self) -> None:
         if self.applyButton.isEnabled():
             message = (
                 "The current changes in the image were not applied and will be lost. Do you want to save the changes?"
             )
             if slicer.util.confirmYesNoDisplay(message):
-                self.onApplyButtonClicked()
-                self.onSaveButtonClicked()
-            else:
-                slicer.util.updateVolumeFromArray(self.currentNode, self.imageArray)
+                self.__commitChanges()
+                self.__saveAllChanges()
 
-        if slicer.mrmlScene.GetNumberOfUndoLevels() > 0 or slicer.mrmlScene.GetNumberOfRedoLevels() > 0:
+        invalidNode = self.referenceNode is None or self.currentNode is None
+        if not invalidNode and (
+            slicer.mrmlScene.GetNumberOfUndoLevels() > 0 or slicer.mrmlScene.GetNumberOfRedoLevels() > 0
+        ):
             messageBox = qt.QMessageBox()
             saveImageAnswer = messageBox.question(
                 slicer.modules.AppContextInstance.mainWindow,
@@ -415,15 +458,43 @@ class ImageToolsWidget(LTracePluginWidget):
             # else:
             if saveImageAnswer == qt.QMessageBox.Yes:
                 self.endUndoRedoState(False)
+                self.__saveAllChanges()
             else:
                 self.endUndoRedoState(True)
-            self.imageArray = slicer.util.arrayFromVolume(self.currentNode).copy()
+
+        self.clearWorkingNode()
         self.reset()
 
     def configureInterfaceForThinSectionRegistrationModule(self):
         self.formLayout.setContentsMargins(0, 0, 0, 0)
         self.showImageButton.setVisible(False)  # To not mess with the comparison view
         self.saveResetButtons.applyBtn.setVisible(False)  # It's only to help placing the landmarks
+
+    def clearWorkingNode(self, removeNode: bool = True) -> None:
+        workingNode = self.currentNode
+
+        if self.__currentNodeObserver is not None:
+            del self.__currentNodeObserver
+            self.__currentNodeObserver = None
+
+        if self.__referenceNodeObserver is not None:
+            del self.__referenceNodeObserver
+            self.__referenceNodeObserver = None
+
+        if removeNode and workingNode is not None:
+            slicer.mrmlScene.RemoveNode(workingNode)
+
+        self.imageArray = None
+
+    def resetWorkingNode(self) -> None:
+        workingNode = self.currentNode
+        referenceNode = self.referenceNode
+        if workingNode is None or referenceNode is None:
+            return
+
+        referenceArray = slicer.util.arrayFromVolume(referenceNode).copy()
+        slicer.util.updateVolumeFromArray(workingNode, referenceArray)
+        self.imageArray = slicer.util.arrayFromVolume(workingNode).copy()
 
 
 class ImageToolsInfo(RuntimeError):

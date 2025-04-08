@@ -61,7 +61,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             "MicrotomRemote",
             "MultiScale",
             "MultiscalePostProcessing",
-            "PoreNetworkSimulation",
+            ("Pore Network", ["PoreNetworkSimulation", "PoreNetworkExtractor"]),
         ]
 
         for module in modules:
@@ -70,8 +70,11 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             elif isinstance(module, tuple):
                 name, modules = module
                 iconName = name.replace(" ", "").replace("-", "")
+                iconPath = getResourcePath("Icons") / "IconSet-dark" / f"{iconName}.svg"
+                if not iconPath.exists():
+                    iconPath = getResourcePath("Icons") / "IconSet-svg" / f"{name}.svg"
                 addMenu(
-                    svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / f"{iconName}.svg"),
+                    svgToQIcon(iconPath),
                     name,
                     [relatedModules[m] for m in modules],
                     self.modulesToolbar,
@@ -83,15 +86,9 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         self.setupSegmentation("ImageLog")
 
         self.modulesToolbar.actions()[1].setVisible(False)
-        self.modulesToolbar.actions()[11].setVisible(False)
+        self.modulesToolbar.actions()[12].setVisible(False)
 
-        self.setupTools(tools=[
-            "VolumeCalculator",
-            "CustomizedTables",
-            "TableFilter",
-            "Charts",
-            "VariogramAnalysis"
-        ])
+        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
 
         self.addImageLogViewOption()
 

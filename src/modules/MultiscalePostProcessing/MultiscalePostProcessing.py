@@ -206,9 +206,11 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
 
         self.logic.generatePorosityPerRealization(
             mainNode,
-            np.array(self.singleShotWidget.getSelectedSegments()) + 1
-            if self.isSegment
-            else [self.porosityValueSpinBox.value],
+            (
+                np.array(self.singleShotWidget.getSelectedSegments()) + 1
+                if self.isSegment
+                else [self.porosityValueSpinBox.value]
+            ),
             self.outputPrefix.text,
             TINode,
         )

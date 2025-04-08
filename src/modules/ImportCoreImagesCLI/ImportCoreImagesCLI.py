@@ -10,7 +10,7 @@ import cv2
 from pathlib import Path
 from ltrace.units import global_unit_registry as ureg
 from ltrace.image.segmentation import TF_RGBImageArrayBinarySegmenter
-from ltrace.assets import get_asset
+from ltrace.assets import get_model_by_name, get_h5
 from ltrace.cli_progress import ProgressBarClient, StoppedError
 
 
@@ -31,7 +31,7 @@ def find_plug_holes(images_folder, progress_bar):
     if progress_bar.should_stop:
         raise StoppedError()
 
-    model = TF_RGBImageArrayBinarySegmenter(get_asset("unet-binary-segop.h5"))
+    model = TF_RGBImageArrayBinarySegmenter(get_h5(get_model_by_name("unet-binary-segop")))
     for image in all_images:
         results.append([image, _find_plug_holes_in_file(image, model, progress_bar)])
 

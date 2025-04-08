@@ -10,7 +10,10 @@ from vtk.util.numpy_support import vtk_to_numpy
 import slicer
 
 import numpy as np
-from ltrace.pore_networks.functions import geo2spy
+from ltrace.pore_networks.functions import (
+    geo2spy,
+    estimate_pressure,
+)
 from ltrace.file_utils import read_csv
 from ltrace.slicer import ui
 from ltrace.slicer.ui import (
@@ -134,11 +137,13 @@ class MercurySimulationWidget(qt.QFrame):
         capillary_function = self.subscaleModelWidget.parameter_widgets[model].get_subradius_function(
             pore_network, volume
         )
-        return capillary_function
+        return lambda x: capillary_function(x)
 
     def getParams(self):
         subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+        subres_shape_factor = self.subscaleModelWidget.getParams()["subres_shape_factor"]
+        subres_porositymodifier = self.subscaleModelWidget.getParams()["subres_porositymodifier"]
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             subres_params = {
@@ -150,6 +155,8 @@ class MercurySimulationWidget(qt.QFrame):
             "keep_temporary": False,
             "subresolution function call": self.getFunction,
             "subres_model_name": subres_model_name,
+            "subres_shape_factor": subres_shape_factor,
+            "subres_porositymodifier": subres_porositymodifier,
             "subres_params": subres_params,
             "pressures": 100,
             "save_radii_distrib_plots": True,

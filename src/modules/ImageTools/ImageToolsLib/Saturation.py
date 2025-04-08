@@ -25,6 +25,7 @@ class SaturationWidget(qt.QWidget):
         self.saturationSliderWidget.maximum = 100
         self.saturationSliderWidget.tracking = False
         self.saturationSliderWidget.valueChanged.connect(self.onSaturationSliderValueChanged)
+        self.saturationSliderWidget.objectName = "Saturation Slider"
         formLayout.addRow("Saturation:", self.saturationSliderWidget)
 
         formLayout.addRow(" ", None)

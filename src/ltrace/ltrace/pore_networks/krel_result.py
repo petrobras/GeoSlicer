@@ -215,15 +215,25 @@ class KrelResult:
             results["amott"] = 0
             results["usbm"] = 0
         else:
-            amott, usbm = KrelResult._get_amott_index(second_cycle, third_cycle, has_pc)
+            amott, usbm, Iw, Io = KrelResult._get_amott_index(second_cycle, third_cycle, has_pc)
             results["amott"] = amott
             results["usbm"] = usbm
+            results["Iw"] = Iw
+            results["Io"] = Io
 
         return results
 
     @staticmethod
     def _get_amott_index(second_cycle, third_cycle, has_pc: bool):
+        if len(second_cycle.index) <= 1 or len(third_cycle.index) <= 1:
+            amott = 0
+            usbm = 0
+            Iw = 0
+            Io = 0
+            return amott, usbm, Iw, Io
+
         a1 = 0
+        s_spw = second_cycle.iloc[-1].loc["Sw"]
         for i in range(1, len(second_cycle.index)):
             if has_pc and second_cycle.iloc[i].loc["Pc"] < 0:
                 s1 = second_cycle.iloc[i - 1].loc["Sw"]
@@ -268,6 +278,10 @@ class KrelResult:
                 a2 += np.abs((delta_s - s_prime) * pc2)
                 s_spo = 1 - (s1 + s_prime)
                 break
+        if i == 1:
+            s_spo = 1 - second_cycle.iloc[-1].loc["Sw"]
+        elif third_cycle.iloc[-1].loc["Pc"] < 0:
+            s_spo = 1 - third_cycle.iloc[-1].loc["Sw"]
         for j in range(i, len(third_cycle.index)):
             s1 = third_cycle.iloc[j - 1].loc["Sw"]
             s2 = third_cycle.iloc[j].loc["Sw"]
@@ -293,8 +307,10 @@ class KrelResult:
             # crossover point not found
             amott = 0
             usbm = 0
+            Iw = 0
+            Io = 0
 
-        return amott, usbm
+        return amott, usbm, Iw, Io
 
 
 class KrelTables:

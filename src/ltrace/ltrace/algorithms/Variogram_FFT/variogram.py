@@ -76,7 +76,6 @@ class VariogramFFT:
 
     @staticmethod
     def compute_autocovariance_function(data, spacing):
-
         """
         AUTO-COVARIANCE FUNCTION
         Computes the auto-covariance function in the FFT domain of a given data in a array up to three dimensions
@@ -114,7 +113,6 @@ class VariogramFFT:
 
     @staticmethod
     def compute_NDvariogram_FFT(data, spacing):
-
         """
             VARIOGRAM COMPUTED IN FFT DOMAIN
             Computes the variogram based on the auto-covariance function in the FFT domain of a given data in a array up to three dimensions

@@ -17,10 +17,10 @@ import pandas as pd
 import slicer
 import slicer.util
 
+from io import StringIO
+from ltrace.slicer import cli_utils
 from ltrace.slicer.equations.line_equation import LineEquation
 from ltrace.slicer.equations.timur_coates_equation import TimurCoatesEquation
-
-from ltrace.slicer import cli_utils
 
 
 class PermeabilityCli:
@@ -34,7 +34,7 @@ class PermeabilityCli:
         output_voxel_array = np.copy(reference_voxel_array)
         for segment_id, equation_table_json in segment_equation_dict.items():
             segment_indexes = np.where(labelmap_voxel_array == int(segment_id))
-            equation, data = self.__get_equation_from_dataframe(pd.read_json(equation_table_json))
+            equation, data = self.__get_equation_from_dataframe(pd.read_json(StringIO(equation_table_json)))
             result = equation.equation(reference_voxel_array[segment_indexes], data.parameters)
             output_voxel_array[segment_indexes] = result
         output_voxel_array[output_voxel_array < 0] = 0

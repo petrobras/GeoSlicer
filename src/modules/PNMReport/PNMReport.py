@@ -4,8 +4,9 @@ from pathlib import Path
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
-    from ReportLib.StreamlitServer import StreamlitServer
-    from ReportLib.StreamlitServer import is_server_running
+    from ReportLib.StreamlitServer import StreamlitServer, is_server_running
+    from ReportLib.ReportForm import ReportForm
+    from ReportLib.ReportLogic import ReportLogic
 except ImportError:
     StreamlitServer = None
 

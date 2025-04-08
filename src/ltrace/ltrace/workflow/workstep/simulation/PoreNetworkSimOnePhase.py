@@ -31,7 +31,7 @@ class PoreNetworkSimOnePhase(Workstep):
 
     def run(self, table_nodes):
         progressBar = LocalProgressBar()
-        logic = OnePhaseSimulationLogic(progressBar)
+        logic = OnePhaseSimulationLogic(None, progressBar)
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
 
         results = {"Name": [], "x [mD]": [], "y [mD]": [], "z [mD]": []}

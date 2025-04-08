@@ -730,10 +730,6 @@ class LTraceDoubleRangeSlider(qt.QWidget):
         self.maxSpinBox.value = maximum
         self.maxSpinBox.singleStep = step
 
-        # self.slider.connect('valuesChanged(double,double)', self._onSliderChange)
-        # self.minSpinBox.connect('valueChanged(double)', self._onMinSpinChange)
-        # self.maxSpinBox.connect('valueChanged(double)', self._onMaxSpinChange)
-
         self.slider.sliderReleased.connect(self._onSliderReleased)
         self.minSpinBox.editingFinished.connect(self._onMinSpinEditFinished)
         self.maxSpinBox.editingFinished.connect(self._onMaxSpinEditFinished)

@@ -58,6 +58,15 @@ class DLISLoader(object):
     def __init__(self, filepath, nulls=set):
         self.filepath = filepath
         self.logical_files = dlisio.load(str(self.filepath))
+
+        # Finally, the null values substitutions will be left to GeoSlicer's handle_null_values function
+        self.null_value = nulls
+        if self.logical_files[0].parameters:
+            if self.logical_files[0].find("PARAMETER", "ABSENT_VALUE"):
+                self.null_value.add(
+                    self.logical_files[0].find("PARAMETER", "ABSENT_VALUE")[0].values[0]
+                )  # Ensuring that the ABSENT_VALUE is in the substitution list
+
         self.null_value = nulls
 
     def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm, well_name):
@@ -78,6 +87,7 @@ class DLISLoader(object):
                 logging.warning(f"File contains {len(f.origins)} origins")
             for o in f.origins:
                 well_name = o.well_name
+
             for channel in f.channels:
                 if channel.frame is None:
                     continue
@@ -98,6 +108,50 @@ class DLISLoader(object):
                 )
 
         return well_name, values_db
+
+    def _logMetadata(self):
+        well_name = ""
+        for f in self.logical_files:
+            logging.debug(f"logical file: {f}")
+            if len(f.origins) > 1:
+                logging.warning(f"File contains {len(f.origins)} origins")
+            for o in f.origins:
+                well_name = o.well_name
+                logging.debug(f"o: {o}")
+                logging.debug(f"o.file_id: {o.file_id}")
+                logging.debug(f"o.file_set_name: {o.file_set_name}")
+                logging.debug(f"o.file_set_nr: {o.file_set_nr}")
+                logging.debug(f"o.file_nr: {o.file_nr}")
+                logging.debug(f"o.file_type: {o.file_type}")
+                logging.debug(f"o.product: {o.product}")
+                logging.debug(f"o.version: {o.version}")
+                logging.debug(f"o.programs: {o.programs}")
+                logging.debug(f"o.creation_time: {o.creation_time}")
+                logging.debug(f"o.order_nr: {o.order_nr}")
+                logging.debug(f"o.descent_nr: {o.descent_nr}")
+                logging.debug(f"o.run_nr: {o.run_nr}")
+                logging.debug(f"o.well_id: {o.well_id}")
+                logging.debug(f"o.well_name: {o.well_name}")
+                logging.debug(f"o.field_name: {o.field_name}")
+                logging.debug(f"o.producer_code: {o.producer_code}")
+                logging.debug(f"o.producer_name: {o.producer_name}")
+                logging.debug(f"o.company: {o.company}")
+                logging.debug(f"o.namespace_name: {o.namespace_name}")
+                logging.debug(f"o.namespace_version: {o.namespace_version}")
+                logging.debug(f"o.attributes : {o.attributes }")
+
+            for fr in f.frames:
+                logging.debug(f"fr: {fr}")
+                logging.debug(f"fr.description: {fr.description}")
+                logging.debug(f"fr.channels: {fr.channels}")
+                logging.debug(f"fr.index_type: {fr.index_type}")
+                logging.debug(f"fr.direction: {fr.direction}")
+                logging.debug(f"fr.spacing: {fr.spacing}")
+                logging.debug(f"fr.index_min: {fr.index_min}")
+                logging.debug(f"fr.index_max: {fr.index_max}")
+                logging.debug(f"fr.curves: {fr.curves}")
+                logging.debug(f"fr.index: {fr.index}")
+                logging.debug(f"fr.linkage: {fr.linkage}")
 
     def load_data(self, file_path, mnemonic_and_files):
         if self.logical_files is None:
@@ -775,7 +829,7 @@ def add_volume_from_data(
         volume_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
         data = helpers.numberArrayToLabelArray(data)
         for value in nullValue:
-            data[np.where(data == value)] = 0
+            data[np.where(data == int(value))] = 0
     else:
         if nullValue is not None:
             nullValue = handle_null_values(data, nullValue)

@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import slicer
 import xarray as xr
-from ltrace.slicer.netcdf import import_dataset
+from ltrace.slicer import netcdf
 from ltrace.slicer_utils import *
 from ltrace.slicer import loader
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
@@ -18,7 +18,7 @@ from natsort import natsorted
 
 
 ROOT_DATASET_DIRECTORY_NAME = "Micro CT"
-MICRO_CT_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg", ".nc"]
+MICRO_CT_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg", ".nc", ".h5", ".hdf5"]
 SPACING_REGEX = re.compile(r"_(\d{5})nm")
 
 
@@ -29,24 +29,92 @@ def load(
     centerVolume=True,
     invertDirections=[True, True, False],
     loadAsLabelmap=False,
+    loadAsSequence=False,
     baseName=None,
 ):
-    if path.suffix == ".nc":
-        return _loadNetCDF(path, callback)
-    if path.is_file():
-        singleFile = True
-        pathBaseName = path.parent.name
+    if path.suffix in (".nc", ".h5", ".hdf5"):
+        nodes = netcdf.import_file(path, callback)
+        pcrNode = loadPCRAsTextNode(path)
     else:
-        singleFile = False
-        pathBaseName = path.name
-    base = baseName or slicer.mrmlScene.GetUniqueNameByString(pathBaseName)
-    _, images, isVolumes = getCountsAndLoadPathsForImageFiles(path)
+        if path.is_file():
+            singleFile = True
+            pathBaseName = path.parent.name
+            parentPath = path.parent
+        else:
+            singleFile = False
+            pathBaseName = path.name
+            parentPath = path
 
-    nodes = [
-        _loadImage(file, imageSpacing, centerVolume, invertDirections, loadAsLabelmap, base, singleFile or isVolumes)
-        for file in images
-    ]
+        base = baseName or slicer.mrmlScene.GetUniqueNameByString(pathBaseName)
+        _, images, isVolumes = getCountsAndLoadPathsForImageFiles(path)
+
+        nodes = [
+            _loadImage(
+                file, imageSpacing, centerVolume, invertDirections, loadAsLabelmap, base, singleFile or isVolumes
+            )
+            for file in images
+        ]
+
+        try:
+            pcrNode = loadPCRInfoIfExist(parentPath)
+        except FileNotFoundError:
+            logging.debug("No PCR file found in the directory")
+            pcrNode = None
+
+    if pcrNode:
+        setPCRFile(nodes, pcrNode)
+
+    if loadAsSequence:
+        return _createSequenceFromNodeList(nodes, path.name)
+
     return nodes
+
+
+def loadPCRInfoIfExist(path):
+    fpath = Path(path)
+    directory = fpath if fpath.is_dir() else fpath.parent
+    for file in directory.rglob(f"*.pcr"):
+        return loadPCRAsTextNode(file)
+
+    raise FileNotFoundError("No PCR file found in the directory")
+
+
+def setPCRFile(nodes, pcrNode):
+    if not isinstance(nodes, list):
+        nodes = [nodes]
+
+    for node in nodes:
+        if pcrNode:
+            node.SetAttribute("PCR", pcrNode.GetID())
+
+
+def _createSequenceFromNodeList(nodeList, directoryName):
+    subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    nodeTreeId = subjectHierarchyNode.GetItemByDataNode(nodeList[0])
+    parentItemId = subjectHierarchyNode.GetItemParent(nodeTreeId)
+
+    sequenceNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode", f"{directoryName}_sequence")
+    sequenceNode.SetIndexUnit("")
+    sequenceNode.SetIndexName("Volume")
+
+    browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", f"{directoryName}_browser")
+    browserNode.SetIndexDisplayFormat("%.0f")
+
+    for index in range(len(nodeList)):
+        node = nodeList[index]
+        sequenceNode.SetDataNodeAtValue(node, str(index))
+
+    for node in nodeList:
+        slicer.mrmlScene.RemoveNode(node)
+
+    browserNode.SetAndObserveMasterSequenceNodeID(sequenceNode.GetID())
+
+    proxyNode = browserNode.GetProxyNode(sequenceNode)
+    proxyNode.SetName(f"{directoryName}_proxy")
+
+    subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(proxyNode), parentItemId)
+
+    return nodeList
 
 
 def _loadNetCDF(path, callback):
@@ -58,11 +126,15 @@ def _loadNetCDF(path, callback):
     current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
     folderTree.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
 
+    pcrNode = loadPCRAsTextNode(path)
+
     nodes = []
     for node, progress in zip(import_dataset(dataset), np.arange(10, 100, 90 / len(dataset))):
         callback("Loading...", progress, True)
         _ = folderTree.CreateItem(current_dir, node)
         nodes.append(node)
+        if pcrNode:
+            node.SetAttribute("PCR", pcrNode.GetID())
     return nodes
 
 
@@ -190,3 +262,93 @@ def getCountsAndLoadPathsForImageFiles(path: Path) -> Tuple[int, List[Path], boo
     except Exception as e:
         logging.debug(repr(e))
         return 0, [], False
+
+
+def minMaxFromPcr(pcrFile):
+    import configparser
+
+    config = configparser.ConfigParser()
+    try:
+        if pcrFile.suffix == ".nc":
+            try:
+                with xr.open_dataset(pcrFile) as ds:
+                    pcr_string = ds.attrs.get("pcr")
+                    if not pcr_string:
+                        return None
+                    config.read_string(ds.attrs["pcr"])
+            except Exception:
+                return None
+        else:
+            config.read(pcrFile)
+        min_ = config.getfloat("VolumeData", "Min")
+        max_ = config.getfloat("VolumeData", "Max")
+    except configparser.Error:
+        return None
+    return min_, max_
+
+
+def loadPCRAsTextNode(pcrFile):
+    import configparser
+
+    try:
+        config = configparser.ConfigParser()
+
+        pcr = None
+
+        if pcrFile.suffix in (".nc", ".h5", ".hdf5"):
+            try:
+                with xr.open_dataset(pcrFile) as ds:
+                    pcr = ds.attrs["pcr"]
+            except Exception as e:
+                logging.debug(f"Failed to load PCR from NetCDF. Cause: {repr(e)}")
+        else:
+            pcr = pcrFile.read_text()
+
+        if not pcr:
+            return None
+
+        try:
+            config.read_string(pcr)
+        except configparser.Error as e:
+            logging.debug(f"Failed to parse PCR string. Cause: {repr(e)}")
+            return None
+
+        textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_PCR")
+        textNode.SetText(pcr)
+
+    except Exception as e:
+        logging.debug(f"Failed to load PCR file. Cause: {repr(e)}")
+        return None
+
+    return textNode
+
+
+# def loadPCRIntoTextNode(pcrFile):
+#     import configparser
+#
+#     config = configparser.ConfigParser()
+#     try:
+#         if pcrFile.suffix in (".nc", ".h5", ".hdf5"):
+#             try:
+#                 with xr.open_dataset(pcrFile) as ds:
+#                     pcr_string = ds.attrs.get("pcr")
+#                     if not pcr_string:
+#                         return None
+#
+#                     config.read_string(pcr_string)
+#             except Exception as e:
+#                 logging.debug(f"Failed to load PCR from NetCDF: {e}")
+#                 raise
+#         else:
+#             config.read(pcrFile)
+#             content = pcrFile.read_text()
+#         config.
+#         if not content:
+#             return None
+#
+#         textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_PCR")
+#         textNode.SetText(content)
+#         return textNode
+#
+#     except configparser.Error:
+#         return None

@@ -94,6 +94,7 @@ class SheetExporter:
                         sheet = pd.concat([sheet, statistics.to_frame().T], ignore_index=True)
 
                 sheet = sheet.sort_values(by=["quantity", "area (mm^2)"], ascending=[False, True])
+                sheet = sheet[new_cols + list(sheet.drop(new_cols, axis=1).columns)]
                 sheet.to_excel(sheet_writer, sheet_name=sheet_name, index=False)
 
     def run(self, image_file_path, report_file_path, output_dir, instance_type="pores", groups=None, supergroups=None):

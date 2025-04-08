@@ -12,13 +12,13 @@ import ctk
 from SegmentInspector import IslandsSettingsWidget, OSWatershedSettingsWidget
 import qt
 import slicer
-from ltrace.assets_utils import get_trained_models_with_metadata, get_metadata, get_pth
+from ltrace.assets_utils import get_pth
 from ltrace.slicer import ui, helpers, widgets
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
 from slicer.ScriptedLoadableModule import *
-
+from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
 
 # Checks if closed source code is available
 try:
@@ -87,12 +87,11 @@ class PoreStatsWidget(LTracePluginWidget):
         widget.text = "Classifier"
         formLayout = qt.QFormLayout(widget)
 
-        self.classifierInput = qt.QComboBox()
+        self.classifierInput = TrainedModelSelector(["PoreStats"])
 
         self.classifierInput.objectName = "Classifier Input ComboBox"
 
         self.classifierInput.activated.connect(self._onChangedClassifier)
-        self.classifierInput.setToolTip("Select pre-trained model for segmentation")
         self.classifierInput.currentIndexChanged.connect(lambda _: self.classifierInput.setStyleSheet(""))
 
         self.classifierInfo = qt.QLabel()
@@ -283,37 +282,20 @@ class PoreStatsWidget(LTracePluginWidget):
         super().enter()
 
         # Add pretrained models
-        self._addPretrainedModelsIfAvailable()
         self._onChangedClassifier()
-
-    def _addPretrainedModelsIfAvailable(self):
-        def _getNetNameFromModelName(modelName):
-            return re.search(r"\(([^()]*)\)", modelName).group(1)
-
-        env = helpers.getCurrentEnvironment().value
-        assert env is not None, "Missing environment definition"
-
-        model_dirs = get_trained_models_with_metadata(env)
-        for model_dir in model_dirs:
-            try:
-                metadata = get_metadata(model_dir)
-                if (
-                    metadata["is_segmentation_model"]
-                    and "Pore" in metadata["title"]
-                    and "Siliciclastics" not in metadata["title"]
-                ):
-                    title = _getNetNameFromModelName(metadata["title"])
-                    self.classifierInput.addItem(title, model_dir.as_posix())
-            except RuntimeError as error:
-                logging.error(error)
 
     def _onChangedClassifier(self, selected=None):
         if self.classifierInput.currentData is None:
+            self.classifierInput.triggerMissingModel()
             return
 
-        metadata = get_metadata(self.classifierInput.currentData)
-        model_inputs = metadata["inputs"]
-        model_outputs = metadata["outputs"]
+        metadata = self.classifierInput.getSelectedModelMetadata()
+        model_inputs = metadata.get("inputs")
+        model_outputs = metadata.get("outputs")
+        if model_inputs is None or model_outputs is None:
+            logging.debug(f"Model metadata {metadata} is unexpectedly invalid.")
+            return
+
         model_input_names = list(model_inputs.keys())
         model_output_names = list(model_outputs.keys())
         # temporary limitationonly taking one output
@@ -389,10 +371,15 @@ class PoreStatsWidget(LTracePluginWidget):
         outputDirectoryProvided = len(self.outputDirectoryLineEdit.currentPath) > 0
         spacingTextExists = len(self.imageSpacingLineEdit.text) > 0
         processIsRunning = self.process is not None and self.process.poll() is None
+        hasModels = self.classifierInput.currentData is not None
 
         if self.cliNode is None or not self.cliNode.IsBusy():
             self.applyButton.enabled = (
-                inputDirectoryProvided and outputDirectoryProvided and spacingTextExists and not processIsRunning
+                inputDirectoryProvided
+                and outputDirectoryProvided
+                and spacingTextExists
+                and not processIsRunning
+                and hasModels
             )
         else:
             self.applyButton.enabled = False
@@ -496,7 +483,7 @@ class PoreStatsWidget(LTracePluginWidget):
                         noLAS=not self.exportLASCheckbox.checked,
                     )
                 ),
-                poreModel=_getModelFilePath(self.classifierInput.currentData),
+                poreModel=self.classifierInput.getSelectedModelPth(),
                 segCLI=_getSegCLIPath(self.classifierInput.currentText),
                 inspectorCLI=slicer.modules.segmentinspectorcli.path,
                 foregroundCLI=slicer.modules.smartforegroundcli.path,

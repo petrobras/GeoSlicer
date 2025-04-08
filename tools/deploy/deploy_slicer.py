@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 from shutil import ignore_patterns
 from string import Template
-from typing import List
+from typing import List, Union
 
 
 logger = logging.getLogger()
@@ -143,7 +143,7 @@ def generic_deploy(
     keep_name=False,
 ):
     logger.info("Extracting")
-    slicer_dir = extract_archive(slicer_archive, output_dir)
+    slicer_dir: Path = extract_archive(slicer_archive, output_dir)
 
     # Update submodules
     logger.info("Updating submodules...")
@@ -231,12 +231,39 @@ def generic_deploy(
     if not development:
         version_name = "GeoSlicer-{}".format(version_string)
         archive_folder_name = slicer_dir.with_name(version_name)
+        if args.output_dir is not None:
+            archive_folder_name = Path(args.output_dir) / version_name
+
         if slicer_dir.name != version_name:
-            shutil.move(slicer_dir, archive_folder_name)
+            try:
+                shutil.move(slicer_dir, archive_folder_name)
+            except OSError:
+                # Ignoring Windows issue related to access denied
+                # when trying to remove the file from the older path
+                pass
 
         if not fast_and_dirty and not args.disable_archiving:
             logger.info("Archiving")
             make_archive(args, archive_folder_name, slicer_archive.with_name(version_name))
+
+
+def parse_output_dir(args: argparse.Namespace) -> Union[Path, None]:
+    """Parse the output path argument.
+
+    Args:
+        args (argsparse.Namespace): The output path argument.
+
+    Returns:
+        Union[Path, None]: The path to the output directory or None if no output path is provided.
+    """
+    if args.output_dir is None or not args.output_dir.strip():
+        return None
+
+    path = Path(args.output_dir)
+    if path.is_dir():
+        return path
+
+    return path.parent
 
 
 def get_slicer_version(slicer_dir: Path) -> str:
@@ -297,7 +324,7 @@ def find_cli_source(modules_package_folder, level=1):
             yield from find_cli_source(current_path, level=level - 1)
 
 
-def extract_archive(slicer_archive, output_dir):
+def extract_archive(slicer_archive, output_dir: Path):
     if slicer_archive.is_dir():
         return slicer_archive
 
@@ -329,7 +356,7 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
         pip_call.append("--editable")
     pip_call.append(str(lib_folder))
 
-    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==60.2.0"])
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==61.3.1"])
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
@@ -516,8 +543,8 @@ def copy_windows_dlls(slicer_dir):
     versions.sort(reverse=True)
 
     min_version = version.parse("14.26.0")
-    for version, path in versions:
-        if version < min_version:
+    for _version, path in versions:
+        if _version < min_version:
             raise RuntimeError(f"MSVC minimum requirement ({min_version.public}) not met")
         crt_path = list(path.joinpath("x64").glob("*.CRT"))
         if len(crt_path) >= 1:
@@ -570,7 +597,6 @@ def make_archive(args, source_dir: Path, target_file_without_extension: Path) ->
         result = Path(result)
         target = target_file_without_extension.with_name(result.name)
         shutil.move(result, target)
-        logging.info(f"Compressed file created: {target.as_posix()}")
 
     logger.info(f"Compressed file created: {target.as_posix()}")
     return target
@@ -693,7 +719,7 @@ def commit_to_opensource_repository(args, force):
         repository.git.checkout(origin_reference)
 
 
-def remove_closed_source_files():
+def remove_closed_source_files(args):
     repository = git.Repo(SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
     with open(DEPLOY_CONFIG) as f:
         config = json.JSONDecoder().decode(f.read())
@@ -711,10 +737,13 @@ def remove_closed_source_files():
 
                 remove_directory_recursively(path)
 
-    remove_module_test_directories()
+    remove_module_test_directories(args)
 
 
-def remove_module_test_directories():
+def remove_module_test_directories(args):
+    if args.keep_tests:
+        return
+
     for path in MODULES_PACKAGE_FOLDER.rglob("*/Test/"):
         if not path.is_dir():
             continue
@@ -750,7 +779,7 @@ def clean_repository_changes():
     repository.git.reset("--hard")
 
 
-def prepare_open_source_environment():
+def prepare_open_source_environment(args):
     """Modify the repository files to prepare it for the public version's deployment .
 
     Raises:
@@ -766,7 +795,7 @@ def prepare_open_source_environment():
         )
 
     try:
-        remove_closed_source_files()
+        remove_closed_source_files(args)
         add_open_source_files()
     except Exception as error:
         repository.git.clean("-fd")
@@ -828,7 +857,7 @@ def run(args):
     if not args.public_commit_only:
         if args.archive:
             slicer_archive = Path(args.archive).resolve().absolute()
-            output_dir = slicer_archive.parent
+            output_dir = parse_output_dir(args) or slicer_archive.parent
         else:
             logger.info("error: the following arguments are required: archive")
             exit(1)
@@ -846,7 +875,7 @@ def run(args):
 
     if args.dev:
         if args.generate_public_version:
-            prepare_open_source_environment()
+            prepare_open_source_environment(args)
 
         try:
             deploy_development_environment(
@@ -880,11 +909,11 @@ def run(args):
                 )
 
     elif args.public_commit_only:
-        prepare_open_source_environment()
+        prepare_open_source_environment(args)
         commit_to_opensource_repository(args, force=True)
     else:  # Production mode
         if args.generate_public_version:
-            prepare_open_source_environment()
+            prepare_open_source_environment(args)
 
         try:
             generate_slicer_package(
@@ -993,5 +1022,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Avoid the archiving step when generating a release build.",
         default=False,
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        help="Define a path to store the application.",
+        default=None,
     )
     run(parser.parse_args())

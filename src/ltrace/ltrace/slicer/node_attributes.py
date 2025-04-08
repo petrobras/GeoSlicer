@@ -27,7 +27,6 @@
 
 """
 
-
 import enum
 from collections import namedtuple
 

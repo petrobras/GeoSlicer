@@ -7,9 +7,11 @@ import qt
 import slicer
 import vtk
 
+from scipy.spatial.transform import Rotation
 from ltrace.slicer_utils import *
 from ltrace.slicer.helpers import BlockSignals
 from ltrace.slicer_utils import getResourcePath
+from ltrace.slicer import ui
 
 
 def normalize_angle(angle):
@@ -67,15 +69,24 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         minMaxWidget = transformWidget.findChild(qt.QObject, "MinMaxWidget")
         minValueSpinBox = minMaxWidget.findChild(qt.QObject, "MinValueSpinBox")
         minValueSpinBox.setValue(-10)
+        minValueSpinBox.decimalsChanged.disconnect()
         maxValueSpinBox = minMaxWidget.findChild(qt.QObject, "MaxValueSpinBox")
         maxValueSpinBox.setValue(10)
+        maxValueSpinBox.decimalsChanged.disconnect()
 
         self.rotationSliders = transformWidget.findChild(qt.QObject, "RotationSliders")
         self.transformNodeSelector = transformWidget.findChild(qt.QObject, "TransformNodeSelector")
 
         translationSliders = transformWidget.findChild(qt.QObject, "TranslationSliders")
+        translationSliders.setDecimals(3)
         for i, sliderName in enumerate(["LRSlider", "PASlider", "ISSlider"]):
             slider = translationSliders.findChild(slicer.qMRMLLinearTransformSlider, sliderName)
+
+            # Don't change increment based on range
+            slider.setUnitAwareProperties(0)
+            slider.singleStep = 0.001
+            slider.decimalsChanged.disconnect()
+
             doubleSlider = slider.findChild(ctk.ctkDoubleSlider, "Slider")
             doubleSlider.sliderReleased.connect(self.onSliderReleased)
 
@@ -100,9 +111,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             slider = self.rotationSliders.findChild(slicer.qMRMLLinearTransformSlider, sliderName)
             dial = qt.QDial()
             dial.setWrapping(True)
-            dial.valueChanged.connect(
-                lambda value, sliderIndex=i, slider=slider: self.updateSlider(sliderIndex, slider, value)
-            )
+            dial.valueChanged.connect(lambda value, dialIndex=i: self.updateRotation(dialIndex, value))
             dial.sliderReleased.connect(self.onSliderReleased)
             dial.setRange(-1800, 1800)
             dial.setOrientation(qt.Qt.Horizontal)
@@ -147,31 +156,13 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         formLayout = qt.QFormLayout(frame)
         formLayout.setContentsMargins(0, 0, 0, 0)
 
-        hBoxLayout = qt.QHBoxLayout()
-        formLayout.addRow(hBoxLayout)
+        self.movingNodeSelector = ui.hierarchyVolumeInput(hasNone=True, onChange=self.onTransformedVolumeChanged)
+        formLayout.addRow("Moving volume:", self.movingNodeSelector)
 
-        vBoxLayout = qt.QVBoxLayout()
         self.transformableTreeView = transformWidget.findChild(qt.QObject, "TransformableTreeView")
-        self.transformableTreeView.nodeTypes = [slicer.vtkMRMLVolumeNode.__name__]
-        vBoxLayout.addWidget(qt.QLabel("Available volumes:"))
-        vBoxLayout.addWidget(self.transformableTreeView)
-        hBoxLayout.addLayout(vBoxLayout)
-
-        vBoxLayout = qt.QVBoxLayout()
-        self.transformToolButton = transformWidget.findChild(qt.QObject, "TransformToolButton")
-        self.transformToolButton.clicked.connect(self.onTransformedVolumeChanged)
-        vBoxLayout.addWidget(self.transformToolButton)
-        self.untransformToolButton = transformWidget.findChild(qt.QObject, "UntransformToolButton")
-        self.untransformToolButton.clicked.connect(self.onTransformedVolumeChanged)
-        vBoxLayout.addWidget(self.untransformToolButton)
-        hBoxLayout.addLayout(vBoxLayout)
-
-        vBoxLayout = qt.QVBoxLayout()
         self.transformedTreeView = transformWidget.findChild(qt.QObject, "TransformedTreeView")
-        self.transformedTreeView.nodeTypes = [slicer.vtkMRMLVolumeNode.__name__]
-        vBoxLayout.addWidget(qt.QLabel("Selected volumes:"))
-        vBoxLayout.addWidget(self.transformedTreeView)
-        hBoxLayout.addLayout(vBoxLayout)
+        self.transformToolButton = transformWidget.findChild(qt.QObject, "TransformToolButton")
+        self.untransformToolButton = transformWidget.findChild(qt.QObject, "UntransformToolButton")
 
         self.displayEditCollapsibleWidget = transformWidget.findChild(
             ctk.ctkCollapsibleButton, "DisplayEditCollapsibleWidget"
@@ -257,22 +248,57 @@ class MicroCTTransformsWidget(LTracePluginWidget):
 
     def onTransformedVolumeChanged(self):
         slicer.app.processEvents(1000)
-        self.transformedTreeView.selectAll()
-        visible = len(self.transformedTreeView.selectedIndexes()) > 0
-        self.transformedTreeView.clearSelection()
+        node = self.movingNodeSelector.currentNode()
+        visible = node is not None
         self.buttonsWidget.visible = visible
         self.displayEditCollapsibleWidget.visible = visible
 
-    def updateSlider(self, sliderIndex, slider, value):
+        if not visible:
+            self.onResetButtonClicked()
+            return
+
+        self.transformedTreeView.selectAll()
+        self.untransformToolButton.click()
+
+        self.transformableTreeView.setCurrentNode(node)
+        self.transformToolButton.click()
+
+    def updateRotation(self, dialIndex, value):
         # Value from dial is integer, but we want to have 1 decimal place precision
         value /= 10
-        lastValue = self.lastRotationValues[sliderIndex]
+        lastValue = self.lastRotationValues[dialIndex]
         delta = value - lastValue
-        slider.setValue(slider.value + delta)
-        self.lastRotationValues[sliderIndex] = value
-        self.sliderCumulativeDelta[sliderIndex] += delta
-        angle = normalize_angle(self.sliderCumulativeDelta[sliderIndex])
-        self.rotationLabels[sliderIndex].setText(f"{angle:+.1f}\u00B0")
+
+        self.lastRotationValues[dialIndex] = value
+        self.sliderCumulativeDelta[dialIndex] += delta
+
+        angle = normalize_angle(self.sliderCumulativeDelta[dialIndex])
+
+        rot = Rotation.from_euler("xyz"[dialIndex], angle, degrees=True)
+        matrix3x3 = rot.as_matrix()
+
+        rotMatrix = np.eye(4)
+        rotMatrix[:3, :3] = matrix3x3
+
+        node = self.movingNodeSelector.currentNode()
+        nodeMatrix = vtk.vtkMatrix4x4()
+        node.GetIJKToRASMatrix(nodeMatrix)
+        nodeMatrix = slicer.util.arrayFromVTKMatrix(nodeMatrix)
+        invNodeMatrix = np.linalg.inv(nodeMatrix)
+
+        size = node.GetImageData().GetDimensions()
+        center = np.array(size) / 2
+        centerTranslation = np.eye(4)
+        centerTranslation[:3, 3] = center
+        invCenterTranslation = np.linalg.inv(centerTranslation)
+
+        lastMatrix = self.transformMatrix
+        newMatrix = lastMatrix @ nodeMatrix @ centerTranslation @ rotMatrix @ invCenterTranslation @ invNodeMatrix
+
+        transformNode = self.transformNodeSelector.currentNode()
+        slicer.util.updateTransformMatrixFromArray(transformNode, newMatrix)
+
+        self.rotationLabels[dialIndex].setText(f"{angle:+.1f}\u00B0")
 
     def onSliderReleased(self):
         newTransformMatrix = slicer.util.arrayFromTransformMatrix(self.transformNodeSelector.currentNode())
@@ -314,11 +340,14 @@ class MicroCTTransformsWidget(LTracePluginWidget):
                 dial.setValue(0)
         self.setRotationSlidersValues([0, 0, 0])
         self.sliderCumulativeDelta = [0, 0, 0]
+        self.lastRotationValues = [0, 0, 0]
 
         self.transformedTreeView.selectAll()
         self.untransformToolButton.click()
         self.renewHiddenTransformNode()
         self.configureButtonsState()
+
+        self.movingNodeSelector.setCurrentNode(None)
 
     def reflect(self, plane):
         transformNode = self.transformNodeSelector.currentNode()

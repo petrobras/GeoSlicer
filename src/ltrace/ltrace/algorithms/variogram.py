@@ -1,6 +1,7 @@
 """
 Directional Variogram 3D
 """
+
 import numpy as np
 from scipy.spatial.distance import pdist
 from skgstat import Variogram, DirectionalVariogram, MetricSpace

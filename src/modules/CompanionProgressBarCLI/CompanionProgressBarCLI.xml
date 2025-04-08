@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>1</index>
+  <title>PMS Model Build CLI</title>
+  <description><![CDATA[LTrace Porosity Mapping from Saturation]]></description>
+  <version>0.2.0.</version>
+  <documentation-url></documentation-url>
+  <license/>
+  <contributor>Marcio Weck (LTrace)</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+ <parameters>
+    <label>Shared Memory UUID</label>
+     <string>
+      <name>namespace</name>
+      <label>Namesapce</label>
+      <longflag>namespace</longflag>
+      <description><![CDATA[Shared memory namespace.]]></description>
+      <default></default>
+     </string>
+
+     <integer>
+        <name>timeout</name>
+        <label>Timeout (seconds)</label>
+        <longflag>timeout</longflag>
+        <description><![CDATA[Timeout in seconds.]]></description>
+        <default>300</default>
+     </integer>
+
+  </parameters>
+
+</executable>

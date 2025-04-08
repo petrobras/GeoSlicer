@@ -17,6 +17,7 @@ from ltrace.slicer.ui import numberParamInt
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 
 from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from ltrace.slicer.debounce_caller import DebounceCaller
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -58,9 +59,15 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.rederedInSideBySide = None
         self.rederedInConventional = None
         self.tableWidth = 0
+        self.stashedTransitions = None
 
         self.applyFinishedCallback = lambda: None
         self.applyAllSupported = True
+        self.segmentationChangedDebounceCaller = DebounceCaller(
+            parent=slicer.modules.AppContextInstance.mainWindow,
+            callback=self.onSegmentationChangedHandler,
+            intervalMs=200,
+        )
 
     def clone(self):
         import qSlicerSegmentationsEditorEffectsPythonQt as effects
@@ -321,7 +328,15 @@ the number of clusters equal to the number of segments added to the segmentation
         else:
             self.zoomSlider.setMinimumValue(self._min)
             self.zoomSlider.setMaximumValue(self._max)
-        self.applyKmeans()
+
+        if self.stashedTransitions is None:
+            self.applyKmeans()
+        else:
+            self.transitions = self.stashedTransitions
+            segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+            segmentationNode.SetAttribute("MultipleThresholdTransitions", str(self.transitions.tolist()))
+            self.stashedTransitions = None
+            self.redrawHistogram()
 
     def getColors(self):
         if self.scriptedEffect.parameterSetNode() is None:
@@ -641,7 +656,10 @@ the number of clusters equal to the number of segments added to the segmentation
 
         self.redrawHistogram()
 
-    def onSegmentationNodeModified(self, caller, event):
+    def onSegmentationNodeModified(self, caller, event) -> None:
+        self.segmentationChangedDebounceCaller()
+
+    def onSegmentationChangedHandler(self) -> None:
         self.clearPreviewDisplay()
 
         self.colors = self.getColors()
@@ -651,7 +669,7 @@ the number of clusters equal to the number of segments added to the segmentation
             self.transitions = np.append(self._min, self.transitions)
 
         self.setupPreviewDisplay()
-        self.redrawHistogram()
+        self.applyKmeans()
 
     def updateMRMLFromGUI(self):
         pass
@@ -742,6 +760,7 @@ the number of clusters equal to the number of segments added to the segmentation
             self.previewStep = 1
 
     def changeLayoutPreview(self, currentLayout):
+        self.stashedTransitions = self.transitions
         self.deactivate()
 
         if not self.rederedInConventional or not self.rederedInSideBySide:

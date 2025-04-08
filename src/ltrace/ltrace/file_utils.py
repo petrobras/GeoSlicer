@@ -2,7 +2,6 @@ import logging
 
 import chardet
 import pandas as pd
-from detect_delimiter import detect
 
 
 def read_csv(filepath, whitelist=None, **kwargs):

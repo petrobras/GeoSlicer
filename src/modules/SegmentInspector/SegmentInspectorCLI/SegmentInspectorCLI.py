@@ -25,7 +25,7 @@ import os
 import gc
 
 from ltrace import transforms
-from ltrace.algorithms import partition
+from porespy.filters import snow_partitioning
 from ltrace.algorithms.measurements import (
     LabelStatistics2D,
     calculate_statistics_on_segments,
@@ -292,9 +292,7 @@ def main(args):
             if np.any(min_voxel_size != spacing):
                 print("Anisotropic watershed is not currently suported, running isotropic watershed")
             # TODO: implement anisotropy in PyEDT, but pass to snow_partitioning by precalculating dt
-
-            result = partition.snow_partitioning(im_mod, r_max=r_max, sigma=sigma_vx)
-
+            result = snow_partitioning(im_mod, r_max=r_max, sigma=sigma_vx)
         elif params.get("method") == "deep watershed":
             base_volume = int(params["base_volume"])
             intersection = int(params["intersection"])

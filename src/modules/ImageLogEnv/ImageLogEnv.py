@@ -88,12 +88,7 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         )
 
         self.setupSegmentation()
-        self.setupTools(tools=[
-            "VolumeCalculator",
-            "CustomizedTables",
-            "TableFilter",
-            "Charts"
-        ])
+        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
         # self.setupLoaders()
         self.setupSliceViewAnnotations()
 

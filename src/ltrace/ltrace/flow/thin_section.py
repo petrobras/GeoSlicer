@@ -1,5 +1,3 @@
-import sys
-
 from ltrace.flow.framework import (
     FlowWidget,
     FlowState,
@@ -23,7 +21,6 @@ from ltrace.slicer.cli_queue import CliQueue
 import ctk
 import qt
 import slicer
-import importlib
 
 
 Segmenter = helpers.LazyLoad("Segmenter")
@@ -360,7 +357,7 @@ class SmartSeg(FlowStep):
         self.modelComboBox.addItem("Select a model")
         layout.addRow("Model:", self.modelComboBox)
 
-        modelDirs = assets.get_trained_models_with_metadata("ThinSectionEnv")
+        modelDirs = assets.get_models_by_tag("ThinSectionEnv")
         self.metadata = {}
         for modelDir in modelDirs:
             metadata = assets.get_metadata(modelDir)
@@ -492,7 +489,7 @@ class SmartSeg(FlowStep):
                 None,
                 cliQueue,
             )
-        self.logic.node_created.connect(self.onFinish)
+        self.logic.nodeCreated.connect(self.onFinish)
         cleaningLogic = Segmenter.PoreCleaningLogic(
             removeSpurious=self.removeSpuriousCheckbox.isChecked(),
             cleanResin=self.cleanResinCheckbox.isChecked(),

@@ -9,7 +9,10 @@ from MercurySimulationLib.SubscaleModelWidget import SubscaleModelWidget
 
 
 def generic_setter(widget, varname, value):
-    setattr(widget, varname, max(getattr(widget, varname), value))
+    if hasattr(widget, varname):
+        setattr(widget, varname, max(getattr(widget, varname), value))
+    else:
+        setattr(widget, varname, value)
 
 
 class BaseArgsForm(qt.QWidget):

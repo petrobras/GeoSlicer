@@ -56,6 +56,14 @@ def visualize_vtu(
         arrow_scale *= model_elements["volume_side"]
 
     ### Set up point coordinates and scalars for spheres and tubes ###
+    spheres_condW = vtk.vtkFloatArray()
+    spheres_condW.SetName("condW")
+    spheres_condW.SetNumberOfValues(model_elements["radii"].GetNumberOfTuples())
+    spheres_condW.Fill(0)
+    spheres_condO = vtk.vtkFloatArray()
+    spheres_condO.SetName("condO")
+    spheres_condO.SetNumberOfValues(model_elements["radii"].GetNumberOfTuples())
+    spheres_condO.Fill(0)
 
     # Spheres glyphs
     polydata = vtk.vtkPolyData()
@@ -63,6 +71,8 @@ def visualize_vtu(
     polydata.SetLines(model_elements["link_elements"])
     polydata.GetPointData().AddArray(model_elements["radii"])
     polydata.GetPointData().AddArray(model_elements["saturation"])
+    polydata.GetPointData().AddArray(spheres_condW)
+    polydata.GetPointData().AddArray(spheres_condO)
     polydata.GetPointData().AddArray(model_elements["pore_position"])
     polydata.GetPointData().AddArray(model_elements["pore_type"])
     polydata.GetPointData().AddArray(model_elements["pore_id"])
@@ -84,6 +94,10 @@ def visualize_vtu(
     arrows_radii.SetName("radius")
     arrows_saturations = vtk.vtkFloatArray()
     arrows_saturations.SetName("saturation")
+    arrows_condW = vtk.vtkFloatArray()
+    arrows_condW.SetName("condW")
+    arrows_condO = vtk.vtkFloatArray()
+    arrows_condO.SetName("condO")
     arrows_direction = vtk.vtkFloatArray()
     arrows_direction.SetName("direction")
     arrows_direction.SetNumberOfComponents(3)
@@ -100,6 +114,8 @@ def visualize_vtu(
         arrows_coordinates.InsertPoint(i, *arrow_position)
         arrows_radii.InsertTuple1(i, 1)
         arrows_saturations.InsertTuple1(i, arrow_saturation)
+        arrows_condW.InsertTuple1(i, 0)
+        arrows_condO.InsertTuple1(i, 0)
         arrows_direction.InsertTuple3(i, 0, 0, 1)
         arrows_position.InsertTuple3(i, *arrow_position)
         arrows_type.InsertTuple1(i, ARROW_TYPE)
@@ -111,6 +127,8 @@ def visualize_vtu(
     arrow_polydata.SetPoints(arrows_coordinates)
     arrow_polydata.GetPointData().AddArray(arrows_radii)
     arrow_polydata.GetPointData().AddArray(arrows_saturations)
+    arrow_polydata.GetPointData().AddArray(arrows_condW)
+    arrow_polydata.GetPointData().AddArray(arrows_condO)
     arrow_polydata.GetPointData().AddArray(arrows_position)
     arrow_polydata.GetPointData().AddArray(arrows_type)
     arrow_polydata.GetPointData().AddArray(arrows_id)
@@ -136,6 +154,8 @@ def visualize_vtu(
     tubes_polydata.SetLines(model_elements["link_elements"])
     tubes_polydata.GetPointData().AddArray(model_elements["tubes_radii"])
     tubes_polydata.GetPointData().AddArray(model_elements["tubes_saturation"])
+    tubes_polydata.GetPointData().AddArray(model_elements["tubes_condW"])
+    tubes_polydata.GetPointData().AddArray(model_elements["tubes_condO"])
     tubes_polydata.GetPointData().AddArray(model_elements["tubes_position"])
     tubes_polydata.GetPointData().AddArray(model_elements["tubes_type"])
     tubes_polydata.GetPointData().AddArray(model_elements["tubes_id"])
@@ -184,6 +204,8 @@ def generate_model_variable_scalar(temp_folder, is_multiscale=False):
     point_data = pore_mesh.GetOutput().GetPointData()
     pressures.append(pressure)
     point_data.GetArray("saturation").SetName("saturation_0")
+    point_data.GetArray("condW").SetName("condW_0")
+    point_data.GetArray("condO").SetName("condO_0")
 
     previous_array = vtk.util.numpy_support.vtk_to_numpy(point_data.GetArray("saturation_0"))
     data_points = []
@@ -197,10 +219,16 @@ def generate_model_variable_scalar(temp_folder, is_multiscale=False):
         )
         saturation = poly_data.GetOutput().GetPointData().GetArray("saturation")
         new_array = vtk.util.numpy_support.vtk_to_numpy(saturation)
+        condW = poly_data.GetOutput().GetPointData().GetArray("condW")
+        condO = poly_data.GetOutput().GetPointData().GetArray("condO")
 
         if data_point == 1 or np.mean(np.abs(new_array - previous_array)) != 0.0:
             saturation.SetName(f"saturation_{(i:=i+1)}")
+            condW.SetName(f"condW_{i}")
+            condO.SetName(f"condO_{i}")
             point_data.AddArray(saturation)
+            point_data.AddArray(condW)
+            point_data.AddArray(condO)
             pressures.append(pressure)
             previous_array = new_array
             file = open(filepath, "r")
@@ -292,6 +320,8 @@ def _unstructured_grid_to_dict(
     position_list = np.empty((n_points, 3), dtype=np.float64)
     pore_radius_list = np.empty(n_points, dtype=np.float64)
     sw_list = np.empty(n_points, dtype=np.float64)
+    condW_list = np.empty(n_points, dtype=np.float64)
+    condO_list = np.empty(n_points, dtype=np.float64)
     inlet_bool_list = np.full(n_points, False, dtype=np.bool_)
     outlet_bool_list = np.full(n_points, False, dtype=np.bool_)
 
@@ -303,18 +333,6 @@ def _unstructured_grid_to_dict(
         right_pore_id = unstructured_grid.GetCell(i).GetPointIds().GetId(1)
         left_pos = unstructured_grid.GetPoint(left_pore_id)
         right_pos = unstructured_grid.GetPoint(right_pore_id)
-        if (
-            left_pos[2] < z_min
-            or left_pos[2] > z_max
-            or right_pos[2] < z_min
-            or right_pos[2] > z_max
-            or left_pos[1] < y_min
-            or left_pos[1] > y_max
-            or right_pos[1] < y_min
-            or right_pos[1] > y_max
-            or (left_pos[0] > x_max and right_pos[0] > x_max)
-        ):
-            continue
 
         throat_radius = unstructured_grid.GetCellData().GetArray("RRR").GetComponent(i, 0)
 
@@ -324,38 +342,30 @@ def _unstructured_grid_to_dict(
 
         throat_count += 1
 
-        for pore_position in (left_pore_id, right_pore_id):
-            if pore_position not in pore_mapper.keys():
-                position = unstructured_grid.GetPoint(pore_position)
-                x_pos = position[0]
-                if axis == "x":
-                    position = position[-1::-1]
-                radius = unstructured_grid.GetPointData().GetArray("radius").GetComponent(pore_position, 0)
+    for pore_id in range(n_points):
+        position = unstructured_grid.GetPoint(pore_id)
+        radius = unstructured_grid.GetPointData().GetArray("radius").GetComponent(pore_id, 0)
+        sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(pore_id, 0)
 
-                pore_mapper[pore_position] = pore_count
-                if x_pos < x_min:
-                    if cycle == "w":
-                        sw = 1
-                    else:  # cycle == 'o'
-                        sw = 0
-                    inlet_bool_list[pore_count] = True
-                elif x_pos > x_max:
-                    if pore_position == left_pore_id:
-                        sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(right_pore_id, 0)
-                        other_x = unstructured_grid.GetPoint(right_pore_id)[2]
-                    else:
-                        sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(left_pore_id, 0)
-                        other_x = unstructured_grid.GetPoint(left_pore_id)[2]
-                    if other_x < x_max:
-                        outlet_bool_list[pore_count] = True
-                else:
-                    sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(pore_position, 0)
+        if axis == "x":
+            position = position[-1::-1]
 
-                position_list[pore_count] = position
-                pore_radius_list[pore_count] = radius
-                sw_list[pore_count] = sw
+        is_inlet = unstructured_grid.GetPointData().GetArray("inlets").GetComponent(pore_id, 0)
+        if is_inlet == 1:
+            inlet_bool_list[pore_count] = True
+        is_outlet = unstructured_grid.GetPointData().GetArray("outlets").GetComponent(pore_id, 0)
+        if is_outlet == 1:
+            outlet_bool_list[pore_count] = True
 
-                pore_count += 1
+        pore_mapper[pore_id] = pore_count
+        position_list[pore_count] = position
+        sw_list[pore_count] = sw
+        if sw == 0.5:
+            pore_radius_list[pore_count] = 0
+        else:
+            pore_radius_list[pore_count] = radius
+
+        pore_count += 1
 
     if normalize_radius:
         volume = (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
@@ -417,6 +427,8 @@ def _unstructured_grid_to_dict(
             "second_conn": pore_mapper[right_pore_id],
             "radius": throat_radius_list[i],
             "Sw_cell": unstructured_grid.GetCellData().GetArray("Sw").GetComponent(throat_index, 0),
+            "condW": unstructured_grid.GetCellData().GetArray("condW").GetComponent(throat_index, 0),
+            "condO": unstructured_grid.GetCellData().GetArray("condO").GetComponent(throat_index, 0),
         }
 
     return pores, throats, arrows, volume_side
@@ -487,6 +499,10 @@ def _model_elements_from_grid(
     tubes_radii.SetName("radius")
     tubes_saturation = vtk.vtkFloatArray()
     tubes_saturation.SetName("saturation")
+    tubes_condW = vtk.vtkFloatArray()
+    tubes_condW.SetName("condW")
+    tubes_condO = vtk.vtkFloatArray()
+    tubes_condO.SetName("condO")
     tubes_position = vtk.vtkFloatArray()
     tubes_position.SetNumberOfComponents(3)
     tubes_position.SetName("position")
@@ -499,6 +515,8 @@ def _model_elements_from_grid(
         second_conn = throat["second_conn"]
         throat_radius = throat["radius"]
         throat_sw = throat["Sw_cell"]
+        throat_condW = throat["condW"]
+        throat_condO = throat["condO"]
 
         pos_x, pos_y, pos_z = pores[first_conn]["position"]
         pos_x = pos_x * scale_factor
@@ -509,6 +527,8 @@ def _model_elements_from_grid(
         tubes_position.InsertTuple3(point_0_index, pos_x, pos_y, pos_z)
         tubes_radii.InsertTuple1(point_0_index, throat_radius)
         tubes_saturation.InsertTuple1(point_0_index, throat_sw)
+        tubes_condW.InsertTuple1(point_0_index, throat_condW)
+        tubes_condO.InsertTuple1(point_0_index, throat_condO)
 
         pos_x, pos_y, pos_z = pores[second_conn]["position"]
         pos_x = pos_x * scale_factor
@@ -519,6 +539,8 @@ def _model_elements_from_grid(
         tubes_position.InsertTuple3(point_1_index, pos_x, pos_y, pos_z)
         tubes_radii.InsertTuple1(point_1_index, throat_radius)
         tubes_saturation.InsertTuple1(point_1_index, throat_sw)
+        tubes_condW.InsertTuple1(point_1_index, throat_condW)
+        tubes_condO.InsertTuple1(point_1_index, throat_condO)
 
         elementIdList = vtk.vtkIdList()
         _ = elementIdList.InsertNextId(point_0_index)
@@ -543,6 +565,8 @@ def _model_elements_from_grid(
         "pore_type": pore_type,
         "pore_id": pore_id,
         "tubes_saturation": tubes_saturation,
+        "tubes_condW": tubes_condW,
+        "tubes_condO": tubes_condO,
         "tubes_position": tubes_position,
         "tubes_type": tubes_type,
         "tubes_id": tubes_id,

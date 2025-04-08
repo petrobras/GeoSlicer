@@ -14,6 +14,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "simulation type": ONE_ANGLE,
         "rotation angles": 100,
         "keep_temporary": False,
+        "subres_porositymodifier": 1.0,
         "subres_model_name": "Fixed Radius",
         "subres_params": {"radius": 0.1},
         "solver": "pypardiso",
@@ -88,6 +89,13 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.rotationAnglesEdit.objectName = "Multiangle Steps"
         layout.addRow(self.rotationAnglesLabel, self.rotationAnglesEdit)
 
+        self.generateVisualizationCheckbox = qt.QCheckBox()
+        self.generateVisualizationCheckbox.setToolTip(
+            "Enable to generate visualization model nodes. Note: For large projects, the generated model nodes may consume significant disk space when saved."
+        )
+        self.generateVisualizationCheckbox.objectName = "Visualization checkbox"
+        layout.addRow("Generate visualization:", self.generateVisualizationCheckbox)
+
         self.simulationTypeComboBox.currentTextChanged.connect(self.onSimulationTypeChanged)
         self.simulationTypeComboBox.currentTextChanged.emit(self.simulationTypeComboBox.currentText)
 
@@ -97,6 +105,8 @@ class OnePhaseSimulationWidget(qt.QFrame):
     def getParams(self):
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+        subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
+        shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             subres_params = {
@@ -109,6 +119,8 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "rotation angles": int(self.rotationAnglesEdit.text),
             "keep_temporary": False,
             "subresolution function call": self.mercury_widget.getFunction,
+            "subres_porositymodifier": subres_porositymodifier,
+            "subres_shape_factor": shape_factor,
             "subres_model_name": subres_model_name,
             "subres_params": subres_params,
             "solver": self.solverComboBox.currentText,
@@ -116,6 +128,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "preconditioner": self.preconditionerComboBox.currentText,
             "clip_check": self.clipCheck.isChecked(),
             "clip_value": float(self.clipEdit.text),
+            "visualization": self.generateVisualizationCheckbox.isChecked(),
         }
 
     def onSolverChanged(self, text):

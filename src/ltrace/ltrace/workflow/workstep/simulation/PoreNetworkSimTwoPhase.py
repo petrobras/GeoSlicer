@@ -22,7 +22,7 @@ class PoreNetworkSimTwoPhase(Workstep):
 
     def run(self, table_nodes):
         progressBar = LocalProgressBar()
-        logic = TwoPhaseSimulationLogic(progressBar)
+        logic = TwoPhaseSimulationLogic(None, progressBar)
 
         for idx, table_node in enumerate(table_nodes):
             params = self.params.copy()
@@ -31,7 +31,11 @@ class PoreNetworkSimTwoPhase(Workstep):
             )
             params["subresolution function"] = params["subresolution function call"](table_node)
 
-            logic.run_2phase(table_node, params, prefix=table_node.GetName(), callback=lambda _: True, wait=True)
+            snapshot_node = None
+
+            logic.run_2phase(
+                table_node, params, snapshot_node, prefix=table_node.GetName(), callback=lambda _: True, wait=True
+            )
             yield f"two-phase simulation of {table_node.GetName()}"
 
     def widget(self):

@@ -40,6 +40,8 @@ markdown_extensions:
       toc_depth: 2
   # Enables admonitions
   - admonition
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.critic
@@ -49,7 +51,9 @@ markdown_extensions:
   - pymdownx.tilde
   - pymdownx.tabbed:
       alternate_style: true
-
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML
 nav:
   - Visão Geral: "Overview/index.md"
   - Introdução:
@@ -72,8 +76,11 @@ nav:
       - Filtros: "Filtering_and_Segmentation/Filters/apply_filters.md"
       - Segmentação:
 #            - Introdução: "Filtering_and_Segmentation/Segmentation/intro.md"
-            - Segmentação Manual: "Filtering_and_Segmentation/Segmentation/manual_segmentation.md"
-            - Segmentação Automática (IA): "Filtering_and_Segmentation/Segmentation/auto_segmentation.md"
+            - Segmentação Manual:
+                - Segment Editor: "Filtering_and_Segmentation/Segmentation/Manual/manual_segmentation.md"
+                - Efeitos:
+                    - Primeiro Plano Inteligente: "Filtering_and_Segmentation/Segmentation/Manual/Effects/smart_foreground.md"
+            - Segmentação Automática (IA): "Filtering_and_Segmentation/Segmentation/Auto/auto_segmentation.md"
 #            - Segmentação Semiautomática: "Filtering_and_Segmentation/Segmentation/semiautomatic_segmentation.md"
 #            - Segmentação de Imagens Tomográficas: "Filtering_and_Segmentation/Segmentation/segmentation_microct.md"
 #            - Segmentação de Lâminas: "Filtering_and_Segmentation/Segmentation/segmentation_thin_section.md"
@@ -110,7 +117,6 @@ nav:
           - Thin Section Loader: "Modules/Thin_section/Loader.md"
 #      - Logs de Poço: "Modules/Thin_section/AutoRegistration.md"
 #      - Imagens Massivas: "Modules/Thin_section/AutoRegistration.md"
-#      - Segmentação:
       - Quantificação:
 #          - Instance Segmenter: "Modules/Quantification/instance_segmenter.md"
           - Segment Inspector: "Modules/Quantification/segment_inspector.md"
@@ -127,6 +133,10 @@ nav:
           - Multiscale Post Processing: "Modules/Multiscale/MultiscalePostProcessing.md"
           - Image Log Inpaint: "Modules/Multiscale/ImageLogInpaint.md"
           - Image Log Crop: "Modules/Multiscale/ImageLogCropVolume.md"
+      - Segmentação:
+          - Treinamento de Modelo: "Modules/Segmenter/Semiauto/semiauto.md"
+          - Modelos Pré-treinados (Micro CT): "Modules/Segmenter/Automatic/automatic_MicroCT.md"
+          - Modelos Pré-treinados (Thin Section): "Modules/Segmenter/Automatic/automatic_ThinSection.md"
 #  - Suporte:
 #      - Error Log: "Support_and_assistance/error_log.md"
 #      - Reportar Erros: "Support_and_assistance/log_bundle.md"

@@ -1,10 +1,16 @@
-from pathlib import Path
+import slicer
 import json
 
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().absolute().parent / "assets"
 PUBLIC = ROOT / "public"
 PRIVATE = ROOT / "private"
+
+
+def get_public_asset_path():
+    """Returns the public assets directory absolute path"""
+    return PUBLIC.as_posix()
 
 
 def get_asset(asset_name):
@@ -25,42 +31,50 @@ def get_asset(asset_name):
     return None
 
 
-def get_trained_models(environment):
-    models_path = Path(__file__).resolve().absolute().parent / "assets" / "models"
+def get_model_by_name(name: str) -> Path:
+    paths = slicer.app.settings().value("AISingleModelsPaths", {})
+    if name in paths.keys():
+        return Path(paths[name]).parent
+    else:
+        raise FileExistsError(f"Could not find model with name {name}")
 
-    extensions = [".h5", ".pth"]
+
+def get_models_by_tag(tags: list[str]) -> list[str]:
+    pathList = slicer.app.settings().value("AIModelsPaths", [])
     models = []
-    for root_path in (PUBLIC, PRIVATE):
-        models_path = root_path / environment
-        models += [file for file in models_path.glob("**/*") if file.suffix in extensions]
-    return models
 
+    if not pathList:
+        return models
 
-def get_trained_models_with_metadata(environment):
-    models = []
-    for root_path in (PUBLIC, PRIVATE):
-        models_path = root_path / environment
-        if not models_path.is_dir():
-            continue
-        for subdir in models_path.iterdir():
-            if not subdir.is_dir():
+    for path in pathList:
+        directories = [d for d in Path(path).rglob("*") if d.is_dir()]
+
+        for _dir in directories:
+            if _dir.parent.name not in tags:
                 continue
-            base = subdir.name
-            pth = subdir / f"model.pth"
 
-            assert pth.exists(), f"Directory {base} exists but file {pth} does not exist"
+            modelPthFile = _dir / "model.pth"
+            modelH5File = _dir / "model.h5"
+            metaFile = _dir / "meta.json"
 
-            models.append(subdir)
+            if (modelPthFile.exists() or modelH5File.exists()) and metaFile.exists():
+                models.append(_dir)
+
     return models
 
 
-def get_metadata(model_dir):
+def get_metadata(model_dir: str) -> dict:
     model_dir = Path(model_dir)
     with open(model_dir / f"meta.json") as f:
         metadata = json.load(f)
     return metadata
 
 
-def get_pth(model_dir):
+def get_pth(model_dir: str) -> Path:
     model_dir = Path(model_dir)
     return model_dir / f"model.pth"
+
+
+def get_h5(model_dir: str) -> Path:
+    model_dir = Path(model_dir)
+    return model_dir / f"model.h5"

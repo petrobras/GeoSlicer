@@ -2,17 +2,8 @@ import cv2
 import numpy as np
 import slicer
 import slicer.util
-from ltrace.assets_utils import get_asset
 from ltrace.lmath.filtering import DistributionFilter
 from scipy.ndimage import zoom
-
-
-class Model:
-    def getModelPath(self, model):
-        return get_asset("ImageLogEnv/" + model + ".h5")
-
-    def segment(self, parameters):
-        raise NotImplementedError
 
 
 def updateLabelMapArray(labelMapArray, referenceImageNode):

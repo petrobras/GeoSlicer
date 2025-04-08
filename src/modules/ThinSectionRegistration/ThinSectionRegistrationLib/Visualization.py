@@ -60,7 +60,7 @@ class VisualizationWidget(pqWidget):
         self.fadeSlider.maximum = 1.0
         self.fadeSlider.value = 0.5
         self.fadeSlider.singleStep = 0.05
-        self.fadeSlider.connect("valueChanged(double)", self.onFadeChanged)
+        self.fadeSlider.valueChanged.connect(self.onFadeChanged)
         fadeLayout.addWidget(self.fadeSlider)
 
         # Rock and Flicker

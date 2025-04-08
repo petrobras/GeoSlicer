@@ -222,7 +222,9 @@ LOADERS = {
 
 def loadEnvironment(toolbar, environmentInfo):
     groups = slicer.modules.AppContextInstance.modules.groups
+    mainWindow = slicer.modules.AppContextInstance.mainWindow
     with ProgressBarProc() as pb:
+        windowModified = slicer.modules.AppContextInstance.mainWindow.isWindowModified()
         related = groups[environmentInfo.category]
         loadModules(related, permanent=False, favorite=False)
 
@@ -255,6 +257,7 @@ def loadEnvironment(toolbar, environmentInfo):
         envSelectorButton.setText(environmentInfo.displayName)
         envSelectorButton.setIcon(qt.QIcon(environmentInfo.icon))
         envSelectorButton.setToolButtonStyle(qt.Qt.ToolButtonTextBesideIcon)
+        slicer.modules.AppContextInstance.mainWindow.setWindowModified(windowModified)
 
 
 def loadEnvironmentByName(toolbar, displayName):

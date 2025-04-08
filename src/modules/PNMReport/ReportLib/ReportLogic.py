@@ -19,16 +19,19 @@ from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer_utils import LTracePluginLogic
 
-CustomResampleScalarVolumeLogic = LazyLoad("CustomResampleScalarVolume.CustomResampleScalarVolumeLogic")
-PoreNetworkExtractorLogic = LazyLoad("PoreNetworkExtractor.PoreNetworkExtractorLogic")
-PoreNetworkProductionLogic = LazyLoad("PoreNetworkProduction.PoreNetworkProductionLogic")
-OnePhaseSimulationWidget = LazyLoad("PoreNetworkSimulationLib.OnePhaseSimulationWidget.OnePhaseSimulationWidget")
-TwoPhaseSimulationWidget = LazyLoad("PoreNetworkSimulationLib.TwoPhaseSimulationWidget.TwoPhaseSimulationWidget")
-OnePhaseSimulationLogic = LazyLoad("PoreNetworkSimulationLib.PoreNetworkSimulationLogic.OnePhaseSimulationLogic")
-TwoPhaseSimulationLogic = LazyLoad("PoreNetworkSimulationLib.PoreNetworkSimulationLogic.TwoPhaseSimulationLogic")
-MercurySimulationWidget = LazyLoad("MercurySimulationLib.MercurySimulationWidget.MercurySimulationWidget")
-MercurySimulationLogic = LazyLoad("MercurySimulationLib.MercurySimulationLogic.MercurySimulationLogic")
-SubscaleLogicDict = LazyLoad("MercurySimulationLib.SubscaleModelWidget.SubscaleLogicDict")
+
+from CustomResampleScalarVolume import CustomResampleScalarVolumeLogic
+from PoreNetworkSimulation import (
+    OnePhaseSimulationWidget,
+    OnePhaseSimulationLogic,
+    TwoPhaseSimulationLogic,
+    TwoPhaseSimulationWidget,
+    MercurySimulationWidget,
+    MercurySimulationLogic,
+    SubscaleLogicDict,
+)
+from PoreNetworkExtractor import PoreNetworkExtractorLogic
+from PoreNetworkProduction import PoreNetworkProductionLogic
 
 
 class PNMQueue(qt.QObject):
@@ -204,10 +207,10 @@ class ReportLogic(LTracePluginLogic):
             self.pnm_report["porosity"] = slicer.util.arrayFromVolume(referenceNode).mean()
 
         local_progress_bar = LocalProgressBar()
-        self.extractor_logic = PoreNetworkExtractorLogic(local_progress_bar)
-        self.one_phase_logic = OnePhaseSimulationLogic(local_progress_bar)
-        self.two_phase_logic = TwoPhaseSimulationLogic(local_progress_bar)
-        self.micp_logic = MercurySimulationLogic(local_progress_bar)
+        self.extractor_logic = PoreNetworkExtractorLogic(self.parent(), local_progress_bar)
+        self.one_phase_logic = OnePhaseSimulationLogic(self.parent(), local_progress_bar)
+        self.two_phase_logic = TwoPhaseSimulationLogic(self.parent(), local_progress_bar)
+        self.micp_logic = MercurySimulationLogic(self.parent(), local_progress_bar)
 
         # Set subresolution model
         if "subscale_model_params" in params:

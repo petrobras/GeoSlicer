@@ -8,7 +8,7 @@ import vtk
 
 from ltrace.slicer import export
 from ltrace.slicer import ui
-from ltrace.slicer.helpers import getNodeDataPath
+from ltrace.slicer.helpers import getNodeDataPath, checkUniqueNames
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 
 
@@ -145,7 +145,7 @@ class ThinSectionExportWidget(LTracePluginWidget):
         self.applyCancelButtons.applyBtn.setEnabled(self.nodes)
 
     def onExportClicked(self):
-        export.checkUniqueNames(self.nodes)
+        checkUniqueNames(self.nodes)
         outputDir = self.directorySelector.directory
         ignoreDirStructure = self.ignoreDirStructureCheckbox.checked
         imageFormat = self.imageFormatBox.currentText

@@ -88,13 +88,15 @@ def main(args):
                 "matacão",
             ]
             ooids_rock_type = {
-                cls: "argilito"
-                if "argila" in cls
-                else "siltito"
-                if "silte" in cls
-                else "arenito"
-                if "areia" in cls
-                else "conglomerado_ou_brecha"
+                cls: (
+                    "argilito"
+                    if "argila" in cls
+                    else "siltito"
+                    if "silte" in cls
+                    else "arenito"
+                    if "areia" in cls
+                    else "conglomerado_ou_brecha"
+                )
                 for cls in ooids_size_classes
             }
 

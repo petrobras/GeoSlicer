@@ -11,12 +11,12 @@ import warnings
 import slicer
 import slicer.util
 import mrml
-
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-
 import numpy as np
 import scipy.ndimage as ndi
+
+from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 from skimage import measure
+from pathlib import Path
 
 
 def remove_spurious(image, binary_seg, pore_model):
@@ -70,7 +70,7 @@ def remove_spurious(image, binary_seg, pore_model):
     if split_pores.max() > 0:
         # Há um modelo RandomForest de remoção de poros espúrios para cada modelo de segmentação de poros
         with open(
-            Path(__file__).parent.parent
+            Path(__file__).parents[1]
             / "PoreStatsCLI"
             / "Libs"
             / "pore_stats"

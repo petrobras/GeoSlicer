@@ -307,7 +307,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
                 cancelText="Cancel",
                 enabled=True,
                 applyObjectName="Volume Dialog Apply",
-                cancelObjectName="Cancel Registration Button",
+                cancelObjectName="Volume Dialog Cancel",
                 parent=self.volumeButtonFrame,
             )
             self.volumeButtonFrame.layout().addWidget(self.volumeDialogApplyCancelButtons)

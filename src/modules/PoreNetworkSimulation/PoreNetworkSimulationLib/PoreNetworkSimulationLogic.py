@@ -1,5 +1,7 @@
 import vtk
 
+import random
+import string
 import itertools
 import json
 import logging
@@ -7,6 +9,7 @@ import os
 import re
 import shutil
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +27,7 @@ from ltrace.pore_networks.vtk_utils import (
     create_permeability_sphere,
 )
 from ltrace.slicer import helpers
+from ltrace.slicer.binary_node import createBinaryNode, getBinary
 from ltrace.slicer_utils import (
     LTracePluginLogic,
     dataFrameToTableNode,
@@ -96,14 +100,15 @@ def calculateTransformNodeFromVolume(tableNode):
 
 
 class OnePhaseSimulationLogic(LTracePluginLogic):
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.prefix = None
         self.rootDir = None
         self.results = {}
         self.caDistributionTableDir = None
+        self.visualization = False
 
     def run_1phase(self, inputTable, params, prefix, callback, wait=False):
         self.inputTableID = inputTable.GetID()
@@ -111,13 +116,21 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
         self.prefix = prefix
+        self.visualization = params["visualization"]
 
         refNode = inputTable.GetNodeReference("PoresLabelMap")
         ijktorasDirections = np.zeros([3, 3])
         refNode.GetIJKToRASDirections(ijktorasDirections)
         self.params["ijktoras"] = [ijktorasDirections[i, i] for i in range(3)]
 
-        self.temp_dir = f"{slicer.app.temporaryPath}/porenetworksimulationcli"
+        hash = "".join(
+            random.choices(
+                string.ascii_letters,
+                k=22,
+            )
+        )
+        directory_name = f"pnm_cli_{hash}"
+        self.temp_dir = f"{slicer.app.temporaryPath}/{directory_name}"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         os.mkdir(self.temp_dir)
 
@@ -194,8 +207,9 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
 
     def onFinish(self):
         if self.params["simulation type"] == ONE_ANGLE:
-            self.createVisualizationModels()
             self.createTableNodes()
+            if self.visualization:
+                self.createVisualizationModels()
         elif self.params["simulation type"] == MULTI_ANGLE:
             self.createVisualizationMultiAngleModels()
             self.createVisualizationMultiAngleSphereModels()
@@ -429,22 +443,22 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
 
 
 class TwoPhaseSimulationLogic(LTracePluginLogic):
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.prefix = None
 
-    def run_2phase(self, pore_node, params, prefix, callback, wait=False):
+    def run_2phase(self, pore_node, snapshot_node, params, prefix, callback, wait=False):
         self.start_time = time.time()
-        self.simulate_krel(pore_node, params, prefix, callback, wait)
+        self.simulate_krel(pore_node, snapshot_node, params, prefix, callback, wait)
 
     def cancel(self):
         if self.cliNode is None:
             return
         self.cliNode.Cancel()
 
-    def simulate_krel(self, pore_node, params, prefix, callback, wait=False):
+    def simulate_krel(self, pore_node, snapshot_node, params, prefix, callback, wait=False):
         """
         Perform two-phase fluid simulation
         Runs all parallel batches of simulation, then concatenates the results
@@ -468,11 +482,18 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Two_Phase_PN_Simulation")
         folderTree.SetItemExpanded(self.rootDir, False)
 
-        if params["create_ca_distributions"]:
+        if params["create_ca_distributions"] == "T":
             self.caDistributionTableDir = folderTree.CreateFolderItem(self.rootDir, "CA Distribution")
             folderTree.SetItemExpanded(self.caDistributionTableDir, False)
 
-        self.temp_dir = f"{slicer.app.temporaryPath}/porenetworksimulationcli"
+        hash = "".join(
+            random.choices(
+                string.ascii_letters,
+                k=22,
+            )
+        )
+        directory_name = f"pnm_cli_{hash}"
+        self.temp_dir = f"{slicer.app.temporaryPath}/{directory_name}"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         os.mkdir(self.temp_dir)
 
@@ -504,13 +525,23 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         subresolution_function = params["subresolution function"]
         del params["subresolution function"]
         del params["subresolution function call"]
-        print(subresolution_function)
-        statoil_dict = geo2pnf(pore_node, subresolution_function)
+        print(params["subres_porositymodifier"])
+        statoil_dict = geo2pnf(
+            pore_node,
+            subresolution_function,
+            subres_shape_factor=params["subres_shape_factor"],
+            subres_porositymodifier=params["subres_porositymodifier"],
+        )
         with open(str(self.cwd / "statoil_dict.json"), "w") as file:
             json.dump(statoil_dict, file)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)
+
+        if snapshot_node is not None:
+            with open(str(self.cwd / "snapshot.bin"), "wb") as file:
+                snapshot_data = getBinary(snapshot_node)
+                file.write(snapshot_data)
 
         self.cliUpdateCounter = 0
         self.currentDataFrameLength = 0
@@ -535,12 +566,12 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                 try:
                     self.updateOutputTables()
                     self.createCaDistributionTables()
+                    self.__createSnapshotBinNode()
                     self.loadAnimationNodes(caller.GetParameterAsString("saturation_steps"))
                 except:
                     self.removeNodes()
+                    logging.error(traceback.format_exc())
                     slicer.util.errorDisplay("A problem has occurred during the simulation.")
-                elapsed_time = time.time() - self.start_time
-                print("Elapsed time:", elapsed_time, "seconds")
             elif status == "Cancelled":
                 self.removeNodes()
             else:
@@ -578,11 +609,22 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
 
     def createCaDistributionTables(self):
         krelResultsTableNode = helpers.tryGetNode(self.krelResultsTableNodeId)
-        if krelResultsTableNode and self.params["create_ca_distributions"]:
+        if krelResultsTableNode and self.params["create_ca_distributions"] == "T":
             for file in listFilesRegex(str(self.cwd), "ca_distribution_\\d+"):
                 nodeName = Path(file).stem
                 caDistributionNode = self.__createCaDistributionNode(nodeName)
                 krelResultsTableNode.SetAttribute(f"{nodeName}_id", caDistributionNode.GetID())
+
+    def __createSnapshotBinNode(self):
+        if self.params["create_drainage_snapshot"] == "T":
+            with open(str(Path(str(self.cwd)) / "snapshot.bin"), "rb") as fp:
+                snapshotData = fp.read()
+                binaryNode = createBinaryNode(snapshotData)
+                binaryNode.SetName("drainage_snapshot")
+                slicer.mrmlScene.AddNode(binaryNode)
+
+                folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                folderTree.CreateItem(self.rootDir, binaryNode)
 
     def __createCaDistributionNode(self, ca_distribution_file):
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)

@@ -5,10 +5,13 @@ services:
     build:
       context: .
       dockerfile: tools/docker/windows.Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HOME=C:/Users/ContainerAdministrator
     volumes:
-      - .git:c:/slicerltrace/.git
-      - ~/.oci/:C:/Users/ContainerAdministrator/.oci/
-      - ~/.ssh/:C:/Users/ContainerAdministrator/.ssh/
+      - ~/.ssh:C:/Users/ContainerAdministrator/.ssh
+      - ~/.oci:C:/Users/ContainerAdministrator/.oci
+      - .:c:/slicerltrace/
     storage_opt:
       size: '70G'
   slicerltrace-base-windows:
@@ -30,10 +33,12 @@ services:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
       - PYTHONUNBUFFERED=1
+      - DOCKER_BUILDKIT=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - "$HOME/.oci:/root/.oci"
       - ~/.ssh/:/root/.ssh/
+      - .:/slicerltrace/
     user: "${UID}:${GID}"
     cap_add:
       - SYS_ADMIN

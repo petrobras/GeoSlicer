@@ -6,6 +6,7 @@ from matplotlib import __version__ as mpl_version
 # functions that are methods
 __all__ = ["zoom_factory", "panhandler"]
 
+
 # based on https://gist.github.com/tacaswell/3144287
 def zoom_factory(ax, base_scale=1.1):
     """

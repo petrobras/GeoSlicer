@@ -35,7 +35,7 @@ class StreamlinedSegmentation(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Virtual Segmentation Flow"
-        self.parent.categories = ["Tools"]
+        self.parent.categories = ["Tools", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = (
@@ -199,6 +199,15 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
 
         def afterWait():
             with pb:
+                pb.setMessage("Initializing boundary removal")
+
+                # Make all segments invisible except for microporosity
+                display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+                display.SetSegmentVisibility("Macroporosity", False)
+                display.SetSegmentVisibility("Microporosity", True)
+                display.SetSegmentVisibility("Solid", False)
+                display.SetSegmentVisibility("Reference Solid", False)
+
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.visible = False
 
@@ -211,7 +220,13 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.pb.setMessage("Expanding segments")
         self.editor.setActiveEffectByName("Expand segments")
         display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+
+        # Make all segments visible except for microporosity
+        display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+        display.SetSegmentVisibility("Macroporosity", True)
         display.SetSegmentVisibility("Microporosity", False)
+        display.SetSegmentVisibility("Solid", True)
+        display.SetSegmentVisibility("Reference Solid", True)
 
         self.expandSegmentsEffect.applyButton.click()
 
@@ -371,6 +386,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.expandSegmentsEffect.applyFinishedCallback = lambda: None
         self.multiFinishedTimer.stop()
         self.multiFinishedTimer.timeout.disconnect()
+        ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
 
 
 class StreamlinedSegmentationLogic(LTracePluginLogic):

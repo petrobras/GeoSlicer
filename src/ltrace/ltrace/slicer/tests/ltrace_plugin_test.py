@@ -204,6 +204,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
 
         # Revert layout to conventional
         slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalView)
+        process_events()
 
         test_cases = self.test_cases + self.generate_methods
         if self.__shuffle:

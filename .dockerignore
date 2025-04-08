@@ -1,2 +1,10 @@
 env
 .env
+src/modules
+src/submodules
+src/ltrace/build
+src/ltrace/ltrace/assets
+.git
+tools/deploy/GeoSlicerManual
+tools/deploy/Resources
+gs*/*

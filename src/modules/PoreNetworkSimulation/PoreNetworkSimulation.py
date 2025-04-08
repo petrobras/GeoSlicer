@@ -8,6 +8,7 @@ import sys
 
 from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from MercurySimulationLib.SubscaleModelWidget import SubscaleLogicDict
 from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulationWidget
 from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
 from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
@@ -20,6 +21,7 @@ from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     getResourcePath,
+    slicer_is_in_developer_mode,
 )
 
 try:
@@ -73,6 +75,14 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.inputSelector.showEmptyHierarchyItems = False
         labelWidget = qt.QLabel("Input Pore Table: ")
         inputFormLayout.addRow(labelWidget, self.inputSelector)
+
+        self.snapshotSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTextNode"])
+        self.snapshotSelector.showEmptyHierarchyItems = True
+        self.snapshotSelectorLabel = qt.QLabel("Snapshot selector")
+        inputFormLayout.addRow(self.snapshotSelectorLabel, self.snapshotSelector)
+        if not slicer_is_in_developer_mode():
+            self.snapshotSelectorLabel.setVisible(False)
+            self.snapshotSelector.setVisible(False)
 
         #
         # Parameters Area: parametersFormLayout
@@ -170,11 +180,11 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.mercurySimWidget.setVisible(simulation == MICP)
 
         if simulation == ONE_PHASE:
-            self.logic = OnePhaseSimulationLogic(self.progressBar)
+            self.logic = OnePhaseSimulationLogic(self.parent, self.progressBar)
         elif simulation == TWO_PHASE:
-            self.logic = TwoPhaseSimulationLogic(self.progressBar)
+            self.logic = TwoPhaseSimulationLogic(self.parent, self.progressBar)
         elif simulation == MICP:
-            self.logic = MercurySimulationLogic(self.progressBar)
+            self.logic = MercurySimulationLogic(self.parent, self.progressBar)
 
     def onInputSelectorChange(self):
         input_node = self.inputSelector.currentNode()
@@ -214,8 +224,10 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         slicer.app.processEvents()
         params = self.twoPhaseSimWidget.getParams()
         params["subresolution function"] = params["subresolution function call"](pore_node)
+        snapshot_node = self.snapshotSelector.currentNode()
         self.logic.run_2phase(
             pore_node,
+            snapshot_node,
             params,
             prefix=self.outputPrefix.text,
             callback=self.applyButtonEnabled,
@@ -232,3 +244,16 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             prefix=self.outputPrefix.text,
             callback=self.applyButtonEnabled,
         )
+
+    def cleanup(self):
+        if self.logic is not None:
+            if hasattr(self.logic, "callback"):
+                self.logic.callback = None
+
+            if hasattr(self.logic, "progressBar"):
+                self.logic.progressBar = None
+
+            del self.logic
+            self.logic = None
+
+        super().cleanup()

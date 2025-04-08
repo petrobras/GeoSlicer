@@ -69,6 +69,7 @@ authorized_licenses = [
     "OSI Approved",
     "Python Software Foundation",
     "Historical Permission Notice and Disclaimer (HPND)",
+    "CMU License (MIT-CMU)",
 ]
 unauthorized_licenses = [
     "GNU General Public License v3 (GPLv3)"

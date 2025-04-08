@@ -139,12 +139,12 @@ class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
         self.applyButton.setToolTip("Apply smoothing to selected segment")
         self.scriptedEffect.addOptionsWidget(self.applyButton)
 
-        self.methodSelectorComboBox.connect("currentIndexChanged(int)", self.updateMRMLFromGUI)
-        self.kernelSizeMMSpinBox.connect("valueChanged(double)", self.updateMRMLFromGUI)
-        self.gaussianStandardDeviationMMSpinBox.connect("valueChanged(double)", self.updateMRMLFromGUI)
-        self.jointTaubinSmoothingFactorSlider.connect("valueChanged(double)", self.updateMRMLFromGUI)
-        self.applyToAllVisibleSegmentsCheckBox.connect("stateChanged(int)", self.updateMRMLFromGUI)
-        self.applyButton.connect("clicked()", self.onApply)
+        self.methodSelectorComboBox.currentIndexChanged.connect(self.updateMRMLFromGUI)
+        self.kernelSizeMMSpinBox.valueChanged.connect(self.updateMRMLFromGUI)
+        self.gaussianStandardDeviationMMSpinBox.valueChanged.connect(self.updateMRMLFromGUI)
+        self.jointTaubinSmoothingFactorSlider.valueChanged.connect(self.updateMRMLFromGUI)
+        self.applyToAllVisibleSegmentsCheckBox.stateChanged.connect(self.updateMRMLFromGUI)
+        self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         # Customize smoothing brush
         self.scriptedEffect.setColorSmudgeCheckboxVisible(False)
@@ -237,7 +237,10 @@ class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
 
         self.updateParameterWidgetsVisibility()
 
-    def updateMRMLFromGUI(self):
+    def onApplyButtonClicked(self, state):
+        self.onApply()
+
+    def updateMRMLFromGUI(self, *args, **kwargs):
         methodIndex = self.methodSelectorComboBox.currentIndex
         smoothingMethod = self.methodSelectorComboBox.itemData(methodIndex)
         self.scriptedEffect.setParameter("SmoothingMethod", smoothingMethod)

@@ -8,6 +8,19 @@ from scipy.sparse import csr_matrix
 from numba import njit, prange
 from pyflowsolver import NetworkManager, DarcySolver
 
+HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
+HG_CONTACT_ANGLE = 140  # º
+
+
+def estimate_radius(capilary_pressure):
+    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
+    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / capilary_pressure
+
+
+def estimate_pressure(radius):
+    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
+    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / radius
+
 
 def manual_valvatne_blunt(pore_network):
     """
@@ -82,43 +95,110 @@ def manual_valvatne_blunt(pore_network):
     return
 
 
-def set_subresolution_conductance(sub_network, subresolution_function, save_tables=False):
+def set_subresolution_conductance(
+    sub_network,
+    subresolution_function,
+    subres_porositymodifier,
+    subres_shape_factor,
+    save_tables=False,
+):
     sub_network["pore.diameter"] = sub_network["pore.equivalent_diameter"]
     sub_network["throat.diameter"] = sub_network["throat.equivalent_diameter"]
 
+    boundary = np.any(
+        [
+            np.array(sub_network["pore.xmax"]),
+            np.array(sub_network["pore.xmin"]),
+            np.array(sub_network["pore.ymax"]),
+            np.array(sub_network["pore.ymin"]),
+            np.array(sub_network["pore.zmax"]),
+            np.array(sub_network["pore.zmin"]),
+        ],
+        axis=0,
+    )
+
+    sub_network["pore.diameter"][boundary] = sub_network["pore.extended_diameter"][boundary]
+
     # Equations
-    pressure2radius = lambda Pc: -2 * 480 * np.cos(np.pi * 140 / 180) / Pc
-    area_function = lambda r: np.pi * r**2
+    area_function = lambda r: r**2 / (4 * subres_shape_factor)
 
     # Pore conductivity
     pore_conductivity_resolved = sub_network["pore.manual_valvatne_conductivity"]
     pore_phi = sub_network["pore.subresolution_porosity"]
-    pore_pressure = np.array([subresolution_function(p) for p in pore_phi])
-    pore_pressure[pore_phi == 1] = np.array([pressure2radius(r) for r in sub_network["pore.diameter"] / 2])[
-        pore_phi == 1
-    ]
-
-    pore_capilar_radius = np.array([pressure2radius(Pc) for Pc in pore_pressure])
-    sub_network["pore.capilar_radius"] = pore_capilar_radius
+    if subres_porositymodifier < 1:
+        pore_phi[pore_phi != 1] = 1 - (1 - pore_phi[pore_phi != 1]) * subres_porositymodifier
+        sub_network["pore.subresolution_porosity"] = pore_phi
+    elif subres_porositymodifier > 1:
+        pore_phi[pore_phi != 1] /= subres_porositymodifier
+        sub_network["pore.subresolution_porosity"] = pore_phi
+    pore_capilar_radius = np.array([subresolution_function(p) for p in pore_phi])
+    pore_capilar_radius[pore_phi == 1] = np.array(sub_network["pore.diameter"] / 2)[pore_phi == 1]
+    pore_pressure = estimate_pressure(pore_capilar_radius)
 
     pore_number_of_capilaries = (area_function(sub_network["pore.diameter"] / 2) * pore_phi) / area_function(
         pore_capilar_radius
     )
-    sub_network["pore.number_of_capilaries"] = pore_number_of_capilaries
-    pore_conductivity = (1 / 8) * np.pi * pore_capilar_radius**4
-    pore_conductivity *= pore_number_of_capilaries
+
+    A = pore_capilar_radius**2 / (4 * subres_shape_factor)  # Area
+    G = subres_shape_factor  # Shape Factor
+    P = 2 * np.pi * pore_capilar_radius  # Perimeter
+    if subres_shape_factor <= 0.048:
+        K = 3 / 5
+    elif subres_shape_factor <= 0.07:
+        K = 0.5623
+    else:
+        K = 1 / 8
+    pore_capilar_conductivity = K * A**2 * G
+    pore_conductivity = pore_capilar_conductivity * pore_number_of_capilaries
 
     throat_phi = sub_network["throat.subresolution_porosity"]
-    throat_pressure = np.array([subresolution_function(p) for p in throat_phi])
-    throat_pressure[throat_phi == 1] = np.array([pressure2radius(r) for r in sub_network["throat.diameter"] / 2])[
-        throat_phi == 1
-    ]
-    throat_capilar_radius = np.array([pressure2radius(Pc) for Pc in throat_pressure])
+    if subres_porositymodifier < 1:
+        throat_phi[throat_phi != 1] = 1 - (1 - throat_phi[throat_phi != 1]) * subres_porositymodifier
+        sub_network["throat.subresolution_porosity"] = throat_phi
+    elif subres_porositymodifier > 1:
+        throat_phi[throat_phi != 1] /= subres_porositymodifier
+        sub_network["throat.subresolution_porosity"] = throat_phi
+    throat_capilar_radius = np.array([subresolution_function(p) for p in throat_phi])
+    throat_capilar_radius[throat_phi == 1] = np.array(sub_network["throat.diameter"] / 2)[throat_phi == 1]
+    throat_pressure = estimate_pressure(throat_capilar_radius)
+
     throat_number_of_capilaries = (area_function(sub_network["throat.diameter"] / 2) * throat_phi) / area_function(
         throat_capilar_radius
     )
-    throat_conductivity = (1 / 8) * np.pi * throat_capilar_radius**4
-    throat_conductivity *= throat_number_of_capilaries
+
+    A = throat_capilar_radius**2 / (4 * subres_shape_factor)  # Area
+    G = subres_shape_factor  # Shape Factor
+    P = 2 * np.pi * throat_capilar_radius  # Perimeter
+    if subres_shape_factor <= 0.048:
+        K = 3 / 5
+    elif subres_shape_factor <= 0.07:
+        K = 0.5623
+    else:
+        K = 1 / 8
+    throat_capilar_conductivity = K * A**2 * G
+    throat_subscale_conductivity = throat_capilar_conductivity * throat_number_of_capilaries
+
+    ### start indepth variable
+    sub_network["pore.number_of_capilaries_real"] = pore_number_of_capilaries.copy()
+
+    A = pore_capilar_radius**2 / (4 * subres_shape_factor)  # Area
+    G = subres_shape_factor  # Shape Factor
+    P = 2 * np.pi * pore_capilar_radius  # Perimeter
+    if subres_shape_factor <= 0.048:
+        K = 3 / 5
+    elif subres_shape_factor <= 0.07:
+        K = 0.5623
+    else:
+        K = 1 / 8
+    pore_capilar_conductivity = K * A**2 * G
+    sub_network["pore.single_capillary_conductivity"] = pore_capilar_conductivity
+    sub_network["pore.single_capillary_area"] = A
+    sub_network["pore.effective_area"] = area_function(sub_network["pore.diameter"] / 2) * pore_phi
+    sub_network["pore.subscale_conductivity"] = (
+        pore_capilar_conductivity * sub_network["pore.number_of_capilaries_real"]
+    )
+
+    ### end indepth variable
 
     # Throat conductance
     throat_conductance = np.copy(sub_network["throat.manual_valvatne_conductance"])
@@ -127,57 +207,77 @@ def set_subresolution_conductance(sub_network, subresolution_function, save_tabl
     ):
         left_unresolved = sub_network["throat.phases"][throat_index][0] == 2
         right_unresolved = sub_network["throat.phases"][throat_index][1] == 2
+        """
+        length_multiplier = (int(left_unresolved) + int(right_unresolved)) / 2
+        if length_multiplier == 0: 
+            continue
 
+        total_length = (
+            length_multiplier 
+            * sub_network["throat.mid_length"][throat_index]
+        )
+        throat_conductance[throat_index] = (
+            throat_subscale_conductivity[throat_index]
+            / total_length
+        ) 
+        """
         if left_unresolved and not right_unresolved:
             throat_conductance[throat_index] = sub_network["throat.mid_length"][throat_index] / (
-                2 * throat_conductivity[throat_index]
-            )
+                2 * throat_subscale_conductivity[throat_index]
+            )  # inverted value
             throat_conductance[throat_index] += (
-                sub_network["throat.conns_0_length"][throat_index] / pore_conductivity[left_index]
-            )
+                sub_network["throat.conns_0_length"][throat_index]
+                / sub_network["pore.subscale_conductivity"][left_index]
+            )  # inverted value
             throat_conductance[throat_index] += (
                 sub_network["throat.conns_1_length"][throat_index] / pore_conductivity_resolved[right_index]
-            )
+            )  # inverted value
             throat_conductance[throat_index] **= -1
 
         elif right_unresolved and not left_unresolved:
             throat_conductance[throat_index] = sub_network["throat.mid_length"][throat_index] / (
-                2 * throat_conductivity[throat_index]
-            )
+                2 * throat_subscale_conductivity[throat_index]
+            )  # inverted value
             throat_conductance[throat_index] += (
                 sub_network["throat.conns_0_length"][throat_index] / pore_conductivity_resolved[left_index]
-            )
+            )  # inverted value
             throat_conductance[throat_index] += (
-                sub_network["throat.conns_1_length"][throat_index] / pore_conductivity[right_index]
-            )
+                sub_network["throat.conns_1_length"][throat_index]
+                / sub_network["pore.subscale_conductivity"][right_index]
+            )  # inverted value
             throat_conductance[throat_index] **= -1
 
         elif right_unresolved and left_unresolved:
             throat_conductance[throat_index] = (
-                sub_network["throat.mid_length"][throat_index] / throat_conductivity[throat_index]
-            )
+                sub_network["throat.mid_length"][throat_index] / throat_subscale_conductivity[throat_index]
+            )  # inverted value
             throat_conductance[throat_index] += (
-                sub_network["throat.conns_0_length"][throat_index] / pore_conductivity[left_index]
-            )
+                sub_network["throat.conns_0_length"][throat_index]
+                / sub_network["pore.subscale_conductivity"][left_index]
+            )  # inverted value
             throat_conductance[throat_index] += (
-                sub_network["throat.conns_1_length"][throat_index] / pore_conductivity[right_index]
-            )
+                sub_network["throat.conns_1_length"][throat_index]
+                / sub_network["pore.subscale_conductivity"][right_index]
+            )  # inverted value
             throat_conductance[throat_index] **= -1
 
     sub_network["pore.cap_pressure"] = pore_pressure.copy()
     sub_network["pore.cap_radius"] = pore_capilar_radius.copy()
     sub_network["throat.cap_pressure"] = throat_pressure.copy()
     sub_network["throat.cap_radius"] = throat_capilar_radius.copy()
-    sub_network["throat.sub_conductivity"] = throat_conductivity.copy()
+    sub_network["throat.sub_conductivity"] = throat_subscale_conductivity.copy()
     sub_network["pore.sub_conductivity"] = pore_conductivity.copy()
     sub_network["throat.conductance"] = throat_conductance.copy()
     sub_network["throat.manual_valvatne_conductance_former"] = throat_conductance.copy()
     sub_network["throat.manual_valvatne_conductance"] = throat_conductance
     sub_network["throat.number_of_capilaries"] = throat_number_of_capilaries
     sub_network["pore.number_of_capilaries"] = pore_number_of_capilaries
+    sub_network["pore.number_of_capilaries"] *= 0
+    sub_network["pore.number_of_capilaries"] += 1
 
     sub_network["throat.cross_sectional_area"] = np.pi * sub_network["throat.cap_radius"] ** 2
     sub_network["throat.volume"] = sub_network["throat.total_length"] * sub_network["throat.cross_sectional_area"]
+    sub_network["throat.volume"] *= 0
     sub_network["pore.volume"] *= sub_network["pore.subresolution_porosity"]
 
     if save_tables:
@@ -236,7 +336,7 @@ def get_sub_spy(spy_network, sub_pores, sub_throats):
     return sub_pn
 
 
-def get_connected_spy_network(network, in_face, out_face):
+def get_connected_spy_network(network, in_face, out_face, coord_limits=None):
     """
     in_face, out_face: str
         Each must be one of 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'
@@ -253,6 +353,15 @@ def get_connected_spy_network(network, in_face, out_face):
     common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
 
     connected_pores = network.pores()[np.isin(cluster_labels, common_labels)]
+    if coord_limits:
+        pore_coords = network["pore.coords"][connected_pores]
+        mask = np.ones(len(connected_pores), dtype=bool)
+        for axis, (low, high) in coord_limits.items():
+            axis_idx = "xyz".index(axis)
+            mask &= (pore_coords[:, axis_idx] >= low) & (pore_coords[:, axis_idx] <= high)
+
+        connected_pores = connected_pores[mask]
+
     connected_throats = network.throats()[np.isin(network["throat.conns"], connected_pores).all(axis=1)]
 
     return np.isin(cluster_labels, common_labels), np.isin(network["throat.conns"], connected_pores).all(axis=1)
@@ -263,12 +372,15 @@ def single_phase_permeability(
     in_face="xmin",
     out_face="xmax",
     subresolution_function=None,
+    subres_porositymodifier=1.0,
+    subres_shape_factor=0.041,
     save_tables=False,
     solver="pyflowsolver",
     target_error=1e-7,
     preconditioner="inverse_diagonal",
     clip_check=False,
     clip_value=1e10,
+    coord_limits=None,
 ):
     if solver not in ("pyflowsolver", "openpnm", "pypardiso"):
         raise Exception('Parameter solver must be  "pyflowsolver", "pypardiso" or "openpnm"')
@@ -282,14 +394,20 @@ def single_phase_permeability(
         return (0, None, None)
 
     proj = openpnm.io.network_from_porespy(pore_network)
-    connected_pores, connected_throats = get_connected_spy_network(proj.network, in_face, out_face)
+    connected_pores, connected_throats = get_connected_spy_network(proj.network, in_face, out_face, coord_limits)
     sub_network = get_sub_spy(pore_network, connected_pores, connected_throats)
     if sub_network is False:
         return 0, None, None
     for prop in sub_network.keys():
         np.nan_to_num(sub_network[prop], copy=False)
     manual_valvatne_blunt(sub_network)
-    set_subresolution_conductance(sub_network, subresolution_function, save_tables=save_tables)
+    set_subresolution_conductance(
+        sub_network,
+        subresolution_function,
+        subres_porositymodifier,
+        subres_shape_factor,
+        save_tables=save_tables,
+    )
     sub_proj = openpnm.io.network_from_porespy(sub_network)
 
     ### Network clipping

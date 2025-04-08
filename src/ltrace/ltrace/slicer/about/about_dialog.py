@@ -65,3 +65,8 @@ class AboutDialog(qt.QDialog):
 
     def __onCloseButtonClicked(self):
         self.close()
+        self.deleteLater()
+
+    def reject(self) -> None:
+        self.__onCloseButtonClicked()
+        qt.QDialog.reject(self)

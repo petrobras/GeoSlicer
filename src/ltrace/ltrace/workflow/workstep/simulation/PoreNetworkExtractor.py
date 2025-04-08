@@ -22,7 +22,7 @@ class PoreNetworkExtractor(Workstep):
 
     def run(self, nodes):
         progressBar = LocalProgressBar()
-        logic = PoreNetworkExtractorLogic(progressBar)
+        logic = PoreNetworkExtractorLogic(None, progressBar)
 
         for node in nodes:
             self.finished = False

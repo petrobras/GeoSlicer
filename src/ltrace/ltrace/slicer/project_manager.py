@@ -11,6 +11,7 @@ import pandas as pd
 
 from dataclasses import dataclass
 from ltrace.constants import SaveStatus
+from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.helpers import bounds2size, singleton, getSourceVolume
 from ltrace.slicer.nodes.custom_behavior_node_manager import CustomBehaviorNodeManager
 from ltrace.slicer.nodes.defs import TriggerEvent
@@ -117,10 +118,34 @@ class ProjectManager(qt.QObject):
         self.__slicesShown = False
         self.__customBehaviorNodeManager = CustomBehaviorNodeManager()
         self.__configCompressionMode()
+        self.__startCloseSceneObserverHandler = None
         self.__endCloseSceneObserverHandler = None
         self.__modifiedEventObserverHandler = None
         self.__endLoadEventObserverHandler = None
         self.__startLoadEventObserverHandler = None
+        self.__projectModifiedSignalPaused = True
+        self.__startSaveEventObserver = None
+        self.__endSaveEventObserver = None
+        ApplicationObservables().applicationLoadFinished.connect(self.__setupObservers)
+
+    def __setupObservers(self):
+        self.__endCloseSceneObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.EndCloseEvent, self.__onEndCloseScene
+        )
+        self.__modifiedEventObserverHandler = slicer.mrmlScene.AddObserver("ModifiedEvent", self.__onSceneModified)
+        self.__nodeAddedObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.NodeAddedEvent, self.__onNodeAdded
+        )
+        self.__endLoadEventObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.EndImportEvent, self.__onEndLoadScene
+        )
+
+        self.__startLoadEventObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.StartImportEvent, self.__onStartLoadScene
+        )
+
+        ApplicationObservables().applicationLoadFinished.disconnect(self.__setupObservers)
+        self.__resumeModifiedObserver()
 
     def save(self, projectUrl, internalCall=False, *args, **kwargs):
         """Handles project' saving process. It saves the nodes that has modifications and
@@ -132,9 +157,12 @@ class ProjectManager(qt.QObject):
         Returns:
             bool: True if save process was successful, otherwise False.
         """
+        projectModified = slicer.modules.AppContextInstance.mainWindow.windowModified
         if not internalCall:
             self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.SAVE
+            self.__pauseModifiedObserver()
             slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
+
         status = SaveStatus.IN_PROGRESS
 
         if not self.__validateProjectIsWritable(projectUrl):
@@ -160,12 +188,10 @@ class ProjectManager(qt.QObject):
             slicer.mrmlScene.SetRootDirectory(rootDirBeforeSave)
             status = SaveStatus.FAILED
 
-        if not internalCall:
-            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
-
         if status != SaveStatus.IN_PROGRESS:  # status is FAILED or FAILED_FILE_ALREADY_EXISTS
             if not internalCall:
-                self.__setProjectModified(True)
+                slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
+                self.__resumeModifiedObserver(projectModified)
             return status
 
         fileProjectPath = (projectRootUrl / projectFile).resolve()
@@ -176,8 +202,11 @@ class ProjectManager(qt.QObject):
         }
         slicer.app.coreIOManager().emitFileSaved(parameters)
 
+        slicer.app.processEvents(qt.QEventLoop.AllEvents, 1000)
+
         if not internalCall:
-            self.__setProjectModified(False)
+            slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
+            self.__resumeModifiedObserver(False)
 
         return SaveStatus.SUCCEED
 
@@ -207,23 +236,25 @@ class ProjectManager(qt.QObject):
         """Handle custom save scene as operation."""
         self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.SAVE_AS
         sliceViewConfig = self.__getSliceViewConfiguration()
+        self.__pauseModifiedObserver()
         slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
         status = SaveStatus.IN_PROGRESS
+        projectModified = slicer.modules.AppContextInstance.mainWindow.windowModified
 
         scenePath = Path(scenePath)
 
         if scenePath.is_file():
             slicer.util.errorDisplay(f'Cannot create project directory at "{scenePath}" because it is a file.')
-            self.__setProjectModified(True)
             slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
+            self.__resumeModifiedObserver(projectModified)
             self.__setSliceViewConfiguration(sliceViewConfig)
             return SaveStatus.FAILED_FILE_ALREADY_EXISTS
 
         status = self.save(str(scenePath), internalCall=True, *args, **kwargs)
 
         if status != SaveStatus.SUCCEED and status != SaveStatus.IN_PROGRESS:  # CANCELLED or FAILED options
-            self.__setProjectModified(True)
             slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
+            self.__resumeModifiedObserver(projectModified)
             self.__setSliceViewConfiguration(sliceViewConfig)
             return status
 
@@ -231,12 +262,10 @@ class ProjectManager(qt.QObject):
         projectFile = self.__findProjectFile(str(scenePath))
 
         if projectFile is None:
-            self.__setProjectModified(True)
+            self.__resumeModifiedObserver(projectModified)
             slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             self.__setSliceViewConfiguration(sliceViewConfig)
             return SaveStatus.FAILED
-
-        slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
 
         # Maintain event behavior from previous version
         slicer.mrmlScene.StartState(slicer.mrmlScene.ImportState)
@@ -248,8 +277,9 @@ class ProjectManager(qt.QObject):
         slicer.mrmlScene.EndState(slicer.mrmlScene.ImportState)
 
         self.projectChangedSignal.emit()
-        self.__setProjectModified(False)
         self.__setSliceViewConfiguration(sliceViewConfig)
+        slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
+        self.__resumeModifiedObserver(False)
 
         return status
 
@@ -374,7 +404,7 @@ class ProjectManager(qt.QObject):
         try:
             hdSize = self.getWritableStorageInfo(Path(scenePath).parent)
             sceneSize = self.__listAllStorableNodes(scenePath)
-            print(f"hdSize: {hdSize}, sceneSize: {sceneSize}", scenePath)
+            logging.debug(f"hdSize: {hdSize}, sceneSize: {sceneSize}, scenePath: {scenePath}")
             if hdSize <= sceneSize:
                 logging.error(
                     f"Not enough space in drive ({naturalsize(hdSize)}) for scene ({naturalsize(sceneSize)})."
@@ -394,7 +424,7 @@ class ProjectManager(qt.QObject):
 
         projectFilePath = projectFilePath.resolve()
 
-        if projectFilePath.as_posix() == slicer.mrmlScene.GetURL():
+        if projectFilePath.as_posix() == Path(slicer.mrmlScene.GetURL()).as_posix():
             return True
 
         if not projectFilePath.exists():
@@ -403,6 +433,7 @@ class ProjectManager(qt.QObject):
 
         if not internalCall:
             self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.LOAD
+            self.__pauseModifiedObserver()
 
         self.__clearNodeObservers()
         # Close scene before load a new one
@@ -415,6 +446,9 @@ class ProjectManager(qt.QObject):
             logging.error(f"A problem occured during the 'Load Scene' process: {error}\n{traceback.format_exc()}")
             status = False
 
+        if not internalCall:
+            self.__resumeModifiedObserver(False)
+
         self.__setProjectModified(False)
 
         return status
@@ -423,45 +457,22 @@ class ProjectManager(qt.QObject):
         """Wrapper method to close the project."""
         slicer.mrmlScene.Clear(0)
         slicer.mrmlScene.SetURL("")
+        self.__setProjectModified(False)
 
-    def setup(self):
-        """Initialize project's event handlers"""
-        self.__endCloseSceneObserverHandler = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.EndCloseEvent, self.__onEndCloseScene
-        )
-        self.__modifiedEventObserverHandler = slicer.mrmlScene.AddObserver("ModifiedEvent", self.__onSceneModified)
-        self.node_added_observer_handler = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.NodeAddedEvent, self.__onNodeAdded
-        )
-        self.__endLoadEventObserverHandler = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.EndImportEvent, self.__onEndLoadScene
-        )
-
-        self.__startLoadEventObserverHandler = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.StartImportEvent, self.__onStartLoadScene
-        )
-
-    def __onStartLoadScene(self, *args, **kwargs):
-        """Handle slicer' start load scene event."""
-        slicer.mrmlScene.RemoveObserver(self.__modifiedEventObserverHandler)
-
-    def __onEndCloseScene(self, *args):
+    def __onEndCloseScene(self, *args) -> None:
         """Handle slicer' end close scene event."""
-
         self.__slicesShown = False
-
-        def process():
-            self.__setProjectModified(False)
-            self.projectChangedSignal.emit()
-
-        # Add 'process' method to the end of the Qt's events queue.
-        qt.QTimer.singleShot(0, process)
-
-    def __onEndLoadScene(self, *args, **kwargs):
-        """Handle slicer' end load scene event."""
-        slicer.modules.AppContextInstance.mainWindow.setWindowModified(False)
+        slicer.app.processEvents(qt.QEventLoop.AllEvents, 1000)
+        self.__setProjectModified(False)
         self.projectChangedSignal.emit()
-        self.__modifiedEventObserverHandler = slicer.mrmlScene.AddObserver("ModifiedEvent", self.__onSceneModified)
+
+    def __onStartLoadScene(self, *args, **kwargs) -> None:
+        """Handle slicer' start load scene event."""
+        self.__pauseModifiedObserver()
+
+    def __onEndLoadScene(self, *args, **kwargs) -> None:
+        """Handle slicer' end load scene event."""
+        self.projectChangedSignal.emit()
 
         # Hide axis labels for legacy projects which may have them.
         # This can probably be removed in the future, as it is also done
@@ -470,6 +481,7 @@ class ProjectManager(qt.QObject):
         viewNode.SetAxisLabelsVisible(False)
 
         self.__clearMaskSettingsOnAllSegmentEditors()
+        self.__setProjectModified(False)
 
     def __onSceneModified(self, *args, **kwargs):
         """Handle slicer' scene modified event."""
@@ -643,6 +655,9 @@ class ProjectManager(qt.QObject):
 
     def __setProjectModified(self, mode: bool) -> None:
         """Handle project modification's events."""
+        if self.__projectModifiedSignalPaused:
+            return
+
         slicer.modules.AppContextInstance.mainWindow.setWindowModified(mode)
 
     def __configCompressionMode(self, *args, **kwargs) -> None:
@@ -839,7 +854,7 @@ class ProjectManager(qt.QObject):
             if autoFrameOff != "true":
                 self.__frameVolume(volume)
 
-    def __showSlicesIn3D(self):
+    def __showSlicesIn3D(self) -> None:
         if slicer.mrmlScene.GetNumberOfNodesByClass("vtkMRMLScalarVolumeNode") == 0:
             return
         layoutManager = slicer.app.layoutManager()
@@ -847,7 +862,7 @@ class ProjectManager(qt.QObject):
             controller = layoutManager.sliceWidget(sliceViewName).sliceController()
             controller.setSliceVisible(True)
 
-    def __frameVolume(self, volume):
+    def __frameVolume(self, volume) -> None:
         """Reposition camera so it points to the center of the volume and
         position it so the volume is reasonably visible.
         """
@@ -865,10 +880,21 @@ class ProjectManager(qt.QObject):
         cam.SetPosition(pos)
         camNode.ResetClippingRange()
 
-    def __clearMaskSettingsOnAllSegmentEditors(self):
+    def __clearMaskSettingsOnAllSegmentEditors(self) -> None:
         nodes = slicer.util.getNodesByClass("vtkMRMLSegmentEditorNode")
         for node in nodes:
             node.SourceVolumeIntensityMaskOff()
+
+    def __pauseModifiedObserver(self) -> None:
+        self.__projectModifiedSignalPaused = True
+
+    def __resumeModifiedObserver(self, mode: bool = None) -> None:
+        def process():
+            self.__projectModifiedSignalPaused = False
+            if mode is not None:
+                self.__setProjectModified(mode)
+
+        qt.QTimer.singleShot(100, process)
 
 
 def getAvailableFilename(name: str, dirpath: Path):

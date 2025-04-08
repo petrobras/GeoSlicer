@@ -81,9 +81,6 @@ def onSegmentEditorEnter(editor, tag):
             windowTitle="Segment Editor",
         )
 
-    # Allow switching between effects and selected segment using keyboard shortcuts
-    editor.installKeyboardShortcuts()
-
     # Set parameter set node if absent
     segmentEditorNode = slicer.mrmlScene.GetSingletonNode(tag, "vtkMRMLSegmentEditorNode")
     if segmentEditorNode is None:
@@ -98,5 +95,4 @@ def onSegmentEditorEnter(editor, tag):
 
 def onSegmentEditorExit(editor):
     editor.setActiveEffect(None)
-    editor.uninstallKeyboardShortcuts()
     editor.removeViewObservations()

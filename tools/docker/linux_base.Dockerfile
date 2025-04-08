@@ -32,11 +32,11 @@ RUN yum -y update && \
 RUN python3 -m pip install --upgrade pip==22.3
 
 # Install 7z
-RUN wget https://www.mirrorservice.org/sites/dl.fedoraproject.org/pub/epel/7/x86_64/Packages/p/p7zip-16.02-20.el7.x86_64.rpm && \
+RUN wget https://archives.fedoraproject.org/pub/archive/epel/7/x86_64/Packages/p/p7zip-16.02-20.el7.x86_64.rpm && \
     rpm -U --quiet p7zip-16.02-20.el7.x86_64.rpm && \
     rm p7zip-16.02-20.el7.x86_64.rpm 
 
-RUN wget https://www.mirrorservice.org/sites/dl.fedoraproject.org/pub/epel/7/x86_64/Packages/p/p7zip-plugins-16.02-20.el7.x86_64.rpm && \
+RUN wget https://archives.fedoraproject.org/pub/archive/epel/7/x86_64/Packages/p/p7zip-plugins-16.02-20.el7.x86_64.rpm && \
     rpm -U --quiet p7zip-plugins-16.02-20.el7.x86_64.rpm && \
     rm p7zip-plugins-16.02-20.el7.x86_64.rpm
 
@@ -53,22 +53,5 @@ RUN wget https://curl.haxx.se/download/curl-8.4.0.tar.gz && \
 
 WORKDIR /slicerltrace
 
-# Install MicrotomRemote dependencies
-COPY ./src/modules/MicrotomRemote/Libs/microtom/requirements.txt ./src/modules/MicrotomRemote/Libs/microtom/requirements.txt
-RUN python -m pip install -r ./src/modules/MicrotomRemote/Libs/microtom/requirements.txt
-
-# Install deployment tools dependencies
-COPY ./tools/deploy/requirements.txt ./tools/deploy/requirements.txt
-RUN python -m pip install -r ./tools/deploy/requirements.txt
-
-# Install pipeline tools dependencies
-COPY ./tools/pipeline/requirements.txt ./tools/pipeline/requirements.txt
-RUN python -m pip install -r ./tools/pipeline/requirements.txt
-
-# Install test environment libraries
-COPY ./tests/unit/requirements.txt ./tests/unit/requirements.txt
-RUN python -m pip install -r ./tests/unit/requirements.txt
-
-# Install ltrace module required libraries
-COPY ./src/ltrace/requirements.txt ./src/ltrace/requirements.txt
-RUN python -m pip install -r ./src/ltrace/requirements.txt
+# Config git
+RUN git config --global --add safe.directory '*'

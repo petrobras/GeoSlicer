@@ -1,7 +1,7 @@
 import os
 import slicer
 from ltrace.workflow.workstep import Workstep, WorkstepWidget
-from ltrace.assets_utils import get_asset
+from ltrace.assets_utils import get_model_by_name
 from ltrace.slicer.tests.utils import wait_cli_to_finish
 from Segmenter import MonaiModelsLogic
 from types import SimpleNamespace
@@ -20,7 +20,7 @@ class ThinSectionPores(Workstep):
         return
 
     def run(self, nodes):
-        inputModel = {"currentData": os.path.join(get_asset("ThinSectionEnv"), "carb_pore")}
+        inputModel = {"currentData": get_model_by_name("carb_pore")}
 
         for node in nodes:
             logic = MonaiModelsLogic(imageLogMode=False, onFinish=None)

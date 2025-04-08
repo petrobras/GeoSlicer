@@ -75,20 +75,16 @@ class PnflowSubprocess(TwoPhaseSubprocess):
         self,
         params: dict,
         cwd: str,
-        link1: str,
-        link2: str,
-        node1: str,
-        node2: str,
+        statoil_data: dict,
+        snapshot_file: str,
         id: int,
         write_debug_files: bool,
     ):
         super().__init__(
             params,
             cwd,
-            link1,
-            link2,
-            node1,
-            node2,
+            statoil_data,
+            None,
             id,
             write_debug_files,
         )
@@ -123,7 +119,12 @@ class PnflowSubprocess(TwoPhaseSubprocess):
         return cycle_results
 
     @staticmethod
-    def caller(cwd, params, link1, link2, node1, node2, write_debug_files=False):
+    def caller(cwd, params, statoil_data, snapshot_file=None, write_debug_files=False):
+        link1 = statoil_data["link1"]
+        link2 = statoil_data["link2"]
+        node1 = statoil_data["node1"]
+        node2 = statoil_data["node2"]
+
         input_string = PNFLOW_INPUT.substitute(
             output_name="Output", enable_vtu_output=params["create_sequence"], **params
         )
@@ -155,7 +156,7 @@ class PnflowSubprocess(TwoPhaseSubprocess):
         thread.start()
         result_string = result_queue.get()
 
-        if params["create_ca_distributions"]:
+        if params["create_ca_distributions"] == "T":
             PnflowSubprocess.__create_cas_json()
 
         with open("result.txt", "w") as result_file:

@@ -1,0 +1,1 @@
+# Boundary Removal Big Image

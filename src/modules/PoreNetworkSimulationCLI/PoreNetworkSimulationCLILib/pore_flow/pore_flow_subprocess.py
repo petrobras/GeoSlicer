@@ -16,20 +16,16 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
         self,
         params: dict,
         cwd: str,
-        link1: str,
-        link2: str,
-        node1: str,
-        node2: str,
+        statoil_data: dict,
+        snapshot_file: str,
         id: int,
         write_debug_files: bool,
     ):
         super().__init__(
             params,
             cwd,
-            link1,
-            link2,
-            node1,
-            node2,
+            statoil_data,
+            snapshot_file,
             id,
             write_debug_files,
         )
@@ -42,8 +38,21 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             cycle_results = {"cycle": [], "Sw": [], "Pc": [], "Krw": [], "Kro": [], "RI": []}
         return cycle_results
 
+    def get_snapshot_file(self):
+        if self.params["create_drainage_snapshot"] == "T":
+            return str(Path(self.cwd) / "snapshot.bin")
+        else:
+            return None
+
     @staticmethod
-    def caller(cwd, params_in, link1, link2, node1, node2, write_debug_files=False):
+    def caller(cwd, params_in, statoil_data, snapshot_file=None, write_debug_files=False):
+        link1 = statoil_data["link1"]
+        link2 = statoil_data["link2"]
+        link3 = statoil_data["link3"]
+        node1 = statoil_data["node1"]
+        node2 = statoil_data["node2"]
+        node3 = statoil_data["node3"]
+
         params = params_in.copy()
         os.chdir(cwd)
 
@@ -68,40 +77,69 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             "second_ca_range": params["frac_contact_angle_range"],
             "second_ca_fraction": params["frac_contact_angle_fraction"],
             "second_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(params["frac_contact_angle_rctrl"]),
+            "pc_maximum": params["enforced_pc_1"],
+            "pc_minimum": params["enforced_pc_2"],
             "drainage_sw_step": params["enforced_steps_1"],
             "imbibition_sw_step": params["enforced_steps_2"],
+            "pore_fill_algorithm": params["pore_fill_algorithm"],
+            "pore_fill_weight_a1": params["pore_fill_weight_a1"],
+            "pore_fill_weight_a2": params["pore_fill_weight_a2"],
+            "pore_fill_weight_a3": params["pore_fill_weight_a3"],
+            "pore_fill_weight_a4": params["pore_fill_weight_a4"],
+            "pore_fill_weight_a5": params["pore_fill_weight_a5"],
+            "pore_fill_weight_a6": params["pore_fill_weight_a6"],
+            "skip_imbibition": params["skip_imbibition"],
+            "skip_2nd_drainage": False,
+            "enforced_swi_1": params["enforced_swi_1"],
+            "enforced_swi_2": params["enforced_swi_2"],
         }
 
-        input_file = open("input.txt", "w")
-        link1_file = open("Image_link1.dat", "w")
-        link2_file = open("Image_link2.dat", "w")
-        node1_file = open("Image_node1.dat", "w")
-        node2_file = open("Image_node2.dat", "w")
-        input_file.write(json.dumps(py_pore_flow_parameters))
-        link1_file.write(link1)
-        link2_file.write(link2)
-        node1_file.write(node1)
-        node2_file.write(node2)
-        input_file.close()
-        link1_file.close()
-        link2_file.close()
-        node1_file.close()
-        node2_file.close()
-
         generate_vtu = params["create_sequence"] == "T"
-
-        pn = openpnm.io.network_from_statoil(".", "Image")
 
         if write_debug_files:
             ppf.log.configure(output=ppf.log.FILE, level=ppf.log.INFO)
         else:
             ppf.log.configure(level=ppf.log.WARNING)
-        cycle, Pc, Sw, Krw, Kro = ppf.run_two_phase_simulation(pn, py_pore_flow_parameters, generate_vtu=generate_vtu)
+
+        if snapshot_file is not None:
+            pn, parameters, config = ppf.load_snapshot(snapshot_file)
+            parameters.update(py_pore_flow_parameters)
+            cycle, Pc, Sw, Krw, Kro = ppf.run_two_phase_simulation(
+                pn, parameters, generate_vtu=generate_vtu, generate_cas=True, setup_network=False, config=config
+            )
+        else:
+            input_file = open("input.txt", "w")
+            link1_file = open("Image_link1.dat", "w")
+            link2_file = open("Image_link2.dat", "w")
+            node1_file = open("Image_node1.dat", "w")
+            node2_file = open("Image_node2.dat", "w")
+            input_file.write(json.dumps(py_pore_flow_parameters))
+            link1_file.write(link1)
+            link2_file.write(link2)
+            node1_file.write(node1)
+            node2_file.write(node2)
+            input_file.close()
+            link1_file.close()
+            link2_file.close()
+            node1_file.close()
+            node2_file.close()
+
+            pn = openpnm.io.network_from_statoil(".", "Image")
+            pn["pore.N"], pn["throat.N"] = PoreFlowSubprocess.__get_n_from_statoil(pn, link3, node3)
+
+            if params["create_drainage_snapshot"] == "T":
+                drainage_snapshot_pc = "final"
+            else:
+                drainage_snapshot_pc = None
+
+            cycle, Pc, Sw, Krw, Kro = ppf.run_two_phase_simulation(
+                pn, py_pore_flow_parameters, generate_vtu=generate_vtu, drainage_snapshot_pc=drainage_snapshot_pc
+            )
         result_string = json.dumps(
             {"cycle": cycle.tolist(), "Pc": Pc.tolist(), "Sw": Sw.tolist(), "Krw": Krw.tolist(), "Kro": Kro.tolist()}
         )
 
-        if params["create_ca_distributions"]:
+        if params["create_ca_distributions"] == "T":
             ca_distribution = {
                 "drainage": {
                     "advancing_ca": np.degrees(
@@ -154,3 +192,49 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             return ppf.NEGATIVE_RADIUS
         elif rctrl == "rMax":
             return ppf.POSITIVE_RADIUS
+
+    @staticmethod
+    def __get_n_from_statoil(pn, link3, node3):
+        pore_N_array = PoreFlowSubprocess.__get_pores_n_from_statoil(pn, node3)
+        throat_N_array = PoreFlowSubprocess.__get_throats_n_from_statoil(pn, link3)
+
+        return pore_N_array, throat_N_array
+
+    @staticmethod
+    def __get_pores_n_from_statoil(pn, node3):
+        number_of_pores = len(pn["pore.all"])
+
+        lines = node3.strip().split("\n")
+        id_list = []
+        N_list = []
+        for line in lines:
+            splitted = line.split()
+            id_list.append(int(splitted[0]))
+            N_list.append(float(splitted[1]))
+        id_list = np.array(id_list)
+        N_list = np.array(N_list)
+
+        pore_N_array = np.full(number_of_pores, 1.0, np.float64)
+        pore_N_array[id_list - 1] = N_list
+
+        return pore_N_array
+
+    @staticmethod
+    def __get_throats_n_from_statoil(pn, link3):
+        number_of_throats = len(pn["throat.all"])
+
+        lines = link3.strip().split("\n")
+        id_list = []
+        N_list = []
+        for line in lines:
+            splitted = line.split()
+            id = int(splitted[0])
+            if id <= number_of_throats:
+                id_list.append(id)
+                N_list.append(float(splitted[3]))
+        id_list = np.array(id_list)
+        N_list = np.array(N_list)
+
+        throat_N_array = np.full(number_of_throats, 1.0, np.float64)
+        throat_N_array[id_list - 1] = N_list
+        return throat_N_array

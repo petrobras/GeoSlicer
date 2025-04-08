@@ -1,3 +1,9 @@
+from ltrace.flow.util import (
+    createSimplifiedSegmentEditor,
+    onSegmentEditorEnter,
+    onSegmentEditorExit,
+)
+
 import os
 from pathlib import Path
 
@@ -70,10 +76,10 @@ SOI_SEG_EDITOR_TAG = "Streamlined_SOI_Segment_Editor"
 class StepEnum:
     SELECT_IMAGE = 0
     CROP = 1
-    FILTER = 2
-    MULTIPLE_THRESHOLD = 3
-    BOUNDARY_REMOVAL = 4
-    SOI = 5
+    SOI = 2
+    FILTER = 3
+    MULTIPLE_THRESHOLD = 4
+    BOUNDARY_REMOVAL = 5
     MODEL = 6
     FINISH = 7
 
@@ -81,10 +87,10 @@ class StepEnum:
 HELP = {
     StepEnum.SELECT_IMAGE: "<h3>Select image</h3>Select the input microtomography image to be modeled.<br><br>You can load images using the <b>Micro CT Loader</b> module.",
     StepEnum.CROP: "<h3>Crop</h3>Crop the input image to the region of interest.",
+    StepEnum.SOI: "<h3>Segment of interest</h3>Specify the region of interest for the modelling.<br><br>Use the '<b>Scissors</b>' effect to manually select the region of interest, or the '<b>Sample segmentation</b>' effect to quickly segment the sample.",
     StepEnum.FILTER: "<h3>Filter</h3>Remove noise from the image using a median filter.<br><br>Each voxel is replaced by the median value of the voxels in a neighborhood around it. You must specify a neighborhood size greater than 1x1x1 for the filter to have an effect.",
     StepEnum.MULTIPLE_THRESHOLD: "<h3>Threshold</h3>Segment the image into macroporosity, microporosity, solid and reference solid.<br><br>Adjust the thresholds by dragging the handles in the histogram. You can zoom in and out on the histogram by using the 'X-axis range' slider.",
     StepEnum.BOUNDARY_REMOVAL: "<h3>Adjust boundaries</h3>The boundary between macroporosity and solid may be misclassified by the thresholding. Specify a boundary region that will be adjusted by removing the boundary from the microporosity segment and then expanding the other segments to fill the gap.<br><br>Adjust the slider until the region in blue matches the boundary between macroporosity and solid.",
-    StepEnum.SOI: "<h3>Segment of interest</h3>Specify the region of interest for the modelling.<br><br>Use the '<b>Scissors</b>' effect to manually select the region of interest, or the '<b>Sample segmentation</b>' effect to quickly segment the sample.",
     StepEnum.MODEL: "<h3>Model</h3>Compute a porosity map of the volume, where pore is 1 and solid is 0.<br><br>Use the quality control histogram to define air and solid attenuation factors.",
     StepEnum.FINISH: "<h3>Finish</h3>You can check the results or go back to a previous step to make changes.",
 }
@@ -93,9 +99,9 @@ HELP = {
 class WidgetEnum:
     SELECT_IMAGE = 0
     CROP = 1
-    FILTER = 2
-    SEGMENTATION = 3
-    SOI = 4
+    SOI = 2
+    FILTER = 3
+    SEGMENTATION = 4
     MODEL = 5
     FINISH = 6
 
@@ -115,117 +121,17 @@ class FlowState:
 
     def selectSegmentation(self, segmentation):
         self.segmentation = segmentation
-        self.soi = None
         self.finished = False
 
     def availableSteps(self):
         steps = [StepEnum.SELECT_IMAGE]
         if self.scalarVolume is not None:
-            steps += [StepEnum.CROP, StepEnum.FILTER, StepEnum.MULTIPLE_THRESHOLD]
+            steps += [StepEnum.CROP, StepEnum.SOI, StepEnum.FILTER, StepEnum.MULTIPLE_THRESHOLD]
         if self.segmentation is not None:
-            steps += [StepEnum.BOUNDARY_REMOVAL, StepEnum.SOI, StepEnum.MODEL]
+            steps += [StepEnum.BOUNDARY_REMOVAL, StepEnum.MODEL]
         if self.finished:
             steps += [StepEnum.FINISH]
         return steps
-
-
-def onSegmentEditorEnter(editor, tag):
-    """Runs whenever the module is reopened"""
-    if editor.turnOffLightboxes():
-        slicer.util.warningDisplay(
-            "Segment Editor is not compatible with slice viewers in light box mode. Views are being reset.",
-            windowTitle="Segment Editor",
-        )
-
-    # Allow switching between effects and selected segment using keyboard shortcuts
-    editor.installKeyboardShortcuts()
-
-    # Set parameter set node if absent
-    segmentEditorNode = slicer.mrmlScene.GetSingletonNode(tag, "vtkMRMLSegmentEditorNode")
-    if segmentEditorNode is None:
-        segmentEditorNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLSegmentEditorNode")
-        segmentEditorNode.UnRegister(None)
-        segmentEditorNode.SetSingletonTag(tag)
-        segmentEditorNode = slicer.mrmlScene.AddNode(segmentEditorNode)
-    editor.setMRMLSegmentEditorNode(segmentEditorNode)
-
-    editor.updateWidgetFromMRML()
-
-
-def onSegmentEditorExit(editor):
-    editor.setActiveEffect(None)
-    editor.uninstallKeyboardShortcuts()
-    editor.removeViewObservations()
-
-
-def createSimplifiedSegmentEditor():
-    # TODO: For some reason the instance() function cannot be called as a class function although it's static
-    factory = qSlicerSegmentationsEditorEffectsPythonQt.qSlicerSegmentEditorEffectFactory()
-    effectFactorySingleton = factory.instance()
-
-    #
-    # Segment editor widget
-    #
-    editor = qSlicerSegmentationsModuleWidgetsPythonQt.qMRMLSegmentEditorWidget()
-    editor.setMaximumNumberOfUndoStates(0)
-    # Set parameter node first so that the automatic selections made when the scene is set are saved
-    # Note: Commented because preload make this unnecessary
-    ### self.selectParameterNode()
-    editor.setMRMLScene(slicer.mrmlScene)
-
-    # Observe editor effect registrations to make sure that any effects that are registered
-    # later will show up in the segment editor widget. For example, if Segment Editor is set
-    # as startup module, additional effects are registered after the segment editor widget is created.
-    # Increasing buttons width to improve visibility
-    specifyGeometryButton = editor.findChild(qt.QToolButton, "SpecifyGeometryButton")
-    specifyGeometryButton.setVisible(False)
-
-    sliceRotateWarningButton = editor.findChild(qt.QToolButton, "SliceRotateWarningButton")
-    sliceRotateWarningButton.setFixedWidth(100)
-
-    sourceVolumeNodeLabel = editor.findChild(qt.QLabel, "SourceVolumeNodeLabel")
-    sourceVolumeNodeLabel.visible = False
-
-    segmentationNodeLabel = editor.findChild(qt.QLabel, "SegmentationNodeLabel")
-    segmentationNodeLabel.visible = False
-
-    sourceVolumeNodeComboBox = editor.findChild(slicer.qMRMLNodeComboBox, "SourceVolumeNodeComboBox")
-    sourceVolumeNodeComboBox.visible = False
-
-    segmentationNodeComboBox = editor.findChild(slicer.qMRMLNodeComboBox, "SegmentationNodeComboBox")
-    segmentationNodeComboBox.visible = False
-
-    helpWidget = editor.findChild(qt.QWidget, "EffectHelpBrowser")
-    helpWidget.visible = False
-
-    def onAddSegmentButton():
-        segmentation = segmentationNodeComboBox.currentNode().GetSegmentation()
-        nSegments = segmentation.GetNumberOfSegments()
-
-        existentColors = []
-        for i in range(nSegments):
-            segmentID = segmentation.GetNthSegmentID(i)
-            existentColors.append(segmentation.GetSegment(segmentID).GetColor())
-
-        segmentID = segmentation.GetNthSegmentID(nSegments - 1)
-        newColor = distinctipy.get_colors(1, existentColors)[0]
-        segmentation.GetSegment(segmentID).SetColor(newColor)
-
-    addSegmentButton = editor.findChild(qt.QPushButton, "AddSegmentButton")
-    addSegmentButton.clicked.connect(onAddSegmentButton)
-
-    editor.findChild(qt.QFrame, "UndoRedoGroupBox").visible = False
-
-    switchToSegmentationsButton = editor.findChild(qt.QToolButton, "SwitchToSegmentationsButton")
-    switchToSegmentationsButton.setVisible(False)
-
-    tableView = editor.findChild(qt.QTableView, "SegmentsTable")
-    tableView.setColumnHidden(0, True)
-    editor.findChild(qt.QPushButton, "AddSegmentButton").visible = False
-    editor.findChild(qt.QPushButton, "RemoveSegmentButton").visible = False
-    editor.findChild(slicer.qMRMLSegmentationShow3DButton, "Show3DButton").visible = False
-
-    return editor, effectFactorySingleton, sourceVolumeNodeComboBox, segmentationNodeComboBox
 
 
 def setNodesVisibility(flowState, scalar=False, segmentation=False, soi=False):
@@ -393,7 +299,14 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         def afterWait():
             with ProgressBarProc() as pb:
                 pb.setMessage("Initializing boundary removal")
-                print("afterWait initialize()")
+
+                # Make all segments invisible except for microporosity
+                display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+                display.SetSegmentVisibility("Macroporosity", False)
+                display.SetSegmentVisibility("Microporosity", True)
+                display.SetSegmentVisibility("Solid", False)
+                display.SetSegmentVisibility("Reference Solid", False)
+
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.parent().visible = False
                 self.boundaryRemovalEffect.applyButton.visible = False
@@ -537,6 +450,9 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.stepsWidget.setCurrentIndex(WidgetEnum.SOI)
 
     def exitSOI(self):
+        if self.soiSegmentComboBox.currentNode().GetID() != self.flowState.soi.GetID():
+            slicer.mrmlScene.RemoveNode(self.soiSegmentComboBox.currentNode())
+
         onSegmentEditorExit(self.soiEditor)
 
     def setupModelling(self):
@@ -565,7 +481,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
 
     def enterModelling(self):
         slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalView)
-        setNodesVisibility(self.flowState, scalar=True, segmentation=True, soi=True)
+        setNodesVisibility(self.flowState, scalar=True, segmentation=True, soi=False)
 
         self.backButton.enabled = True
         self.backButton.setToolTip("Go back to the previous step")
@@ -626,15 +542,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         elif index == StepEnum.CROP:
             self.cropWidget.onCropButtonClicked()
             self.flowState.scalarVolume = self.cropWidget.logic.lastCroppedVolume
-            self.stepList.setCurrentRow(StepEnum.FILTER)
-        elif index == StepEnum.FILTER:
-            self.filteringToolWidget.onApplyButtonClicked()
-            self.nextButton.enabled = False
-            self.nextButton.setToolTip("Filter is already running")
-        elif index == StepEnum.MULTIPLE_THRESHOLD:
-            self.multipleThresholdEffect.onApply()
-        elif index == StepEnum.BOUNDARY_REMOVAL:
-            self.boundaryRemovalEffect.onApply()
+            self.stepList.setCurrentRow(StepEnum.SOI)
         elif index == StepEnum.SOI:
             soiNode = self.soiSegmentComboBox.currentNode()
             array = slicer.util.arrayFromSegmentBinaryLabelmap(soiNode, "SOI")
@@ -647,7 +555,15 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
                 self.flowState.soi = None
             else:
                 self.flowState.soi = soiNode
-            self.stepList.setCurrentRow(StepEnum.MODEL)
+            self.stepList.setCurrentRow(StepEnum.FILTER)
+        elif index == StepEnum.FILTER:
+            self.filteringToolWidget.onApplyButtonClicked()
+            self.nextButton.enabled = False
+            self.nextButton.setToolTip("Filter is already running")
+        elif index == StepEnum.MULTIPLE_THRESHOLD:
+            self.multipleThresholdEffect.onApply()
+        elif index == StepEnum.BOUNDARY_REMOVAL:
+            self.boundaryRemovalEffect.onApply()
         elif index == StepEnum.MODEL:
             self.modellingWidget.apply_button.click()
             self.nextButton.enabled = False
@@ -760,9 +676,9 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.stepsWidget.addWidget(self.setupSelectImage())
         self.stepsWidget.addWidget(self.setupCrop())
+        self.stepsWidget.addWidget(self.setupSOI())
         self.stepsWidget.addWidget(self.setupFilter())
         self.stepsWidget.addWidget(self.setupSegmentation())
-        self.stepsWidget.addWidget(self.setupSOI())
         self.stepsWidget.addWidget(self.setupModelling())
         self.stepsWidget.addWidget(self.setupFinish())
 
@@ -770,10 +686,10 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
             [
                 ("Select image", (self.enterSelectImage, self.exitSelectImage)),
                 ("Crop", (self.enterCrop, self.exitCrop)),
+                ("Segment of interest", (self.enterSOI, self.exitSOI)),
                 ("Filter", (self.enterFilter, self.exitFilter)),
                 ("Threshold", (self.enterMultipleThreshold, self.exitMultipleThreshold)),
                 ("Adjust boundaries", (self.enterBoundaryRemoval, self.exitBoundaryRemoval)),
-                ("Segment of interest", (self.enterSOI, self.exitSOI)),
                 ("Model", (self.enterModelling, self.exitModelling)),
                 ("Finish", (self.enterFinish, self.exitFinish)),
             ]
@@ -802,7 +718,14 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.enter()
 
     def onMultipleThresholdFinished(self):
-        self.flowState.selectSegmentation(self.segmentationNodeComboBox.currentNode())
+        segmentationNode = self.segmentationNodeComboBox.currentNode()
+        self.flowState.selectSegmentation(segmentationNode)
+
+        if self.flowState.soi is not None:
+            with helpers.SegmentationNodeArray(segmentationNode, read_only=False) as array:
+                with helpers.SegmentationNodeArray(self.flowState.soi, read_only=True) as soiArray:
+                    array *= soiArray
+
         self.stepList.setCurrentRow(StepEnum.BOUNDARY_REMOVAL)
 
     def onBoundaryRemovalFinished(self):
@@ -810,7 +733,13 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.pb.setMessage("Expanding segments")
         self.editor.setActiveEffectByName("Expand segments")
         display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+
+        # Make all segments visible except for microporosity
+        display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+        display.SetSegmentVisibility("Macroporosity", True)
         display.SetSegmentVisibility("Microporosity", False)
+        display.SetSegmentVisibility("Solid", True)
+        display.SetSegmentVisibility("Reference Solid", True)
 
         self.expandSegmentsEffect.applyButton.click()
 
@@ -820,7 +749,12 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
             display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
             display.SetSegmentVisibility("Microporosity", True)
 
-        self.stepList.setCurrentRow(StepEnum.SOI)
+            if self.flowState.soi is not None:
+                with helpers.SegmentationNodeArray(self.flowState.segmentation, read_only=False) as array:
+                    with helpers.SegmentationNodeArray(self.flowState.soi, read_only=True) as soiArray:
+                        array *= soiArray
+
+        self.stepList.setCurrentRow(StepEnum.MODEL)
 
     def onModellingFinished(self):
         self.flowState.finished = True

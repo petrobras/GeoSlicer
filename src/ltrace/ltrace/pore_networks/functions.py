@@ -20,12 +20,20 @@ from ltrace.slicer_utils import tableNodeToDict, slicer_is_in_developer_mode, da
 from ltrace.image import optimized_transforms
 import ltrace.pore_networks.functions as pn
 from ltrace.pore_networks.functions_extract import spy2geo
-from ltrace.pore_networks.functions_simulation import manual_valvatne_blunt, set_subresolution_conductance
+from ltrace.pore_networks.functions_simulation import (
+    manual_valvatne_blunt, 
+    set_subresolution_conductance,
+    estimate_radius,
+    estimate_pressure,
+)
 from .constants import *
 from .vtk_utils import *
 
 DEFAULT_SHAPE_FACTOR = 1.0
 MAX_VISUALIZATION_POINTS = 15000
+
+
+
 """
 Three Pore network description formats:
 spy: PoreSpy format (dict of 1D and 2D np arrays)
@@ -80,7 +88,14 @@ def geo2spy(geo_pore):
     return spy
 
 
-def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
+def geo2pnf(
+        geo_pore, 
+        subresolution_function, 
+        scale_factor=10 ** -3, 
+        axis="x",
+        subres_shape_factor=0.071,
+        subres_porositymodifier=1.0,
+        ):
     """
     Takes a Table Node with pore_table type attribute and returns a dictionary
     with four strings ("link1", "link2", "node1", "node2") representing the four
@@ -95,7 +110,13 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
     manual_valvatne_blunt(spy_network)
 
     if (spy_network["pore.phase"] == 2).any():
-        set_subresolution_conductance(spy_network, subresolution_function, save_tables=slicer_is_in_developer_mode())
+        set_subresolution_conductance(
+            spy_network, 
+            subresolution_function, 
+            subres_porositymodifier=subres_porositymodifier,
+            subres_shape_factor=subres_shape_factor,
+            save_tables=slicer_is_in_developer_mode(),
+            )
     spy2geo(spy_network)
     pore_dict = {i: spy_network[i] for i in spy_network.keys() if ("pore." in i) }
     throat_dict = {i: spy_network[i] for i in spy_network.keys() if ("throat." in i) }
@@ -139,6 +160,7 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
     pnf = {}
     pnf["link1"] = ["",]
     pnf["link2"] = []
+    pnf["link3"] = []
 
     if "throat.perimeter" in throat_dict.keys():
         min_perimeter = throat_dict["throat.perimeter"][throat_dict["throat.perimeter"] > 0].min()
@@ -199,42 +221,50 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
         right_is_darcy = throat_dict["throat.phases_1"][i] == 2
         throat_is_darcy = left_is_darcy or right_is_darcy
         if throat_is_darcy:
+            N = "{:E}".format(throat_dict["throat.number_of_capilaries"][i])
             radius = "{:E}".format(scale_factor * throat_dict["throat.cap_radius"][i])
-            shape_factor = 0.048
+            shape_factor = "{:E}".format(subres_shape_factor)
 
             mid_length = (
-                throat_dict["throat.mid_length"][i]
-                / throat_dict["throat.number_of_capilaries"][i]
+                scale_factor * throat_dict["throat.mid_length"][i]
+                #/ throat_dict["throat.number_of_capilaries"][i]
             )
 
             if left_is_darcy:
                 left_pore_length = (
-                    throat_dict["throat.conns_0_length"][i]
-                    / pore_dict["pore.number_of_capilaries"][left_pore]
+                    scale_factor * throat_dict["throat.conns_0_length"][i]
+                    #/ pore_dict["pore.number_of_capilaries"][left_pore]
                 )
             else:
-                left_pore_length = mid_length / 100
+                left_pore_length = scale_factor * throat_dict["throat.conns_0_length"][i]
 
             if right_is_darcy:
                 right_pore_length = (
-                    throat_dict["throat.conns_1_length"][i]
-                    / pore_dict["pore.number_of_capilaries"][right_pore]
+                    scale_factor * throat_dict["throat.conns_1_length"][i]
+                    #/ pore_dict["pore.number_of_capilaries"][right_pore]
                 )
             else:
-                right_pore_length = mid_length / 100
-            
-            volume = (
-                throat_dict["throat.cap_radius"][i]**2
-                * (9/np.sqrt(3))
+                right_pore_length = scale_factor * throat_dict["throat.conns_1_length"][i]
+            '''
+                        volume = (
+                np.pi
+                * throat_dict["throat.cap_radius"][i]**2
+                #* (9/np.sqrt(3))
                 * mid_length
-                * throat_dict["throat.number_of_capilaries"][i]
+                #* throat_dict["throat.number_of_capilaries"][i]
             )
+            '''
             length = left_pore_length + right_pore_length + mid_length
+        else: # pore is not Darcy
+            N = "{:E}".format(1.0)
 
         # write results
         pnf["link1"].append(f"{i+1} {left_pore+1} {right_pore+1} {radius} {shape_factor} {length}")
         pnf["link2"].append(
             f"{i+1} {left_pore+1} {right_pore+1} {left_pore_length} {right_pore_length} {mid_length} {volume} {clay}"
+        )
+        pnf["link3"].append(
+            f"{i+1} {left_pore+1} {right_pore+1} {N}"
         )
 
     # adds mock throats to define inlets and outlets
@@ -249,7 +279,7 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
             continue
         pores_conns_pores[i].append(target_pore)
         pores_conns_throats[i].append(n_throats)
-        shape_factor = "{:E}".format(0.07)  # Similar to PNE behavior
+        shape_factor = "{:E}".format(subres_shape_factor)  # Similar to PNE behavior
         if "pore.extended_diameter" in pore_dict.keys():
             radius = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][i] / 2)
             length = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][i] / 2)
@@ -258,8 +288,11 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
             length = "{:E}".format(scale_factor * pore_dict["pore.radius"][i])
         total_length = "{:E}".format(scale_factor * 3 * pore_dict["pore.extended_diameter"][i] / 2)
         volume = "{:E}".format(scale_factor ** 3 * pore_dict["pore.volume"][i] * volume_multiplier)
+        N = "{:E}".format(1.0)
+        
         pnf["link1"].append(f"{n_throats+1} {i+1} {target_pore+1} {radius} {shape_factor} {length}")
         pnf["link2"].append(f"{n_throats+1} {i+1} {target_pore+1} {length} {0} {0} {volume} {0}")
+        # pnf["link3"].append(f"{n_throats+1} {i+1} {N}")
         n_throats += 1
 
     pnf["link1"][0] = f"{n_throats}"
@@ -276,6 +309,7 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
 
     pnf["node1"] = [f"{n_pores} {x} {y} {z}",]
     pnf["node2"] = []
+    pnf["node3"] = []
     for i in range(n_pores):
         input_x = pore_dict["pore.coords_0"][i] * scale_factor
         input_y = pore_dict["pore.coords_1"][i] * scale_factor
@@ -313,14 +347,19 @@ def geo2pnf(geo_pore, subresolution_function, scale_factor=10 ** -3, axis="x"):
 
         # adjustments for darcy pores
         if pore_dict["pore.phase"][i] == 2:
-            volume = pore_dict["pore.volume"][i] * pore_dict["pore.subresolution_porosity"][i]
-            radius = pore_dict["pore.cap_radius"][i]
-            shape_factor = 0.048
+            #volume = pore_dict["pore.volume"][i] * pore_dict["pore.subresolution_porosity"][i]
+            radius = "{:E}".format(scale_factor * pore_dict["pore.cap_radius"][i])
+            shape_factor = "{:E}".format(subres_shape_factor)
+            N = "{:E}".format(pore_dict["pore.number_of_capilaries"][i])
+        else:
+            N = "{:E}".format(1.0)
 
         pnf["node1"].append(
             f"{i+1} {p_x} {p_y} {p_z} {coordinate_number} {connected_pores} {is_inlet} {is_outlet} {connected_throats}"
         )
         pnf["node2"].append(f"{i+1} {volume} {radius} {shape_factor} {clay}")
+
+        pnf["node3"].append(f"{i+1} {N}")
 
     return pnf
 
@@ -420,6 +459,7 @@ def get_sub_geo(pore_dict, throat_dict, sub_pores, sub_throats):
     return sub_pore_dict, sub_throat_dict
 
 
+'''
 def single_phase_permeability_pnf(pore_table, axis="x"):
     """
     Uses PNFlow to calculate one phase permeability, deprecated. 
@@ -467,7 +507,7 @@ DRAIN_SINGLETS: T;
         shutil.rmtree(temporary_folder)
 
     return perm
-
+'''
 
 def _counter():
     i = -1

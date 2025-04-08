@@ -1,3 +1,4 @@
+from pathlib import Path
 from collections import namedtuple
 
 import cv2
@@ -11,7 +12,7 @@ import ltrace.algorithms.supervised.mrcnn.model as modellib
 from ltrace.algorithms.measurements import instances_depths, sidewall_sample_instance_properties
 from ltrace.algorithms.supervised.mrcnn.config import Config
 from ltrace.slicer.cli_utils import progressUpdate
-from .model import Model, processImageArray, combineImageArrays, updateLabelMapArray
+from .model import processImageArray, combineImageArrays, updateLabelMapArray
 
 ImageLogSidewallSampleModelParameters = namedtuple(
     "ImageLogSidewallSampleModelParameters",
@@ -28,7 +29,7 @@ ImageLogSidewallSampleModelParameters = namedtuple(
 EXTRA_COLUMNS = 30
 
 
-class PetrobrasSidewallSampleConfig1(Config):
+class SidewallSampleConfig(Config):
     NAME = "sample"
     GPU_COUNT = 1
     IMAGES_PER_GPU = 1
@@ -45,55 +46,17 @@ class PetrobrasSidewallSampleConfig1(Config):
     DETECTION_MIN_CONFIDENCE = 0.96
 
 
-class PetrobrasSidewallSampleConfig2(Config):
-    NAME = "sample"
-    GPU_COUNT = 1
-    IMAGES_PER_GPU = 1
-    NUM_CLASSES = 1 + 1
-    RPN_ANCHOR_SCALES = (26, 28, 30, 32, 34)  # anchor side in pixels
-    BACKBONE = "resnet50"
-    MEAN_PIXEL = [173.58488657, 109.89597048, 0]
-    DETECTION_NMS_THRESHOLD = 0.0  # no overlapping
-    RPN_ANCHOR_RATIOS = [0.9, 1, 1.1]
-
-    MAX_GT_INSTANCES = 100
-    IMAGE_MIN_DIM = 256
-    IMAGE_MAX_DIM = 1024
-    DETECTION_MIN_CONFIDENCE = 0.96
-
-
-class SyntheticSidewallSampleConfig(Config):
-    NAME = "sample"
-    GPU_COUNT = 1
-    IMAGES_PER_GPU = 1
-    NUM_CLASSES = 1 + 1
-    RPN_ANCHOR_SCALES = (26, 28, 30, 32, 34)  # anchor side in pixels
-    BACKBONE = "resnet50"
-    MEAN_PIXEL = [173.58488657, 109.89597048, 0]
-    DETECTION_NMS_THRESHOLD = 0.0  # no overlapping
-    RPN_ANCHOR_RATIOS = [0.9, 1, 1.1]
-
-    MAX_GT_INSTANCES = 100
-    IMAGE_MIN_DIM = 256
-    IMAGE_MAX_DIM = 1024
-    DETECTION_MIN_CONFIDENCE = 0.96
-
-
-class ImageLogSidewallSampleModel(Model):
+class ImageLogSidewallSampleModel:
     def __init__(self):
         super().__init__()
 
     def segment(self, p):
         import tensorflow as tf
 
-        if p.model == "side_1":
-            self.inferenceConfig = PetrobrasSidewallSampleConfig1()
-        elif p.model == "side_2":
-            self.inferenceConfig = PetrobrasSidewallSampleConfig2()
-        elif p.model == "synth_side":
-            self.inferenceConfig = SyntheticSidewallSampleConfig()
+        if Path(p.model).is_file() and Path(p.model).suffix == ".h5":
+            self.inferenceConfig = SidewallSampleConfig()
         else:
-            raise RuntimeError(f"Model {p.model} isn't implemented.")
+            raise RuntimeError(f"Selected model {p.model} isn't compatible with Geoslicer. An '.h5' file is required")
 
         # Hide GPU from visible devices
         if not p.gpuEnabled:
@@ -111,7 +74,7 @@ class ImageLogSidewallSampleModel(Model):
         # cv2.imwrite("D:/combinedImageArray.tif", cv2.cvtColor(combinedImageArray, cv2.COLOR_RGB2BGR))
 
         inferenceModel = modellib.MaskRCNN(mode="inference", config=self.inferenceConfig, model_dir="")
-        tf.keras.Model.load_weights(inferenceModel.keras_model, str(self.getModelPath(p.model)), by_name=True)
+        tf.keras.Model.load_weights(inferenceModel.keras_model, p.model, by_name=True)
 
         shape = combinedImageArray.shape
         labelMapArray = np.full((shape[0], 1, shape[1]), 0)

@@ -191,8 +191,18 @@ def get_subject_hierarchy_siblings(node, forbid_root_as_parent=False):  # TODO m
     return [n for n in sibling_nodes if n is not None]
 
 
-def clone_volume(volume, name=None, copy_names=True, as_temporary=True):
-    new_volume = createTemporaryVolumeNode(volume.__class__, name=name, content=volume)
+def clone_volume(
+    volume,
+    name=None,
+    copy_names=True,
+    as_temporary=True,
+    hidden=True,
+    saveWithScene=False,
+    uniqueName=True,
+):
+    new_volume = createTemporaryVolumeNode(
+        volume.__class__, name=name, content=volume, hidden=hidden, saveWithScene=saveWithScene, uniqueName=uniqueName
+    )
     if not as_temporary:
         makeTemporaryNodePermanent(new_volume, show=True)
 
@@ -203,9 +213,15 @@ def clone_volume(volume, name=None, copy_names=True, as_temporary=True):
     new_volume.CreateDefaultDisplayNodes()
     new_volume.CreateDefaultStorageNode()
     new_display_node = new_volume.GetDisplayNode()
-    if hasattr(new_display_node, "AutoWindowLevelOff"):
-        new_display_node.AutoWindowLevelOff()
-        new_display_node.SetWindowLevel(old_display_node.GetWindow(), old_display_node.GetLevel())
+    if new_display_node is not None and old_display_node is not None:
+        if hasattr(new_display_node, "AutoWindowLevelOff"):
+            new_display_node.AutoWindowLevelOff()
+            new_display_node.SetWindowLevel(old_display_node.GetWindow(), old_display_node.GetLevel())
+
+        if hasattr(new_display_node, "SetThreshold"):
+            new_display_node.AutoThresholdOff()
+            new_display_node.ApplyThresholdOn()
+            new_display_node.SetThreshold(old_display_node.GetLowerThreshold(), old_display_node.GetUpperThreshold())
 
     if isinstance(volume, slicer.vtkMRMLLabelMapVolumeNode):
         color_node = copyColorNode(
@@ -296,6 +312,21 @@ def in_core_environment():
 
 def in_thin_section_environment():
     return getCurrentEnvironment() == NodeEnvironment.THIN_SECTION
+
+
+def copyAttributesTo(targetNode, sourceNode):
+    """Copy all attributes from sourceNode to targetNode
+
+    Args:
+        sourceNode (vtkMRMLNode): Source node
+        targetNode (vtkMRMLNode): Target node
+    """
+    if not sourceNode or not targetNode:
+        raise ValueError("Source and target nodes must be provided")
+
+    for attr_name in sourceNode.GetAttributeNames():
+        attr_value = sourceNode.GetAttribute(attr_name)
+        targetNode.SetAttribute(attr_name, attr_value)
 
 
 def moveNodeTo(dirId, node, dirTree=None):
@@ -1166,11 +1197,7 @@ def createLabelmapInput(
         if segmentationNode.GetSegmentation().GetNumberOfLayers() > 1 and topSegments:
             vtkSegmentIds = vtk.vtkStringArray()
             topLabelmapNode = createTemporaryVolumeNode(
-                slicer.vtkMRMLLabelMapVolumeNode,
-                name,
-                environment=tag,
-                uniqueName=uniqueName,
-                hidden=False
+                slicer.vtkMRMLLabelMapVolumeNode, name, environment=tag, uniqueName=uniqueName, hidden=False
             )
             for index in topSegments:
                 vtkSegmentIds.InsertNextValue(segmentation.GetNthSegmentID(index - 1))
@@ -2339,17 +2366,21 @@ class LazyLoad2:
         self.module = None
 
     def __getattr__(self, name):
-        if not self.module:
-            moduleInfo = slicer.modules.AppContextInstance.modules.availableModules[self.moduleName]
-            libraryPath = Path(moduleInfo.searchPath)
-            for el in libraryPath.iterdir():
-                if el.is_dir() and (el / "__init__.py").exists():
-                    sys.path.append(el.as_posix())
-            sys.path.append(libraryPath.as_posix())
+        try:
+            if not self.module:
+                moduleInfo = slicer.modules.AppContextInstance.modules.availableModules[self.moduleName]
+                libraryPath = Path(moduleInfo.searchPath)
+                for el in libraryPath.iterdir():
+                    if el.is_dir() and (el / "__init__.py").exists():
+                        sys.path.append(el.as_posix())
+                sys.path.append(libraryPath.as_posix())
 
-            self.module = importlib.import_module(self.targetModuleName)
+                self.module = importlib.import_module(self.targetModuleName)
 
-        return getattr(self.module, name)
+            return getattr(self.module, name)
+        except ImportError as e:
+            logging.debug(f"Module {self.moduleName} not available.")
+            return None
 
 
 def checkUniqueNames(nodes):
@@ -2446,6 +2477,7 @@ def addNodesToScene(nodes):
             slicer.util.errorDisplay(f"Failed to load the results.")
             logging.error(f"ERROR :: Cause: {repr(e)}")
 
+
 def setNodesHierarchy(nodes, referenceNode, projectDirName=None):
     folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
 
@@ -2505,4 +2537,55 @@ def compare_borders_3D(node_array: np.ndarray, offset=50):
     return xf.intersection(xe), yf.intersection(ye), zf.intersection(ze)
 
 
+class SegmentationNodeArray:
+    def __init__(self, segmentation_node, read_only=True):
+        self.segmentation_node = segmentation_node
+        self.labelmap_node = None
+        self.read_only = read_only
 
+    def __enter__(self):
+        self.labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "__temp__")
+        slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+            self.segmentation_node, self.labelmap_node, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+        )
+        self.array = slicer.util.arrayFromVolume(self.labelmap_node)
+        return self.array
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if not self.read_only:
+            self.segmentation_node.GetSegmentation().RemoveAllSegments()
+            slicer.util.updateVolumeFromArray(self.labelmap_node, self.array)
+            slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
+                self.labelmap_node, self.segmentation_node
+            )
+
+        slicer.mrmlScene.RemoveNode(self.labelmap_node)
+
+
+def validateSourceVolume(annotationNode, soiNode, imageNode):
+    import qt
+
+    if not imageNode:
+        return True
+
+    mismatchedNodes = []
+
+    if annotationNode and getSourceVolume(annotationNode) is not imageNode:
+        mismatchedNodes.append(annotationNode.GetName())
+
+    if soiNode and getSourceVolume(soiNode) is not imageNode:
+        mismatchedNodes.append(soiNode.GetName())
+
+    if not mismatchedNodes:
+        return True
+
+    if len(mismatchedNodes) == 1:
+        message = f'The input "{mismatchedNodes[0]}" was'
+    else:
+        message = f'The inputs "{mismatchedNodes[0]}" and "{mismatchedNodes[1]}" were'
+
+    message += f" not defined based on the input " f'"{imageNode.GetName()}". Do you wish to continue?'
+    ret = qt.QMessageBox.question(
+        slicer.modules.AppContextInstance.mainWindow, "Segmentation reference mismatch", message
+    )
+    return ret == qt.QMessageBox.Yes

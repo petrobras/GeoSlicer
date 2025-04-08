@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>ExpandSegmentsBigImage CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters advanced="false">
+    <string>
+      <name>params</name>
+      <label>Parameters</label>
+      <longflag>params</longflag>
+      <description><![CDATA[Model configuration string]]></description>
+      <default></default>
+    </string>
+  </parameters>
+
+
+</executable>

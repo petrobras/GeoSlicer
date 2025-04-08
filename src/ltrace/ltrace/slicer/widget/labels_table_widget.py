@@ -24,6 +24,9 @@ class LabelsTableWidget(qt.QTableWidget):
 
     def set_labelmap_node(self, labelmap_node):
         self.clearContents()
+        if labelmap_node is None:
+            return
+
         colors = self.get_label_colors(labelmap_node)
         self.set_colors(colors)
 

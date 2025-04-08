@@ -25,6 +25,7 @@ class BrightnessContrastWidget(qt.QWidget):
         self.brightnessSliderWidget.maximum = 100
         self.brightnessSliderWidget.tracking = False
         self.brightnessSliderWidget.valueChanged.connect(self.onBrightnessContrastSliderValueChanged)
+        self.brightnessSliderWidget.objectName = "Brightness Slider"
         formLayout.addRow("Brightness:", self.brightnessSliderWidget)
 
         self.contrastSliderWidget = slicer.qMRMLSliderWidget()
@@ -32,6 +33,7 @@ class BrightnessContrastWidget(qt.QWidget):
         self.contrastSliderWidget.maximum = 100
         self.contrastSliderWidget.tracking = False
         self.contrastSliderWidget.valueChanged.connect(self.onBrightnessContrastSliderValueChanged)
+        self.contrastSliderWidget.objectName = "Contrast Slider"
         formLayout.addRow("Contrast:", self.contrastSliderWidget)
 
         formLayout.addRow(" ", None)

@@ -1,6 +1,6 @@
 import torch
 from monai.inferers import sliding_window_inference
-from ltrace.assets_utils import get_asset
+from ltrace.assets_utils import get_model_by_name, get_pth
 import torch
 import monai
 from monai.networks.blocks.convolutions import Convolution
@@ -72,9 +72,9 @@ class DWinference:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print("Device: ", self.device)
         if mode == "3D":
-            self.model_path = get_asset("MicroCTEnv/deep_ws_3d/model.pth")
+            self.model_path = get_pth(get_model_by_name("deep_ws_3d"))
         elif mode == "2D":
-            self.model_path = get_asset("ThinSectionEnv/deep_ws_2d/model.pth")
+            self.model_path = get_pth(get_model_by_name("deep_ws_2d"))
 
     def _prepare_sample(self, img):
         sample = {}

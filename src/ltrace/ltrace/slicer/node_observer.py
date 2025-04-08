@@ -4,6 +4,7 @@ import vtk
 import logging
 import traceback
 from ltrace.slicer import helpers
+from ltrace.slicer.debounce_caller import DebounceCaller
 
 
 class NodeObserver(qt.QObject):
@@ -31,6 +32,8 @@ class NodeObserver(qt.QObject):
                 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__on_node_removed),
             )
         )
+        self.__signalModifiedDebouncer = DebounceCaller(parent=self, signal=self.modifiedSignal, intervalMs=50)
+        self.destroyed.connect(self.__del__)
 
     def __del__(self):
         self.clear()
@@ -41,7 +44,7 @@ class NodeObserver(qt.QObject):
 
     def __on_node_modified(self, caller, event):
         """Handles node's modification."""
-        self.modifiedSignal.emit(self, caller)
+        self.__signalModifiedDebouncer.emit(self, caller)
 
     @vtk.calldata_type(vtk.VTK_OBJECT)
     def __on_node_removed(self, caller, event, node):

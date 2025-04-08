@@ -187,10 +187,16 @@ class ScalarVolumeWidget(qt.QWidget):
             self.histogramFrame.view_leeway = 0.05
             contentsFrameLayout.addRow(self.histogramFrame)
 
-    def setNode(self, node):
+    def setNode(self, node, hideTable=False):
         self.node = node
         if self.isLabelMap:
-            self.labelsTableWidget.set_labelmap_node(node)
+            if hideTable:
+                self.labelsTableWidget.set_labelmap_node(None)
+                self.labelsTableWidget.visible = False
+            else:
+                self.labelsTableWidget.set_labelmap_node(node)
+                self.labelsTableWidget.visible = True
+
         else:
             previousAutoWindowLevel = self.windowLevelWidget.autoWindowLevel
             self.windowLevelWidget.setAutoWindowLevel(previousAutoWindowLevel)

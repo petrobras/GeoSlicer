@@ -14,7 +14,7 @@ from ltrace.algorithms.measurements import (
 from ltrace.slicer.helpers import tryGetNode
 from pyqtgraph import QtCore
 from ltrace.slicer import data_utils as dutils
-from ltrace.slicer.debounce_caller import DebounceCaller
+
 
 TEXT_SYMBOLS = {
     "● Circle": "o",
@@ -237,6 +237,8 @@ class GraphData(QtCore.QObject):
 
         # destroyed signal only works with a lambda
         self.destroyed.connect(lambda: self._cleanUp())
+        from ltrace.slicer.debounce_caller import DebounceCaller
+
         self.signalModifiedDebouncer = DebounceCaller(parent=self, signal=self.signalModified, qtTimer=QtCore.QTimer)
 
     def __eq__(self, other):

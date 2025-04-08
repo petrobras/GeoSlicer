@@ -11,6 +11,8 @@ from slicer.util import VTKObservationMixin
 from CustomizedEffects.Margin import SegmentEditorMarginEffect
 from CustomizedEffects.Threshold import SegmentEditorThresholdEffect
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
+from ltrace.slicer import helpers
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 # Checks if closed source code is available
 try:
@@ -48,7 +50,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor = None
         self.__tag = None
 
-        self.color_effects = ["Smart foreground", "Color threshold"]
+        self.color_effects = ["Color threshold"]
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -144,8 +146,6 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureColorSupport(color_support=color_support)
 
-        self.editor.effectByName("QEMSCAN mask").self().onSourceVolumeNodeChanged()
-
     def configureEffectsForThinSectionEnvironment(self):
         self.selectParameterNodeByTag("ThinSectionEnv")
 
@@ -165,6 +165,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
                 "Level tracing",
                 "QEMSCAN mask",
                 "Boundary removal",
+                "Smart foreground",
             ]
             + self.color_effects
         )
@@ -191,6 +192,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             "Boundary removal",
             "Expand segments",
             "Sample segmentation",
+            "Smart foreground",
         ]
         if color_support:
             effects.extend(self.color_effects)

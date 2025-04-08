@@ -1884,6 +1884,7 @@ class MaskRCNN(object):
             # Duplicate across the batch dimension because Keras requires it
             # TODO: can this be optimized to avoid duplicating the anchors?
             anchors = np.broadcast_to(anchors, (config.BATCH_SIZE,) + anchors.shape)
+
             # A hack to get around Keras's bad support for constants
             # This class returns a constant layer
             class ConstLayer(tf.keras.layers.Layer):

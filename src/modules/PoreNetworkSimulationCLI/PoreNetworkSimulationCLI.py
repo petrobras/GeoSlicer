@@ -34,10 +34,9 @@ from ltrace.pore_networks.functions_simulation import (
     set_subresolution_conductance,
     single_phase_permeability,
 )
+from ltrace.pore_networks.subres_models import set_subres_model
 
-from PoreNetworkSimulationCLILib.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
 from PoreNetworkSimulationCLILib.vtk_utils import create_flow_model, create_permeability_sphere
-from PoreNetworkSimulationCLILib.subres_models import set_subres_model
 
 from ltrace.slicer.cli_utils import progressUpdate
 import shutil
@@ -71,8 +70,8 @@ def onePhase(args, params):
     in_faces = ("xmin", "ymin", "zmin")
     out_faces = ("xmax", "ymax", "zmax")
 
-    flow_array = np.zeros((3, 3), dtype="float")
-    permeability_array = np.zeros((3, 3), dtype="float")
+    flow_array = np.zeros((1, 3), dtype="float")
+    permeability_array = np.zeros((1, 3), dtype="float")
 
     sizes = params["sizes"]
     ijktoras = params["ijktoras"]
@@ -82,7 +81,8 @@ def onePhase(args, params):
 
     minmax = []
     counter = 1
-    for inlet, outlet in itertools.combinations_with_replacement((0, 1, 2), 2):
+    # for inlet, outlet in itertools.combinations_with_replacement((0, 1, 2), 2):
+    for inlet, outlet in ((0, 0), (1, 1), (2, 2)):
         in_face = in_faces[inlet]
         out_face = out_faces[outlet]
         perm, pn_pores, pn_throats = single_phase_permeability(
@@ -90,6 +90,8 @@ def onePhase(args, params):
             in_face,
             out_face,
             subresolution_function=subres_func,
+            subres_porositymodifier=params["subres_porositymodifier"],
+            subres_shape_factor=params["subres_shape_factor"],
             solver=params["solver"],
             target_error=params["solver_error"],
             preconditioner=params["preconditioner"],
@@ -109,10 +111,10 @@ def onePhase(args, params):
         else:
             # Darcy permeability for pluridimensional flow is undefined
             permeability = 0
-        flow_array[inlet, outlet] = flow_rate
-        flow_array[outlet, inlet] = flow_rate
-        permeability_array[inlet, outlet] = permeability * 1000  # Conversion factor from darcy to milidarcy
-        permeability_array[outlet, inlet] = permeability * 1000  # Conversion factor from darcy to milidarcy
+        flow_array[0, inlet] = flow_rate
+        # flow_array[outlet, 0] = flow_rate
+        permeability_array[0, inlet] = permeability * 1000  # Conversion factor from darcy to milidarcy
+        # permeability_array[outlet, 0] = permeability * 1000  # Conversion factor from darcy to milidarcy
 
         # Create VTK models
         # throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
@@ -155,15 +157,15 @@ def onePhase(args, params):
 
     flow_df = pd.DataFrame(
         flow_array,
-        ("z [cm^3/s]", "y [cm^3/s]", "x [cm^3/s]"),
-        ("z [cm^3/s]", "y [cm^3/s]", "x [cm^3/s]"),
+        index=None,
+        columns=("z [cm^3/s]", "y [cm^3/s]", "x [cm^3/s]"),
     )
     writeDataFrame(flow_df, cwd / "flow.pd")
 
     permeability_df = pd.DataFrame(
         permeability_array,
-        ("z [mD]", "y [mD]", "x [mD]"),
-        ("z [mD]", "y [mD]", "x [mD]"),
+        index=None,
+        columns=("z [mD]", "y [mD]", "x [mD]"),
     )
     writeDataFrame(permeability_df, cwd / "permeability.pd")
     # writeDataFrame(pd.DataFrame(x, "Pressure"), cwd / "pressure.pd")
@@ -233,6 +235,7 @@ def onePhaseMultiAngle(args, params):
         perm, pn_pores, pn_throats = single_phase_permeability(
             pore_network,
             subresolution_function=subres_func,
+            subres_shape_factor=params["subres_shape_factor"],
             solver=params["solver"],
             target_error=params["solver_error"],
             preconditioner=params["preconditioner"],
@@ -304,6 +307,12 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
     with open(str(cwd / "statoil_dict.json"), "r") as file:
         statoil_dict = json.load(file)
 
+    snapshot_file_path = cwd / "snapshot.bin"
+    if snapshot_file_path.is_file():
+        snapshot_file = str(snapshot_file_path)
+    else:
+        snapshot_file = None
+
     num_tests = get_number_of_tests(params)
     keep_temporary = params["keep_temporary"]
     timeout_enabled = params["timeout_enabled"]
@@ -315,6 +324,7 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
     parallel = TwoPhaseSimulation(
         cwd=cwd,
         statoil_dict=statoil_dict,
+        snapshot_file=snapshot_file,
         params=params,
         num_tests=num_tests,
         timeout_enabled=timeout_enabled,
@@ -348,7 +358,7 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
                 writePolydata(polydata, f"{args.tempDir}/cycle_node_{i}.vtk")
                 saturation_steps_list.append(saturation_steps)
 
-            if params["create_ca_distributions"]:
+            if params["create_ca_distributions"] == "T":
                 try:
                     with open(str(Path(result["cwd"]) / "ca_distribution.json"), "r") as fp:
                         ca_distribution_dict = json.load(fp)
@@ -360,6 +370,9 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
                     writeDataFrame(ca_distribution_df, cwd / f"ca_distribution_{i}")
                 except FileNotFoundError:
                     pass
+
+            if params["create_drainage_snapshot"] == "T":
+                shutil.copyfile(Path(result["cwd"]) / "snapshot.bin", cwd / "snapshot.bin")
 
             if not keep_temporary:
                 shutil.rmtree(result["cwd"])
@@ -386,7 +399,13 @@ def simulate_mercury(args, params):
         np.nan_to_num(sub_network[prop], copy=False)
 
     manual_valvatne_blunt(sub_network)
-    set_subresolution_conductance(sub_network, subres_func, save_tables=params["save_tables"])
+    set_subresolution_conductance(
+        sub_network,
+        subresolution_function=subres_func,
+        subres_porositymodifier=params["subres_porositymodifier"],
+        subres_shape_factor=params["subres_shape_factor"],
+        save_tables=params["save_tables"],
+    )
 
     with open(str(cwd / "net_flow_props.dict"), "wb") as file:
         pickle.dump(sub_network, file)

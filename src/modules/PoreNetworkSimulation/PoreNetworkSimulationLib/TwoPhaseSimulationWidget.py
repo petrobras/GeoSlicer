@@ -3,13 +3,13 @@ import qt
 import slicer
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 
-from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
 from ltrace.slicer import ui, helpers
 from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import getResourcePath
-from ltrace.slicer.widget.simulation import *
+from ltrace.slicer_utils import getResourcePath, slicer_is_in_developer_mode
+import ltrace.slicer.widget.simulation as simulation_widgets
+from ltrace.slicer.widget.help_button import HelpButton
 
 
 class TwoPhaseParametersEditDialog:
@@ -72,29 +72,31 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         "angle steps": 5,
         "keep_temporary": False,
         "create_sequence": False,
+        "subres_porositymodifier": 1.0,
         "subres_model_name": "Fixed Radius",
         "subres_params": {"radius": 0.1},
     }
 
     WIDGET_TYPES = {
-        "singleint": SinglestepIntWidget,
-        "singlefloat": SinglestepEditWidget,
-        "multifloat": MultistepEditWidget,
-        "checkbox": CheckboxWidget,
-        "singlecheckbox": SingleCheckboxWidget,
-        "combobox": ComboboxWidget,
-        "integerspinbox": IntegerSpinBoxWidget,
+        "singleint": simulation_widgets.SinglestepIntWidget,
+        "singlefloat": simulation_widgets.SinglestepEditWidget,
+        "multifloat": simulation_widgets.MultistepEditWidget,
+        "checkbox": simulation_widgets.CheckboxWidget,
+        "singlecheckbox": simulation_widgets.SingleCheckboxWidget,
+        "combobox": simulation_widgets.ComboboxWidget,
+        "integerspinbox": simulation_widgets.IntegerSpinBoxWidget,
     }
 
     def __init__(self, hide_parameters_io=False):
         super().__init__()
         layout = qt.QFormLayout(self)
         self.widgets = {}
+        self.labels = {}
 
         self.simulator_combo_box = qt.QComboBox()
         self.simulator_combo_box.objectName = "Simulator Selector"
-        self.simulator_combo_box.addItem("pnflow")
         self.simulator_combo_box.addItem("py_pore_flow")
+        self.simulator_combo_box.addItem("pnflow")
         self.simulator_combo_box.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
         simulator_label = qt.QLabel("Simulator:")
         simulator_layout = qt.QHBoxLayout()
@@ -154,6 +156,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 target_layout=new_layout,
                 source_layout_name=layout_name,
                 widgets_list=self.widgets,
+                label_list=self.labels,
             )
             fluidPropertiesLayout.addRow(collapsible)
 
@@ -161,6 +164,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             target_layout=fluidPropertiesLayout,
             source_layout_name="fluid_properties",
             widgets_list=self.widgets,
+            label_list=self.labels,
         )
 
         # contact angle
@@ -197,12 +201,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 target_layout=new_layout,
                 source_layout_name=layout_name,
                 widgets_list=self.widgets,
+                label_list=self.labels,
             )
             self.contactAngleLayout.addRow(collapsible)
         self.add_widgets(
             target_layout=self.contactAngleLayout,
             source_layout_name="contact_angle_options",
             widgets_list=self.widgets,
+            label_list=self.labels,
         )
 
         # simulation options
@@ -231,12 +237,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 target_layout=new_layout,
                 source_layout_name=layout_name,
                 widgets_list=self.widgets,
+                label_list=self.labels,
             )
             self.simulationOptionsLayout.addRow(collapsible)
         self.add_widgets(
             target_layout=self.simulationOptionsLayout,
             source_layout_name="options",
             widgets_list=self.widgets,
+            label_list=self.labels,
         )
 
         style_sheet = """
@@ -283,7 +291,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
         for key, widget in self.widgets.items():
-            if isinstance(widget, MultistepEditWidget):
+            if isinstance(widget, simulation_widgets.MultistepEditWidget):
                 widget.stepChanged.connect(self.updateSimulationCount)
 
         self.updateSimulationCount()
@@ -309,13 +317,17 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         )
         self.updateFieldsActivation()
 
+        if not slicer_is_in_developer_mode():
+            self.labels["create_drainage_snapshot"].setVisible(False)
+            self.widgets["create_drainage_snapshot"].setVisible(False)
+
     def create_custom_widget(self, name, params):
         full_params = params.copy()
         full_params["parameter_name"] = name
         new_widget = self.WIDGET_TYPES[params["dtype"]](**full_params)
         return new_widget
 
-    def add_widgets(self, target_layout, source_layout_name, widgets_list):
+    def add_widgets(self, target_layout, source_layout_name, widgets_list, label_list):
         for widget_name, widget_params in (i for i in PARAMETERS.items() if i[1]["layout"] == source_layout_name):
             if widget_params.get("hidden", False):
                 continue
@@ -326,10 +338,11 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 new_label.setEnabled(enable)
                 new_widget.setEnabled(enable)
             if "tooltip" in widget_params:
-                new_label = TooltipLabel(widget_params["display_name"])
+                new_label = simulation_widgets.TooltipLabel(widget_params["display_name"])
                 new_label.setToolTip(widget_params["tooltip"])
             target_layout.addRow(new_label, new_widget)
             widgets_list[widget_name] = new_widget
+            label_list[widget_name] = new_label
 
     def updateFieldsActivation(self):
         self.onChangedContactModel("init_contact_model")
@@ -382,6 +395,8 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+        shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
+        subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             subres_params = {
@@ -395,6 +410,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         params["subresolution function call"] = self.mercury_widget.getFunction
         params["subres_model_name"] = subres_model_name
         params["subres_params"] = subres_params
+        params["subres_shape_factor"] = shape_factor
+        params["subres_porositymodifier"] = subres_porositymodifier
+        params["skip_imbibition"] = False
 
         return params
 
@@ -412,7 +430,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameters_dict = {}
 
         for widget in self.widgets.values():
-            if isinstance(widget, MultistepEditWidget):
+            if isinstance(widget, simulation_widgets.MultistepEditWidget):
                 parameter_name = widget.get_name()
                 if widget.get_start() is None:
                     return None, f"{parameter_name} start"
@@ -443,7 +461,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
     def updateSimulationCount(self):
         simulation_count = 1
         for widget in self.widgets.values():
-            if isinstance(widget, MultistepEditWidget):
+            if isinstance(widget, simulation_widgets.MultistepEditWidget):
                 simulation_count *= widget.get_steps()
 
         sequence_widget = self.widgets["create_sequence"]
@@ -474,7 +492,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             parameters_dict = parameter_node_to_dict(selectedNode)
             for name, widget in self.widgets.items():
                 if name in parameters_dict:
-                    if isinstance(widget, MultistepEditWidget):
+                    if isinstance(widget, simulation_widgets.MultistepEditWidget):
                         values = parameters_dict[name]
                         widget.set_value(values["start"] or "", values["stop"] or "")
                         widget.set_steps(values["steps"] or "")

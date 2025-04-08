@@ -28,7 +28,7 @@ class HistogramMeta(type(qt.QFrame), ABCMeta):
 
 
 class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
-    def __init__(self, parent=None, region_widget=None, view_widget=None):
+    def __init__(self, parent=None, region_widget=None, view_widget=None, num_channels=1):
         super().__init__(parent)
 
         self.voxel_array = list()
@@ -40,7 +40,7 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
         self.region_leeway = 0
         self.view_leeway = 0
 
-        self.number_of_arrays = 1
+        self.number_of_arrays = num_channels
 
         self.region_widget = region_widget
 
@@ -162,8 +162,11 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
         region_diff = (region_range_max - region_range_min) * self.region_leeway
         self._set_region_range(region_range_min - region_diff, region_range_max + region_diff)
 
-        region_min, region_max = self._get_region_values()
-        self.set_region(region_min, region_max)
+        try:
+            region_min, region_max = self._get_region_values()
+            self.set_region(region_min, region_max)
+        except Exception:
+            pass
 
         # Adjust current zoom slider and plot values
         if auto_adjust_zoom:
@@ -350,8 +353,8 @@ class DisplayNodeHistogramFrame(HistogramFrame):
 
 
 class SegmentationModellingHistogramFrame(HistogramFrame):
-    def __init__(self, parent=None, region_widget=None, view_widget=None):
-        super().__init__(parent, region_widget, view_widget)
+    def __init__(self, parent=None, region_widget=None, view_widget=None, num_channels=1):
+        super().__init__(parent, region_widget, view_widget, num_channels)
         layout = qt.QVBoxLayout(self)
 
         self.data_plot = SegmentationModellingDataPlot(zoom_slider=view_widget)
@@ -387,6 +390,7 @@ class SegmentationModellingHistogramFrame(HistogramFrame):
         controls_layout.addLayout(buttonsB_layout)
 
         layout.addLayout(controls_layout)
+        layout.addStretch(1)
 
         self._connect_signals()
 
@@ -423,8 +427,7 @@ class SegmentationModellingHistogramFrame(HistogramFrame):
 
 class MicroPorosityHistogramFrame(SegmentationModellingHistogramFrame):
     def __init__(self, parent=None, region_widget=None, view_widget=None):
-        super().__init__(parent, region_widget, view_widget)
-        self.number_of_arrays = 3
+        super().__init__(parent, region_widget, view_widget, num_channels=3)
 
     def set_data(
         self,

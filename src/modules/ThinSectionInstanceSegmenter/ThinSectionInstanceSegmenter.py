@@ -5,7 +5,7 @@ import qt
 import slicer
 import logging
 
-from ltrace.assets_utils import get_trained_models_with_metadata, get_metadata
+from ltrace.assets_utils import get_pth
 from ltrace.remote.connections import JobExecutor
 from ltrace.remote.jobs import JobManager
 from ltrace.slicer import ui, helpers, widgets
@@ -20,6 +20,7 @@ from ltrace.slicer.helpers import (
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
 from ltrace.slicer.node_attributes import NodeEnvironment
 
 import csv
@@ -236,8 +237,6 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
 
         self.layout.addStretch(1)
 
-        self._addPretrainedModelsIfAvailable()
-
     def _setupLocalRemoteSection(self):
         widget = ctk.ctkCollapsibleButton()
         widget.text = "Resources"
@@ -276,9 +275,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             f"### Instance Segmentation Inference\n\nDifferent algorithms are available to perform an inference with a given model.\n\nThe native ones are codes implemented by us using the mmdet framework. Third parties use the [sahi](https://github.com/obss/sahi) library. In addition we also provide two types of inference:\n\n - Direct: Default method for running inference on the entire image. It's faster, but provides fewer results.\n\n - Chunked: Run inference on fragments or tiles of the full image. It can be very slow, but provides more complete results.\n\n-----\n More information available at [Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
         )
 
-        self.modelInput = qt.QComboBox()
+        self.modelInput = TrainedModelSelector(["RCNN"])
         self.modelInput.objectName = "Model ComboBox"
-        self.modelInput.setToolTip("Select pre-trained model for instance segmentation")
 
         modelInputHelpButton = HelpButton(
             f"### Instance Segmentation Inference\n\n The frameworks provided here can support different types of models. Select one of then from the list.\n\n-----\n More information available at [Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
@@ -483,7 +481,7 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
         prefix = self.outputPrefix.text + "_{type}"
 
         try:
-            model_dir = self.modelInput.currentData
+            model_dir = self.modelInput.getSelectedModelPath()
             refNode = self.inputsSelector.referenceInput.currentNode()
             soiNode = self.inputsSelector.soiInput.currentNode()
 
@@ -498,9 +496,8 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
             )
 
             logic = ThinSectionInstanceSegmenterLogic(onFinish=self.resetUI)
-            classes = get_metadata(model_dir)["classes"]
+            classes = self.modelInput.getSelectedModelMetadata()["classes"]
 
-            model_dir = model_dir.as_posix()
             if self.remoteRadioButton.checked:
                 self.cliNode = logic.dispatch(model_dir, refNode, soiNode, prefix, params, classes)
                 self.applyCancelButtons.applyBtn.setEnabled(True)
@@ -528,24 +525,6 @@ class ThinSectionInstanceSegmenterWidget(LTracePluginWidget):
     def enter(self) -> None:
         super().enter()
         # Add pretrained models
-        self._addPretrainedModelsIfAvailable()
-
-    def _addPretrainedModelsIfAvailable(self):
-        env = helpers.getCurrentEnvironment().value
-
-        assert env is not None, "Missing environment definition"
-        if self.modelInput.count == 0:
-            try:
-                model_dirs = get_trained_models_with_metadata(env)
-                for model_dir in model_dirs:
-                    metadata = get_metadata(model_dir)
-                    try:
-                        if metadata["is_instance_seg_model"]:
-                            self.modelInput.addItem(metadata["title"], model_dir)
-                    except KeyError:
-                        pass
-            except RuntimeError as error:
-                logging.error(error)
 
 
 def import_colors_from_csv(path):
