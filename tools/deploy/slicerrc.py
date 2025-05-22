@@ -1,3 +1,4 @@
+import ctypes
 import logging
 import os
 import pickle
@@ -13,7 +14,7 @@ import slicer
 import slicer.util
 
 from ltrace.slicer.about.about_dialog import AboutDialog
-from ltrace.slicer.ai_models.widget import AIModelsPathDialog
+from ltrace.slicer.ai_models.widget import AIModelsPathDialog, AIModelsPathModel
 from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData
 from ltrace.slicer.app.custom_3dview import customize_3d_view as customize3DView
 from ltrace.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
@@ -28,6 +29,9 @@ from ltrace.slicer_utils import slicer_is_in_developer_mode, getResourcePath
 from ltrace.slicer import helpers
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.utils.custom_event_filter import CustomEventFilter
+
+# This import is necessary to make the custom keyring available in the keyring module
+from ltrace.utils import custom_keyring
 
 # This line solve some problems with Geoslicer Restart when mmengine in installed
 # because of a dependence on opencv, instead of opencv-headless, currently used in
@@ -374,11 +378,22 @@ def setDialogToolBar():
         partial(slicer.modules.RemoteServiceInstance.cli.initiateConnectionDialog, keepDialogOpen=True),
     )
 
-    dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "FolderPlus.svg").as_posix()),
-        "Models Path",
-        modelsPathDialog,
-    )
+    envModelDir = os.getenv("GEOSLICER_MODELS_DIR")
+    if envModelDir is None:
+        # Model directories are not configured by the environment
+        # Allow user to edit model directories
+        dialogToolBar.addAction(
+            qt.QIcon((ICON_DIR / "IconSet-dark" / "FolderPlus.svg").as_posix()),
+            "Models Path",
+            modelsPathDialog,
+        )
+    else:
+        # Model directories are configured by the environment (i.e. Geoslicer Remote)
+        model = AIModelsPathModel()
+
+        # Clear first in case directory changes in the future
+        model.clear()
+        model.addPath(envModelDir)
 
     # dialogToolBar.addAction(
     #     qt.QIcon((ICON_DIR / "IconSet-dark" / "Settings.svg").as_posix()),
@@ -1389,7 +1404,8 @@ def bootstrapped(userSettings):
     revision = slicer.app.revisionUserSettings()
     booted = toBool(revision.value(f"{APP_NAME}/Booted", False))
     populated = len(revision.value(f"{APP_NAME}/LTraceModules", "")) > 0
-    conflicted = len(userSettings.value("Modules/FavoriteModules", [])) > 0
+    favoriteModules = userSettings.value("Modules/FavoriteModules", []) or []
+    conflicted = len(favoriteModules) > 0
     themeIsDark = userSettings.value("Styles/Style", "") == "Dark Slicer"
 
     return not conflicted and booted and populated and themeIsDark
@@ -1402,7 +1418,8 @@ def bootstrap(userSettings):
         setModulePanelVisible(False)
         slicer.app.setRenderPaused(True)
 
-        if len(userSettings.value("Modules/FavoriteModules", [])) > 0:
+        favoriteModules = userSettings.value("Modules/FavoriteModules", []) or []
+        if favoriteModules:
             msg = (
                 "This GeoSlicer version is not compatible with the previous one. We already fixed the configuration for you"
                 " but we need to restart GeoSlicer for the changes to take effect."
@@ -1439,6 +1456,7 @@ def bootstrap(userSettings):
 
 
 def init():
+
     os.chdir(slicer.app.slicerHome)
     userSettings = slicer.app.userSettings()
 

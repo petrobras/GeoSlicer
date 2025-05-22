@@ -1,18 +1,16 @@
+import slicer
+import qt
+import ctk
 import datetime
 import logging
+import numpy as np
 import os
 import random
-from collections import namedtuple
-from pathlib import Path
+import traceback
 
-import ctk
-import numpy as np
-import qt
-import slicer
-from scipy.optimize import curve_fit
+from collections import namedtuple
 
 from ltrace.slicer.helpers import (
-    triggerNodeModified,
     getSourceVolume,
     highlight_error,
     reset_style_on_valid_text,
@@ -20,11 +18,14 @@ from ltrace.slicer.helpers import (
     getVolumeNullValue,
     setVolumeNullValue,
     extractSegmentInfo,
+    remove_highlight,
 )
 from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
+from pathlib import Path
+from scipy.optimize import curve_fit
 
 try:
     from Test.PolynomialShadingCorrectionTest import PolynomialShadingCorrectionTest
@@ -195,6 +196,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.applyFullButton.setObjectName("applyAllButton")
 
         self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.setObjectName("Cancel Button")
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.setEnabled(False)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
@@ -261,6 +263,14 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
         widget.setParameters(**params)
 
+    def resetInputWidgetsStyle(self):
+        remove_highlight(self.inputImageComboBox)
+        remove_highlight(self.inputMaskComboBox)
+        remove_highlight(self.inputShadingMaskComboBox)
+        remove_highlight(self.sliceGroupSize)
+        remove_highlight(self.numberFittingPoints)
+        remove_highlight(self.outputImageNameLineEdit)
+
     def onRegisterButtonClicked(self):
         self.unrequireField(self.sliceGroupSize)
 
@@ -269,32 +279,12 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                 highlight_error(self.inputImageComboBox)
                 return
 
-            inputNode = self.inputImageComboBox.currentNode()
-
-            try:
-                inputMaskNode = extractSegmentInfo(self.inputMaskComboBox.currentItem(), refNode=inputNode)
-            except Exception as e:
-                import traceback
-
-                traceback.print_exc()
-                logging.warning("Invalid input mask. Cause:" + repr(e))
-                highlight_error(self.inputMaskComboBox)
-                return
-
-            try:
-                inputShadingMaskNode = extractSegmentInfo(
-                    self.inputShadingMaskComboBox.currentItem(), refNode=inputNode
-                )
-            except Exception as e:
-                import traceback
-
-                traceback.print_exc()
-                logging.warning("Invalid input shading mask. Cause:" + repr(e))
-                highlight_error(self.inputShadingMaskComboBox)
-                return
-
             if self.sliceGroupSize.value % 2 == 0:
                 highlight_error(self.sliceGroupSize)
+                return
+
+            if self.outputImageNameLineEdit.text.strip() == "":
+                highlight_error(self.outputImageNameLineEdit)
                 return
 
             inputImageDimensions = self.inputImageComboBox.currentNode().GetImageData().GetDimensions()
@@ -305,13 +295,35 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                     "Number of fitting points must be at maximum " + str(maximumNumberFittingPoints) + "."
                 )
 
-            if self.outputImageNameLineEdit.text.strip() == "":
-                highlight_error(self.outputImageNameLineEdit)
+            inputNode = self.inputImageComboBox.currentNode()
+
+            try:
+                inputMaskNode = extractSegmentInfo(self.inputMaskComboBox.currentItem(), refNode=inputNode)
+            except Exception as e:
+                traceback.print_exc()
+                logging.warning("Invalid input mask. Cause:" + repr(e))
+                highlight_error(self.inputMaskComboBox)
+                inputMaskNode = None
+                helpers.removeTemporaryNodes()
+                return
+
+            try:
+                inputShadingMaskNode = extractSegmentInfo(
+                    self.inputShadingMaskComboBox.currentItem(), refNode=inputNode
+                )
+            except Exception as e:
+                traceback.print_exc()
+                logging.warning("Invalid input shading mask. Cause:" + repr(e))
+                highlight_error(self.inputShadingMaskComboBox)
+                inputMaskNode = None
+                inputShadingMaskNode = None
+                helpers.removeTemporaryNodes()
                 return
 
             PolynomialShadingCorrection.set_setting(self.SLICE_GROUP_SIZE, self.sliceGroupSize.value)
             PolynomialShadingCorrection.set_setting(self.NUMBER_FITTING_POINTS, self.numberFittingPoints.value)
 
+            self.resetInputWidgetsStyle()
             self.apply.setEnabled(False)
             self.applyFullButton.setEnabled(False)
             self.cancelButton.setEnabled(True)
@@ -348,7 +360,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.statusLabel.setText("Status: Canceled")
         self.progressBar.hide()
         self.logic.cancel()
-
+        helpers.removeTemporaryNodes()
         self.apply.setEnabled(True)
         self.applyFullButton.setEnabled(True)
         self.cancelButton.setEnabled(False)
@@ -364,7 +376,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
     def cancel(self):
         self.cancelProcess = True
 
-    def process(self, parameters):
+    def process(self, parameters: PolynomialShadingCorrectionWidget.ProcessParameters) -> bool:
         self.cancelProcess = False
 
         self.inputImage = parameters.inputImage
@@ -403,10 +415,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
 
             slicer.util.setSliceViewerLayers(background=outputImage, foreground=None, label=None, fit=True)
         except Exception as e:
-            import traceback
-
             traceback.print_exc()
-
             slicer.util.infoDisplay("An unexpected error has occurred during the shading correction process: " + str(e))
         finally:
             helpers.removeTemporaryNodes()

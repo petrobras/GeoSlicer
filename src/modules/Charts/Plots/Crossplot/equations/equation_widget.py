@@ -2,6 +2,8 @@ import decimal
 
 import qt
 
+from ltrace.slicer import ui
+
 
 class ParametersFrame(qt.QFrame):
     signal_parameter_changed = qt.Signal(str, float, bool)
@@ -136,10 +138,7 @@ class EquationWidget:
             )
 
             if self.enable_fit_widgets:
-                line = qt.QFrame()
-                line.setFrameShape(qt.QFrame.HLine)
-                line.setFrameShadow(qt.QFrame.Sunken)
-                parameters_layout.addRow(line)
+                parameters_layout.addRow(ui.LineSeparator())
 
         if self.enable_fit_widgets:
             r_squared_layout = qt.QHBoxLayout()

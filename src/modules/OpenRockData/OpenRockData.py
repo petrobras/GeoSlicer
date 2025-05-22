@@ -7,8 +7,9 @@ import drd
 import qt
 import slicer
 import xarray as xr
+import time
 
-from Libs.drd_wrapper import Source
+from Libs.drd_wrapper import Source, DATASET_METADATA
 from ltrace.slicer import netcdf
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
@@ -38,6 +39,7 @@ class OpenRockData(LTracePlugin):
 class OpenRockDataWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+        self.is_downloading = False
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -72,7 +74,7 @@ library by Lukas-Mosser to access microtomography data from various sources.
 
         datasetItem = qt.QTreeWidgetItem(root, [Source.ELEVEN])
         datasetItem.setExpanded(True)
-        metadata = drd.datasets.eleven_sandstones.DATASET_METADATA
+        metadata = DATASET_METADATA
         for key, value in metadata.items():
             childItem = qt.QTreeWidgetItem(datasetItem, [key])
             for key in value:
@@ -82,6 +84,11 @@ library by Lukas-Mosser to access microtomography data from various sources.
         datasetItem.setExpanded(True)
         metadata = drd.datasets.icl_sandstones_carbonates_2009.DATASET_METADATA
         for key in metadata:
+            if key == "LV60B":
+                # LV60B comes with bad metadata
+                # Says it's 450x450x450, but it's actually 450x450x425
+                # Skipping for now
+                continue
             childItem = qt.QTreeWidgetItem(datasetItem, [key])
 
         """gdrive not working
@@ -112,6 +119,13 @@ library by Lukas-Mosser to access microtomography data from various sources.
         self.timer.setInterval(100)
 
     def onSelectionChanged(self):
+        self.updateDownloadButton()
+
+    def updateDownloadButton(self):
+        if self.is_downloading:
+            self.downloadButton.enabled = False
+            return
+
         selected = self.tree.currentItem()
         if selected is None:
             enabled = False
@@ -131,6 +145,7 @@ library by Lukas-Mosser to access microtomography data from various sources.
         data_home.mkdir(parents=True, exist_ok=True)
         stdout_file = open(data_home / "stdout.txt", "wb")
         stderr_file = open(data_home / "stderr.txt", "wb")
+        output_name = str(int(time.time() * 1000)) + ".nc"
 
         popen_args = [
             sys.executable,
@@ -139,6 +154,7 @@ library by Lukas-Mosser to access microtomography data from various sources.
             str(OpenRockData.MODULE_DIR / "Libs" / "drd_wrapper.py"),
             "/".join(hierarchy),
             str(data_home),
+            output_name,
         ]
         popen_kwargs = {
             "stdout": stdout_file,
@@ -150,11 +166,13 @@ library by Lukas-Mosser to access microtomography data from various sources.
 
         self.loadProcess = subprocess.Popen(popen_args, **popen_kwargs)
 
-        self.outputPath = data_home / "output_nc" / "output.nc"
+        self.outputPath = data_home / "output_nc" / output_name
         self.outputNodeName = hierarchy[-1]
         self.data_home = data_home
         self.timer.timeout.connect(self.checkProcess)
         self.timer.start()
+        self.is_downloading = True
+        self.updateDownloadButton()
 
     def checkProcess(self):
         if self.loadProcess.poll() is None:
@@ -170,16 +188,19 @@ library by Lukas-Mosser to access microtomography data from various sources.
         else:
             self.timer.stop()
             self.timer.timeout.disconnect()
+            self.is_downloading = False
+            self.updateDownloadButton()
             self.onDownloadFinished()
 
     def onDownloadFinished(self):
         try:
-            array = xr.open_dataarray(self.outputPath)
+            with xr.open_dataarray(self.outputPath) as array:
+                node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", self.outputNodeName)
+                netcdf._array_to_node(array, node)
         except (FileNotFoundError, ValueError):
             slicer.util.errorDisplay("Error: Dataset could not be loaded")
             return
-        node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", self.outputNodeName)
-        netcdf._array_to_node(array, node)
+        self.outputPath.unlink()
         spacing = node.GetSpacing()
         node.SetSpacing(spacing[0] * 1000, spacing[1] * 1000, spacing[2] * 1000)
         slicer.util.setSliceViewerLayers(background=node, fit=True)

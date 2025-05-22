@@ -88,27 +88,28 @@ class ImageLogDataWidget(CustomizedDataWidget):
         self.subjectHierarchyTreeView.setEditMenuActionVisible(False)
         self.subjectHierarchyTreeView.setFocusPolicy(qt.Qt.NoFocus)
 
+        infoFrameLayout = self.infoFrame.layout()
         self.trackImageWidget = TrackImageWidget()
-        self.formLayout.addRow(self.trackImageWidget)
+        infoFrameLayout.addWidget(self.trackImageWidget)
         self.trackImageWidget.setVisible(False)
 
         self.tableWidget = TableWidget()
-        self.formLayout.addRow(self.tableWidget)
+        infoFrameLayout.addWidget(self.tableWidget)
         self.tableWidget.setVisible(False)
 
         self.labelMapWidget = LabelMapWidget()
-        self.formLayout.addRow(self.labelMapWidget)
+        infoFrameLayout.addWidget(self.labelMapWidget)
         self.labelMapWidget.setVisible(False)
 
         self.segmentationWidget = SegmentationWidget()
-        self.formLayout.addRow(self.segmentationWidget)
+        infoFrameLayout.addWidget(self.segmentationWidget)
         self.segmentationWidget.setVisible(False)
 
         # Settings section
         self.settingsCollapsibleButton = ctk.ctkCollapsibleButton()
         self.settingsCollapsibleButton.setText("Settings")
         self.settingsCollapsibleButton.collapsed = True
-        self.formLayout.addRow(self.settingsCollapsibleButton)
+        infoFrameLayout.addWidget(self.settingsCollapsibleButton)
         settingsFormLayout = qt.QFormLayout(self.settingsCollapsibleButton)
         settingsFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 

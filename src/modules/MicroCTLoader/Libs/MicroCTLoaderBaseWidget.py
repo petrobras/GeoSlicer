@@ -1,23 +1,24 @@
 import ctk
 import qt
 import slicer
-import importlib
 
+import json
+import ltrace.algorithms.detect_cups as cups
+
+from .ManualCylinderCrop import ManualCylinderCropWidget
+from .RawLoader import RawLoaderWidget
 from dataclasses import dataclass, field
 from ltrace.slicer import microct
-
-# importlib.reload(Libs.RawLoader)
-from .RawLoader import RawLoaderWidget
-from ltrace.slicer.ui import DirOrFileWidget
 from ltrace.slicer.helpers import (
     highlight_error,
 )
+from ltrace.slicer.ui import DirOrFileWidget
 from ltrace.slicer_utils import *
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.units import global_unit_registry as ureg
+from ltrace.utils.callback import Callback
 from pathlib import Path
 from threading import Lock
-from ltrace.utils.callback import Callback
 
 COLORS = [(1, 0, 0), (0, 0.5, 1), (1, 0, 1)]
 
@@ -157,6 +158,9 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.progressBar.setRange(0, 100)
         self.progressBar.setValue(0)
         outputLayout.addRow(self.progressBar)
+
+        self.manualCylinderWidget = ManualCylinderCropWidget()
+        outputLayout.addRow(self.manualCylinderWidget)
         self.outputLayout = outputLayout
         self.progressBar.hide()
 
@@ -215,11 +219,20 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.rawWidget, self.rawParamsSection = self.setupRawWidget()
 
         # For subclasses
-        self.extraSection = ctk.ctkCollapsibleButton()
-        self.extraSection.visible = False
+        self.processingSection = ctk.ctkCollapsibleButton()
+        self.processingSection.text = "Processing"
+        processingLayout = qt.QFormLayout(self.processingSection)
+        self.cropCylinderCheckBox = qt.QCheckBox("Auto-crop rock cylinder")
+        self.cropCylinderCheckBox.setToolTip(
+            "Automatically detect upright rock cylinder and crop it. The original image will also be loaded."
+        )
+        cropCylinderChecked = slicer.app.settings().value("MicroCTLoader/CropCylinderChecked", "False") == "True"
+        self.cropCylinderCheckBox.setChecked(cropCylinderChecked)
+
+        processingLayout.addRow(self.cropCylinderCheckBox)
 
         self.loadFormLayout.addRow(self.rawParamsSection)
-        self.loadFormLayout.addRow(self.extraSection)
+        self.loadFormLayout.addRow(self.processingSection)
         self.loadFormLayout.addRow(self.rawWidget)
         self.loadFormLayout.addRow(self.normalWidget)
 
@@ -235,7 +248,8 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             self.onPathSelected(self.pathWidget.path)
 
     def enableProcessing(self, enable):
-        pass
+        self.processingSection.collapsed = not enable
+        self.processingSection.enabled = enable
 
     def onPathSelected(self, path):
         self.pathWidget.pathLineEdit.setStyleSheet("")
@@ -307,6 +321,9 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.pathInfoLabel.setText(message)
 
     def onLoadButtonClicked(self):
+        if self.manualCylinderWidget.cylinderRoi:
+            self.manualCylinderWidget.finishCrop()
+
         callback = self.updateStatus
         try:
             self.pathInfoLabel.setText("")
@@ -333,7 +350,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             ]
 
             callback("Loading...", 10, True)
-            microct.load(
+            firstNode, *otherNodes = microct.load(
                 path,
                 callback=callback,
                 imageSpacing=imageSpacing,
@@ -342,6 +359,10 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
                 loadAsLabelmap=self.loadAsLabelmapCheckBox.isChecked(),
                 loadAsSequence=self.loadAsSequenceCheckBox.isChecked(),
             )
+            if firstNode and not len(otherNodes) > 0:
+                processingSettings = self.checkProcessingSettings()
+                willCrop = processingSettings.get("willCrop", False)
+                self.postProcessing(node=firstNode, willCrop=willCrop, callback=callback)
         except LoadInfo as e:
             slicer.util.infoDisplay(str(e))
             return
@@ -392,13 +413,63 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         with self.progressMux:
             slicer.app.processEvents()
 
-    def checkNormalization(self, *args, **kwargs):
-        # Not available in base
-        return False, None, None, None
+    def checkProcessingSettings(self, *args, **kwargs) -> dict:
+        return {
+            "willCrop": self.cropCylinderCheckBox.isChecked(),
+        }
 
-    def normalize(self, *args, **kwargs):
-        # Not available in base
-        pass
+    def normalize(self, *args, **kwargs) -> None:
+        """Abstract method for normalization logic"""
+        self.postProcessing(*args, **kwargs)
+
+    def postProcessing(self, *args, **kwargs) -> None:
+        """Apply post processing to the output based on the settings."""
+        node = kwargs.get("node", None)
+        willCrop = kwargs.get("willCrop", False)
+        slicer.app.settings().setValue("MicroCTLoader/CropCylinderChecked", str(willCrop))
+
+        if not node or not willCrop:
+            return
+
+        callback = kwargs.get("callback", lambda *a: None)
+        manualCylinderWidget = kwargs.get("manualCylinderWidget", self.manualCylinderWidget)
+
+        self.handleAutoCrop(node=node, willCrop=willCrop, manualCylinderWidget=manualCylinderWidget, callback=callback)
+
+    def handleAutoCrop(
+        self,
+        node: slicer.vtkMRMLNode,
+        willCrop: bool,
+        manualCylinderWidget: ManualCylinderCropWidget,
+        callback=lambda *args: None,
+    ):
+        slicer.app.settings().setValue("MicroCTLoader/CropCylinderChecked", str(willCrop))
+
+        if not willCrop:
+            return
+
+        manualCylinderWidget.volumeInput.setCurrentNode(node)
+        manualCylinderWidget.onVolumeChanged(node)
+
+        array = slicer.util.arrayFromVolume(node)
+
+        callback("Detecting rock cylinder...", 20)
+        try:
+            cylinder = cups.detect_rock_cylinder(array)
+        except Exception:
+            cylinder = None
+
+        if cylinder:
+            float_cylinder = [float(x) for x in cylinder]
+            node.SetAttribute("RockCylinder", json.dumps(float_cylinder))
+
+            manualCylinderWidget.onAdjustButtonClicked()
+            manualCylinderWidget.instructionLabel.set_instruction(ManualCylinderCropWidget.SUCCESS_INSTRUCTION)
+        else:
+            manualCylinderWidget.onAdjustButtonClicked()
+            manualCylinderWidget.instructionLabel.set_instruction(ManualCylinderCropWidget.ERROR_INSTRUCTION)
+
+        manualCylinderWidget.section.collapsed = False
 
 
 class LoadInfo(RuntimeError):

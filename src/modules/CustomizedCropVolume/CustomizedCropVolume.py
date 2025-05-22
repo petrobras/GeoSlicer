@@ -277,6 +277,11 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         start = [round(x - size / 2 + 0.5) for x, size in zip(position_ijk[:3], ijkSize)]
         end = [st + size for st, size in zip(start, ijkSize)]
 
+        start = [0 if st < 0 else st for st in start]
+
+        dims = volume.GetImageData().GetDimensions()
+        end = [min(d, en) for d, en in zip(dims, end)]
+
         ijk_to_ras = vtk.vtkMatrix4x4()
         volume.GetIJKToRASMatrix(ijk_to_ras)
         new_origin = [0] * 4

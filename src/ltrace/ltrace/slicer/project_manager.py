@@ -12,12 +12,12 @@ import pandas as pd
 from dataclasses import dataclass
 from ltrace.constants import SaveStatus
 from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.helpers import bounds2size, singleton, getSourceVolume
-from ltrace.slicer.nodes.custom_behavior_node_manager import CustomBehaviorNodeManager
-from ltrace.slicer.nodes.defs import TriggerEvent
+from ltrace.slicer.helpers import singleton
+from ltrace.slicer.node_custom_behavior.node_custom_behavior_manager import NodeCustomBehaviorManager
+from ltrace.slicer.node_custom_behavior.defs import TriggerEvent
 from ltrace.slicer.node_observer import NodeObserver
 from pathlib import Path
-from pathvalidate import sanitize_filepath, is_valid_filename
+from pathvalidate import is_valid_filename
 from typing import List, Union
 from humanize import naturalsize
 
@@ -32,48 +32,6 @@ class SliceViewConfiguration:
     label: str = None
     foregroundOpacity: float = None
     labelOpacity: float = None
-
-
-class HierarchyVisibilityManager:
-    """Makes hierarchy folders above node visible when it becomes visible.
-    Slicer has no visibility changed event (the modified event is triggered
-    when a parent folder visibility is changed), so this class keeps track
-    of the last visibility state of the node as a workaround.
-    """
-
-    def __init__(self, display_node: slicer.vtkMRMLDisplayNode, get_displayable_node: callable):
-        # Set to false to trigger visibility change on first update
-        self.__last_visibility = False
-        self.__get_displayable_node = get_displayable_node
-        display_node.AddObserver("ModifiedEvent", self.__on_node_modified)
-
-    @staticmethod
-    def __make_all_ancestors_visible(node):
-        if node is None:
-            return False
-        sh = slicer.mrmlScene.GetSubjectHierarchyNode()
-        id_ = sh.GetItemByDataNode(node)
-        if id_ == 0:
-            return False
-        plugin_handler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
-        folder_plugin = plugin_handler.pluginByName("Folder")
-        scene_id = sh.GetSceneItemID()
-        while (id_ := sh.GetItemParent(id_)) != scene_id:
-            node = sh.GetItemDataNode(id_)
-            if isinstance(node, slicer.vtkMRMLFolderDisplayNode):
-                folder_plugin.setDisplayVisibility(id_, 1)
-            sh.SetItemDisplayVisibility(id_, True)
-        return True
-
-    def __on_node_modified(self, caller, event):
-        if self.__last_visibility:
-            self.__last_visibility = caller.GetVisibility()
-        elif caller.GetVisibility():
-            status = self.__make_all_ancestors_visible(self.__get_displayable_node(caller))
-            # First few calls for volume rendering are before it's set up, we
-            # should skip these so the callback is triggered again later
-            if status:
-                self.__last_visibility = caller.GetVisibility()
 
 
 def handleCopySuffixOnClonedNodes(storageNode: slicer.vtkMRMLStorageNode) -> str:
@@ -115,8 +73,7 @@ class ProjectManager(qt.QObject):
         super().__init__(*args, **kwargs)
         self.__nodeObservers = list()
         self.__folderIconPath = folderIconPath
-        self.__slicesShown = False
-        self.__customBehaviorNodeManager = CustomBehaviorNodeManager()
+        self.__customBehaviorNodeManager = None
         self.__configCompressionMode()
         self.__startCloseSceneObserverHandler = None
         self.__endCloseSceneObserverHandler = None
@@ -126,9 +83,10 @@ class ProjectManager(qt.QObject):
         self.__projectModifiedSignalPaused = True
         self.__startSaveEventObserver = None
         self.__endSaveEventObserver = None
-        ApplicationObservables().applicationLoadFinished.connect(self.__setupObservers)
+        ApplicationObservables().applicationLoadFinished.connect(self.__setup)
 
-    def __setupObservers(self):
+    def __setup(self):
+        self.__customBehaviorNodeManager = NodeCustomBehaviorManager()
         self.__endCloseSceneObserverHandler = slicer.mrmlScene.AddObserver(
             slicer.mrmlScene.EndCloseEvent, self.__onEndCloseScene
         )
@@ -144,7 +102,7 @@ class ProjectManager(qt.QObject):
             slicer.mrmlScene.StartImportEvent, self.__onStartLoadScene
         )
 
-        ApplicationObservables().applicationLoadFinished.disconnect(self.__setupObservers)
+        ApplicationObservables().applicationLoadFinished.disconnect(self.__setup)
         self.__resumeModifiedObserver()
 
     def save(self, projectUrl, internalCall=False, *args, **kwargs):
@@ -461,7 +419,6 @@ class ProjectManager(qt.QObject):
 
     def __onEndCloseScene(self, *args) -> None:
         """Handle slicer' end close scene event."""
-        self.__slicesShown = False
         slicer.app.processEvents(qt.QEventLoop.AllEvents, 1000)
         self.__setProjectModified(False)
         self.projectChangedSignal.emit()
@@ -512,31 +469,6 @@ class ProjectManager(qt.QObject):
         observer.removedSignal.connect(self.__onObservedNodeRemoved)
 
         self.__nodeObservers.append(observer)
-
-        if isinstance(callData, slicer.vtkMRMLVolumeNode):
-
-            def onVolumeModified(node_observer: NodeObserver, node: slicer.vtkMRMLNode) -> None:
-                if node is None:
-                    return
-
-                timer = qt.QTimer()
-
-                def onTimeout():
-                    self.__onVolumeModified(node)
-                    timer.timeout.disconnect(onTimeout)
-
-                timer.setSingleShot(True)
-                timer.timeout.connect(onTimeout)
-                timer.start(0)
-
-            observer.modifiedSignal.connect(onVolumeModified)
-        elif isinstance(callData, slicer.vtkMRMLVolumeRenderingDisplayNode):
-            volume_rendering = callData
-            volume_rendering.SetFollowVolumeDisplayNode(True)
-            HierarchyVisibilityManager(volume_rendering, lambda node: node.GetVolumeNode())
-        elif isinstance(callData, slicer.vtkMRMLSegmentationDisplayNode):
-            segmentation_display = callData
-            HierarchyVisibilityManager(segmentation_display, lambda node: node.GetDisplayableNode())
 
     def __onObservedNodeRemoved(self, node_observer: NodeObserver, node: slicer.vtkMRMLNode) -> None:
         """Handle when a node being observed is removed from the scene."""
@@ -736,6 +668,11 @@ class ProjectManager(qt.QObject):
                         )
                         return False
                     else:
+                        # Retrieve new associate file paths to ensure they are not deleted
+                        # in case it has the same path as files marked to delete
+                        for i in range(storageNode.GetNumberOfFileNames()):
+                            path = Path(storageNode.GetNthFileName(i)).resolve()
+                            filesToDelete -= {path}
                         logging.debug("Node {} was saved succesfully at {}".format(node.GetName(), filePath))
 
             for filePath in filesToDelete:
@@ -839,46 +776,6 @@ class ProjectManager(qt.QObject):
             logging.debug("Scene was saved succesfully!")
 
         return status
-
-    def __onVolumeModified(self, volume: slicer.vtkMRMLNode) -> None:
-        if volume is None:
-            return
-
-        autoFrameOff = volume.GetAttribute("AutoFrameOff")
-        autoSliceVisibleOff = volume.GetAttribute("AutoSliceVisibleOff")
-        if volume.GetImageData():
-            if not self.__slicesShown and not slicer.mrmlScene.GetURL() and autoSliceVisibleOff != "true":
-                # Open slice eyes once for a new project
-                self.__showSlicesIn3D()
-                self.__slicesShown = True
-            if autoFrameOff != "true":
-                self.__frameVolume(volume)
-
-    def __showSlicesIn3D(self) -> None:
-        if slicer.mrmlScene.GetNumberOfNodesByClass("vtkMRMLScalarVolumeNode") == 0:
-            return
-        layoutManager = slicer.app.layoutManager()
-        for sliceViewName in layoutManager.sliceViewNames():
-            controller = layoutManager.sliceWidget(sliceViewName).sliceController()
-            controller.setSliceVisible(True)
-
-    def __frameVolume(self, volume) -> None:
-        """Reposition camera so it points to the center of the volume and
-        position it so the volume is reasonably visible.
-        """
-        bounds = [0] * 6
-        volume.GetBounds(bounds)
-        size = bounds2size(bounds)
-        leastCorner = tuple(min(bounds[i * 2], bounds[i * 2 + 1]) for i in range(3))
-        center = tuple(leastCorner[i] + size[i] / 2 for i in range(3))
-        diagonalSize = sum((side**2 for side in size)) ** 0.5
-
-        camNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCameraNode")
-        cam = camNode.GetCamera()
-        cam.SetFocalPoint(center)
-        pos = tuple(coord + diagonalSize for coord in center)
-        cam.SetPosition(pos)
-        camNode.ResetClippingRange()
 
     def __clearMaskSettingsOnAllSegmentEditors(self) -> None:
         nodes = slicer.util.getNodesByClass("vtkMRMLSegmentEditorNode")

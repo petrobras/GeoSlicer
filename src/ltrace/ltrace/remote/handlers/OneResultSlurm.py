@@ -315,9 +315,9 @@ class OneResultSlurmHandler:
                 caller.schedule(uid, "PROGRESS")
 
         except Exception as e:
-            import traceback
-
-            traceback.print_exc()
+            # import traceback
+            # traceback.print_exc()
+            logging.debug(f"Error in progress: {repr(e)}")
 
     def cancel(self, caller: JobManager, uid: str, client: Any = None):
         try:

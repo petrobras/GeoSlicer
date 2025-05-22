@@ -39,7 +39,7 @@ class ForegroundSegmenter:
         if seg_path:
             binary_data = nrrd.read(seg_path, index_order="C")
             binary_seg = binary_data[0][0].astype(np.uint8)
-            extra_args += ["--outputfrags", seg_path, "--poreseg", seg_path]
+            extra_args += ["--poreseg", seg_path]
 
         image_name = os.path.splitext(os.path.basename(image_path))[0]
         print(f"Getting {'PX' if image_name.endswith('c2') else ''} rock area", end="")
@@ -67,7 +67,7 @@ class ForegroundSegmenter:
         if seg_path:
             frags_file_path = image_path.replace(".nrrd", "_frags.nrrd")
 
-            frags_mask = nrrd.read(seg_path, index_order="C")[0][0].astype(np.uint8)
+            frags_mask = nrrd.read(rock_seg_path, index_order="C")[0][0].astype(np.uint8)
 
             image, image_header = no_extra_dim_read(image_path, return_header=True)
             frags_image = image * np.stack(3 * [frags_mask], axis=2)

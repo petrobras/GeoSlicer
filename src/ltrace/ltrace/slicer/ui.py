@@ -862,3 +862,30 @@ class ClickableLabel(qt.QLabel):
 
     def mousePressEvent(self, event):
         self.clicked.emit()
+
+
+def LineSeparator():
+    line = qt.QFrame()
+    line.setFrameShape(qt.QFrame.HLine)
+    line.setFrameShadow(qt.QFrame.Sunken)
+    return line
+
+
+def LineSeparatorWithText(text):
+    linetagged = qt.QFrame()
+    layout = qt.QHBoxLayout(linetagged)
+
+    lineBefore = LineSeparator()
+    lineBefore.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+    lineAfter = LineSeparator()
+    lineAfter.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+
+    label = qt.QLabel(text)
+    label.setStyleSheet("color: gray; margin: 8px;")
+    label.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
+
+    layout.addWidget(lineBefore)
+    layout.addWidget(label)
+    layout.addWidget(lineAfter)
+
+    return linetagged

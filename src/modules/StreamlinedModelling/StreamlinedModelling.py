@@ -251,6 +251,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         return filteringTool
 
     def enterFilter(self):
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalView)
         setNodesVisibility(self.flowState, scalar=True)
 
         self.backButton.enabled = True
@@ -304,8 +305,8 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
                 display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
                 display.SetSegmentVisibility("Macroporosity", False)
                 display.SetSegmentVisibility("Microporosity", True)
-                display.SetSegmentVisibility("Solid", False)
                 display.SetSegmentVisibility("Reference Solid", False)
+                display.SetSegmentVisibility("High Attenuation", False)
 
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.parent().visible = False
@@ -335,7 +336,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
             "vtkMRMLSegmentationNode", sourceNode.GetName() + "_Segmentation"
         )
         segmentationNode.CreateDefaultDisplayNodes()
-        segmentNames = ["Macroporosity", "Microporosity", "Solid", "Reference Solid"]
+        segmentNames = ["Macroporosity", "Microporosity", "Reference Solid", "High Attenuation"]
 
         colors = []
         for i, segmentName in enumerate(segmentNames):
@@ -450,8 +451,9 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.stepsWidget.setCurrentIndex(WidgetEnum.SOI)
 
     def exitSOI(self):
-        if self.soiSegmentComboBox.currentNode().GetID() != self.flowState.soi.GetID():
-            slicer.mrmlScene.RemoveNode(self.soiSegmentComboBox.currentNode())
+        boxSoi = self.soiSegmentComboBox.currentNode()
+        if boxSoi and boxSoi != self.flowState.soi:
+            slicer.mrmlScene.RemoveNode(boxSoi)
 
         onSegmentEditorExit(self.soiEditor)
 
@@ -500,8 +502,8 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.microporosityWidget.poreDistSelector[0].setCurrentText("Macroporosity")
         self.microporosityWidget.poreDistSelector[1].setCurrentText("Microporosity")
-        self.microporosityWidget.poreDistSelector[2].setCurrentText("Solid")
-        self.microporosityWidget.poreDistSelector[3].setCurrentText("Reference solid")
+        self.microporosityWidget.poreDistSelector[3].setCurrentText("Reference Solid")
+        self.microporosityWidget.poreDistSelector[2].setCurrentText("High Attenuation")
 
         self.qcInitButton.click()
 
@@ -738,8 +740,8 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
         display.SetSegmentVisibility("Macroporosity", True)
         display.SetSegmentVisibility("Microporosity", False)
-        display.SetSegmentVisibility("Solid", True)
         display.SetSegmentVisibility("Reference Solid", True)
+        display.SetSegmentVisibility("High Attenuation", True)
 
         self.expandSegmentsEffect.applyButton.click()
 

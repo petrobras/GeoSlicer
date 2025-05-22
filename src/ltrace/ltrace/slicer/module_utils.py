@@ -88,7 +88,8 @@ def loadModules(modules, permanent=False, favorite=False):
     #              dependencies thereof may not have been loaded.")
 
     if favorite and len(modulesToLoad) > 0:
-        favorites = [*slicer.app.userSettings().value("Modules/FavoriteModules"), *modulesToLoad]
+        favoriteModules = slicer.app.userSettings().value("Modules/FavoriteModules") or []
+        favorites = [*favoriteModules, *modulesToLoad]
         slicer.app.userSettings().setValue("Modules/FavoriteModules", favorites)
 
 

@@ -20,7 +20,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
     METHOD = "microporosity"
     DISPLAY_NAME = "Porosity Map from Segmentation"
 
-    SEGMENT_TYPES = ("Solid", "Reference solid", "Macroporosity", "Microporosity")
+    SEGMENT_TYPES = ("High Attenuation", "Reference Solid", "Macroporosity", "Microporosity")
 
     def __init__(self, controller=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -249,12 +249,12 @@ class MicroPorosity(widgets.BaseSettingsWidget):
     def _checkPorosityTypesSelected(self, labelsDictionary):
         # Checks if every required porosity type was selected
         if (
-            "Reference solid" not in labelsDictionary
+            "Reference Solid" not in labelsDictionary
             or "Microporosity" not in labelsDictionary
             or "Macroporosity" not in labelsDictionary
         ):
             slicer.util.errorDisplay(
-                'The user must define the input segments as "Reference solid", "Microporosity" and "Macroporosity".'
+                'The user must define the input segments as "Reference Solid", "Microporosity" and "Macroporosity".'
             )
             return False
         return True
@@ -302,7 +302,7 @@ class PorosityPlotControllerWidget(qt.QFrame):
         colors = [
             self._get_color_from_invmap(invmap, labels_dictionary, "Macroporosity"),
             self._get_color_from_invmap(invmap, labels_dictionary, "Microporosity"),
-            self._get_color_from_invmap(invmap, labels_dictionary, "Reference solid"),
+            self._get_color_from_invmap(invmap, labels_dictionary, "Reference Solid"),
         ]
 
         self.microporosity_histogram.set_data(

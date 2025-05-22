@@ -198,9 +198,9 @@ def findPeaks(values: np.ndarray, default=None):
         return default
 
     if np.issubdtype(values.dtype, np.integer):
-        min_ = np.min(values)
-        bins = np.bincount(values - min_)
-        largerBin = np.argmax(bins + min_)
+        offset = abs(np.min(values))
+        bins = np.bincount(values + offset)
+        largerBin = np.argmax(bins) - offset
     else:
         hist, edges = np.histogram(values, bins="auto")
         largerBin = edges[np.argmax(hist)]
@@ -264,8 +264,8 @@ def microporosity(
     else:
         macroPorosityPeak = None
 
-    if "Reference solid" in labels:
-        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference solid"])
+    if "Reference Solid" in labels:
+        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference Solid"])
         solidPeak = findPeaks(textureVoxelArray[mask])
         outputVoxelArray[mask] = backgroundPorosity
 
@@ -274,7 +274,7 @@ def microporosity(
 
         layers["Microporosity Weighted"] = nsolidvoxels * backgroundPorosity
 
-        done += len(labels["Reference solid"])
+        done += len(labels["Reference Solid"])
         stepCallback(done)
     else:
         solidPeak = None
@@ -325,8 +325,8 @@ def GetMicroporosityUpperAndLowerLimits(textureVoxelArray, labelmapVoxelArray, l
         macroporosity_mask = None
         macroPorosityPeak = None
 
-    if "Reference solid" in labels:
-        solid_mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference solid"])
+    if "Reference Solid" in labels:
+        solid_mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference Solid"])
         solidPeak = findPeaks(textureVoxelArray[solid_mask])
     else:
         solid_mask = None

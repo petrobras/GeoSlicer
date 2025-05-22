@@ -479,8 +479,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        importlib.reload(widgets)
-
         self.MODES = [widgets.SingleShotInputWidget, widgets.BatchInputWidget]
 
         self.loadedFiles = {}
@@ -934,14 +932,13 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         modeWidget.soiInput.visible = True
         if "darcy_kabs_foam" in self.simOptions.currentData:
             self.logicType = MicrotomRemoteLogic
-
             for widget in self.hideWhenInputIsScalar:
                 widget.visible = False
             modeWidget.mainInput.setCurrentNode(None)
             modeWidget.mainInput.visible = False
             modeWidget.soiInput.enabled = True
             modeWidget.referenceInput.enabled = True
-        if "pnm" in self.simOptions.currentData:
+        elif "pnm" in self.simOptions.currentData:
             self.toggleServerButton.show()
             # self.serverStatus.show()
             self.streamlitAdvancedSection.show()
@@ -1625,7 +1622,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
         tag = Tag(str(uuid.uuid4()))
 
         try:
-            if segmentationNode is None:
+            if segmentationNode is None:  # darcy case
                 if roiNode:
                     inputNodeName = "TMP_REFNODE"
                     inputVolumeNode = helpers.createTemporaryVolumeNode(
@@ -1633,7 +1630,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                     )
                     inputVolumeNode = helpers.maskInputWithROI(inputVolumeNode, roiNode, mask=False)
                 else:
-                    inputVolumeNode = referenceNode
+                    inputVolumeNode = referenceNode  # darcy case
 
                 nodeName = referenceNode.GetName()
 
@@ -1656,7 +1653,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             if not outputPrefix:
                 outputPrefix = nodeName
 
-            if "kabs" in simulator or "krel" in simulator:
+            if ("kabs" in simulator or "krel" in simulator) and "darcy" not in simulator:
                 array = slicer.util.arrayFromVolume(inputVolumeNode)
                 axis = params["direction"]
                 with ProgressBarProc() as pb:

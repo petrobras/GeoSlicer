@@ -1,3 +1,5 @@
+import ctypes
+
 import ctk
 import numpy as np
 import os
@@ -524,7 +526,9 @@ class CrossplotWidget(BasePlotWidget):
 
     def __setCurrentParametersStack(self, index):
         self.parametersStack.setCurrentIndex(index)
-        self.parametersCollapsible.setMaximumHeight(125 + 50 * len(self.__fitEquations[index].widget.PARAMETERS))
+        self.parametersStack.currentWidget().setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.MinimumExpanding)
+        # currentScreenScale = getScaleFactorForDevice(getApplicationCurrentScreen())
+        # self.parametersCollapsible.setMaximumHeight(currentScreenScale*125 + currentScreenScale*100 * len(self.__fitEquations[index].widget.PARAMETERS))
 
     def __onFittedCurveSelected(self, fittedCurve):
         self.__validFittedCurveSelected = False

@@ -57,6 +57,7 @@ class AppContext(LTracePlugin):
         self.appData = getJsonData()
 
         self.__mainWindow = None
+        self.slicesShown = False
         self.appVersionString = parseApplicationVersion(self.appData)
         self.modulesDir = ""
         self.__imageLogLayoutId = ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE
@@ -382,9 +383,9 @@ class ProjectEventsLogic:
 
     def __endSceneClosing(self, *args):
         """Handle the end of the scene closing process"""
-
         customize_3d_view()
         customize_color_maps()
+        slicer.modules.AppContextInstance.slicesShown = False
 
     @vtk.calldata_type(vtk.VTK_OBJECT)
     def __onNodeAdded(self, caller, eventId, callData):

@@ -1,5 +1,15 @@
-from .custom_behavior_node_base import CustomBehaviorNodeBase, CustomBehaviorRequirements
-from .defs import TriggerEvent
+import slicer
+import cv2
+import logging
+import numpy as np
+import shutil
+import tempfile
+
+from ltrace.slicer.node_custom_behavior.node_custom_behavior_base import (
+    NodeCustomBehaviorBase,
+    CustomBehaviorRequirements,
+)
+from ltrace.slicer.node_custom_behavior.defs import TriggerEvent
 from ltrace.slicer.node_attributes import LosslessAttribute
 from ltrace.slicer.helpers import isImageFile
 from ltrace.slicer import export
@@ -7,18 +17,12 @@ from pathvalidate import sanitize_filepath
 from pathlib import Path
 from typing import Union
 
-import cv2
-import logging
-import numpy as np
-import shutil
-import slicer
-import tempfile
 
 TAG_TEMPORARY_DIRECTORY = "LTraceImageNode"
 SOURCE_IMAGE_ATTRIBUTE_LABEL = "SourceImage"
 
 
-class CustomBehaviorImageNode(CustomBehaviorNodeBase):
+class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
     """Custom behavior for volumes loaded from a image file (.jpg, .png, etc...).
     It stores the original image file in the project data directory to be loaded every time the node is loaded.
     This behavior prevents slicer conversion (from image to nrrd) from greatly increase the node project file size.

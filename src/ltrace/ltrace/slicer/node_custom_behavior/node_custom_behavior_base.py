@@ -27,7 +27,7 @@ class CustomBehaviorRequirements:
         return True
 
 
-class CustomBehaviorNodeBase:
+class NodeCustomBehaviorBase:
     """Base class used to create custom behavior for slicer.vtkMRMLNode.
     The derived class can implement the folowing methods: '_afterLoad', '_afterSave' and '_beforeSave'.
     """
@@ -41,7 +41,7 @@ class CustomBehaviorNodeBase:
         """Abstract method for handling node behavior after the node's load process is done inside the project."""
         pass
 
-    def afterLoad(self) -> None:
+    def afterLoad(self, **kwargs) -> None:
         """Wrapper for custom behavior after the load process is done."""
         if not self.isValid():
             logging.info("Skipping custom node behavior after the project's loading due the conditions were not met.")
@@ -54,7 +54,7 @@ class CustomBehaviorNodeBase:
         """Abstract method for handling node behavior after the node's save process is done inside the project."""
         pass
 
-    def afterSave(self) -> None:
+    def afterSave(self, **kwargs) -> None:
         """Wrapper for custom behavior after the save process is done."""
         if not self.isValid():
             logging.info("Skipping custom node behavior after the project's loading due the conditions were not met.")
@@ -67,9 +67,31 @@ class CustomBehaviorNodeBase:
         """Abstract method for handling node behavior before the node's save process is done inside the project."""
         pass
 
-    def beforeSave(self) -> None:
+    def beforeSave(self, **kwargs) -> None:
         """Wrapper for custom behavior before the save process is done."""
         self._beforeSave()
+
+    def _onNodeAdded(self, node: slicer.vtkMRMLNode) -> None:
+        """Abstract method for handling node behavior when a new node of matchin type is added"""
+        pass
+
+    def onNodeAdded(self, **kwargs) -> None:
+        node = kwargs.get("node")
+        if not node:
+            return
+
+        self._onNodeAdded(node=node)
+
+    def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
+        """Abstract method for handling node behavior when a new node of matchin type is removed"""
+        pass
+
+    def onNodeRemoved(self, **kwargs) -> None:
+        node = kwargs.get("node")
+        if not node:
+            return
+
+        self._onNodeRemoved(node=node)
 
     def updateNodeReference(self) -> None:
         """Update the node's object reference. It changes during node' saving/loading process."""

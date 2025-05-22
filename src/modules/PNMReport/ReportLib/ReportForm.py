@@ -88,17 +88,9 @@ class ReportForm(BaseArgsForm):
         self.wellName.setFixedHeight(25)
         self.wellName.objectName = "WellNameTextEdit"
 
-        self.addArg(
-            "Sensibility Test Parameters: ",
-            parameterWidget,
-            BaseArgsForm._createSetter(self.parameterInputWidget, "setCurrentNode", {"Local": None, "Remote": None}),
-        )
+        self.layout().addRow("Sensibility Test Parameters: ", parameterWidget)
+        self.layout().addRow("Subscale Pressure Model: ", self.subscaleModelWidget.microscale_model_dropdown)
 
-        self.addArg(
-            "Subscale Pressure Model: ",
-            self.subscaleModelWidget.microscale_model_dropdown,
-            BaseArgsForm._createSetter(self.parameterInputWidget, "setCurrentNode", {"Local": None, "Remote": None}),
-        )
         self.subscaleModelWidget.microscale_model_dropdown.objectName = "MicroscaleDropdown"
 
         for label, widget in self.subscaleModelWidget.parameter_widgets.items():

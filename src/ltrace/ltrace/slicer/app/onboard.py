@@ -6,6 +6,7 @@ import qt
 import slicer
 
 from ltrace.slicer.module_utils import loadModules
+from ltrace.slicer.ui import LineSeparator, LineSeparatorWithText
 from ltrace.slicer_utils import getResourcePath
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer.app import tryDetectProjectDataType
@@ -53,34 +54,6 @@ class ui_IntroToolButton(qt.QToolButton):
             logging.debug(f"Error in {self.__moduleName} shortcut: {error}.")
 
 
-# TODO move to widgets
-def ui_LineSeparator():
-    line = qt.QFrame()
-    line.setFrameShape(qt.QFrame.HLine)
-    line.setFrameShadow(qt.QFrame.Sunken)
-    return line
-
-
-def ui_LineSeparatorWithText(text):
-    linetagged = qt.QFrame()
-    layout = qt.QHBoxLayout(linetagged)
-
-    lineBefore = ui_LineSeparator()
-    lineBefore.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
-    lineAfter = ui_LineSeparator()
-    lineAfter.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
-
-    label = qt.QLabel(text)
-    label.setStyleSheet("color: gray; margin: 8px;")
-    label.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
-
-    layout.addWidget(lineBefore)
-    layout.addWidget(label)
-    layout.addWidget(lineAfter)
-
-    return linetagged
-
-
 class ui_DataLoaderSelectorDialog(qt.QDialog):
     signalEnvironmentClicked = qt.Signal(object)
 
@@ -105,14 +78,14 @@ class ui_DataLoaderSelectorDialog(qt.QDialog):
         openProjectButton.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
         openProjectButton.setProperty("class", "actionButtonBackground")
 
-        OrLine = ui_LineSeparatorWithText("Or")
+        OrLine = LineSeparatorWithText("Or")
 
         layoutProjectOption.addWidget(openProjectButton)
         layoutProjectOption.addWidget(OrLine)
         layoutProjectOption.setContentsMargins(0, 0, 0, 0)
 
         introMsgLabel = qt.QLabel("Choose a data type to start")
-        lineFrame = ui_LineSeparator()
+        lineFrame = LineSeparator()
         buttonsFrame = qt.QFrame()
         buttonsGridLayout = qt.QGridLayout(buttonsFrame)
 

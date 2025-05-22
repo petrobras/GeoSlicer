@@ -14,8 +14,6 @@
 
 GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple approaches involving thin section, CT and mCT imagery. We use advanced techniques, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform.
 
-Download GeoSlicer latest public release [here](https://grrjnyzvhu1t.objectstorage.sa-saopaulo-1.oci.customer-oci.com/p/21K1LIUA6UiqhKhzhp9lGq8ZG9T6uDmzTOFsyhqep1C1wSczZzpbEr62pkQMBiUP/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/builds/windows/GeoSlicer-latest-public.exe)
-
 ## Use cases and examples
 
 Users can find examples of GeoSlicer uses in the following video and at [LTrace's Youtube channel](https://www.youtube.com/@ltracegeo).

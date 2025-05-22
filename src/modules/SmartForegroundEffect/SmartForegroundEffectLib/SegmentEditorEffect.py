@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+from ltrace.slicer.tests.utils import wait
 import numpy as np
 
 import vtk.util.numpy_support as vn
@@ -32,6 +33,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         scriptedEffect.name = "Smart foreground"
         scriptedEffect.requireSegments = True
 
+        self.inputModelPath = None
         self.__sourceIs2d = None
         self.firstActivation = True
         self.cliQueue = None
@@ -135,6 +137,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.fragFilterButtonLayout.addWidget(self.fragFilterButton)
 
         self.fragFilterInput = numberParamInt((1, 20), value=1, step=1)
+        self.fragFilterInput.objectName = "Smart Foreground Fragments Filter Input"
 
         # Grouping
         self.fragSplitLabelAndCheckbox = qt.QHBoxLayout()
@@ -165,7 +168,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         )
         self.fragAnnotsInput.objectName = "Smart Foreground Annotations Combobox"
         self.fragAnnotsLabel = qt.QLabel("Annotations:")
+        self.fragAnnotsLabel.objectName = "Smart Foreground Annotations Label"
         self.refreshFragAnnotSegmentsButton = qt.QPushButton()
+        self.refreshFragAnnotSegmentsButton.objectName = "Smart Foreground Annotation Segments Refresh Button"
         self.refreshFragAnnotSegmentsButton.clicked.connect(self.onAnnotationsSelected)
         self.refreshFragAnnotSegmentsButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
         self.refreshFragAnnotSegmentsButton.setToolTip(
@@ -178,10 +183,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.fragTextureAnnotCombobox = qt.QComboBox()
         self.fragTextureAnnotCombobox.objectName = "Smart Foreground Texture Annotations Combobox"
         self.fragTextureAnnotLabel = qt.QLabel("Texture samples:")
+        self.fragTextureAnnotLabel.objectName = "Smart Foreground Texture Annotations Label"
 
         self.fragResinAnnotCombobox = qt.QComboBox()
         self.fragResinAnnotCombobox.objectName = "Smart Foreground Resin Annotations Combobox"
         self.fragResinAnnotLabel = qt.QLabel("Resin samples:")
+        self.fragResinAnnotLabel.objectName = "Smart Foreground Resin Annotations Label"
 
         # Setting initial state
         self.fragSplitCheckbox.clicked.connect(self.setVisibleFragSplitting)
@@ -226,7 +233,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.progressBar = LocalProgressBar()
         self.scriptedEffect.addOptionsWidget(self.progressBar)
 
-    def masterVolumeNodeChanged(self):
+    def sourceVolumeNodeChanged(self):
         sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
         if sourceVolumeNode is None:
             return
@@ -235,13 +242,20 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         self.fragSplitLabel.setVisible(self.__sourceIs2d)
         self.fragSplitCheckbox.setVisible(self.__sourceIs2d)
-        self.fragSplitAllButton.setVisible(self.__sourceIs2d)
-        self.fragFilterButton.setVisible(self.__sourceIs2d)
-        self.fragFilterInput.setVisible(self.__sourceIs2d)
+        self.setVisibleFragSplitting()
+        self.setApplyButtonEnablement()
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
         return slicer.util.mainWindow().cursor
+
+    def reactivateIfOpen(self):
+        # If the effect is open, reopen it to update the help text
+        # Note: this was also thought to be used in sourceVolumeNodeChanged, for eliminating the "Fragments" section when input goes from
+        # 2D to 3D, but it does not work inside sourceVolumeNodeChanged probably due to the way the callback is handled (but it works outside).
+        if self.scriptedEffect.active():
+            self.scriptedEffect.selectEffect("")
+            self.scriptedEffect.selectEffect(self.scriptedEffect.name)
 
     def __updateTrainedModelAvailability(self):
         try:
@@ -251,25 +265,22 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         finally:
             self.setVisibleFragSplitting()
             self.setApplyButtonEnablement()
-
-            # If the effect is open, reopen it to update the help text
-            if self.scriptedEffect.active():
-                self.scriptedEffect.selectEffect("")
-                self.scriptedEffect.selectEffect(self.scriptedEffect.name)
+            self.reactivateIfOpen()
 
     def setApplyButtonEnablement(self):
         effectIsRunning = (self.cliQueue is not None) and self.cliQueue.is_running()
-        fragSplitChecked = self.fragSplitCheckbox.isChecked()
 
-        AIMode = self.inputModelPath is not None
+        if self.__sourceIs2d:
+            fragSplitChecked = self.fragSplitCheckbox.isChecked()
+            AIMode = self.inputModelPath is not None
+            textureAnnotSelected = self.fragTextureAnnotCombobox.currentData is not None
+            resinAnnotSelected = self.fragResinAnnotCombobox.currentData is not None
 
-        textureAnnotSelected = self.fragTextureAnnotCombobox.currentData is not None
-        resinAnnotSelected = self.fragResinAnnotCombobox.currentData is not None
+            parametersReady = (not fragSplitChecked) or AIMode or (textureAnnotSelected and resinAnnotSelected)
+        else:
+            parametersReady = True
 
-        self.applyButton.setEnabled(
-            (not effectIsRunning)
-            and ((not fragSplitChecked) or AIMode or (textureAnnotSelected and resinAnnotSelected))
-        )
+        self.applyButton.setEnabled((not effectIsRunning) and parametersReady)
 
     def onAnnotationsSelected(self):
         self.fragTextureAnnotCombobox.clear()
@@ -297,14 +308,16 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.setApplyButtonEnablement()
 
     def setVisibleFragSplitting(self):
-        self.fragSplitAllButton.setVisible(self.fragSplitCheckbox.isChecked())
-        self.fragFilterButton.setVisible(self.fragSplitCheckbox.isChecked())
-        self.fragFilterInput.setVisible(self.fragSplitCheckbox.isChecked())
+        fragSplittingVisible = self.__sourceIs2d and self.fragSplitCheckbox.isChecked()
 
-        if not self.inputModelPath:
-            self.fragAnnotsLabel.setVisible(self.fragSplitCheckbox.isChecked())
-            self.fragAnnotsInput.setVisible(self.fragSplitCheckbox.isChecked())
-            self.refreshFragAnnotSegmentsButton.setVisible(self.fragSplitCheckbox.isChecked())
+        self.fragSplitAllButton.setVisible(fragSplittingVisible)
+        self.fragFilterButton.setVisible(fragSplittingVisible)
+        self.fragFilterInput.setVisible(fragSplittingVisible)
+
+        if fragSplittingVisible and (not self.inputModelPath):
+            self.fragAnnotsLabel.setVisible(fragSplittingVisible)
+            self.fragAnnotsInput.setVisible(fragSplittingVisible)
+            self.refreshFragAnnotSegmentsButton.setVisible(fragSplittingVisible)
             self.onAnnotationsSelected()
         else:
             self.fragAnnotsLabel.setVisible(False)

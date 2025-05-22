@@ -41,18 +41,11 @@ class CustomizedData(LTracePlugin):
 class CustomizedDataWidget(LTracePluginWidget):
     def __init__(self, parent):
         super().__init__(parent)
-        self.formLayout = None
         self.subjectHierarchyTreeView = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
-
-        frame = qt.QFrame()
-        self.formLayout = qt.QFormLayout(frame)
-        self.formLayout.setLabelAlignment(qt.Qt.AlignRight)
-        self.formLayout.setContentsMargins(0, 0, 0, 0)
-        self.layout.addWidget(frame)
-        self.layout.addStretch(1)
+        # self.layout.addStretch(1)
 
         import SubjectHierarchyPlugins
 
@@ -89,29 +82,45 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.deleteAction.triggered.disconnect()
         self.deleteAction.triggered.connect(confirmDeleteSelectedItems)
 
-        self.subjectHierarchyTreeView.setMinimumHeight(310)
         self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
-        self.formLayout.addRow(self.subjectHierarchyTreeView)
+
+        self.infoFrame = qt.QFrame()
+        infoFrameLayout = qt.QVBoxLayout(self.infoFrame)
+        infoFrameLayout.setContentsMargins(0, 0, 0, 0)
 
         self.scalarVolumeWidget = ScalarVolumeWidget(isLabelMap=False)
-        self.formLayout.addRow(self.scalarVolumeWidget)
+        infoFrameLayout.addWidget(self.scalarVolumeWidget)
         self.scalarVolumeWidget.setVisible(False)
 
         self.vectorVolumeWidget = VectorVolumeWidget()
-        self.formLayout.addRow(self.vectorVolumeWidget)
+        infoFrameLayout.addWidget(self.vectorVolumeWidget)
         self.vectorVolumeWidget.setVisible(False)
 
         self.tableWidget = TableWidget()
-        self.formLayout.addRow(self.tableWidget)
+        infoFrameLayout.addWidget(self.tableWidget)
         self.tableWidget.setVisible(False)
 
         self.labelMapWidget = ScalarVolumeWidget(isLabelMap=True)
-        self.formLayout.addRow(self.labelMapWidget)
+        infoFrameLayout.addWidget(self.labelMapWidget)
         self.labelMapWidget.setVisible(False)
 
         self.segmentationWidget = SegmentationWidget()
-        self.formLayout.addRow(self.segmentationWidget)
+        infoFrameLayout.addWidget(self.segmentationWidget)
         self.segmentationWidget.setVisible(False)
+
+        self.fullPanel = qt.QSplitter()
+        self.fullPanel.setOrientation(qt.Qt.Vertical)
+        self.fullPanel.setHandleWidth(1)
+        self.fullPanel.setChildrenCollapsible(False)
+        self.fullPanel.addWidget(self.subjectHierarchyTreeView)
+        self.fullPanel.addWidget(self.infoFrame)
+
+        self.subjectHierarchyTreeView.setMinimumHeight(384)
+
+        self.fullPanel.setStretchFactor(0, 1)  # subjectHierarchyTreeView gets more space
+        self.fullPanel.setStretchFactor(1, 0)  # infoFrame gets less space
+
+        self.layout.addWidget(self.fullPanel)
 
         # hack to workaround currentItemChanged firing twice
         self.subjectHierarchyTreeView.currentItemsChanged.connect(self.currentItemChanged)

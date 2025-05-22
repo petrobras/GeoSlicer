@@ -97,6 +97,11 @@ class AIModelsPathModel:
         self.paths.remove(path)
         self.__update()
 
+    def clear(self) -> None:
+        self.__models.clear()
+        self.__paths.clear()
+        self.__update()
+
     def __addPublicPath(self) -> None:
         publicPath = get_public_asset_path()
         self.addPath(publicPath)

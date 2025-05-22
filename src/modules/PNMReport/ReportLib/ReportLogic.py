@@ -74,7 +74,7 @@ class ReportLogic(LTracePluginLogic):
             }
 
         subresolution_logic = self.logic_models[subres_model]
-        subresolution_function = subresolution_logic().get_capillary_pressure_function(
+        subresolution_function = subresolution_logic().get_capillary_radius_function(
             subres_params, pore_network, volume
         )
 
@@ -269,11 +269,17 @@ class ReportLogic(LTracePluginLogic):
         self.sim_index += 1
 
     def run_extract(self):
+        watershed_blur = {
+            1: 0.4,
+            2: 0.8,
+        }
         self.extractor_logic.extract(
             self.referenceNode,
             None,
             self.outputPrefix,
+            True,
             "PoreSpy",
+            watershed_blur,
             self.extract_callback(self.extractor_logic),
         )
 
@@ -290,7 +296,7 @@ class ReportLogic(LTracePluginLogic):
                 self.json_entry_node_ids["pore_table"] = self.pore_table.GetID()
                 self.json_entry_node_ids["throat_table"] = self.throat_table.GetID()
 
-                model_nodes = logic.results["model_nodes"]
+                model_nodes = logic.results.get("model_nodes")
                 for i, node in enumerate(model_nodes["pores_nodes"]):
                     self.json_entry_node_ids[f"pore_polydata_{i}"] = node.GetID()
                 for i, node in enumerate(model_nodes["throats_nodes"]):
@@ -450,6 +456,7 @@ class ReportLogic(LTracePluginLogic):
         try:
             self.two_phase_logic.run_2phase(
                 self.pore_table,
+                None,
                 krel_params,
                 prefix=self.outputPrefix,
                 callback=self.sensibility_callback(self.two_phase_logic),

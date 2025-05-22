@@ -25,6 +25,7 @@ import os
 import gc
 
 from ltrace import transforms
+from ltrace.algorithms import partition
 from porespy.filters import snow_partitioning
 from ltrace.algorithms.measurements import (
     LabelStatistics2D,

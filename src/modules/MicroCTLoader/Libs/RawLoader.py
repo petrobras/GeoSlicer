@@ -1,17 +1,20 @@
-import os
-from pathlib import Path
-
 import ctk
 import qt
 import slicer
 import vtk
+
+import ltrace.algorithms.detect_cups as cups
 import numpy as np
-from SegmentEditorEffects import *
+import os
+
+from .ManualCylinderCrop import ManualCylinderCropWidget
 from ltrace.slicer import helpers, ui
 from ltrace.slicer.node_observer import NodeObserver
 from ltrace.slicer_utils import *
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 from ltrace.utils.ProgressBarProc import ProgressBarProc
+from pathlib import Path
+from SegmentEditorEffects import *
 
 
 class RawLoaderWidget(qt.QFrame):
@@ -118,7 +121,6 @@ class RawLoaderWidget(qt.QFrame):
 
         self.outputVolumeName = qt.QLineEdit()
         outputFormLayout.addRow("Output volume name:", self.outputVolumeName)
-
         outputFormLayout.addRow(" ", None)
 
         self.updateButton = qt.QPushButton()
@@ -126,13 +128,16 @@ class RawLoaderWidget(qt.QFrame):
         self.updateButton.setMinimumHeight(40)
         self.updateButton.setToolTip("Load view.")
         self.updateButton.setEnabled(False)
-        formLayout.addRow(self.updateButton)
+        outputFormLayout.addRow(self.updateButton)
 
         self.errorLabel = qt.QLabel("")
         self.errorLabel.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Minimum)
         self.errorLabel.setStyleSheet("color: red; font-size: 14px; font-weight: bold")
         self.errorLabel.setFixedHeight(25)
         formLayout.addRow(self.errorLabel)
+
+        self.manualCylinderWidget = ManualCylinderCropWidget()
+        outputFormLayout.addRow(self.manualCylinderWidget)
 
         # connections
         self.endiannessComboBox.connect("currentIndexChanged(int)", self.onImageSizeChanged)
@@ -279,7 +284,16 @@ class RawLoaderWidget(qt.QFrame):
             self.showOutputVolume()
 
     def onUpdateButtonClicked(self):
-        remap, will_crop, pcr_min, pcr_max = self.mctLoader.checkNormalization()
+        if self.manualCylinderWidget.cylinderRoi:
+            self.manualCylinderWidget.finishCrop()
+
+        # remap, willCrop, pcrMin, pcrMax = self.mctLoader.checkNormalization()
+        processingSettings = self.mctLoader.checkProcessingSettings()
+        remap = processingSettings.get("remap", None)
+        willCrop = processingSettings.get("willCrop", False)
+        pcrMin = processingSettings.get("pcrMin", None)
+        pcrMax = processingSettings.get("pcrMax", None)
+
         if remap is None:
             return
 
@@ -292,7 +306,15 @@ class RawLoaderWidget(qt.QFrame):
             node = helpers.tryGetNode(self.logic.currentNodeId)
             if node:
                 callback = lambda msg, progress: pb.nextStep(progress, msg)
-                self.mctLoader.normalize(node, remap, will_crop, pcr_min, pcr_max, callback=callback)
+                self.mctLoader.normalize(
+                    node=node,
+                    remap=remap,
+                    willCrop=willCrop,
+                    pcrMin=pcrMin,
+                    pcrMax=pcrMax,
+                    manualCylinderWidget=self.manualCylinderWidget,
+                    callback=callback,
+                )
 
     def onUpdate(self):
         if not self.updateButton.enabled:

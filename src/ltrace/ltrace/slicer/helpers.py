@@ -517,6 +517,17 @@ def removeTemporaryNodes(environment=None, nodes=None):
     """
     tempNodes = getTemporaryNodes(environment=environment, nodes=nodes)
     for name, node in tempNodes.items():
+        if hasattr(node, "GetDisplayNode"):
+            displayNode = node.GetDisplayNode()
+            if displayNode and hasattr(displayNode, "GetColorNode"):
+                colorNode = displayNode.GetColorNode()
+                if colorNode:
+                    logging.debug(f"Removing temporary node named {colorNode.GetName()} with id {colorNode.GetID()}")
+                    slicer.mrmlScene.RemoveNode(colorNode)
+
+                logging.debug(f"Removing temporary node named {displayNode.GetName()} with id {displayNode.GetID()}")
+                slicer.mrmlScene.RemoveNode(displayNode)
+
         logging.debug(f"Removing temporary node named {name} with id {node.GetID()}")
         slicer.mrmlScene.RemoveNode(node)
 
@@ -1777,8 +1788,6 @@ def resizeNdimArray(image: np.ndarray, new_height, new_width, interpolation=cv2.
 
 
 def getTesseractCmd() -> str:
-    if os.getenv("GEOSLICER_MODE") == "Remote":
-        return "tesseract"
     tesseract_cmd = (
         str(Path(slicer.app.applicationDirPath()) / "Tesseract-OCR/tesseract.exe")
         if sys.platform.startswith("win32")
@@ -2545,9 +2554,14 @@ class SegmentationNodeArray:
 
     def __enter__(self):
         self.labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "__temp__")
+        source = getSourceVolume(self.segmentation_node)
+        self.labelmap_node.CopyOrientation(source)
+        rescaleSegmentationGeometry(self.segmentation_node, source)
+
         slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
             self.segmentation_node, self.labelmap_node, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
         )
+
         self.array = slicer.util.arrayFromVolume(self.labelmap_node)
         return self.array
 
