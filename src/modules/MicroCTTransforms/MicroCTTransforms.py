@@ -399,9 +399,12 @@ class MicroCTTransformsWidget(LTracePluginWidget):
     def exit(self):
         if not self.transformInProgress:
             slicer.mrmlScene.SetUndoOff()
-            self.transformNodeSelector.currentNode().RemoveObserver(slicer.vtkMRMLTransformNode.TransformModifiedEvent)
-            slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())
-            self.onTransformedVolumeChanged()
+            if self.transformNodeSelector.currentNode():
+                self.transformNodeSelector.currentNode().RemoveObserver(
+                    slicer.vtkMRMLTransformNode.TransformModifiedEvent
+                )
+                slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())
+                self.onTransformedVolumeChanged()
 
     def configureButtonsState(self):
         numberOfUndoLevels = slicer.mrmlScene.GetNumberOfUndoLevels()

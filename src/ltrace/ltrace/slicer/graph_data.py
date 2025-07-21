@@ -455,7 +455,7 @@ class NodeGraphData(GraphData):
         out = {}
         for idx in range(len(df.index)):
             row = df.iloc[idx]
-            out[row[0]] = row[1:]
+            out[row.iloc[0]] = row[1:]
 
         return pd.DataFrame(out)
 

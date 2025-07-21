@@ -13,8 +13,7 @@ from ltrace.slicer.ui import (
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import dataframeFromTable
 from ltrace.file_utils import read_csv
-
-from . import MercurySimulationLogic
+from ltrace.pore_networks.subres_models import MODEL_DICT
 
 
 class SubscaleModelWidget(qt.QWidget):
@@ -93,14 +92,22 @@ class SubscaleModelWidget(qt.QWidget):
         subres_shape_factor = float(self.subresolution_shapefactor_edit.text)
         subres_porositymodifier = float(self.porositymodifier_edit.text)
 
+        subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
-            }
+            for i in subres_params.keys():
+                if subres_params[i] is not None:
+                    if isinstance(subres_params[i], np.ndarray):
+                        subres_params_copy.update({i: subres_params[i].tolist()})
+                    else:
+                        subres_params_copy.update({i: subres_params[i]})
+                else:
+                    subres_params_copy.update({i: None})
+        else:
+            subres_params_copy = subres_params
 
         return {
             "subres_model_name": subres_model_name,
-            "subres_params": subres_params,
+            "subres_params": subres_params_copy,
             "subres_shape_factor": subres_shape_factor,
             "subres_porositymodifier": subres_porositymodifier,
         }
@@ -115,7 +122,7 @@ class FixedRadiusWidget(qt.QWidget):
     def __init__(self):
         super().__init__()
         layout = qt.QFormLayout(self)
-        self.logic = MercurySimulationLogic.FixedRadiusLogic()
+        self.logic = MODEL_DICT[self.STR]
 
         self.micropore_radius = ui.floatParam()
         self.micropore_radius.text = 0.1
@@ -142,7 +149,7 @@ class TruncatedGaussianWidget(qt.QWidget):
     def __init__(self):
         super().__init__()
         layout = qt.QFormLayout(self)
-        self.logic = MercurySimulationLogic.TruncatedGaussianLogic()
+        self.logic = MODEL_DICT[self.STR]
 
         self.mean_radius = ui.floatParam()
         self.mean_radius.text = 0.10
@@ -180,7 +187,7 @@ class ThroatRadiusCurveWidget(qt.QWidget):
 
     def __init__(self):
         super().__init__()
-        self.logic = MercurySimulationLogic.PressureCurveLogic()
+        self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
 
         instructions_labels = qt.QLabel(
@@ -197,8 +204,8 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         self.throatRadiusSelector.currentItemChanged.connect(self.__change_import_table)
 
         self.default_options = {
-            "Volume Fraction Column": ["dsn", "Fvol"],
-            "Throat Radius Column": ["radii", "Rc", "Raio de garganta de Poros (mm)"],
+            "Volume Fraction Column": ["dsn", "Fvol", "Fração do Volume Poroso"],
+            "Throat Radius Column": ["pore radii", "radii", "Rc", "Raio de garganta de Poros (mm)"],
         }
 
         self.cboxes = {}
@@ -208,6 +215,9 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         ):
             self.cboxes[cbox] = qt.QComboBox()
             import_layout.addRow(cbox, self.cboxes[cbox])
+
+        self.cutoffMultiplierEdit = floatParam(3.0)
+        import_layout.addRow("Cutoff Multiplier", self.cutoffMultiplierEdit)
 
     def __change_import_table(self, item):
         node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(item)
@@ -242,8 +252,14 @@ class ThroatRadiusCurveWidget(qt.QWidget):
 
         Rc = df[self.cboxes["Throat Radius Column"].currentText].to_numpy()
         Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
+        cutoff_multiplier = float(self.cutoffMultiplierEdit.text)
 
-        return {"throat radii": Rc, "capillary pressure": None, "dsn": Fvol}
+        return {
+            "throat radii": Rc,
+            "capillary pressure": None,
+            "dsn": Fvol,
+            "smallest_raddi_multiplier": cutoff_multiplier,
+        }
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -256,7 +272,7 @@ class PressureCurveWidget(qt.QWidget):
 
     def __init__(self):
         super().__init__()
-        self.logic = MercurySimulationLogic.PressureCurveLogic()
+        self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
 
         instructions_labels = qt.QLabel(
@@ -319,7 +335,7 @@ class PressureCurveWidget(qt.QWidget):
         Pc = df[self.cboxes["Throat Pressure Column"].currentText].to_numpy()
         Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
 
-        return {"throat radii": None, "capillary pressure": Pc, "dsn": Fvol}
+        return {"throat radii": None, "capillary pressure": Pc, "dsn": Fvol, "smallest_raddi_multiplier": 2.0}
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -386,7 +402,7 @@ class LeverettOldWidget(LeverettWidgetBase):
 
     def __init__(self):
         super().__init__()
-        self.logic = MercurySimulationLogic.LeverettOldLogic()
+        self.logic = MODEL_DICT[self.STR]
 
         self.kModelCombo = qt.QComboBox()
         self.kModelCombo.addItems(("k = a * phi ** b",))
@@ -417,7 +433,7 @@ class LeverettNewWidget(LeverettWidgetBase):
 
     def __init__(self):
         super().__init__()
-        self.logic = MercurySimulationLogic.LeverettNewLogic()
+        self.logic = MODEL_DICT[self.STR]
 
         self.permeability_edit = floatParam(1.0)
 
@@ -431,13 +447,3 @@ class LeverettNewWidget(LeverettWidgetBase):
             }
         )
         return params
-
-
-SubscaleLogicDict = {
-    FixedRadiusWidget.STR: MercurySimulationLogic.FixedRadiusLogic,
-    LeverettNewWidget.STR: MercurySimulationLogic.LeverettNewLogic,
-    LeverettOldWidget.STR: MercurySimulationLogic.LeverettOldLogic,
-    PressureCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
-    ThroatRadiusCurveWidget.STR: MercurySimulationLogic.PressureCurveLogic,
-    TruncatedGaussianWidget.STR: MercurySimulationLogic.TruncatedGaussianLogic,
-}

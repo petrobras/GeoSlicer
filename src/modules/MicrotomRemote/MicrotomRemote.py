@@ -438,9 +438,8 @@ class MicrotomRemote(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = ""
-        self.parent.helpText += MicrotomRemote.help()
         self.parent.acknowledgementText = ""
+        self.set_manual_path("Simulation/microtom.html")
 
     @classmethod
     def readme_path(cls):

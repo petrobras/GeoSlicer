@@ -9,9 +9,11 @@ import random
 import traceback
 
 from collections import namedtuple
+from enum import Enum
+
+from ltrace.flow.util import createSimplifiedSegmentEditor, onSegmentEditorEnter, onSegmentEditorExit
 
 from ltrace.slicer.helpers import (
-    getSourceVolume,
     highlight_error,
     reset_style_on_valid_text,
     copy_display,
@@ -20,17 +22,63 @@ from ltrace.slicer.helpers import (
     extractSegmentInfo,
     remove_highlight,
 )
+
 from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
+from ltrace.slicer.widget.status_panel import StatusPanel
 from pathlib import Path
 from scipy.optimize import curve_fit
+from scipy.ndimage import gaussian_filter1d
+from scipy.interpolate import interp1d
+
 
 try:
     from Test.PolynomialShadingCorrectionTest import PolynomialShadingCorrectionTest
 except ImportError:
     PolynomialShadingCorrectionTest = None  # tests not deployed to final version or closed source
+
+
+def normalize_z(data_3d, sigma=3.0, quantile_low=0.4, quantile_high=0.95, downsample=8):
+    """
+    Normalize a 3D volume along its Z-axis using quantile-based normalization.
+    """
+
+    orig_dtype = data_3d.dtype
+    z_size = data_3d.shape[0]
+
+    data_downsampled = data_3d[::downsample]
+
+    low_q = np.quantile(data_downsampled, quantile_low, axis=(1, 2))
+    high_q = np.quantile(data_downsampled, quantile_high, axis=(1, 2))
+
+    global_low = low_q.mean()
+    global_high = high_q.mean()
+
+    low_q_smooth = gaussian_filter1d(low_q, sigma)
+    high_q_smooth = gaussian_filter1d(high_q, sigma)
+
+    z_down = np.arange(0, z_size, downsample)
+    z_full = np.arange(z_size)
+    interp_low = interp1d(z_down, low_q_smooth, kind="linear", bounds_error=False, fill_value="extrapolate")
+    interp_high = interp1d(z_down, high_q_smooth, kind="linear", bounds_error=False, fill_value="extrapolate")
+
+    low_q_interp = interp_low(z_full)[:, None, None]
+    high_q_interp = interp_high(z_full)[:, None, None]
+
+    range_q = np.clip(high_q_interp - low_q_interp, 1e-8, None)
+
+    data_float = data_3d.astype(np.float32)
+    mult = (global_high - global_low) / range_q
+    normalized_float = (data_float - low_q_interp) * mult + global_low
+
+    if np.issubdtype(orig_dtype, np.integer):
+        normalized_float = np.clip(normalized_float, np.iinfo(orig_dtype).min, np.iinfo(orig_dtype).max)
+
+    normalized_data = normalized_float.astype(orig_dtype)
+
+    return normalized_data
 
 
 class PolynomialShadingCorrection(LTracePlugin):
@@ -62,8 +110,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         "ProcessParameters",
         [
             "inputImage",
-            "inputMask",
-            "inputShadingMask",
+            "shadingMask",
             SLICE_GROUP_SIZE,
             NUMBER_FITTING_POINTS,
             "outputImageName",
@@ -72,6 +119,8 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+        self.normalizedVolume = None
+        self.samplingMaskSegmentation = None
 
     def getSliceGroupSize(self):
         return PolynomialShadingCorrection.get_setting(self.SLICE_GROUP_SIZE, default="7")
@@ -81,27 +130,38 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
     def __updateApplyToAll(self):
         inputNode = self.inputImageComboBox.currentNode()
-        inputMaskNode = self.inputMaskComboBox.currentNode()
-        inputShadingMaskNode = self.inputShadingMaskComboBox.currentNode()
-
         virtualInputNode = lazy.getParentLazyNode(inputNode) if inputNode is not None else None
-        virtualInputMaskNode = lazy.getParentLazyNode(inputMaskNode) if inputMaskNode is not None else None
-        virtualInputShadingMaskNode = (
-            lazy.getParentLazyNode(inputShadingMaskNode) if inputShadingMaskNode is not None else None
-        )
-        hasVirtualNode = (
-            virtualInputNode is not None
-            and virtualInputMaskNode is not None
-            and virtualInputShadingMaskNode is not None
-        )
-
+        hasVirtualNode = virtualInputNode is not None
         self.applyFullButton.visible = hasVirtualNode
 
-    def __onInputMaskChanged(self, itemId):
-        self.__updateApplyToAll()
+    class WidgetState(Enum):
+        INITIAL = "initial"
+        THRESHOLD = "threshold"
+        PROCESS = "process"
 
-    def __onInputShadingMaskChanged(self, itemId):
-        self.__updateApplyToAll()
+    def updateWidgetsVisibility(self, state):
+        if state == self.WidgetState.INITIAL:
+            self.inputCollapsibleButton.collapsed = False
+            self.parametersCollapsibleButton.visible = False
+            self.outputCollapsibleButton.visible = False
+            self.thresholdCollapsibleButton.visible = False
+            self.statusPanel.set_instruction("Choose the input image to correct.")
+        elif state == self.WidgetState.THRESHOLD:
+            self.inputCollapsibleButton.collapsed = True
+            self.parametersCollapsibleButton.visible = False
+            self.outputCollapsibleButton.visible = False
+            self.thresholdCollapsibleButton.visible = True
+            self.samplingMaskSegmentation.GetDisplayNode().SetVisibility(True)
+            slicer.util.setSliceViewerLayers(background=self.normalizedVolume, fit=True)
+            self.statusPanel.set_instruction("Adjust the threshold to create a sampling mask.")
+        elif state == self.WidgetState.PROCESS:
+            self.inputCollapsibleButton.collapsed = True
+            self.parametersCollapsibleButton.visible = True
+            self.outputCollapsibleButton.visible = True
+            self.thresholdCollapsibleButton.visible = False
+            self.samplingMaskSegmentation.GetDisplayNode().SetVisibility(False)
+            self.apply.setEnabled(True)
+            self.statusPanel.set_instruction("Choose the parameters and run the shading correction.")
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -112,12 +172,17 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
         formLayout.setContentsMargins(0, 0, 0, 0)
 
+        self.statusPanel = StatusPanel("")
+        self.statusPanel.statusLabel.setWordWrap(True)
+        formLayout.addRow(self.statusPanel)
+
         # Input section
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
         inputCollapsibleButton.setText("Input")
         formLayout.addRow(inputCollapsibleButton)
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        self.inputCollapsibleButton = inputCollapsibleButton
 
         self.inputImageComboBox = hierarchyVolumeInput(
             nodeTypes=["vtkMRMLScalarVolumeNode"], onChange=self.onInputImageChanged
@@ -127,23 +192,36 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         inputFormLayout.addRow("Input image:", self.inputImageComboBox)
         self.inputImageComboBox.resetStyleOnValidNode()
 
-        self.inputMaskComboBox = hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLLabelMapVolumeNode", "vtkMRMLSegmentationNode"], onChange=self.__onInputMaskChanged
+        self.keepNormalizedBox = qt.QCheckBox("Keep intermediate image")
+        self.keepNormalizedBox.setToolTip(
+            "The image slices are pre-normalized to make the thresholding step easier. "
+            "If this option is checked, the normalized image will be kept in the project."
         )
-        self.inputMaskComboBox.setObjectName("inputMaskComboBox")
-        self.inputMaskComboBox.setToolTip("Select the input mask.")
-        inputFormLayout.addRow("Input mask:", self.inputMaskComboBox)
-        self.inputMaskComboBox.resetStyleOnValidNode()
+        inputFormLayout.addRow(self.keepNormalizedBox)
 
-        self.inputShadingMaskComboBox = hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLLabelMapVolumeNode", "vtkMRMLSegmentationNode"],
-            onChange=self.__onInputShadingMaskChanged,
-        )
-        self.inputShadingMaskComboBox.setObjectName("inputShadingMaskComboBox")
-        self.inputShadingMaskComboBox.setToolTip("Select the input shading mask.")
-        inputFormLayout.addRow("Input shading mask:", self.inputShadingMaskComboBox)
-        inputFormLayout.addRow(" ", None)
-        self.inputShadingMaskComboBox.resetStyleOnValidNode()
+        # Initialize button
+        self.initializeButton = qt.QPushButton("Initialize")
+        self.initializeButton.setObjectName("initializeButton")
+        self.initializeButton.setToolTip("Normalize the input volume and prepare for thresholding.")
+        self.initializeButton.clicked.connect(self.onInitializeButtonClicked)
+        inputFormLayout.addRow("", self.initializeButton)
+
+        # Segment Editor
+        widget, _, self.sourceVolumeBox, self.segmentationBox = createSimplifiedSegmentEditor()
+        widget.setObjectName("thresholdEditor")
+        effects = ["Threshold"]
+        widget.setEffectNameOrder(effects)
+        widget.unorderedEffectsVisible = False
+        tableView = widget.findChild(qt.QTableView, "SegmentsTable")
+        tableView.setFixedHeight(100)
+
+        self.thresholdCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.thresholdCollapsibleButton.setText("Threshold")
+        formLayout.addRow(self.thresholdCollapsibleButton)
+        thresholdLayout = qt.QVBoxLayout(self.thresholdCollapsibleButton)
+
+        thresholdLayout.addWidget(widget)
+        self.segmentEditorWidget = widget
 
         # Parameters section
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -151,6 +229,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         formLayout.addRow(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        self.parametersCollapsibleButton = parametersCollapsibleButton
 
         self.sliceGroupSize = qt.QSpinBox()
         self.sliceGroupSize.setObjectName("sliceGroupSize")
@@ -176,6 +255,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         formLayout.addRow(outputCollapsibleButton)
         outputFormLayout = qt.QFormLayout(outputCollapsibleButton)
         outputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        self.outputCollapsibleButton = outputCollapsibleButton
 
         self.outputImageNameLineEdit = qt.QLineEdit()
         self.outputImageNameLineEdit.setObjectName("outputImageNameLineEdit")
@@ -187,6 +267,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.apply.setObjectName("applyButton")
         self.apply.setFixedHeight(40)
         self.apply.clicked.connect(self.onRegisterButtonClicked)
+        self.apply.setEnabled(False)  # Disabled until initialization and thresholding
 
         self.applyFullButton = qt.QPushButton("Apply to full volume")
         self.applyFullButton.setFixedHeight(40)
@@ -196,7 +277,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.applyFullButton.setObjectName("applyAllButton")
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setObjectName("Cancel Button")
+        self.cancelButton.setObjectName("cancelButton")
         self.cancelButton.setFixedHeight(40)
         self.cancelButton.setEnabled(False)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
@@ -205,7 +286,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         buttonsHBoxLayout.addWidget(self.apply)
         buttonsHBoxLayout.addWidget(self.applyFullButton)
         buttonsHBoxLayout.addWidget(self.cancelButton)
-        formLayout.addRow(buttonsHBoxLayout)
+        outputFormLayout.addRow(buttonsHBoxLayout)
 
         self.statusLabel = qt.QLabel()
         self.statusLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
@@ -221,42 +302,135 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
         self.layout.addStretch(1)
 
-    def onInputImageChanged(self, itemId):
-        self.unrequireField(self.inputMaskComboBox)
-        self.unrequireField(self.inputShadingMaskComboBox)
+        self.reset()
 
-        self.inputMaskComboBox.setCurrentNode(None)
-        self.inputShadingMaskComboBox.setCurrentNode(None)
+    def onInputImageChanged(self, itemId):
+        self.reset()
+
         inputImage = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
         if inputImage:
             outputImageName = inputImage.GetName() + self.OUTPUT_SUFFIX
-
-            segmentationNodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
-            for segmentationNode in segmentationNodes:
-                if getSourceVolume(segmentationNode) == inputImage:
-                    self.inputMaskComboBox.setCurrentNode(segmentationNode)
-                    self.inputShadingMaskComboBox.setCurrentNode(segmentationNode)
-                    break
-
         else:
             outputImageName = ""
+
         self.outputImageNameLineEdit.setText(outputImageName)
         self.__updateApplyToAll()
 
-    def requireField(self, widget):
-        widget.setStyleSheet("QWidget {background-color: #600000}")
+    def reset(self):
+        if self.samplingMaskSegmentation:
+            slicer.mrmlScene.RemoveNode(self.samplingMaskSegmentation)
+            self.samplingMaskSegmentation = None
+        if self.normalizedVolume and not self.keepNormalized:
+            slicer.mrmlScene.RemoveNode(self.normalizedVolume)
+            self.normalizedVolume = None
+        self.inputNode = None
 
-    def unrequireField(self, widget):
-        widget.setStyleSheet("")
+        onSegmentEditorExit(self.segmentEditorWidget)
+        self.updateWidgetsVisibility(self.WidgetState.INITIAL)
+
+    def exit(self):
+        self.reset()
+
+    def onInitializeButtonClicked(self):
+        inputNode = self.inputImageComboBox.currentNode()
+        if not inputNode:
+            highlight_error(self.inputImageComboBox)
+            return
+
+        onSegmentEditorEnter(self.segmentEditorWidget, "ShadingMask")
+
+        # Show status
+        self.statusLabel.setText("Status: Normalizing volume...")
+        self.statusLabel.show()
+        self.progressBar.setValue(0)
+        self.progressBar.show()
+        slicer.app.processEvents()
+
+        try:
+            inputArray = slicer.util.arrayFromVolume(inputNode)
+
+            self.progressBar.setValue(30)
+            slicer.app.processEvents()
+
+            normalizedArray = normalize_z(inputArray)
+
+            self.progressBar.setValue(60)
+            slicer.app.processEvents()
+
+            self.reset()
+
+            self.inputNode = inputNode
+
+            self.keepNormalized = self.keepNormalizedBox.isChecked()
+
+            volumeName = inputNode.GetName() + "_PreNormalized"
+            self.normalizedVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", volumeName)
+            self.normalizedVolume.CopyOrientation(inputNode)
+            copy_display(inputNode, self.normalizedVolume)
+            slicer.util.updateVolumeFromArray(self.normalizedVolume, normalizedArray)
+            if not self.keepNormalizedBox.isChecked():
+                self.normalizedVolume.SetHideFromEditors(True)
+                self.normalizedVolume.SaveWithSceneOff()
+
+            self.progressBar.setValue(80)
+            slicer.app.processEvents()
+
+            self.samplingMaskSegmentation = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            self.samplingMaskSegmentation.SetName(inputNode.GetName() + "_sampling_mask")
+            self.samplingMaskSegmentation.CreateDefaultDisplayNodes()
+            self.samplingMaskSegmentation.SetReferenceImageGeometryParameterFromVolumeNode(self.normalizedVolume)
+            self.samplingMaskSegmentation.GetSegmentation().AddEmptySegment("Sampling Mask", "Sampling Mask")
+            self.samplingMaskSegmentation.SetHideFromEditors(True)
+            self.samplingMaskSegmentation.SaveWithSceneOff()
+
+            self.segmentationBox.setCurrentNode(self.samplingMaskSegmentation)
+            self.sourceVolumeBox.setCurrentNode(self.normalizedVolume)
+            self.segmentEditorWidget.setActiveEffectByName("Threshold")
+
+            maskingWidget = self.segmentEditorWidget.findChild(qt.QGroupBox, "MaskingGroupBox")
+            maskingWidget.visible = False
+            maskingWidget.setFixedHeight(0)
+
+            self.updateWidgetsVisibility(self.WidgetState.THRESHOLD)
+
+            effect = self.segmentEditorWidget.effectByName("Threshold")
+            applyThresholdButton = effect.self().applyButton
+            applyThresholdButton.clicked.connect(lambda: self.updateWidgetsVisibility(self.WidgetState.PROCESS))
+
+            pulseBox = effect.self().enablePulsingCheckbox
+            pulseBox.setChecked(False)
+            pulseBox.hide()
+
+            frame = effect.optionsFrame()
+            for groupBox in frame.findChildren(ctk.ctkCollapsibleGroupBox):
+                groupBox.hide()
+
+            self.statusLabel.setText("Status: Ready")
+            self.progressBar.setValue(0)
+
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            self.statusLabel.setText("Status: Error during initialization")
+            slicer.util.errorDisplay(f"Failed to initialize: {str(e)}")
+        finally:
+            slicer.app.processEvents()
 
     def onApplyFull(self):
         slicer.util.selectModule("PolynomialShadingCorrectionBigImage")
         widget = slicer.modules.PolynomialShadingCorrectionBigImageWidget
 
+        # Get the segmentation as a labelmap
+        if not self.samplingMaskSegmentation:
+            slicer.util.errorDisplay("Please initialize and create a threshold segment first.")
+            return
+
+        # Create parameters for the full volume processing
         params = {
-            "inputNode": self.inputImageComboBox.currentNode(),
-            "inputMaskNode": self.inputMaskComboBox.currentNode(),
-            "inputShadingMaskNode": self.inputShadingMaskComboBox.currentNode(),
+            "inputNode": self.inputNode,
+            "inputMaskNode": None,
+            "inputShadingMaskNode": self.samplingMaskSegmentation,
             "sliceGroupSize": self.sliceGroupSize.value,
             "numberFittingPoints": self.numberFittingPoints.value,
         }
@@ -265,8 +439,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
     def resetInputWidgetsStyle(self):
         remove_highlight(self.inputImageComboBox)
-        remove_highlight(self.inputMaskComboBox)
-        remove_highlight(self.inputShadingMaskComboBox)
         remove_highlight(self.sliceGroupSize)
         remove_highlight(self.numberFittingPoints)
         remove_highlight(self.outputImageNameLineEdit)
@@ -277,6 +449,12 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         try:
             if self.inputImageComboBox.currentNode() is None:
                 highlight_error(self.inputImageComboBox)
+                return
+
+            inputNode = self.inputNode
+
+            if not self.samplingMaskSegmentation:
+                slicer.util.errorDisplay("Please initialize and create a threshold segment first.")
                 return
 
             if self.sliceGroupSize.value % 2 == 0:
@@ -297,29 +475,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
             inputNode = self.inputImageComboBox.currentNode()
 
-            try:
-                inputMaskNode = extractSegmentInfo(self.inputMaskComboBox.currentItem(), refNode=inputNode)
-            except Exception as e:
-                traceback.print_exc()
-                logging.warning("Invalid input mask. Cause:" + repr(e))
-                highlight_error(self.inputMaskComboBox)
-                inputMaskNode = None
-                helpers.removeTemporaryNodes()
-                return
-
-            try:
-                inputShadingMaskNode = extractSegmentInfo(
-                    self.inputShadingMaskComboBox.currentItem(), refNode=inputNode
-                )
-            except Exception as e:
-                traceback.print_exc()
-                logging.warning("Invalid input shading mask. Cause:" + repr(e))
-                highlight_error(self.inputShadingMaskComboBox)
-                inputMaskNode = None
-                inputShadingMaskNode = None
-                helpers.removeTemporaryNodes()
-                return
-
             PolynomialShadingCorrection.set_setting(self.SLICE_GROUP_SIZE, self.sliceGroupSize.value)
             PolynomialShadingCorrection.set_setting(self.NUMBER_FITTING_POINTS, self.numberFittingPoints.value)
 
@@ -333,17 +488,29 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.progressBar.show()
             slicer.app.processEvents()
 
+            # Convert the segmentation to labelmap for processing
+            labelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
+                self.samplingMaskSegmentation, labelMapNode, inputNode
+            )
+
             processParameters = self.ProcessParameters(
                 inputNode,
-                inputMaskNode,
-                inputShadingMaskNode,
+                labelMapNode,
                 self.sliceGroupSize.value,
                 self.numberFittingPoints.value,
                 self.outputImageNameLineEdit.text,
             )
+
             if self.logic.process(processParameters):
                 self.statusLabel.setText("Status: Completed")
                 self.progressBar.setValue(100)
+
+            # Clean up temporary labelmap
+            slicer.mrmlScene.RemoveNode(labelMapNode)
+
+            # Clean up other intermediate nodes
+            self.reset()
 
         except ProcessInfo as e:
             self.statusLabel.setText("Status: Not completed")
@@ -365,6 +532,12 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.applyFullButton.setEnabled(True)
         self.cancelButton.setEnabled(False)
 
+    def requireField(self, widget):
+        widget.setStyleSheet("QWidget {background-color: #600000}")
+
+    def unrequireField(self, widget):
+        widget.setStyleSheet("")
+
 
 class PolynomialShadingCorrectionLogic(LTracePluginLogic):
     def __init__(self, statusLabel, progressBar):
@@ -382,19 +555,15 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
         self.inputImage = parameters.inputImage
         inputImageArray = slicer.util.arrayFromVolume(self.inputImage)
 
-        inputMask = parameters.inputMask
-        inputMaskArray = slicer.util.arrayFromVolume(inputMask)
-
-        inputShadingMask = parameters.inputShadingMask
-        inputShadingMaskArray = slicer.util.arrayFromVolume(inputShadingMask)
+        shadingMask = parameters.shadingMask
+        shadingMaskArray = slicer.util.arrayFromVolume(shadingMask)
 
         nullValue = getVolumeNullValue(self.inputImage)
 
         try:
             outputImageArray = self.polynomialShadingCorrection(
                 inputImageArray=inputImageArray,
-                inputMaskArray=inputMaskArray,
-                inputShadingMaskArray=inputShadingMaskArray,
+                inputShadingMaskArray=shadingMaskArray,
                 sliceGroupSize=parameters.sliceGroupSize,
                 numberOfFittingPoints=parameters.numberFittingPoints,
                 input_null_value=nullValue,
@@ -405,7 +574,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
 
             outputImage = slicer.modules.volumes.logic().CloneVolume(self.inputImage, parameters.outputImageName)
             slicer.util.updateVolumeFromArray(outputImage, outputImageArray)
-            setVolumeNullValue(outputImage, outputImageArray[inputMaskArray == 0][0])
+            setVolumeNullValue(outputImage, nullValue)
 
             copy_display(self.inputImage, outputImage)
 
@@ -425,7 +594,6 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
     def polynomialShadingCorrection(
         self,
         inputImageArray,
-        inputMaskArray,
         inputShadingMaskArray,
         sliceGroupSize=1,
         numberOfFittingPoints=1000,
@@ -433,7 +601,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
     ):
         start = datetime.datetime.now()
 
-        outputImageArray = inputImageArray.copy()
+        outputImageArray = np.zeros_like(inputImageArray, dtype=np.float32)
         array = inputImageArray[inputShadingMaskArray != 0]
         inputArrayShadingMaskMax = np.max(array)
         inputArrayShadingMaskMean = np.mean(array)
@@ -498,7 +666,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
 
             # Adjusting slice data
             for j in range(i - sliceGroupSize // 2, i + 1):
-                outputImageArray[j] = inputImageArray[j] / zz
+                outputImageArray[j] = zz
 
             # In the last iteration, proceed to apply the function in all the remaining slices
             if i == iterationIndexes[-1]:
@@ -507,14 +675,18 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
                 end = i + sliceGroupSize // 2 + 1
 
             for j in range(i + 1, end):
-                outputImageArray[j] = inputImageArray[j] / zz
+                outputImageArray[j] = zz
+
+        # Apply 1D gaussian filter to smooth the shading correction
+        outputImageArray = gaussian_filter1d(outputImageArray, sigma=3, axis=0)
+        outputImageArray = inputImageArray / outputImageArray
+
+        if input_null_value is not None:
+            outputImageArray[inputImageArray == input_null_value] = input_null_value
 
         end = datetime.datetime.now()
         elapsed = end - start
         logging.info("Polynomial shading correction elapsed time: " + str(elapsed.total_seconds()))
-
-        output_null_value = input_null_value if input_null_value != None else 0
-        outputImageArray[inputMaskArray == 0] = output_null_value
 
         return outputImageArray
 

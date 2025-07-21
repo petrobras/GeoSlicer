@@ -14,6 +14,8 @@ def otsu_threshold(img):
     kernel = np.ones((3, 3), np.uint8)
     threshold_image = cv2.erode(threshold_image, kernel, iterations=EROSION_AMOUNT)
     contours = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+    if not contours:
+        return None
     contour = max(contours, key=cv2.contourArea)
     mask = np.zeros_like(threshold_image)
     cv2.drawContours(mask, [contour], -1, 255, -1)
@@ -70,6 +72,9 @@ def detect_rock_circle(array):
     geometric_mean = np.power(acc, 1 / 8)
 
     mask = otsu_threshold(geometric_mean)
+    if mask is None:
+        return None
+
     min_radius = round(array.shape[1] * 0.15)
     max_radius = round(array.shape[1] * 0.5)
     circles = cv2.HoughCircles(
@@ -143,6 +148,9 @@ def detect_rock_height(array, circle_center_x, circle_radius):
 
 
 def detect_rock_cylinder(array):
+    if array.size == 0:
+        return None
+
     should_downscale = min(array.shape) > 500
 
     if should_downscale:

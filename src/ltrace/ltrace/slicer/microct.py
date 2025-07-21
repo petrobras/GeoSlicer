@@ -26,6 +26,7 @@ def load(
     path,
     callback=lambda message, percent, processEvents=True: None,
     imageSpacing=(1.0 * ureg.micrometer, 1.0 * ureg.micrometer, 1.0 * ureg.micrometer),
+    imageOrigin=(0.0 * ureg.micrometer, 0.0 * ureg.micrometer, 0.0 * ureg.micrometer),
     centerVolume=True,
     invertDirections=[True, True, False],
     loadAsLabelmap=False,
@@ -34,7 +35,8 @@ def load(
 ):
     if path.suffix in (".nc", ".h5", ".hdf5"):
         nodes = netcdf.import_file(path, callback)
-        pcrNode = loadPCRAsTextNode(path)
+        # NetCDF already handles PCR
+        pcrNode = None
     else:
         if path.is_file():
             singleFile = True
@@ -50,7 +52,14 @@ def load(
 
         nodes = [
             _loadImage(
-                file, imageSpacing, centerVolume, invertDirections, loadAsLabelmap, base, singleFile or isVolumes
+                file,
+                imageSpacing,
+                imageOrigin,
+                centerVolume,
+                invertDirections,
+                loadAsLabelmap,
+                base,
+                singleFile or isVolumes,
             )
             for file in images
         ]
@@ -87,6 +96,15 @@ def setPCRFile(nodes, pcrNode):
         if pcrNode:
             node.SetAttribute("PCR", pcrNode.GetID())
 
+    # Place PCR node in the same subject hierarchy folder as the first image node
+    if nodes and pcrNode:
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        imageItemID = shNode.GetItemByDataNode(nodes[0])
+        parentItemID = shNode.GetItemParent(imageItemID)
+        pcrItemID = shNode.GetItemByDataNode(pcrNode)
+        if parentItemID and pcrItemID:
+            shNode.SetItemParent(pcrItemID, parentItemID)
+
 
 def _createSequenceFromNodeList(nodeList, directoryName):
     subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -117,28 +135,9 @@ def _createSequenceFromNodeList(nodeList, directoryName):
     return nodeList
 
 
-def _loadNetCDF(path, callback):
-    dataset = xr.open_dataset(path)
-    dataset_name = path.with_suffix("").name
-
-    folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    scene_id = folderTree.GetSceneItemID()
-    current_dir = folderTree.CreateFolderItem(scene_id, dataset_name)
-    folderTree.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
-
-    pcrNode = loadPCRAsTextNode(path)
-
-    nodes = []
-    for node, progress in zip(import_dataset(dataset), np.arange(10, 100, 90 / len(dataset))):
-        callback("Loading...", progress, True)
-        _ = folderTree.CreateItem(current_dir, node)
-        nodes.append(node)
-        if pcrNode:
-            node.SetAttribute("PCR", pcrNode.GetID())
-    return nodes
-
-
-def _loadImage(file, imageSpacing, centerVolume, invertDirections, loadAsLabelmap, baseName, singleFile=False):
+def _loadImage(
+    file, imageSpacing, imageOrigin, centerVolume, invertDirections, loadAsLabelmap, baseName, singleFile=False
+):
     loadAsLabelmap = loadAsLabelmap and singleFile
     node = slicer.util.loadVolume(str(file), properties={"singleFile": singleFile, "labelmap": loadAsLabelmap})
 
@@ -155,18 +154,14 @@ def _loadImage(file, imageSpacing, centerVolume, invertDirections, loadAsLabelma
             node.HardenTransform()
             slicer.mrmlScene.RemoveNode(slicer.util.getNode(node.GetName() + " centering transform"))
 
+    directions = [-1 if invert else 1 for invert in invertDirections]
     if singleFile:
-        node.SetIJKToRASDirections(
-            -1 if invertDirections[0] else 1,
-            0,
-            0,
-            0,
-            -1 if invertDirections[1] else 1,
-            0,
-            0,
-            0,
-            -1 if invertDirections[2] else 1,
-        )
+        x = directions[0], 0, 0
+        y = 0, directions[1], 0
+        z = 0, 0, directions[2]
+        node.SetIJKToRASDirections(*x, *y, *z)
+
+    node.SetOrigin(*(o.m_as(SLICER_LENGTH_UNIT) * d for o, d in zip(imageOrigin, directions)))
 
     storageNode = node.GetStorageNode()
     storageNode.SetFileName(str(Path(storageNode.GetFileName()).with_suffix(".nrrd")))
@@ -183,7 +178,7 @@ def _getImageList(path: Path) -> List[str]:
             paths.append(filepath)
 
     file_groups = defaultdict(dict)
-    pattern = re.compile(r"(.*nm)(\d+)$")
+    pattern = re.compile(r"^(.*?)(\d+)$")
     for path in paths:
         match_ = pattern.match(path.stem)
         if match_:
@@ -313,8 +308,10 @@ def loadPCRAsTextNode(pcrFile):
             logging.debug(f"Failed to parse PCR string. Cause: {repr(e)}")
             return None
 
-        textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_PCR")
+        textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_attr_pcr")
         textNode.SetText(pcr)
+        textNode.SetAttribute("IsNcAttrs", "1")
+        textNode.SetAttribute("AttrKey", "pcr")
 
     except Exception as e:
         logging.debug(f"Failed to load PCR file. Cause: {repr(e)}")

@@ -25,10 +25,10 @@ import xarray as xr
 import slicer
 
 
-def _run_all(scalar, origin, spacing, multiple_thresholds, boundary_thresholds):
+def _run_all(scalar, origin, spacing, multiple_thresholds, boundary_thresholds, microporosity_index):
     segmentation = apply_multiple_threshold(scalar, multiple_thresholds)
-    segmentation = remove_boundaries(scalar, segmentation, origin, spacing, boundary_thresholds)
-    segmentation = expand_segments(segmentation, origin, spacing)
+    segmentation = remove_boundaries(scalar, segmentation, origin, spacing, boundary_thresholds, microporosity_index)
+    segmentation = expand_segments(segmentation, origin, spacing, microporosity_index)
     return segmentation
 
 
@@ -40,6 +40,10 @@ def run_all_effects(lazy_data, lazy_data_host, multiple_thresholds, boundary_thr
     origin = netcdf.get_origin(data_array)
     spacing = netcdf.get_spacing(data_array)
 
+    try:
+        microporosity_index = names.index("Microporosity") + 1
+    except ValueError:
+        microporosity_index = None
     boundary_removed_segmented = da.map_overlap(
         _run_all,
         array,
@@ -50,6 +54,7 @@ def run_all_effects(lazy_data, lazy_data_host, multiple_thresholds, boundary_thr
         dtype=data_array.dtype,
         align_arrays=True,
         depth=3,
+        microporosity_index=microporosity_index,
     )
 
     data_array = xr.DataArray(boundary_removed_segmented, coords=data_array.coords)

@@ -1,7 +1,7 @@
-import logging
-
 import qt
 import slicer
+import logging
+import traceback
 
 from ltrace.slicer.helpers import BlockSignals
 from ltrace.utils.custom_event_filter import CustomEventFilter
@@ -194,4 +194,4 @@ class HierarchyVolumeInput(qt.QWidget):
         try:
             self.clearSelection()
         except Exception as e:
-            logging.error(e)
+            logging.error(f"{e}.\n{traceback.format_exc()}")

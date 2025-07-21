@@ -356,7 +356,7 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
         pip_call.append("--editable")
     pip_call.append(str(lib_folder))
 
-    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==22.3", "setuptools==61.3.1"])
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==25.0.1", "setuptools==61.3.1"])
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
@@ -515,13 +515,13 @@ def rename_executable(slicer_dir):
 
 def copy_windows_dlls(slicer_dir):
     files_to_copy = []
-    cuda_path_environment = os.environ.get("CUDA_PATH_V11_2")
+    cuda_path_environment = os.environ.get("CUDA_PATH_V11_6")
     if cuda_path_environment is None:
-        raise RuntimeError("CUDA_PATH_V11_2 environment variable not defined")
+        raise RuntimeError("CUDA_PATH_V11_6 environment variable not defined")
 
     cuda_bin = Path(cuda_path_environment) / "bin"
     if not cuda_bin.is_dir():
-        raise RuntimeError("CUDA_PATH_V11_2 points to an invalid directory")
+        raise RuntimeError("CUDA_PATH_V11_6 points to an invalid directory")
 
     for dll in cuda_bin.glob("*.dll"):
         if dll.name in ["cudart32_110.dll"]:

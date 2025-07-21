@@ -37,13 +37,31 @@ class ProgressBarWidget(QWidget):
         )
         self.setMinimumWidth(400)
 
-        self.sharedMem = SharedMemory(name="ProgressBar", create=False)
+        try:
+            self.sharedMem = SharedMemory(name="ProgressBar", create=False)
+        except Exception as error:
+            self.sharedMem = None
 
-        timer = QTimer(self)
-        timer.timeout.connect(self.updateFromSharedMem)
-        timer.start(100)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.updateFromSharedMem)
+        self.timer.start(100)
+
+        self.errorCount = 0
+        self.destroyed.connect(self.__del__)
 
     def updateFromSharedMem(self):
+        try:
+            self.sharedMem = SharedMemory(name="ProgressBar", create=False)
+        except Exception:
+            self.errorCount += 1
+
+            if self.errorCount >= 30:
+                self.timer.stop()
+                self.timer = None
+                self.deleteLater()
+
+            return
+
         data = bytes(self.sharedMem.buf)
         data = data[: data.index(b"\x00")]
         if not data:
@@ -54,8 +72,23 @@ class ProgressBarWidget(QWidget):
         self.setWindowTitle(data["title"])
         self.label.setText(data["message"])
         if "progress" in data:
+            progress = data["progress"]
             self.progressBar.show()
-            self.progressBar.setValue(data["progress"])
+            self.progressBar.setValue(progress)
+
+    def __del__(self):
+        self.__releaseProcess()
+
+    def __releaseProcess(self):
+        if self.sharedMem is not None:
+            try:
+                self.sharedMem.close()
+                self.sharedMem.unlink()
+            except:
+                pass
+
+            del self.sharedMem
+            self.sharedMem = None
 
 
 def main(iconPath, bgColor, fgColor):

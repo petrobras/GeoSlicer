@@ -1,4 +1,5 @@
 import qt
+import logging
 
 from .import_logic import ChannelMetadata
 from .import_logic import checkMnemonicChanged
@@ -17,9 +18,14 @@ def buildCheckBoxCell(checked):
     return checkBoxWidget
 
 
+logger = logging.getLogger(__name__)
+
+
 class ImageLogTableViewer(qt.QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent: qt.QObject = None):
         super().__init__(parent)
+
+        self.parent_instance = parent
 
         self.loadClicked = lambda *a: None
 
@@ -27,12 +33,24 @@ class ImageLogTableViewer(qt.QWidget):
 
         self.selected_rows = 0
 
-        self.columns = ["Load", "Id", "Name", "Unit", "Frame", "Logical file", "LabelMap", "As Table", "Stack"]
+        self.columns = [
+            "Load",
+            "Id",
+            "Name",
+            "Unit",
+            "Frame",
+            "Logical file",
+            "LabelMap",
+            "As Table",
+            "Stack",
+            "WellName",
+        ]
 
         self.stacked_rows_visibility = []  # Boolean for row visibility according to Stack criteria
 
         self.ID_COLUMN = self.columns.index("Id")
         self.NAME_COLUMN = self.columns.index("Name")
+        self.WELLNAME_COLUMN = self.columns.index("WellName")
 
         filterLayout = qt.QHBoxLayout()
         self.filterLineEdit = qt.QLineEdit()
@@ -303,14 +321,31 @@ class ImageLogTableViewer(qt.QWidget):
                     other_item.setChecked(state == qt.Qt.Unchecked)
 
     def rows_to_load(self):
+        def unselect(item):
+            logger.warning(
+                "Usability: Curve not selected - GeoSlicer doesn't allow loading curves having different well names."
+            )
+            item.setChecked(False)
+
         rows = []
         load_column = self.columns.index("Load")
+        well_name = ""
+        count_well = 0
         for i in range(self.tableWidget.rowCount):
             widget = self.tableWidget.cellWidget(i, load_column)
             try:
                 item = widget.layout().itemAt(0).widget()
                 if item.isChecked() and not self.tableWidget.isRowHidden(i):
-                    rows.append(i)
+                    # Even though our code exports multiple wells correctly, GeoSlicer currently actively prevents it
+                    # because of usability
+                    if self.tableWidget.item(i, self.WELLNAME_COLUMN).text() != well_name:
+                        well_name = self.tableWidget.item(i, self.WELLNAME_COLUMN).text()
+                        count_well += 1
+                    if count_well > 1:
+                        unselect(item)
+                    else:
+                        rows.append(i)
+                        self.parent_instance.wellNameInput.text = self.tableWidget.item(i, self.WELLNAME_COLUMN).text()
             except AttributeError:  # no "Labelmap"
                 pass
         return rows

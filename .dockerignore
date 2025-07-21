@@ -1,10 +1,30 @@
+# Allow
+!**/requirements.txt
+!**/pyproject.toml
+!**/setup.py
+
+
+# Ignore
 env
 .env
-src/modules
-src/submodules
+.git
+
+# Large files
+**/*.nrrd
+**/*.tsv
+**/*.vtk
+
+# Images
+**/*.svg
+**/*.jpg
+**/*.jpeg
+**/*.png
+
+# Specific directories
+src/modules/*/Test?
+src/modules/**/Resources
 src/ltrace/build
 src/ltrace/ltrace/assets
-.git
 tools/deploy/GeoSlicerManual
 tools/deploy/Resources
-gs*/*
+gs*/* 

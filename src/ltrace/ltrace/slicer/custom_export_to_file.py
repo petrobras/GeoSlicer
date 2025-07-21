@@ -55,7 +55,7 @@ def _exportNodeAs(selectedItemId, env):
 
 
 def _export_folder_as_netcdf(folder_id):
-    slicer.util.mainWindow().moduleSelector().selectModule("NetCDFExport")
+    slicer.modules.AppContextInstance.mainWindow.moduleSelector().selectModule("NetCDFExport")
     ids = vtk.vtkIdList()
     ids.SetNumberOfIds(1)
     ids.SetId(0, folder_id)

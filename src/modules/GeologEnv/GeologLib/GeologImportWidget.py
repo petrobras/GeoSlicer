@@ -60,7 +60,7 @@ class GeologImportWidget(qt.QWidget):
             "Values that represent null values. They will be changed to nan values during import."
         )
 
-        self.tableView = ImageLogTableViewer()
+        self.tableView = ImageLogTableViewer(self)
         self.tableView.setMinimumHeight(500)
         self.tableView.loadClicked = self._onLoadClicked
         self.tableView.objectName = "dataTableView"
@@ -172,6 +172,7 @@ class GeologImportWidget(qt.QWidget):
                                 False,
                                 False,
                                 False,
+                                self.wellComboBox.currentText,
                             )
                         )
 
@@ -346,7 +347,7 @@ class GeologImportLogic(object):
 
         tableNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
-        if logValues.shape[1] > 1:
+        if logValues.ndim > 1:
             tableNode.SetAttribute(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
             tableNode.SetAttribute(TableDataTypeAttribute.name(), TableDataTypeAttribute.IMAGE_2D.value)
             tableNode.SetAttribute(TableDataOrientation.name(), TableDataOrientation.ROW.value)

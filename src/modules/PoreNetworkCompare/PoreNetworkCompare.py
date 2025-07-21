@@ -587,6 +587,7 @@ class PoreNetworkCompareLogic(LTracePluginLogic):
         layoutId = random.randint(10**8, (10**9) - 1)
         layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutId, layout)
         layoutManager.setLayout(layoutId)
+        slicer.app.processEvents()
         qt.QTimer.singleShot(self.REFRESH_DELAY, self.finishBuildLayout)
 
     def finishBuildLayout(self):

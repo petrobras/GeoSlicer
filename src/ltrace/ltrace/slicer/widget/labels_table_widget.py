@@ -64,14 +64,19 @@ class LabelsTableWidget(qt.QTableWidget):
         return colors
 
     @staticmethod
-    def get_label_colors(labelmap_node):
-        display_node = labelmap_node.GetDisplayNode()
-        if display_node is None:
+    def get_label_colors(labelmapNode):
+        displayNode = labelmapNode.GetDisplayNode()
+        if displayNode is None:
             return []
-        color_node = display_node.GetColorNode()
-        if color_node is None:
+        colorNode = displayNode.GetColorNode()
+        if colorNode is None:
             return []
-        id_ = labelmap_node.GetImageData()
-        srange = id_.GetScalarRange()
-        colors = LabelsTableWidget.get_colors_from_color_node(color_node, index_range=(srange[0], srange[1] + 1))
+        imageData = labelmapNode.GetImageData()
+        if imageData is None:
+            return []
+
+        scalarRange = imageData.GetScalarRange()
+        colors = LabelsTableWidget.get_colors_from_color_node(
+            colorNode, index_range=(scalarRange[0], scalarRange[1] + 1)
+        )
         return colors

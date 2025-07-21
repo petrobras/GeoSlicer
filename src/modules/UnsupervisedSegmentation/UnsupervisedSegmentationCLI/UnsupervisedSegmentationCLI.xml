@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Thin Section</category>
+  <index>3</index>
+  <title>Self-guided Segmentation CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input Image</label>
+    <image>
+      <name>inputVolume</name> <!-- All names, flags and longflags must be valid C++ variable names -->
+      <label>Input Volume</label>
+      <flag>i</flag>
+      <longflag>inputVolume</longflag>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters>
+    <label>Extra Input Image</label>
+    <image>
+      <name>extraInputVolume</name> <!-- All names, flags and longflags must be valid C++ variable names -->
+      <label>Extra Input Volume</label>
+      <flag>e</flag>
+      <longflag>extraInputVolume</longflag>
+      <description><![CDATA[Pick the input data to the algorithm.]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+    <integer>
+      <name>resolution</name>
+      <label>Resolution</label>
+      <flag>r</flag>
+      <longflag>resolution</longflag>
+      <description><![CDATA[Processing resolution]]></description>
+      <default>1000</default>
+    </integer>
+    <integer>
+      <name>minLabelNum</name>
+      <label>Minimum segments</label>
+      <longflag>minLabelNum</longflag>
+      <description><![CDATA[Minimum number of segments to produce.]]></description>
+      <default>3</default>
+    </integer>
+  </parameters>
+
+  <parameters advanced="false">
+    <image>
+      <name>outputVolume</name>
+      <label>Output Volume</label>
+      <flag>o</flag>
+      <longflag>outputVolume</longflag>
+      <description><![CDATA[Pick the output volume to the algorithm.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </image>
+  </parameters>
+
+  <parameters advanced="false">
+    <string>
+      <name>colorTablePath</name>
+      <label>colorTablePath</label>
+      <flag>c</flag>
+      <longflag>colorTablePath</longflag>
+      <description><![CDATA[colorTablePath]]></description>
+      <default></default>
+    </string>
+  </parameters>
+
+
+</executable>

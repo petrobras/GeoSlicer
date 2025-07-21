@@ -24,7 +24,7 @@ class FilteringTools(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ""
+        self.set_manual_path("Filtering_and_Segmentation/Filters/apply_filters.html")
 
     @classmethod
     def readme_path(cls):

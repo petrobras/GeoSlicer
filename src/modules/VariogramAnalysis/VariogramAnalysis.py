@@ -20,7 +20,7 @@ from ltrace.slicer.widgets import InputState, SingleShotInputWidget
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.algorithms.variogram import GeneralizedVariogram
 from ltrace.algorithms.Variogram_FFT.variogram import VariogramFFT
-from ltrace.slicer.helpers import createTemporaryVolumeNode, createMaskWithROI, highlight_error
+from ltrace.slicer.helpers import createTemporaryVolumeNode, createMaskWithROI, highlight_error, highlight_warning
 from ltrace.transforms import volume_ijk_to_ras
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 from ltrace.utils.ProgressBarProc import ProgressBarProc
@@ -123,7 +123,15 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         self.inputSelection.onSoiSelectedSignal.connect(self._on_soi_node_selected)
         self.layout.addWidget(self.inputSelection)
 
+        self.warningLabel = qt.QLabel(
+            "When the Region (SOI) is not selected, the variogram results could exceed the sample boundaries."
+        )
+        self.warningLabel.setStyleSheet("QLabel { color : yellow; }")
+        self.warningLabel.hide()
+        self.layout.addWidget(self.warningLabel)
+
         inputParametersForm.addRow(self.inputSelection)
+        inputParametersForm.addRow(self.warningLabel)
         inputParametersGroup.setLayout(inputParametersForm)
 
         self.layout.addWidget(inputParametersGroup)
@@ -375,7 +383,7 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         # Add vertical spacer
         self.layout.addStretch(1)
 
-        self._on_soi_node_selected(None)
+        # self._on_soi_node_selected(None)
 
     def enter(self) -> None:
         super().enter()
@@ -689,6 +697,10 @@ class VariogramAnalysisWidget(LTracePluginWidget):
             highlight_error(self.inputSelection.referenceInput)
         elif isinstance(main_node, slicer.vtkMRMLSegmentationNode) and len(selected_segment_indices) == 0:
             highlight_error(self.inputSelection.segmentListWidget)
+        elif soi_node is None:
+            highlight_warning(self.inputSelection.soiInput)
+            self.warningLabel.show()
+            return main_node, reference_node, soi_node, selected_segment_indices
         else:
             return main_node, reference_node, soi_node, selected_segment_indices
         return None
@@ -911,12 +923,14 @@ class VariogramAnalysisWidget(LTracePluginWidget):
 
     def _on_soi_node_selected(self, current_soi_node):
         enable = current_soi_node is not None
-        self.variogramDirectionalToleranceSpinBox.enabled = enable
-        self.variogramSampleRateSpinBox.enabled = enable
-        self.variogramMaxSamplesSpinBox.enabled = enable
-        self.variogramLagsSpinBox.enabled = enable
-        self.maximumDistanceCheckBox.enabled = enable
-        self.maximumDistanceSlider.enabled = enable and self.maximumDistanceCheckBox.checked
+        if enable:
+            self.warningLabel.hide()
+        # self.variogramDirectionalToleranceSpinBox.enabled = enable
+        # self.variogramSampleRateSpinBox.enabled = enable
+        # self.variogramMaxSamplesSpinBox.enabled = enable
+        # self.variogramLagsSpinBox.enabled = enable
+        # self.maximumDistanceCheckBox.enabled = enable
+        # self.maximumDistanceSlider.enabled = enable and self.maximumDistanceCheckBox.checked
 
     def _on_maximum_distance_checked(self, checked):
         self.maximumDistanceSlider.enabled = checked

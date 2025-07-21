@@ -5,6 +5,12 @@ from ltrace.flow.thin_section import ppFlowWidget
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
 
 
+try:
+    from Test.PpFlowTest import PpFlowTest
+except ImportError:
+    PpFlowTest = None  # tests not deployed to final version or closed source
+
+
 class PpFlow(LTracePlugin):
     SETTING_KEY = "PpFlow"
     MODULE_DIR = Path(os.path.dirname(os.path.realpath(__file__)))

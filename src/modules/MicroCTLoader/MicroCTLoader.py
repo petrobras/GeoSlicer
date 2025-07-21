@@ -24,7 +24,7 @@ class MicroCTLoader(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = MicroCTLoader.help()
+        self.set_manual_path("Data_loading/load_microct.html")
 
     @classmethod
     def readme_path(cls):

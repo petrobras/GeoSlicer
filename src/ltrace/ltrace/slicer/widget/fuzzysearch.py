@@ -37,6 +37,8 @@ class FuzzySearchDialog(qt.QDialog):
 
         self.result_macros_list.currentTextChanged.connect(self.on_macro_selected)
         self.result_modules_list.currentRowChanged.connect(self.on_module_selected)
+        self.result_modules_list.itemDoubleClicked.connect(self.on_module_activated)
+        self.result_modules_list.installEventFilter(self)
 
         self.update_results([], self.model.macros)
 
@@ -81,6 +83,24 @@ class FuzzySearchDialog(qt.QDialog):
 
         moduleName = listItem.data(qt.Qt.UserRole)
         slicer.util.selectModule(moduleName)
+
+    def on_module_activated(self, item) -> None:
+        # Called on double click
+        if item is None:
+            return
+        moduleName = item.data(qt.Qt.UserRole)
+        slicer.util.selectModule(moduleName)
+        self.accept()  # Close the dialog
+
+    def eventFilter(self, obj, event):
+        # Handle Enter/Return key on module list
+        if obj == self.result_modules_list and event.type() == qt.QEvent.KeyPress:
+            if event.key() in (qt.Qt.Key_Return, qt.Qt.Key_Enter):
+                currentItem = self.result_modules_list.currentItem()
+                if currentItem is not None:
+                    self.on_module_activated(currentItem)
+                    return True
+        return qt.QObject.eventFilter(self, obj, event)
 
     def eventHandler(self, event):
         if event == "new-data":

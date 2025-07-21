@@ -210,7 +210,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     def initialize(self):
         if self.scriptedEffect.parameterSetNode() is None:
-            slicer.util.errorDisplay("Failed to initialize the effect. The selected node is not valid.")
+            logging.warning("Failed to initialize the effect. The selected node is not valid.")
             return
 
         self.scriptedEffect.saveStateForUndo()

@@ -12,6 +12,7 @@ from skimage.morphology import disk
 import cv2
 import pandas as pd
 import pyedt
+import traceback
 
 from porespy.filters import reduce_peaks, find_peaks, trim_saddle_points, trim_nearby_peaks
 from ltrace.algorithms.common import get_two_highest_peaks, points_are_below_line
@@ -932,7 +933,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         try:
             manager.start_managing(self.edition_labelmap, verify=False)
         except ValueError as e:
-            logging.info(e)
+            logging.info(f"{e}.\n{traceback.format_exc()}")
         util.setSliceViewerLayers(background=None, foreground=None, label=self.edition_labelmap, fit=True)
 
         self.previous_input_node = input_node

@@ -39,6 +39,7 @@ class DLISImportConst:
     WELL_NAME_TAG = "WellName"
     UNITS_TAG = "Units"
     DEPTH_LABEL = "DEPTH"
+    ORIGIN_TAG = "Origin"
 
 
 class SaveStatus(Enum):

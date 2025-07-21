@@ -24,7 +24,7 @@ from ltrace.slicer.helpers import (
     LazyLoad2,
 )
 
-ThinSectionInstanceSegmenter = LazyLoad2("ThinSectionInstanceSegmenter.ThinSectionInstanceSegmenter")
+# ThinSectionInstanceSegmenter = LazyLoad2("ThinSectionInstanceSegmenter.ThinSectionInstanceSegmenter")
 Segmenter = LazyLoad2("Segmenter.Segmenter")
 
 
@@ -406,7 +406,9 @@ class ResultHandler:
                             class_report = output_report.loc[output_report["class"] == classes[i]]
                             class_report = class_report.drop("class", axis=1)
                             dataFrameToTableNode(class_report, tableNode=tableNode)
-                            ThinSectionInstanceSegmenter.setTableUnits(tableNode)
+                            from ltrace.slicer.thin_section.utils import setTableUnits
+
+                            setTableUnits(tableNode)
                             del class_report
 
                             tableNode.SetAttribute("InstanceEditor", classes[i])

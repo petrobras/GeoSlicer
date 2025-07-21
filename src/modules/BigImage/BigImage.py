@@ -6,6 +6,7 @@ import slicer
 import vtk
 import xarray as xr
 import logging
+import traceback
 
 from dataclasses import dataclass
 from humanize import naturalsize
@@ -36,7 +37,7 @@ class BigImage(LTracePlugin):
         self.parent.title = "Large Image Loader (beta)"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = BigImage.help()
+        self.set_manual_path("Data_loading/load_bigimage.html")
 
     @classmethod
     def readme_path(cls):
@@ -339,7 +340,7 @@ class BigImageWidget(LTracePluginWidget):
             self.dtypeLabel.text = ""
             self.labelsWidget.visible = False
             if networkProblem:
-                logging.info(exceptionError)
+                logging.info(f"{exceptionError}.\n{traceback.format_exc()}")
                 self.networkStatusLabel.setText("Please configure a BIAEP account to preview this image.")
                 slicer.modules.RemoteServiceInstance.cli.initiateConnectionDialog(keepDialogOpen=True)
             return

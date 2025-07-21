@@ -6,7 +6,7 @@ import qt
 import slicer
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
 from pathlib import Path
 from scipy import ndimage
 from vtk.util.numpy_support import numpy_to_vtk
@@ -21,7 +21,7 @@ class HeterogeneityIndex(LTracePlugin):
         self.parent.title = "Heterogeneity Index"
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = HeterogeneityIndex.help()
+        self.set_manual_path("Modules/Quantification/heterogeneity_index.html")
 
     @classmethod
     def readme_path(cls):

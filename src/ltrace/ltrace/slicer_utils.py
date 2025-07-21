@@ -93,6 +93,9 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
     def set_setting(cls, key, value):
         slicer.app.settings().setValue(f"{cls.SETTING_KEY}/{key}", value)
 
+    def set_manual_path(self, relative_path):
+        self.parent.helpText = f"file:///{(getResourcePath('manual') / relative_path).as_posix()}"
+
     def resource(self, resourceName):
         return Path(slicer.util.modulePath(self.moduleName)).parent / "Resources" / resourceName
 
@@ -114,8 +117,10 @@ class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
         super().cleanup()
         slicer.app.moduleManager().moduleAboutToBeUnloaded.disconnect(self._onModuleAboutToBeUnloaded)
         if slicer_is_in_developer_mode():
-            self.testAction.triggered.disconnect()
-            self.reloadTestAction.triggered.disconnect()
+            if hasattr(self, "testAction"):
+                self.testAction.triggered.disconnect()
+            if hasattr(self, "reloadTestAction"):
+                self.reloadTestAction.triggered.disconnect()
 
         for pluginWidget in self.parent.findChildren("qSlicerScriptedLoadableModuleWidget"):
             pluginWidget.setParent(None)
@@ -323,6 +328,12 @@ def print_debug(text):
 
 def base_version():
     return f"{slicer.app.mainApplicationName}-{slicer.app.majorVersion}.{slicer.app.minorVersion}"
+
+
+def externalModulesPath():
+    dest = Path(slicer.app.slicerHome) / "lib" / base_version() / "qt-scripted-extern-modules"
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
 
 
 def singleton(class_):

@@ -1,21 +1,24 @@
 import vtk
 import qt
 import slicer
+import logging
+import traceback
 
 
 class FilteredNodeComboBox(qt.QComboBox):
     nodeAboutToBeRemoved = qt.Signal(object)
     currentNodeChanged = qt.Signal(object)
 
-    def __init__(
-        self,
-        nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLLabelMapVolumeNode"],
-    ):
-        super().__init__()
+    def __init__(self, nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLLabelMapVolumeNode"], *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.addItem("None", None)
         self.nodeTypes = nodeTypes
-        slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.onNodeAdded)
-        slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAboutToBeRemovedEvent, self.onNodeAboutToBeRemoved)
+        self.__nodeAddedObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.NodeAddedEvent, self.onNodeAdded
+        )
+        self.__nodeRemovedObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.NodeAboutToBeRemovedEvent, self.onNodeAboutToBeRemoved
+        )
 
         self.attributeFilters = dict()
         for nodeType in nodeTypes:
@@ -42,6 +45,11 @@ class FilteredNodeComboBox(qt.QComboBox):
             self.currentNodeChanged.emit(self.currentNode())
 
         self.currentIndexChanged.connect(changeNode)
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        slicer.mrmlScene.RemoveObserver(self.__nodeAddedObserverHandler)
+        slicer.mrmlScene.RemoveObserver(self.__nodeRemovedObserverHandler)
 
     def currentNode(self):
         if self:
@@ -95,21 +103,26 @@ class FilteredNodeComboBox(qt.QComboBox):
                 continue
 
     def addNode(self, node):
-        if not self._isAcceptedType(node):
-            return
-        if self and self.findData(node.GetID()) == -1:
-            self.addItem(node.GetName(), node.GetID())
-            if not self._applyFilter(node):
-                self.setItemData(self.count - 1, qt.QColor(154, 154, 154), qt.Qt.TextColorRole)
+        try:
+            if not self._isAcceptedType(node):
+                return
+            if self and self.findData(node.GetID()) == -1:
+                self.addItem(node.GetName(), node.GetID())
+                if not self._applyFilter(node):
+                    self.setItemData(self.count - 1, qt.QColor(154, 154, 154), qt.Qt.TextColorRole)
+        except Exception as e:
+            logging.warning(f"Failed to add node: {e}.\n{traceback.format_exc()}")
 
     def removeNode(self, node):
-        if self:
+        try:
             indexToBeRemoved = self.findData(node.GetID())
             if indexToBeRemoved:
                 self.blockSignals(True)
                 self.removeItem(indexToBeRemoved)
                 self.blockSignals(False)
                 self.nodeAboutToBeRemoved.emit(node)
+        except Exception as e:
+            logging.warning(f"Failed to remove node: {e}.\n{traceback.format_exc()}")
 
     def _applyFilter(self, node):
         if not self.attributeFilters or node is None:

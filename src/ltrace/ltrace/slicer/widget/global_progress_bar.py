@@ -27,6 +27,7 @@ class GlobalProgressBar(qt.QWidget):
             super().__init__()
 
             self.currentCliNode = None
+            self.observerHandler = None
 
             layout = qt.QHBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
@@ -68,8 +69,16 @@ class GlobalProgressBar(qt.QWidget):
             GlobalProgressBar._instance = self
 
     def setCommandLineModuleNode(self, cliNode, localProgressBar, customText=""):
+        if (
+            GlobalProgressBar._instance.currentCliNode is not None
+            and GlobalProgressBar._instance.observerHandler is not None
+        ):
+            GlobalProgressBar._instance.currentCliNode.RemoveObserver(self.observerHandler)
+
         GlobalProgressBar._instance.currentCliNode = cliNode
-        cliNode.AddObserver("ModifiedEvent", GlobalProgressBar._instance.updateUiFromCommandLineModuleNode)
+        GlobalProgressBar._instance.observerHandler = cliNode.AddObserver(
+            "ModifiedEvent", GlobalProgressBar._instance.updateUiFromCommandLineModuleNode
+        )
 
         GlobalProgressBar._instance.toolButton.setEnabled(True)
         GlobalProgressBar._instance.toolButton.clicked.disconnect()
@@ -147,18 +156,21 @@ class LocalProgressBar(qt.QWidget):
         if not self.module:
             return
 
-        self.moduleWidget = slicer.util.getModuleWidget(self.module)
-
         try:
-            self.tabIndex = self.moduleWidget.mainTab.currentIndex
-            currentTab = self.moduleWidget.mainTab.widget(self.tabIndex)
-            if isinstance(currentTab, qt.QTabWidget):
-                self.subtabIndex = currentTab.currentIndex
-            else:
+            moduleWidget = slicer.util.getModuleWidget(self.module)
+        except RuntimeError:  # Module widget not found
+            moduleWidget = None
+        else:
+            try:
+                self.tabIndex = moduleWidget.mainTab.currentIndex
+                currentTab = moduleWidget.mainTab.widget(self.tabIndex)
+                if isinstance(currentTab, qt.QTabWidget):
+                    self.subtabIndex = currentTab.currentIndex
+                else:
+                    self.subtabIndex = None
+            except AttributeError:  # no attribute 'mainTab'
+                self.tabIndex = None
                 self.subtabIndex = None
-        except AttributeError:  # no attribute 'mainTab'
-            self.tabIndex = None
-            self.subtabIndex = None
 
         self.scheduled.add(cliNode)
         cliNode.AddObserver("ModifiedEvent", self._onCLIModified)
@@ -207,11 +219,12 @@ class LocalProgressBar(qt.QWidget):
         currentModule = eval(f"slicer.modules.{self.module}Instance")
         name = currentModule.parent.title
         try:
-            name += f" → {self.moduleWidget.mainTab.tabText(self.tabIndex)}"
+            moduleWidget = slicer.util.getModuleWidget(self.module)
+            name += f" → {moduleWidget.mainTab.tabText(self.tabIndex)}"
             if self.subtabIndex is not None:
-                currentTab = self.moduleWidget.mainTab.widget(self.tabIndex)
+                currentTab = moduleWidget.mainTab.widget(self.tabIndex)
                 name += f" → {currentTab.tabText(self.subtabIndex)}"
-        except AttributeError as e:  # no attribute 'mainTab'
+        except Exception as e:
             pass
         return name
 

@@ -9,6 +9,10 @@ import pickle
 import shutil
 from pathlib import Path
 
+from ltrace.slicer.thin_section.instance_segmenter_widget import (
+    ThinSectionInstanceSegmenterWidget,
+)
+
 import ctk
 import cv2
 import markdown
@@ -33,7 +37,6 @@ from ltrace.slicer.helpers import (
     highlight_error,
     hex2Rgb,
     getCurrentEnvironment,
-    BlockSignals,
 )
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
@@ -46,7 +49,7 @@ from ltrace.slicer.cli_queue import CliQueue
 # Checks if closed source code is available
 try:
     from Test.SegmenterTest import SegmenterTest
-except ImportError:
+except ImportError as e:
     SegmenterTest = None  # tests not deployed to final version or closed source
 
 SegmentLabel = recordtype("SegmentLabel", ["name", "color", "id", "value", ("property", "Solid")])
@@ -63,7 +66,7 @@ def compareVolumeSpacings(volumeNode, referenceNode):
     referenceSpacing = getVolumeMinSpacing(referenceNode)
     sameMinSpacing = volumeSpacing == referenceSpacing
     delta = volumeSpacing - referenceSpacing
-    relativeError = abs(delta / referenceSpacing)
+    relativeError = abs(delta / referenceSpacing) if referenceSpacing > 0 else 1
     return sameMinSpacing, relativeError
 
 
@@ -183,11 +186,20 @@ class SegmenterWidget(LTracePluginWidget):
         self.imageLogMode = False
         self.deterministicPreTrainedModels = False
         self.poreCleaningOptionsWidget = None
+        self.pxSelectedHandlerConnected = False
+        self.currentWidget = None
 
         self.exclusiveSections = []
 
         self.hideWhenCreatingClassifier = []
         self.hideWhenLoadingClassifier = []
+
+        self.layoutWidgets = []
+
+        self.thinSectionInstanceSegmenterWidget = ThinSectionInstanceSegmenterWidget()
+
+        self.instanceSegmenterLayout = False
+        self.resetPreTrainedModelInterface = False
 
     def onReload(self) -> None:
         LTracePluginWidget.onReload(self)
@@ -198,12 +210,21 @@ class SegmenterWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        self.layout.addWidget(self._setupClassifierSection())
-        self.layout.addWidget(self._setupInputsSection())
-        self.layout.addWidget(self._setupCleaningSection())
-        self.layout.addWidget(self._setupSettingsSection())
-        self.layout.addWidget(self._setupOutputSection())
-        self.layout.addWidget(self._setupApplySection())
+        self.layoutWidgets.append(self._setupClassifierSection())
+        self.layoutWidgets.append(self._setupInputsSection())
+        self.layoutWidgets.append(self._setupCleaningSection())
+        self.layoutWidgets.append(self._setupSettingsSection())
+        self.layoutWidgets.append(self._setupOutputSection())
+        self.layoutWidgets.append(self._setupApplySection())
+
+        self.thinSectionInstanceSegmenterWidget.setup()
+        self.thinSectionInstanceSegmenterWidget.layoutWidgets[0].visible = False  # Detector section
+
+        for widget in self.layoutWidgets:
+            self.layout.addWidget(widget)
+
+        for widget in self.thinSectionInstanceSegmenterWidget.layoutWidgets:
+            self.layout.addWidget(widget)
 
         # Add vertical spacer
         self.layout.addStretch(1)
@@ -212,14 +233,40 @@ class SegmenterWidget(LTracePluginWidget):
             (
                 self.poreCleaningOptionsWidget,
                 lambda: (
-                    self.__currentEnvironment == NodeEnvironment.THIN_SECTION.value
-                    and self.classifierInput.currentData is not None
-                    and SegmenterLogic.cleaningAvailable(self.classifierInput.currentData)
+                    (self.__currentEnvironment == NodeEnvironment.THIN_SECTION.value)
+                    and (self.loadClassifierRadio.isChecked())
+                    and (self.modelTypeRadioGroup.checkedButton() == self.poreModelsRadioButton)
                 ),
             )
         )
 
         self._initWidgetsStates()
+
+    def _exchangeLayout(self):
+        self.instanceSegmenterLayout = (
+            self.loadClassifierRadio.isChecked() and self.texturalStructuresModelsRadioButton.isChecked()
+        )
+        if self.instanceSegmenterLayout:
+            srcWidget = self
+            dstWidget = self.thinSectionInstanceSegmenterWidget
+        else:
+            dstWidget = self
+            srcWidget = self.thinSectionInstanceSegmenterWidget
+
+        if dstWidget is self.currentWidget:
+            return
+        self.currentWidget = dstWidget
+
+        for widget in srcWidget.layoutWidgets[1:]:
+            widget.visible = False
+
+        for widget in dstWidget.layoutWidgets[1:]:
+            widget.visible = True
+
+        dstWidget.classifierInput.setCurrentText(srcWidget.classifierInput.currentText)
+        dstWidget.inputsSelector.soiInput.setCurrentNode(srcWidget.inputsSelector.soiInput.currentNode())
+        dstWidget.pxInputCombobox.setCurrentNode(srcWidget.pxInputCombobox.currentNode())
+        dstWidget.outputPrefix.setText(srcWidget.outputPrefix.text)
 
     def _setupClassifierSection(self):
         widget = ctk.ctkCollapsibleButton()
@@ -229,6 +276,7 @@ class SegmenterWidget(LTracePluginWidget):
 
         textNodeType = "vtkMRMLTextNode"
         self.userClassifierInput = slicer.qMRMLNodeComboBox()
+        self.userClassifierInput.objectName = "User Classifier Input ComboBox"
         self.userClassifierInput.setToolTip("Select user-trained model for segmentation")
         self.userClassifierInput.nodeTypes = (textNodeType,)
         self.userClassifierInput.addAttribute(textNodeType, "Type", "Classifier")
@@ -239,11 +287,47 @@ class SegmenterWidget(LTracePluginWidget):
         self.userClassifierInput.setNodeTypeLabel("Classifier", textNodeType)
         self.userClassifierInput.currentNodeChanged.connect(self._onChangedUserClassifier)
 
+        self.modelTypeLabel = qt.QLabel("Model type:")
+
+        self.poreModelsRadioButton = qt.QRadioButton("Pore")
+        self.poreModelsRadioButton.objectName = "Pore Models Radio Button"
+        self.poreModelsRadioButton.connect("toggled(bool)", self._onModelTypeSelected)
+        self.poreModelsRadioButton.setProperty(
+            "tags",
+            {
+                NodeEnvironment.THIN_SECTION.value: ["PoreStats", "SiliciclasticsPore"],
+                NodeEnvironment.MICRO_CT.value: ["Pore"],
+            },
+        )
+
+        self.multiphaseModelsRadioButton = qt.QRadioButton("Multiphase")
+        self.multiphaseModelsRadioButton.objectName = "Multiphase Models Radio Button"
+        self.multiphaseModelsRadioButton.connect("toggled(bool)", self._onModelTypeSelected)
+        self.multiphaseModelsRadioButton.setProperty("tags", {NodeEnvironment.THIN_SECTION.value: ["Multiphase"]})
+
+        self.texturalStructuresModelsRadioButton = qt.QRadioButton("Textural Structures")
+        self.texturalStructuresModelsRadioButton.objectName = "Textural Structures Models Radio Button"
+        self.texturalStructuresModelsRadioButton.connect("toggled(bool)", self._onModelTypeSelected)
+        self.texturalStructuresModelsRadioButton.setProperty(
+            "tags", {NodeEnvironment.THIN_SECTION.value: ["TexturalStructures"]}
+        )
+
+        self.basinsModelsRadioButton = qt.QRadioButton("Basins")
+        self.basinsModelsRadioButton.objectName = "Basins Models Radio Button"
+        self.basinsModelsRadioButton.connect("toggled(bool)", self._onModelTypeSelected)
+        self.basinsModelsRadioButton.setProperty("tags", {NodeEnvironment.MICRO_CT.value: ["Basins"]})
+
+        self.modelTypeRadioGroup = qt.QButtonGroup()
+        self.modelTypeRadioGroup.objectName = "Model Type Radio Buttons Group"
+        self.modelTypeRadioGroup.setExclusive(True)
+        self.modelTypeRadioGroup.addButton(self.poreModelsRadioButton)
+        self.modelTypeRadioGroup.addButton(self.multiphaseModelsRadioButton)
+        self.modelTypeRadioGroup.addButton(self.texturalStructuresModelsRadioButton)
+        self.modelTypeRadioGroup.addButton(self.basinsModelsRadioButton)
+
         self.classifierInput = TrainedModelSelector([])
 
         self.classifierInput.objectName = "Classifier Input ComboBox"
-        self.userClassifierInput.objectName = "User Classifier Input ComboBox"
-
         # self.classifierInput.activated.connect(self._onChangedClassifier)
         self.classifierInput.currentTextChanged.connect(self._onChangedClassifier)
         self.classifierInput.currentIndexChanged.connect(lambda _: self.classifierInput.setStyleSheet(""))
@@ -312,6 +396,16 @@ class SegmenterWidget(LTracePluginWidget):
         hbox.addWidget(self.userClassifierRadio)
         hbox.addWidget(self.userClassifierHelpButton)
         layout.addLayout(hbox)
+
+        hbox = qt.QHBoxLayout(widget)
+        hbox.addWidget(self.modelTypeLabel)
+        for modelTypeRadioButton in self.modelTypeRadioGroup.buttons():
+            hbox.addWidget(modelTypeRadioButton)
+        layout.addLayout(hbox)
+
+        layout.addWidget(self.classifierInput)
+        layout.addWidget(self.userClassifierInput)
+        layout.addWidget(self.classifierInfoGroupBox)
 
         vboxClassifierInput = qt.QVBoxLayout()
         vboxClassifierInput.addWidget(self.classifierInput)
@@ -436,7 +530,6 @@ class SegmenterWidget(LTracePluginWidget):
         formLayout = qt.QFormLayout(widget)
         self.methodSelector = ui.StackedSelector(text="Method: ")
         self.methodSelector.setToolTip("Select the algorithm to perform segmentation.")
-        self.methodSelector.currentWidgetChanged.connect(self._updateWidgetsVisibility)
 
         def _onPixelArgumentChanged(v, widget):
             pixelSize_mm = self.inputsSelector.inputVoxelSize
@@ -457,6 +550,7 @@ class SegmenterWidget(LTracePluginWidget):
         self.bayes_widget.setImageInput(node_input)
 
         self.methodSelector.selector.objectName = "Methods ComboBox"
+        self.methodSelector.currentWidgetChanged.connect(self._updateWidgetsVisibility)
 
         formLayout.addRow(self.methodSelector)
         self.hideWhenLoadingClassifier.append(widget)
@@ -532,17 +626,17 @@ class SegmenterWidget(LTracePluginWidget):
 
     def _onLoadClassifierRadioToggled(self, checked):
         if checked:
-            self._updateModels()
-            self._showExclusiveSections()
-            self._onChangedClassifier()
+            if self.resetPreTrainedModelInterface:
+                self._resetToggledModelType()
+                self.resetPreTrainedModelInterface = False
+            else:
+                self._onChangedClassifier()
 
         self._onCleanResinClicked()
         self._updateWidgetsVisibility()
 
     def _onUserClassifierRadioToggled(self, checked):
         if checked:
-            self._updateModels()
-            self._showExclusiveSections()
             self._onChangedClassifier()
 
             self._onChangedUserClassifier(self.userClassifierInput.currentNode())
@@ -554,40 +648,50 @@ class SegmenterWidget(LTracePluginWidget):
 
     def enter(self) -> None:
         super().enter()
-        # Update URL from Automatic classifier help's message
-        # targetEnvUrlRelation = {"MicroCTEnv": "microCT", "ThinSectionEnv": "thinSection"}
-        #
-        # env = slicer.util.selectedModule()
-        # envLabel = targetEnvUrlRelation.get(env, "microCT")
-        # message = self.loadClassifierHelpButton.message.replace("[ENV]", envLabel)
-        # self.loadClassifierHelpButton.updateMessage(message)
+        enteringNodeEnv = getCurrentEnvironment()
+        if enteringNodeEnv is None:
+            return
+        enteringEnv = enteringNodeEnv.value
+        envs = tuple(map(lambda x: x.value, NodeEnvironment))
+        if enteringEnv not in envs:
+            return
 
-        # Add pretrained models
-        self._updateModels()
+        if enteringEnv != self.__currentEnvironment:
+            self.__currentEnvironment = enteringEnv
+
+            if self.loadClassifierRadio.isChecked():
+                self._resetToggledModelType()
+            else:
+                self.resetPreTrainedModelInterface = True
+
         self._showExclusiveSections()
         self._updateWidgetsVisibility()
 
-    def _updateModels(self):
-        tags = []
-        if getCurrentEnvironment() == NodeEnvironment.THIN_SECTION:
-            tags = ["PoreStats", getCurrentEnvironment().value]
-        elif getCurrentEnvironment() == NodeEnvironment.MICRO_CT:
-            tags = [getCurrentEnvironment().value]
+    def _resetToggledModelType(self):
+        for modelTypeRadioButton in self.modelTypeRadioGroup.buttons():
+            if modelTypeRadioButton.visible:
+                if modelTypeRadioButton is self.modelTypeRadioGroup.checkedButton():
+                    modelTypeRadioButton.toggled(True)  # force emitting signal
+                else:
+                    modelTypeRadioButton.toggle()
+                break
 
+    def _updateModels(self, tags=None):
         if tags:
-            self.classifierInput.setTags(tags)
+            self.classifierInput.setTags(tags, modelCategory=self.modelTypeRadioGroup.checkedButton().text)
 
         if self.classifierInput.currentData is None:
             if self.loadClassifierRadio.isChecked() and self.classifierInput.count == 1:
                 self.classifierInput.triggerMissingModel()
 
-        self.__currentEnvironment = getCurrentEnvironment().value
-
     def _onChangedClassifier(self, selected=None):
-        if self.classifierInput.currentData is None or self.createClassifierRadio.isChecked():
-            return
+        if self.instanceSegmenterLayout:
+            instanceSegmenterTitle = self.modelTypeRadioGroup.checkedButton().text
+            self.thinSectionInstanceSegmenterWidget.classifierInput.setCurrentText(
+                f"{instanceSegmenterTitle} - {self.classifierInput.currentText}"
+            )
 
-        metadata = self.classifierInput.getSelectedModelMetadata()
+        metadata = self.classifierInput.getSelectedModelMetadata() if self.classifierInput.currentData else dict()
         model_inputs = metadata.get("inputs", dict())
         model_outputs = metadata.get("outputs", dict())
         model_input_names = list(model_inputs.keys())
@@ -673,7 +777,6 @@ class SegmenterWidget(LTracePluginWidget):
                 combobox.setCurrentNode(None)
 
         self.inputsSelector.mainInput.setCurrentNode(None)
-        self._showExclusiveSections()
         self.pxForCleaningInput.enabled = len(model_inputs) == 1
         if not self.pxForCleaningInput.enabled:
             self._onPxSelected()
@@ -713,6 +816,24 @@ class SegmenterWidget(LTracePluginWidget):
                 # only extra (i>0) volume comboboxes are hidden
                 label.visible = True
                 combobox.visible = True
+
+    def _onModelTypeSelected(self, checked):
+        if checked:
+            self._updateWidgetsVisibility()
+            self._updateModels(
+                tags=self.modelTypeRadioGroup.checkedButton().property("tags")[self.__currentEnvironment]
+            )
+
+    def _onCreateClassifierToggled(self, checked):
+        self._updateWidgetsVisibility()
+
+        if checked:
+            self._restoreInputBoxes()
+        else:
+            self.inputsSelector.mainInput.setCurrentNode(None)
+            self.inputsSelector.soiInput.enabled = True
+            self.inputsSelector.referenceInput.enabled = True
+            self._onChangedClassifier(checked)
 
     def _onInputSelected(self, node):
         pass
@@ -921,6 +1042,9 @@ class SegmenterWidget(LTracePluginWidget):
             self.cliQueue = None
 
     def _updateWidgetsVisibility(self):
+        self._exchangeLayout()
+        self._showExclusiveSections()
+
         self._checkRequirementsForApply()
 
         isCreating = self.createClassifierRadio.isChecked()
@@ -939,18 +1063,26 @@ class SegmenterWidget(LTracePluginWidget):
         self.classifierInput.visible = self.loadClassifierRadio.isChecked()
         self.userClassifierInput.visible = self.userClassifierRadio.isChecked()
 
+        self.modelTypeLabel.visible = self.classifierInput.visible
+
+        for modelTypeRadioButton in self.modelTypeRadioGroup.buttons():
+            modelTypeRadioButton.visible = self.classifierInput.visible and (
+                self.__currentEnvironment in modelTypeRadioButton.property("tags")
+            )
+
         if self.classifierInput.visible:
-            self.pxInputCombobox.currentItemChanged.connect(self._onPxSelected)
+            if not self.pxSelectedHandlerConnected:
+                self.pxInputCombobox.currentItemChanged.connect(self._onPxSelected)
+                self.pxSelectedHandlerConnected = True
         else:
-            self.poreCleaningOptionsWidget.visible = False
             self.pxInputCombobox.currentItemChanged.disconnect()
+            self.pxSelectedHandlerConnected = False
 
         method = self._currentMethod()
         if method and method != "random_forest":
             self.keepFeaturesCheckbox.visible = False
 
     def _initWidgetsStates(self):
-        self._updateWidgetsVisibility()
         self.createClassifierRadio.toggle()
 
 
@@ -1132,19 +1264,6 @@ class SegmenterLogic(LogicBase):
         self.progressUpdate = lambda value: print(value * 100, "%")
         self.filtered_volume_node_id = None
         self.filtered_volume_list = []
-
-    @staticmethod
-    def cleaningAvailable(selectedClassifier):
-        metadata = get_metadata(selectedClassifier)
-
-        modelOutputs = metadata.get("outputs")
-        if not modelOutputs:
-            return False
-
-        modelOutputNames = list(modelOutputs.keys())
-        modelOutput = modelOutputs[modelOutputNames[0]]
-        modelClasses = modelOutput.get("class_names", [])
-        return len(modelClasses) == 1 and modelClasses[0] == "Pore"
 
     @staticmethod
     def createLabelmapNode(segmentationNode, referenceNode, soiNode, outputPrefix):

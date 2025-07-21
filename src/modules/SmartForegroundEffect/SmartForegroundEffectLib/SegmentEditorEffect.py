@@ -94,6 +94,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             ApplicationObservables().modelPathUpdated.connect(self.__updateTrainedModelAvailability)
             self.firstActivation = False
 
+    def cleanup(self) -> None:
+        super().cleanup()
+        ApplicationObservables().modelPathUpdated.disconnect(self.__updateTrainedModelAvailability)
+
     def setupOptionsFrame(self):
         # Operation buttons
         self.fillInsideButton = qt.QRadioButton("Fill inside")
@@ -247,7 +251,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
     def reactivateIfOpen(self):
         # If the effect is open, reopen it to update the help text

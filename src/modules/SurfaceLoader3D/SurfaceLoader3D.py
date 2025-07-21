@@ -1,12 +1,28 @@
 import os
 from __main__ import vtk, qt, ctk, slicer
 from ltrace.slicer import helpers
-from ltrace.slicer_utils import LTracePluginWidget, LTracePlugin, LTracePluginTest
+from ltrace.slicer_utils import LTracePluginWidget, LTracePlugin
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+
+from pathlib import Path
 
 #
 # SurfaceLoader3D
 # Fork from SlicerIGT TextureModel not merged yet
 # https://github.com/fbordignon/SlicerIGT/commit/22cf9e01c5e8e6663ab4948d3fd2cf7d1f7a0b21
+
+
+def clearViews():
+    red = slicer.util.getNode("vtkMRMLSliceNodeRed")
+    red.SetSliceVisible(0)
+    green = slicer.util.getNode("vtkMRMLSliceNodeGreen")
+    green.SetSliceVisible(0)
+    ylw = slicer.util.getNode("vtkMRMLSliceNodeYellow")
+    ylw.SetSliceVisible(0)
+    layoutManager = slicer.app.layoutManager()
+    threeDWidget = layoutManager.threeDWidget(0)
+    threeDView = threeDWidget.threeDView()
+    threeDView.resetFocalPoint()
 
 
 class SurfaceLoader3D(LTracePlugin):
@@ -15,7 +31,7 @@ class SurfaceLoader3D(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "3D Surface Loader"
-        self.parent.categories = ["Surface Models"]
+        self.parent.categories = ["Tools", "MicroCT", "Thin Section", "Image Log", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["Andras Lasso (PerkLab, Queen's)", "Amani Ibrahim (PerkLab, Queen's)"]
         self.parent.helpText = """This module applies a texture (stored in a volume node) to a model node.
@@ -87,6 +103,12 @@ class SurfaceLoader3DWidget(LTracePluginWidget):
         self.multiTextureApplyButton.toolTip = "Import model with multiple texture images to scene."
         self.multiTextureApplyButton.enabled = False
         multiTextureparametersFormLayout.addRow(self.multiTextureApplyButton)
+
+        self.clearButton = qt.QPushButton("Clear views")
+        self.clearButton.toolTip = "Hide texture image."
+        self.clearButton.enabled = True
+        multiTextureparametersFormLayout.addRow(self.clearButton)
+        self.clearButton.clicked.connect(clearViews)
 
         # connections
         self.multiTextureApplyButton.connect("clicked(bool)", self.onMultiTextureApplyButton)
@@ -208,17 +230,23 @@ class SurfaceLoader3DWidget(LTracePluginWidget):
         helpers.save_path(self.materialFileSelector)
         helpers.save_path(self.textureDirectory)
         qt.QApplication.restoreOverrideCursor()
+        clearViews()
 
 
 #
 # SurfaceLoader3DLogic
 #
-class SurfaceLoader3DLogic(LTracePlugin):
+class SurfaceLoader3DLogic(LTracePluginLogic):
     def applyTexture(self, modelNode, textureImageNode, addColorAsPointAttribute=False, colorAsVector=False):
         """
         Apply texture to model node
         """
         self.showTextureOnModel(modelNode, textureImageNode)
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        volItem = shNode.GetItemByDataNode(textureImageNode)
+        pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        volPlugin = pluginHandler.getOwnerPluginForSubjectHierarchyItem(volItem)
+        volPlugin.setDisplayVisibility(volItem, 0)
         if addColorAsPointAttribute:
             self.convertTextureToPointAttribute(modelNode, textureImageNode, colorAsVector)
 

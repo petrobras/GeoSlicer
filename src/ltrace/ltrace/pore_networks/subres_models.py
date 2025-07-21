@@ -197,7 +197,7 @@ class LeverettNewLogic:
 
 
 class PressureCurveLogic:
-    required_params = ("throat radii", "capillary pressure", "dsn")
+    required_params = ("throat radii", "capillary pressure", "dsn", "smallest_raddi_multiplier")
 
     def __init__(self):
         pass
@@ -220,7 +220,8 @@ class PressureCurveLogic:
 
         if params["throat radii"] is not None:
             subresolution_radii_bool_index = np.logical_and(
-                params["throat radii"] > 1e-8, params["throat radii"] <= smallest_resolved_raddi
+                params["throat radii"] > 1e-8,
+                params["throat radii"] <= params["smallest_raddi_multiplier"] * smallest_resolved_raddi,
             )
             if subresolution_radii_bool_index.sum() == 0:
                 return lambda _: smallest_resolved_raddi / 2

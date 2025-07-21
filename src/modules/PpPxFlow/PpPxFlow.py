@@ -5,6 +5,12 @@ from pathlib import Path
 import os
 
 
+try:
+    from Test.PpPxFlowTest import PpPxFlowTest
+except ImportError:
+    PpPxFlowTest = None  # tests not deployed to final version or closed source
+
+
 class PpPxFlow(LTracePlugin):
     SETTING_KEY = "PpPxFlow"
     MODULE_DIR = Path(os.path.dirname(os.path.realpath(__file__)))

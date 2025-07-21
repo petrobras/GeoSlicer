@@ -1,9 +1,9 @@
-import itertools
 import logging
 import shutil
 import slicer
 import qt
 import vtk
+import traceback
 
 from functools import partial
 from ltrace.constants import SaveStatus
@@ -15,18 +15,18 @@ from ltrace.slicer.app.onboard import showDataLoaders, loadEnvironmentByName
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
 from ltrace.slicer.debounce_caller import DebounceCaller
-from ltrace.slicer.helpers import BlockSignals, svgToQIcon
+from ltrace.slicer.helpers import svgToQIcon
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.module_info import ModuleInfo
-from ltrace.slicer.module_utils import fetchModulesFrom, mapByCategory
+from ltrace.slicer.module_utils import mapByCategory
 from ltrace.slicer.project_manager import ProjectManager, handleCopySuffixOnClonedNodes
-from ltrace.slicer.widget.custom_toolbar_buttons import addMenuRaw, addAction, addActionWidget
+from ltrace.slicer.widget.custom_toolbar_buttons import addMenuRaw
 from ltrace.slicer.widget.docked_data import DockedData
 from ltrace.slicer.widget.fuzzysearch import FuzzySearchDialog, LinearSearchModel
 from ltrace.slicer_utils import LTracePlugin, getResourcePath
 from ltrace.constants import ImageLogConst
 from pathlib import Path
-from typing import List, Any, Tuple, Dict
+from typing import Any, Tuple, Dict
 
 try:
     from ltrace.slicer.tracking.tracking_manager import TrackingManager
@@ -123,7 +123,7 @@ class ModuleManager:
         self.__ctx = context
         self.groups = {}
         self.availableModules = {}
-        self.currentWorkingDataType = None
+        self.currentWorkingDataType = "", "EmptyEnv"
 
     def initCache(self, modules):
         logging.info(f"Found {len(modules)} available LTrace's modules to load.")
@@ -131,6 +131,26 @@ class ModuleManager:
         logging.info("Building reverse index...")
         self.groups = mapByCategory(modules.values())  # replace this with the movel below
         self.__ctx.fuzzySearchModel.setDataSource(modules)
+
+    def addModules(self, new_modules: list):
+        """
+        Dynamically adds one or more modules to the manager's cache.
+        This updates the fuzzy search model and category mappings in the current session.
+        """
+        if not new_modules:
+            return
+
+        modules_added_count = 0
+        for module in new_modules:
+            if module.key not in self.availableModules:
+                self.availableModules[module.key] = module
+                modules_added_count += 1
+        if modules_added_count > 0:
+            # Rebuild the category groups to include the new module
+            self.groups = mapByCategory(self.availableModules.values())
+            # Update the fuzzy search's data source
+            self.__ctx.fuzzySearchModel.setDataSource(self.availableModules)
+            logging.info(f"Dynamically registered {modules_added_count} new module(s) with the application context.")
 
     def setEnvironment(self, environment: Tuple[str, Any]):
         if self.currentWorkingDataType == environment:
@@ -171,6 +191,7 @@ class ModuleManager:
             "BIAEPBrowser",
             "OpenRockData",
             "NetCDF",
+            "SurfaceLoader3D",
         ]
 
         toolModules = []
@@ -372,7 +393,6 @@ class ProjectEventsLogic:
 
     def __beginSceneClosing(self, *args):
         """Handle the beginning of the scene closing process"""
-
         selectedModule = slicer.util.moduleSelector().selectedModule
 
         # Switch to another module so exit() gets called for the current module
@@ -380,6 +400,7 @@ class ProjectEventsLogic:
         layout = slicer.app.layoutManager().layout
         slicer.util.selectModule(selectedModule)
         slicer.app.layoutManager().setLayout(layout)
+        slicer.app.processEvents()
 
     def __endSceneClosing(self, *args):
         """Handle the end of the scene closing process"""
@@ -446,7 +467,7 @@ class ProjectEventsLogic:
                 action.triggered.disconnect()
                 action.triggered.connect(partial(self.onRecentLoadedActionTriggered, action))
             except Exception as error:
-                logging.error(error)
+                logging.error(f"{error}.\n{traceback.format_exc()}")
 
         if len(recentMenu.actions()) <= 2:  # Clear History and separator
             recentMenuActions["Clear History"].triggered()

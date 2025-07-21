@@ -9,7 +9,7 @@ import numpy as np
 import qt
 import slicer
 
-from ltrace.slicer.helpers import tryGetNode, reset_style_on_valid_text, highlight_error
+from ltrace.slicer.helpers import tryGetNode, tryGetNodes, reset_style_on_valid_text, highlight_error
 from ltrace.slicer_utils import *
 from ltrace.transforms import resample_if_needed
 
@@ -254,16 +254,21 @@ class VolumeCalculatorLogic(LTracePluginLogic):
         variablesNamesList = re.findall(r"\{(.*?)\}", formulaString)
         mnemonicsDict = self.getMnemonicsDictFromMnemonicsTableNode(mnemonicsTableNode)
         nodeNamesList = self.getNodeNamesFromVariablesNames(variablesNamesList, mnemonicsDict)
+        duplicateName = None
 
         if nodeNamesList:
             resampleNeeded = False
 
             # The reference node (the first node in the formula), where the resample/clipping will be based if applied
-            baseNode = tryGetNode(nodeNamesList[0])
+            baseNode = tryGetNode(nodeNamesList[0], hasImageData=True)
 
             # Doing resample if necessary
             for i, nodeName in enumerate(nodeNamesList):
-                node = tryGetNode(nodeName)
+                nodes, num_nodes = tryGetNodes(nodeName, hasImageData=True)
+                if num_nodes > 0:
+                    node = nodes[0]
+                if num_nodes > 1:
+                    duplicateName = nodeName
 
                 if node is None:
                     raise CalculateError(f"Invalid node name: {nodeName}")
@@ -292,9 +297,9 @@ class VolumeCalculatorLogic(LTracePluginLogic):
             except (TypeError, SyntaxError) as e:
                 raise CalculateError("Invalid formula.")
 
-            outputVolume = tryGetNode(outputVolumeName)
+            outputVolume = tryGetNode(outputVolumeName, hasImageData=True)
             if outputVolume is None:
-                firstFormulaInputVolume = tryGetNode(nodeNamesList[0])
+                firstFormulaInputVolume = tryGetNode(nodeNamesList[0], hasImageData=True)
                 outputVolume = self.cloneVolumeProperties(firstFormulaInputVolume, outputVolumeName)
                 subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
                 itemParent = subjectHierarchyNode.GetItemParent(
@@ -304,6 +309,11 @@ class VolumeCalculatorLogic(LTracePluginLogic):
             slicer.util.updateVolumeFromArray(outputVolume, outputArray)
             slicer.util.setSliceViewerLayers(background=outputVolume)
             slicer.util.resetSliceViews()
+
+            if duplicateName:
+                raise CalculateInfo(
+                    f"Calculation completed. Note: Multiple nodes named '{duplicateName}' were found in the scene. The first one was used automatically. Please verify the output. If it's incorrect, consider renaming the duplicate volumes to avoid ambiguity."
+                )
 
             if resampleNeeded:
                 raise CalculateInfo(

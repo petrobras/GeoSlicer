@@ -74,7 +74,7 @@ class ProjectManager(qt.QObject):
         self.__nodeObservers = list()
         self.__folderIconPath = folderIconPath
         self.__customBehaviorNodeManager = None
-        self.__configCompressionMode()
+        self.__configStorageNodeDefaults()
         self.__startCloseSceneObserverHandler = None
         self.__endCloseSceneObserverHandler = None
         self.__modifiedEventObserverHandler = None
@@ -128,7 +128,7 @@ class ProjectManager(qt.QObject):
             return SaveStatus.FAILED
 
         rootDirBeforeSave = slicer.mrmlScene.GetRootDirectory()
-        self.__configCompressionMode(*args, **kwargs)
+        self.__configStorageNodeDefaults(*args, **kwargs)
         projectUrl = Path(projectUrl).resolve()
         projectRootUrl = projectUrl.parent if projectUrl.is_file() else projectUrl
         slicer.mrmlScene.SetRootDirectory(projectRootUrl.as_posix())
@@ -268,14 +268,23 @@ class ProjectManager(qt.QObject):
 
     def __estimateImageDataSize(self, imageData: vtk.vtkImageData) -> int:
         """returns expected file size of a volume node Image Data"""
-        dimensions = imageData.GetDimensions()
-        dataTypeSize = imageData.GetScalarSize()
-        return dimensions[0] * dimensions[1] * dimensions[2] * dataTypeSize
+        try:
+            dimensions = imageData.GetDimensions()
+            dataTypeSize = imageData.GetScalarSize()
+            size = dimensions[0] * dimensions[1] * dimensions[2] * dataTypeSize
+        except AttributeError:
+            logging.error("Attempt to estimate size of empty image data failed.")
+            size = 0
+
+        return size
 
     def estimateNodeSize(self, node: slicer.vtkMRMLNode) -> int:
         """returns the expected file size in bytes of a node"""
         if isinstance(node, slicer.vtkMRMLScalarVolumeNode):
-            estimate = self.__estimateImageDataSize(node.GetImageData())
+            if node.GetImageData() is None:
+                estimate = 0
+            else:
+                estimate = self.__estimateImageDataSize(node.GetImageData())
 
         elif isinstance(node, slicer.vtkMRMLSegmentationNode):
             try:
@@ -370,7 +379,7 @@ class ProjectManager(qt.QObject):
                 return False
 
         except Exception as e:
-            logging.error(repr(e))
+            logging.error(f"Failed to validate project path access: {e}\n{traceback.format_exc()}")
             return False
 
         return True
@@ -592,7 +601,7 @@ class ProjectManager(qt.QObject):
 
         slicer.modules.AppContextInstance.mainWindow.setWindowModified(mode)
 
-    def __configCompressionMode(self, *args, **kwargs) -> None:
+    def __configStorageNodeDefaults(self, *args, **kwargs) -> None:
         properties = DEFAULT_PROPERTIES.copy()
         customProperties = kwargs.get("properties")
         if customProperties is not None and isinstance(customProperties, dict):
@@ -603,6 +612,10 @@ class ProjectManager(qt.QObject):
         # Add default storage nodes for volume node types
         defaultVolumeStorageNode = slicer.vtkMRMLVolumeArchetypeStorageNode()
         defaultVolumeStorageNode.SetUseCompression(useCompression)
+
+        if hasattr(defaultVolumeStorageNode, "SetForceRightHandedIJKCoordinateSystem"):
+            defaultVolumeStorageNode.SetForceRightHandedIJKCoordinateSystem(False)
+
         slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 
         # Add default storage nodes for segmentation node types

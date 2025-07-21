@@ -4,6 +4,7 @@ import shutil
 from typing import Any, Callable
 import re
 import time
+import traceback
 from pathlib import Path, PurePosixPath
 
 from ltrace.remote.utils import argstring, sacct
@@ -399,7 +400,7 @@ class OneResultSlurmHandler:
             except IndexError:
                 pass  # no files found
             except Exception as e:
-                logging.error(e)
+                logging.error(f"{e}.\n{traceback.format_exc()}")
 
         return results
 

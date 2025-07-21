@@ -145,10 +145,18 @@ class MercurySimulationWidget(qt.QFrame):
         subres_shape_factor = self.subscaleModelWidget.getParams()["subres_shape_factor"]
         subres_porositymodifier = self.subscaleModelWidget.getParams()["subres_porositymodifier"]
 
+        subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
-            }
+            for i in subres_params.keys():
+                if subres_params[i] is not None:
+                    if isinstance(subres_params[i], np.ndarray):
+                        subres_params_copy.update({i: subres_params[i].tolist()})
+                    else:
+                        subres_params_copy.update({i: subres_params[i]})
+                else:
+                    subres_params_copy.update({i: None})
+        else:
+            subres_params_copy = subres_params
 
         return {
             "simulation type": MICP,
@@ -157,10 +165,10 @@ class MercurySimulationWidget(qt.QFrame):
             "subres_model_name": subres_model_name,
             "subres_shape_factor": subres_shape_factor,
             "subres_porositymodifier": subres_porositymodifier,
-            "subres_params": subres_params,
+            "subres_params": subres_params_copy,
             "pressures": 100,
             "save_radii_distrib_plots": True,
-            "experimental_radius": subres_params.get("pore radii"),
+            "experimental_radius": subres_params_copy.get("pore radii"),
         }
 
     def setParams(self, params):

@@ -1,12 +1,12 @@
+from multiprocessing.shared_memory import SharedMemory
+
 import time
 import json
-
-from multiprocessing.shared_memory import SharedMemory
 import sys
 import subprocess
 import qt
 import slicer
-
+import logging
 
 if sys.platform.startswith("win32"):
     import win32gui
@@ -46,7 +46,10 @@ class ProgressBarProc:
         # https://bugs.python.org/issue40882
         try:
             self.sharedMem = SharedMemory(name="ProgressBar", create=True, size=1024)
-        except FileExistsError:
+        except Exception as error:
+            logging.debug(
+                f"Failed to create shared memory. Trying to open existent resource if available. Error: {error}"
+            )
             self.sharedMem = SharedMemory(name="ProgressBar", create=False)
 
         self.sharedDict = {}
@@ -87,6 +90,33 @@ class ProgressBarProc:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.sharedMem.buf[:] = b"\x00" * self.sharedMem.size
+
+        self.__releaseProcess()
+
+    def __del__(self):
+        self.__releaseProcess()
+
+    def __releaseProcess(self):
+        if self.proc is not None:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=5)  # Wait up to 5 seconds for the subprocess to terminate
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
+
+            del self.proc
+            self.proc = None
+
+        if self.sharedMem is not None:
+            try:
+                self.sharedMem.close()
+                self.sharedMem.unlink()
+            except:
+                pass
+
+            del self.sharedMem
+            self.sharedMem = None
 
     def setTitle(self, title: str):
         self.title = title

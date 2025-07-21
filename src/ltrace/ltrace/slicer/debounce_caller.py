@@ -1,5 +1,7 @@
 import logging
 import qt
+import slicer
+import traceback
 
 from typing import Union
 
@@ -29,8 +31,11 @@ class DebounceCaller:
         self.timer.setInterval(intervalMs)
         self.timer.timeout.connect(self.__onTimeout)
         self.timer.stop()
-        self.__args = None
-        self.__kwargs = None
+        self.__args = []
+        self.__kwargs = {}
+
+    def __del__(self):
+        self.stop()
 
     def emit(self, *args, **kwargs) -> None:
         self.__args = args
@@ -50,7 +55,13 @@ class DebounceCaller:
     def __onTimeout(self) -> None:
         try:
             if self.__useSignal:
-                self.__signal.emit(*self.__args, **self.__kwargs)
+
+                def emitSignal(*args, **kwargs):
+                    self.__signal.emit(*args, **kwargs)
+
+                # only using signal.emit wasn't working
+                emitSignal(*self.__args, **self.__kwargs)
+                slicer.app.processEvents()
             else:
                 if self.__args is None and self.__kwargs is None:
                     self.__callback()
@@ -61,10 +72,10 @@ class DebounceCaller:
                 else:
                     self.__callback(*self.__args, **self.__kwargs)
         except Exception as error:
-            logging.info(f"Failed to execute the call: {error}")
+            logging.info(f"Failed to execute the call: {error}.\n{traceback.format_exc()}")
 
-        self.__args = None
-        self.__kwargs = None
+        self.__args = []
+        self.__kwargs = {}
 
     def stop(self):
         try:

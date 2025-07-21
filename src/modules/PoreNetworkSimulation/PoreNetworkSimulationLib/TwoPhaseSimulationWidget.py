@@ -1,6 +1,8 @@
 import ctk
 import qt
 import slicer
+import numpy as np
+
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
@@ -398,10 +400,18 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
         subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
 
+        subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
-            }
+            for i in subres_params.keys():
+                if subres_params[i] is not None:
+                    if isinstance(subres_params[i], np.ndarray):
+                        subres_params_copy.update({i: subres_params[i].tolist()})
+                    else:
+                        subres_params_copy.update({i: subres_params[i]})
+                else:
+                    subres_params_copy.update({i: None})
+        else:
+            subres_params_copy = subres_params
         params["simulator"] = self.simulator_combo_box.currentText
 
         for widget in self.widgets.values():
@@ -409,7 +419,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         params["subresolution function call"] = self.mercury_widget.getFunction
         params["subres_model_name"] = subres_model_name
-        params["subres_params"] = subres_params
+        params["subres_params"] = subres_params_copy
         params["subres_shape_factor"] = shape_factor
         params["subres_porositymodifier"] = subres_porositymodifier
         params["skip_imbibition"] = False

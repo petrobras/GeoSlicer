@@ -39,7 +39,7 @@ class ImageLogInpaint(LTracePlugin):
         self.parent.title = "Image Log Inpaint"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = ImageLogInpaint.help()
+        self.set_manual_path("Modules/Multiscale/ImageLogInpaint.html")
 
     @classmethod
     def readme_path(cls):
@@ -384,7 +384,8 @@ class ImageLogInpaintWidget(LTracePluginWidget):
     def getSegmentIds(self, segmentationNode):
         segmentIds = vtk.vtkStringArray()
         segmentIds.InsertNextValue(ImageLogInpaintConst.SEGMENT_ID)
-        self._tempLabelMap.CopyContent(segmentationNode)
+        if self._tempLabelMap is not None:
+            self._tempLabelMap.CopyContent(segmentationNode)
 
         return segmentIds
 
@@ -505,19 +506,19 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             self._tempSegmentation.RemoveObserver(self._observerTags[self._tempSegmentation])
             del self._observerTags[self._tempSegmentation]
 
-        tempProportionNode = tryGetNode(self._tempSegmentation.GetName() + "_Proportions")
-        if tempProportionNode is not None:
-            slicer.mrmlScene.RemoveNode(tempProportionNode)
-
         if self._tempSegmentation is not None:
+            tempProportionNode = tryGetNode(self._tempSegmentation.GetName() + "_Proportions")
+            if tempProportionNode is not None:
+                slicer.mrmlScene.RemoveNode(tempProportionNode)
+
             self.segmentationComboBox.setCurrentNode(None)
             self._tempSegmentation.GetSegmentation().RemoveAllSegments()
 
-        if self._tempLabelMap.GetDisplayNode():
-            slicer.mrmlScene.RemoveNode(self._tempLabelMap.GetDisplayNode().GetColorNode())
+            slicer.mrmlScene.RemoveNode(self._tempSegmentation)
 
-        slicer.mrmlScene.RemoveNode(self._tempSegmentation)
-        slicer.mrmlScene.RemoveNode(self._tempLabelMap)
+        if self._tempLabelMap is not None and self._tempLabelMap.GetDisplayNode():
+            slicer.mrmlScene.RemoveNode(self._tempLabelMap.GetDisplayNode().GetColorNode())
+            slicer.mrmlScene.RemoveNode(self._tempLabelMap)
 
         self._tempLabelMap = None
         self._tempSegmentation = None

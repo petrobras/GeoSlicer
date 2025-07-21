@@ -20,7 +20,7 @@ class GeologEnv(LTracePlugin):
         self.parent.title = "Geolog Integration"
         self.parent.categories = ["Tools", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = GeologEnv.help()
+        self.set_manual_path("Modules/Multiscale/GeologEnv.html")
 
     @classmethod
     def readme_path(cls):

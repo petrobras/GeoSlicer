@@ -76,7 +76,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         #
         # Segment editor widget
         #
-        self.editor = qSlicerSegmentationsModuleWidgetsPythonQt.qMRMLSegmentEditorWidget()
+        self.editor = qSlicerSegmentationsModuleWidgetsPythonQt.qMRMLSegmentEditorWidget(self.parent)
         self.layout.addWidget(self.editor)
         self.editor.setMaximumNumberOfUndoStates(10)
         # Set parameter node first so that the automatic selections made when the scene is set are saved

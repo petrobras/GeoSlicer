@@ -4,8 +4,10 @@ import slicer
 import vtk
 
 import ltrace.algorithms.detect_cups as cups
+import logging
 import numpy as np
 import os
+import traceback
 
 from .ManualCylinderCrop import ManualCylinderCropWidget
 from ltrace.slicer import helpers, ui
@@ -207,8 +209,8 @@ class RawLoaderWidget(qt.QFrame):
                 x, y, z, spacing = [fileNameParts[i] for i in range(5, len(fileNameParts))]
                 x, y, z = int(x), int(y), int(z)
                 spacing = ureg.Quantity(spacing.lstrip("0")).m_as("micrometer")
-        except:
-            pass  # if there is any problem resolving the filename string
+        except Exception as e:
+            logging.error(f"Error: {e}.\n{traceback.format_exc()}")
 
         if pixelTypeIndex is not None and x is not None and y is not None and z is not None and spacing is not None:
             self.pixelTypeComboBox.setCurrentIndex(pixelTypeIndex)
@@ -287,16 +289,6 @@ class RawLoaderWidget(qt.QFrame):
         if self.manualCylinderWidget.cylinderRoi:
             self.manualCylinderWidget.finishCrop()
 
-        # remap, willCrop, pcrMin, pcrMax = self.mctLoader.checkNormalization()
-        processingSettings = self.mctLoader.checkProcessingSettings()
-        remap = processingSettings.get("remap", None)
-        willCrop = processingSettings.get("willCrop", False)
-        pcrMin = processingSettings.get("pcrMin", None)
-        pcrMax = processingSettings.get("pcrMax", None)
-
-        if remap is None:
-            return
-
         with ProgressBarProc() as pb:
             pb.nextStep(0, "Loading image...")
             self.realTimeCheckBox.setChecked(False)
@@ -306,12 +298,13 @@ class RawLoaderWidget(qt.QFrame):
             node = helpers.tryGetNode(self.logic.currentNodeId)
             if node:
                 callback = lambda msg, progress: pb.nextStep(progress, msg)
-                self.mctLoader.normalize(
+                processingSettings = self.mctLoader.checkProcessingSettings()
+                willCrop = processingSettings.get("willCrop", False)
+                self.manualCylinderWidget.volumeInput.setCurrentNode(node)
+                self.manualCylinderWidget.onVolumeChanged(node)
+                self.mctLoader.postProcessing(
                     node=node,
-                    remap=remap,
                     willCrop=willCrop,
-                    pcrMin=pcrMin,
-                    pcrMax=pcrMax,
                     manualCylinderWidget=self.manualCylinderWidget,
                     callback=callback,
                 )

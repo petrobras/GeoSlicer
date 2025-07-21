@@ -1,12 +1,16 @@
+import json
 import logging
+import traceback
 import qt
 import slicer
 
 from ltrace.slicer.tests.constants import TestState
 from ltrace.slicer.tests.ltrace_tests_model import LTraceTestsModel, TestSuiteData, TestCaseData, TestsSource
 from ltrace.slicer.tests.utils import log, loadAllModules
+from ltrace.slicer import helpers
+from collections import defaultdict
 from pathlib import Path
-from typing import List, Union
+from typing import Dict, List, Union
 
 RESOURCES_DIR = Path(__file__).parent / "resources"
 
@@ -147,6 +151,16 @@ class TestSuiteTreeViewItem(ATreeViewItem):
         self._setup()
 
 
+class ConsoleHandler(logging.StreamHandler):
+    """Custom logging handler for showing log in console."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        formatter = logging.Formatter("%(message)s%(end)s")
+        self.terminator = ""
+        self.setFormatter(formatter)
+
+
 class LogWidgetHandler(logging.Handler):
     """Custom logging handler for showing log in text browser widget."""
 
@@ -173,7 +187,7 @@ class LTraceTestsWidget(qt.QDialog):
     def __init__(self, parent=None, currentModule=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         loadAllModules()
-        self.__model = LTraceTestsModel(test_source=TestsSource.GEOSLICER)
+        self.__model = LTraceTestsModel(parent=parent, test_source=TestsSource.GEOSLICER)
         self.__testSuiteItemList: List[TestSuiteTreeViewItem] = []
         self.__generateSuiteItemList: List[TestCaseTreeViewItem] = []
         self.__testCasesCount = 0
@@ -182,6 +196,75 @@ class LTraceTestsWidget(qt.QDialog):
         self.__installLoggerHandler()
         self.__populateTree()
         self.__selectCurrentModuleTests(currentModule)
+        self.__startupRun()
+
+    @staticmethod
+    def __selectedTestsNames(suiteList) -> Dict[str, List[str]]:
+        selectedTests = defaultdict(list)
+        for testSuiteData in suiteList:
+            for testCaseData in testSuiteData.test_case_data_list:
+                if testCaseData.enabled:
+                    selectedTests[testSuiteData.name].append(testCaseData.name)
+
+        return selectedTests
+
+    @staticmethod
+    def __selectTestsByName(_tree: ATreeView, testsDict: Dict[str, List[str]]) -> None:
+        treeModel = _tree.model()
+        if "all" in testsDict.keys():
+            _tree.selectAll()
+            return
+
+        for i in range(treeModel.rowCount()):
+            parentIndex = treeModel.index(i, 0)
+            suiteName = treeModel.data(parentIndex, qt.Qt.DisplayRole)
+            if suiteName in testsDict:
+                for j in range(treeModel.rowCount(parentIndex)):
+                    childIndex = treeModel.index(j, 0, parentIndex)
+                    testCaseName = treeModel.data(childIndex, qt.Qt.DisplayRole)
+                    testDictCase = testsDict[suiteName]
+                    if testCaseName in testDictCase or "all" in testDictCase:
+                        treeModel.setData(childIndex, qt.Qt.Checked, qt.Qt.CheckStateRole)
+
+    def __startupRun(self):
+        self.show()
+        runOnStartup = slicer.app.userSettings().value("LTraceTestsWidget/RunOnStartup", None)
+        if runOnStartup is None:
+            # Force search text change logic after tree population
+            self.__onSearchTextChanged(self.__searchLineEdit.text)
+            return
+
+        try:
+            runOnStartup = json.loads(runOnStartup)
+        except Exception as error:
+            logging.error(f"Error parsing RunOnStartup value: {error}.\n{traceback.format_exc()}")
+            return
+
+        userSettings = slicer.app.userSettings()
+        userSettings.setValue("LTraceTestsWidget/RunOnStartup", None)
+        userSettings.sync()
+
+        self.__shuffleCheckBox.setChecked(runOnStartup.get("shuffle", True))
+        self.__breakOnFailureCheckBox.setChecked(runOnStartup.get("break_on_failure", False))
+        self.__clearSceneAfterTestsCheckBox.setChecked(runOnStartup.get("clear_scene", True))
+        self.__useCaveatCheckBox.setChecked(runOnStartup.get("use_caveat", True))
+        self.__shutdownAfterTestCheckBox.setChecked(runOnStartup.get("shutdown_after_test", True))
+
+        isTestTab = runOnStartup.get("is_test_tab", True)
+        self.__treeWidgetTabs.setCurrentIndex(self.TEST_TAB if isTestTab else self.GENERATE_TAB)
+        _tree = self.__testTreeView if isTestTab else self.__generateTreeView
+
+        testToRun = runOnStartup.get("tests_to_run", None)
+        if testToRun is None:
+            logging.warning(f"No test to run specified in RunOnStartup")
+            return
+
+        self.__selectTestsByName(_tree, testToRun)
+        self.__onRunButtonClicked(None)
+        self.__restartBeforeRunCheckBox.setChecked(True)
+
+        # Force search text change logic after tree population
+        self.__onSearchTextChanged(self.__searchLineEdit.text)
 
     def __selectCurrentModuleTests(self, currentModule):
         if currentModule is None or not hasattr(self, "testTreeView"):
@@ -196,7 +279,8 @@ class LTraceTestsWidget(qt.QDialog):
             break
 
     def __setupUi(self):
-        self.setMinimumSize(1080, 720)
+        scale = helpers.displayScaleFactor()
+        self.setMinimumSize(int(1080 * scale), int(720 * scale))
         self.setWindowTitle("GeoSlicer Test GUI")
         self.setWindowFlags(self.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint | qt.Qt.WindowMinMaxButtonsHint)
 
@@ -227,12 +311,14 @@ class LTraceTestsWidget(qt.QDialog):
         self.__treeWidgetTabs.setEnabled(True)
 
         ## Options group box
-        optionsFormLayout = qt.QFormLayout()
-        optionsFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        optionsLayout = qt.QVBoxLayout()
 
-        self.__shuffleCheckBox = qt.QCheckBox()
-        self.__breakOnFailureCheckBox = qt.QCheckBox()
-        self.__clearSceneAfterTestsCheckBox = qt.QCheckBox()
+        self.__shuffleCheckBox = qt.QCheckBox("Shuffle")
+        self.__breakOnFailureCheckBox = qt.QCheckBox("Break on failure")
+        self.__clearSceneAfterTestsCheckBox = qt.QCheckBox("Clear scene after tests")
+        self.__restartBeforeRunCheckBox = qt.QCheckBox("Restart before run")
+        self.__useCaveatCheckBox = qt.QCheckBox("Use caveat")
+        self.__shutdownAfterTestCheckBox = qt.QCheckBox("Shutdown after test")
 
         self.__shuffleCheckBox.setToolTip("Run tests cases in random order if activated.")
         self.__breakOnFailureCheckBox.setToolTip("Stop test run after an failure if activated")
@@ -241,24 +327,45 @@ class LTraceTestsWidget(qt.QDialog):
             + "When inactivated, it helps to analyse scene data when a failure occurs. "
             + "Works best with 'break on failure' option."
         )
+        self.__restartBeforeRunCheckBox.setToolTip("Restart GeoSlicer before running the tests.")
+        self.__useCaveatCheckBox.setToolTip("Check defined conditions for running the tests.")
+        self.__shutdownAfterTestCheckBox.setToolTip("Shutdown GeoSlicer after the last test run.")
 
         self.__shuffleCheckBox.setChecked(qt.Qt.Checked)
         self.__breakOnFailureCheckBox.setChecked(qt.Qt.Unchecked)
         self.__clearSceneAfterTestsCheckBox.setChecked(qt.Qt.Checked)
+        self.__restartBeforeRunCheckBox.setChecked(qt.Qt.Unchecked)
+        self.__shutdownAfterTestCheckBox.setChecked(qt.Qt.Unchecked)
 
-        optionsFormLayout.addRow("Shuffle", self.__shuffleCheckBox)
-        optionsFormLayout.addRow("Break on failure", self.__breakOnFailureCheckBox)
-        optionsFormLayout.addRow("Clear scene after test", self.__clearSceneAfterTestsCheckBox)
+        optionsLayout.addWidget(self.__shuffleCheckBox)
+        optionsLayout.addWidget(self.__breakOnFailureCheckBox)
+        optionsLayout.addWidget(self.__clearSceneAfterTestsCheckBox)
+        optionsLayout.addWidget(self.__restartBeforeRunCheckBox)
+        optionsLayout.addWidget(self.__useCaveatCheckBox)
+        optionsLayout.addWidget(self.__shutdownAfterTestCheckBox)
 
         optionsGroupBox = qt.QGroupBox("Options")
         optionsGroupBox.setAlignment(qt.Qt.AlignHCenter)
-        optionsGroupBox.setLayout(optionsFormLayout)
+        optionsGroupBox.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Maximum)
 
-        optionsLayout = qt.QVBoxLayout()
-        optionsLayout.addLayout(selectButtonsLayout, 1)
-        optionsLayout.addWidget(self.__searchLineEdit, 4)
-        optionsLayout.addWidget(self.__treeWidgetTabs, 4)
-        optionsLayout.addWidget(optionsGroupBox, 1)
+        scrollableWidget = qt.QWidget()
+        scrollableWidget.setLayout(optionsLayout)
+
+        scroll = qt.QScrollArea()
+        scroll.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
+        scroll.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(scrollableWidget)
+
+        sideBarLayout = qt.QVBoxLayout()
+        sideBarLayout.addWidget(scroll)
+        optionsGroupBox.setLayout(sideBarLayout)
+
+        sideBarLayout = qt.QVBoxLayout()
+        sideBarLayout.addLayout(selectButtonsLayout, 1)
+        sideBarLayout.addWidget(self.__searchLineEdit, 4)
+        sideBarLayout.addWidget(self.__treeWidgetTabs, 4)
+        sideBarLayout.addWidget(optionsGroupBox, 4)
 
         # Logging layout
         self.__logTextBrowser = qt.QTextBrowser()
@@ -290,11 +397,16 @@ class LTraceTestsWidget(qt.QDialog):
 
         # Main layout
         layout = qt.QGridLayout()
-        layout.addLayout(optionsLayout, 0, 0, 4, 2)
+        layout.addLayout(sideBarLayout, 0, 0, 4, 2)
         layout.addWidget(loggingGroupBox, 0, 2, 4, 4)
         layout.addLayout(progressBarLayout, 5, 0, 1, 6)
         layout.addLayout(runCancelButtonLayout, 6, 2, 1, 2)
         self.setLayout(layout)
+
+        # Update search input based on the last stored value
+        lastSearchInput = slicer.app.settings().value("LTraceTestsWidget/LastSearch", "")
+        if lastSearchInput:
+            self.__searchLineEdit.setText(lastSearchInput)
 
         # connections
         self.__runButton.clicked.connect(self.__onRunButtonClicked)
@@ -303,11 +415,6 @@ class LTraceTestsWidget(qt.QDialog):
         self.__unselectAllItemsButton.clicked.connect(self.__onUnselectAllButtonClicked)
         self.__searchLineEdit.textChanged.connect(self.__onSearchTextChanged)
         self.__treeWidgetTabs.currentChanged.connect(self.__onTabChanged)
-
-        # Update search input based on the last stored value
-        lastSearchInput = slicer.app.settings().value("LTraceTestsWidget/LastSearch", "")
-        if lastSearchInput:
-            self.__searchLineEdit.setText(lastSearchInput)
 
     def __onSearchTextChanged(self, text):
         self.__testTreeView.setFilterRegularExpression(text)
@@ -371,14 +478,19 @@ class LTraceTestsWidget(qt.QDialog):
         self.__logTextBrowser.insertPlainText(message)
 
     def __installLoggerHandler(self):
-        self.loggerHandler = LogWidgetHandler(callback=self.loggerCallback)
-        logging.getLogger("tests_logger").addHandler(self.loggerHandler)
+        self.uninstallLoggerHandler()
+        logger = logging.getLogger("tests_logger")
+        logger.addHandler(LogWidgetHandler(callback=self.loggerCallback))
+        logger.addHandler(ConsoleHandler())
 
     def uninstallLoggerHandler(self):
-        if not hasattr(self, "loggerHandler") or self.loggerHandler is None:
-            return
+        logger = logging.getLogger("tests_logger")
 
-        logging.getLogger("tests_logger").removeHandler(self.loggerHandler)
+        for handler in logger.handlers:
+            if handler.__class__ not in [LogWidgetHandler, ConsoleHandler]:
+                continue
+
+            logger.removeHandler(handler)
 
     def __populateTree(self):
         self.__testTreeView.clear()
@@ -452,20 +564,36 @@ class LTraceTestsWidget(qt.QDialog):
         for suiteData in otherSuiteList:
             suiteData.enabled = False
 
+        restartBeforeRun = self.__restartBeforeRunCheckBox.isChecked()
+        if restartBeforeRun:
+            runOnStartup = {
+                "shuffle": self.__shuffleCheckBox.isChecked(),
+                "break_on_failure": self.__breakOnFailureCheckBox.isChecked(),
+                "clear_scene": self.__clearSceneAfterTestsCheckBox.isChecked(),
+                "tests_to_run": self.__selectedTestsNames(suiteList),
+                "is_test_tab": selectedTab == self.TEST_TAB,
+                "use_caveat": self.__useCaveatCheckBox.isChecked(),
+                "shutdown_after_test": self.__shutdownAfterTestCheckBox.isChecked(),
+            }
+            settings = slicer.app.userSettings()
+            settings.setValue("LTraceTestsWidget/RunOnStartup", json.dumps(runOnStartup))
+            settings.sync()
+            slicer.util.restart()
+            return
+
         # Start running tests
         self.__model.run_tests(
             suite_list=suiteList,
             shuffle=self.__shuffleCheckBox.isChecked(),
             break_on_failure=self.__breakOnFailureCheckBox.isChecked(),
             after_clear=self.__clearSceneAfterTestsCheckBox.isChecked(),
+            use_caveat=self.__useCaveatCheckBox.isChecked(),
+            shutdown_after_test=self.__shutdownAfterTestCheckBox.isChecked(),
         )
-        test_process_result = self.__model.result()
+        testProcessResult = self.__model.result()
 
-        if test_process_result == TestState.FAILED:
-            slicer.util.infoDisplay("Some tests have failed. Please check the logs.", parent=self)
-        elif test_process_result == TestState.SUCCEED:
-            slicer.util.infoDisplay("All tests passed successfully!", parent=self)
-        else:
+        qt.QApplication.alert(slicer.modules.AppContextInstance.mainWindow)
+        if testProcessResult not in (TestState.FAILED, TestState.SUCCEED):
             slicer.util.infoDisplay(
                 "Unexpected behavior. Please check the logs and inform the development team.", parent=self
             )

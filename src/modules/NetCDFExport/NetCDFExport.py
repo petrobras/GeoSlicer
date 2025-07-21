@@ -14,6 +14,45 @@ from ltrace.slicer import netcdf
 from ltrace.utils.callback import Callback
 
 
+def findChildDataNodes(parentItemIds, exportableTypes):
+    sh = slicer.mrmlScene.GetSubjectHierarchyNode()
+    foundNodes = []
+    processedItemIds = set()
+    exportableTypesSet = set(exportableTypes)
+
+    def _findNodesRecursively(itemId):
+        """A nested helper function to perform the recursion."""
+        if itemId in processedItemIds:
+            return
+        processedItemIds.add(itemId)
+
+        dataNode = sh.GetItemDataNode(itemId)
+        if dataNode and type(dataNode) in exportableTypesSet:
+            foundNodes.append(dataNode)
+
+        children = vtk.vtkIdList()
+        sh.GetItemChildren(itemId, children, False)
+
+        for i in range(children.GetNumberOfIds()):
+            childId = children.GetId(i)
+            _findNodesRecursively(childId)
+
+    sceneItemId = sh.GetSceneItemID()
+    for i in range(parentItemIds.GetNumberOfIds()):
+        itemId = parentItemIds.GetId(i)
+        if itemId == sceneItemId:
+            continue
+        _findNodesRecursively(itemId)
+
+    uniqueNodes = []
+    seenNodeIds = set()
+    for node in foundNodes:
+        if node.GetID() not in seenNodeIds:
+            uniqueNodes.append(node)
+            seenNodeIds.add(node.GetID())
+    return uniqueNodes
+
+
 class NetCDFExport(LTracePlugin):
     SETTING_KEY = "NetCDFExport"
     MODULE_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
@@ -124,7 +163,7 @@ class NetCDFExportWidget(LTracePluginWidget):
     def getItemsToExport(self):
         selected_items = vtk.vtkIdList()
         self.subjectHierarchyTreeView.currentItems(selected_items)
-        return export.getDataNodes(selected_items, self.EXPORTABLE_TYPES)
+        return findChildDataNodes(selected_items, self.EXPORTABLE_TYPES)
 
     def onSelectionChanged(self):
         selected_items = self.getItemsToExport()

@@ -13,6 +13,7 @@ from ltrace import assets_utils as assets
 from ltrace.slicer import helpers, widgets
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
+from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
 from ltrace.units import global_unit_registry as ureg
 from ltrace.utils.callback import Callback
 from ltrace.utils.ProgressBarProc import ProgressBarProc
@@ -60,6 +61,7 @@ Choose the PP (plane polarized) image file to load.
         widget = qt.QFrame()
         layout = qt.QFormLayout(widget)
         self.ppFileSelector = ctk.ctkPathLineEdit()
+        self.ppFileSelector.objectName = "PP File Selector"
         self.ppFileSelector.setToolTip("Choose the PP image file.")
         self.ppFileSelector.settingKey = "PpPxFlow/PpFileSelector"
         self.ppFileSelector.currentPathChanged.connect(self.onPathChanged)
@@ -286,7 +288,7 @@ All further analysis will be performed inside this region only.
             soiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode", sourceNode.GetName() + "_SOI")
             soiNode.CreateDefaultDisplayNodes()
             segmentation = soiNode.GetSegmentation()
-            segmentation.AddEmptySegment("SOI")
+            segmentation.AddEmptySegment("SOI", "SOI")
             segmentation.GetSegment("SOI").SetColor(1, 0, 0)
             self.state.addToDir(soiNode)
             self.state.soi = soiNode
@@ -347,33 +349,18 @@ class SmartSeg(FlowStep):
 
     def __init__(self, hasPx: bool):
         self.hasPx = hasPx
+        self.cliQueue = None
 
     def setup(self):
         widget = qt.QFrame()
         layout = qt.QFormLayout(widget)
 
-        self.modelComboBox = qt.QComboBox()
-        self.modelComboBox.setToolTip("Select the model to use for segmentation.")
-        self.modelComboBox.addItem("Select a model")
+        self.modelComboBox = TrainedModelSelector([])
+        self.modelComboBox.objectName = "Model Combobox"
+        self.modelComboBox.setTags(["ThinSectionEnv", "SiliciclasticsPore"] if self.hasPx else ["PoreStats"])
+        self.modelComboBox.insertItem(0, "Select a model")
+        self.modelComboBox.setCurrentIndex(0)
         layout.addRow("Model:", self.modelComboBox)
-
-        modelDirs = assets.get_models_by_tag("ThinSectionEnv")
-        self.metadata = {}
-        for modelDir in modelDirs:
-            metadata = assets.get_metadata(modelDir)
-            if not metadata["is_segmentation_model"]:
-                continue
-            inputs = metadata["inputs"]
-            if self.hasPx:
-                if not "PP" in inputs or not "PX" in inputs:
-                    continue
-            else:
-                if not "PP" in inputs or "PX" in inputs:
-                    continue
-
-            modelName = metadata["title"]
-            self.metadata[modelName] = metadata
-            self.modelComboBox.addItem(modelName, modelDir)
 
         self.modelInfo = qt.QLabel()
         self.modelInfo.setTextFormat(qt.Qt.RichText)
@@ -381,9 +368,10 @@ class SmartSeg(FlowStep):
         layout.addRow(self.modelInfo)
         self.modelComboBox.currentIndexChanged.connect(self.onModelChanged)
 
-        cleaningSection = ctk.ctkCollapsibleButton()
-        cleaningSection.text = "Cleaning"
-        cleaningLayout = qt.QVBoxLayout(cleaningSection)
+        self.cleaningSection = ctk.ctkCollapsibleButton()
+        self.cleaningSection.objectName = "Cleaning Section"
+        self.cleaningSection.text = "Cleaning"
+        cleaningLayout = qt.QVBoxLayout(self.cleaningSection)
 
         self.removeSpuriousCheckbox = qt.QCheckBox("Remove spurious")
         self.removeSpuriousCheckbox.toolTip = "Detect and remove spurious predictions."
@@ -397,8 +385,9 @@ class SmartSeg(FlowStep):
 
         cleaningLayout.addWidget(self.removeSpuriousCheckbox)
         cleaningLayout.addWidget(self.cleanResinCheckbox)
+        self.cleaningSection.setVisible(False)
 
-        layout.addRow(cleaningSection)
+        layout.addRow(self.cleaningSection)
 
         self.stepLabel = qt.QLabel()
         self.progressBar = LocalProgressBar()
@@ -411,9 +400,10 @@ class SmartSeg(FlowStep):
         if index == 0:
             self.modelInfo.setText("")
             self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_ON_STATE, self.NEXT_OFF_STATE)
+            self.cleaningSection.setVisible(False)
             return
-        modelName = self.modelComboBox.currentText
-        metadata = self.metadata[modelName]
+        metadata = self.modelComboBox.getSelectedModelMetadata()
+        self.cleaningSection.setVisible(not self.hasPx)
 
         try:
             classNames = metadata["outputs"]["y"]["class_names"]
@@ -444,7 +434,7 @@ class SmartSeg(FlowStep):
 
     def next(self):
         if self.state.segmentation is not None:
-            msg_box = qt.QMessageBox(slicer.util.mainWindow())
+            msg_box = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
             msg_box.setIcon(qt.QMessageBox.Warning)
             msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
             msg_box.setDefaultButton(qt.QMessageBox.No)
@@ -456,13 +446,13 @@ class SmartSeg(FlowStep):
             slicer.mrmlScene.RemoveNode(self.state.segmentation)
             self.state.segmentation = None
 
-        metadata = self.metadata[self.modelComboBox.currentText]
+        metadata = self.modelComboBox.getSelectedModelMetadata()
         modelKind = metadata["kind"]
 
         extraNodes = [self.state.px if self.hasPx else None, None]
         outputPrefix = self.state.pp.GetName() + "_{type}"
 
-        cliQueue = CliQueue(update_display=False, progress_bar=self.progressBar, progress_label=self.stepLabel)
+        self.cliQueue = CliQueue(update_display=False, progress_bar=self.progressBar, progress_label=self.stepLabel)
 
         kernelSize = None
         if modelKind == "torch":
@@ -474,7 +464,7 @@ class SmartSeg(FlowStep):
                 self.state.soi,
                 outputPrefix,
                 False,
-                cliQueue,
+                self.cliQueue,
             )
         elif modelKind == "bayesian":
             self.logic = Segmenter.BayesianInferenceLogic(False, parent=self.widget)
@@ -487,17 +477,18 @@ class SmartSeg(FlowStep):
                 self.state.soi,
                 outputPrefix,
                 None,
-                cliQueue,
+                self.cliQueue,
             )
         self.logic.nodeCreated.connect(self.onFinish)
-        cleaningLogic = Segmenter.PoreCleaningLogic(
-            removeSpurious=self.removeSpuriousCheckbox.isChecked(),
-            cleanResin=self.cleanResinCheckbox.isChecked(),
-            selectedPxNode=self.state.px,
-            smartReg=False,
-        )
-        cleaningLogic.run(tmpReferenceNode, tmpOutNode, self.state.soi, modelKind, kernelSize, cliQueue)
-        cliQueue.run()
+        if not self.hasPx:
+            cleaningLogic = Segmenter.PoreCleaningLogic(
+                removeSpurious=self.removeSpuriousCheckbox.isChecked(),
+                cleanResin=self.cleanResinCheckbox.isChecked(),
+                selectedPxNode=self.state.px,
+                smartReg=False,
+            )
+            cleaningLogic.run(tmpReferenceNode, tmpOutNode, self.state.soi, modelKind, kernelSize, self.cliQueue)
+        self.cliQueue.run()
         self.nav.setButtonsState(self.BACK_ON_STATE, self.SKIP_ON_STATE, self.NEXT_IN_PROGRESS_STATE)
 
     def onFinish(self, node_id):
@@ -652,7 +643,7 @@ class Inspector(FlowStep):
 
     def next(self):
         if self.state.labelmap is not None:
-            msg_box = qt.QMessageBox(slicer.util.mainWindow())
+            msg_box = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
             msg_box.setIcon(qt.QMessageBox.Warning)
             msg_box.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
             msg_box.setDefaultButton(qt.QMessageBox.No)

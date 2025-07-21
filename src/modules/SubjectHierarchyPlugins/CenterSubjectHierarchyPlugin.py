@@ -184,6 +184,7 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
                 slicer.vtkMRMLScalarVolumeNode,
                 slicer.vtkMRMLLabelMapVolumeNode,
             ]
+            and item.GetImageData() is not None
             and item.GetImageData().GetDimensions()[1] == 1
         )
 

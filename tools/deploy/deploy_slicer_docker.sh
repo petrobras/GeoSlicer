@@ -215,19 +215,10 @@ VOLUME_ARGS="${VOLUME_ARGS[@]}"
 
 # Run the Docker Compose command
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  ${DOCKER_COMPOSE_ALIAS} run --rm -T \
-    --user $(id -u):$(id -g) \  
-    --env PYTHONUNBUFFERED=1 \
-    ${VOLUME_ARGS} \
-    ${DOCKER_SERVICE_NAME} \
-    python ${MOUNTED_REPO_PATH}/tools/deploy/deploy_slicer.py ${MOUNTED_ARCHIVE_FILE_PATH} ${ARGUMENTS} --output-dir ${MOUNTED_OUTPUT_DIR_PATH}
+    ${DOCKER_COMPOSE_ALIAS} run --rm -T  --user $(id -u):$(id -g) --env PYTHONUNBUFFERED=1 ${VOLUME_ARGS} ${DOCKER_SERVICE_NAME} python ${MOUNTED_REPO_PATH}/tools/deploy/deploy_slicer.py ${MOUNTED_ARCHIVE_FILE_PATH} ${ARGUMENTS} --output-dir ${MOUNTED_OUTPUT_DIR_PATH}
 else
   echo "command is ${DOCKER_COMPOSE_ALIAS} run --rm -T ${VOLUME_ARGS} --env PYTHONUNBUFFERED=1 ${DOCKER_SERVICE_NAME} python ${MOUNTED_REPO_PATH}/tools/deploy/deploy_slicer.py ${MOUNTED_ARCHIVE_FILE_PATH} ${ARGUMENTS} --output-dir ${MOUNTED_OUTPUT_DIR_PATH}"
-  ${DOCKER_COMPOSE_ALIAS} run --rm -T \
-    ${VOLUME_ARGS} \
-    --env PYTHONUNBUFFERED=1 \
-    ${DOCKER_SERVICE_NAME} \
-    python ${MOUNTED_REPO_PATH}/tools/deploy/deploy_slicer.py ${MOUNTED_ARCHIVE_FILE_PATH} ${ARGUMENTS} --output-dir ${MOUNTED_OUTPUT_DIR_PATH}
+    ${DOCKER_COMPOSE_ALIAS} run --rm -T ${VOLUME_ARGS} --env PYTHONUNBUFFERED=1 ${DOCKER_SERVICE_NAME} python ${MOUNTED_REPO_PATH}/tools/deploy/deploy_slicer.py ${MOUNTED_ARCHIVE_FILE_PATH} ${ARGUMENTS} --output-dir ${MOUNTED_OUTPUT_DIR_PATH}
 fi
 
 if [ $? -ne 0 ]; then

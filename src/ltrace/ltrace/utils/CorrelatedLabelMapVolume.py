@@ -145,7 +145,7 @@ class ProportionLabelMapVolume(CorrelatedLabelMapVolume):
                     seg_id = seg.GetNthSegmentID(0)
                     array = slicer.util.arrayFromSegmentInternalBinaryLabelmap(referenceNode, seg_id)
                     empty = array.max() <= 0
-                except AttributeError:
+                except (ValueError, AttributeError):
                     empty = True
 
             if not empty:

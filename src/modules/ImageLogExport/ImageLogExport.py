@@ -31,40 +31,35 @@ class ImageLogExport(LTracePlugin):
         return str(cls.MODULE_DIR / "README.md")
 
 
-if slicer_is_in_developer_mode():
-    try:
-        from ImageLogExportLib.widgets.ImageLogExportClosedSourceWidget import ImageLogExportClosedSourceWidget
-    except ImportError:
-        ImageLogExportClosedSourceWidget = lambda: None
-    finally:
-        from ImageLogExportLib.widgets.ImageLogExportOpenSourceWidget import ImageLogExportOpenSourceWidget
+try:
+    from ImageLogExportLib.widgets.ImageLogExportExtendedWidget import ImageLogExportExtendedWidget
+except ImportError:
+    ImageLogExportExtendedWidget = lambda: None
+finally:
+    from ImageLogExportLib.widgets.ImageLogExportBaseWidget import ImageLogExportBaseWidget
 
-    class ImageLogExportWidget(LTracePluginWidget):
-        def setup(self):
-            super().setup()
+
+class ImageLogExportWidget(LTracePluginWidget):
+    def setup(self):
+        super().setup()
+
+        self.versions = {}
+        self.versions["base"] = (ImageLogExportBaseWidget(), "Base")
+        self.versions["extended"] = (ImageLogExportExtendedWidget(), "Extended")
+
+        if slicer_is_in_developer_mode():
             mainTab = qt.QTabWidget()
-            self.versions = {}
-            self.versions["open"] = (ImageLogExportOpenSourceWidget(), "Open")
-            self.versions["closed"] = (ImageLogExportClosedSourceWidget(), "Closed")
-
             for _, (widget, name) in self.versions.items():
+                if widget is None:
+                    continue
+
                 mainTab.addTab(widget, name)
 
             self.layout.addWidget(qt.QLabel("Developer mode is enabled. Two versions of this module are shown:"))
             self.layout.addWidget(mainTab)
+        else:
+            if ImageLogExportExtendedWidget is None:
+                self.layout.addWidget(ImageLogExportBaseWidget())
+                return
 
-else:
-    try:
-        from ImageLogExportLib.widgets.ImageLogExportClosedSourceWidget import (
-            ImageLogExportClosedSourceWidget as PluginWidget,
-        )
-
-    except ImportError:
-        from ImageLogExportLib.widgets.ImageLogExportOpenSourceWidget import (
-            ImageLogExportOpenSourceWidget as PluginWidget,
-        )
-
-    class ImageLogExportWidget(LTracePluginWidget):
-        def setup(self):
-            super().setup()
-            self.layout.addWidget(PluginWidget())
+            self.layout.addWidget(ImageLogExportBaseWidget())

@@ -525,7 +525,6 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
             details_table = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", details_table_name)
 
             details_table.SetAttribute("table_type", "details")
-            slicer.mrmlScene.AddNode(details_table)
             details_df = pd.DataFrame(details, index=[0])
             details_node = dataFrameToTableNode(details_df, details_table)
             folderTree.CreateItem(output_dir, details_node)

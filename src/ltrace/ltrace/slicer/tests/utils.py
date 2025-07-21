@@ -5,9 +5,10 @@ import qt
 import shutil
 import time
 
+from datetime import datetime
 from ltrace.constants import SaveStatus
 from ltrace.slicer.project_manager import ProjectManager
-from ltrace.slicer.helpers import make_directory_writable, WatchSignal
+from ltrace.slicer.helpers import make_directory_writable, WatchSignal, limitLogFiles
 from ltrace.slicer.module_utils import loadModules
 from ltrace.utils.string_comparison import StringComparison
 from pathlib import Path
@@ -22,7 +23,7 @@ def process_events():
     slicer.app.processEvents(qt.QEventLoop.AllEvents, 5000)
 
 
-def create_logger(level=logging.DEBUG, log_file_path=TEST_LOG_FILE_PATH):
+def create_logger(level=logging.DEBUG, logFilePath=TEST_LOG_FILE_PATH):
     logger = logging.getLogger("tests_logger")
     logger.setLevel(level)
 
@@ -32,8 +33,15 @@ def create_logger(level=logging.DEBUG, log_file_path=TEST_LOG_FILE_PATH):
     )
 
     # File handler
-    log_file_path.parent.mkdir(exist_ok=True)
-    fileHandler = logging.FileHandler(log_file_path, mode="a")
+    logFilePath.parent.mkdir(exist_ok=True)
+    now = datetime.now()
+    datetimeString = now.strftime("%Y%m%d_%H%M%S_%f")
+    suffix = "tests"
+    logFilePath = Path(slicer.app.temporaryPath) / f"{suffix}_{datetimeString}.log"
+
+    limitLogFiles(logFilePath.parent, f"{suffix}_", 20)
+
+    fileHandler = logging.FileHandler(logFilePath, mode="a", delay=True)
     fileHandler.setLevel(level)
     fileHandler.setFormatter(formatter)
     logger.addHandler(fileHandler)
@@ -172,14 +180,15 @@ def check_for_message_box(
         related_message_boxes = [
             msg_box for msg_box in message_boxes if msg_box.visible == True and message in msg_box.text
         ]
+        logging.debug(f"Found {len(related_message_boxes)} message boxes with the text: '{message}'")
 
         if len(related_message_boxes) <= 0:
             # Find possible visible QMessageBox and close it to avoid freezing the test process
             other_message_boxes = [msg_box for msg_box in message_boxes if msg_box.visible == True]
             for message_box in other_message_boxes:
-                logging.debug(f"A different message box had appeared with the text: '{message_box.text}'")
+                logging.info(f"A different message box had appeared with the text: '{message_box.text}'")
                 if closeOthers:
-                    message_box.close()
+                    message_box.reject()
 
             if time.perf_counter() - start_time < timeout_sec:
                 timer.start()
@@ -189,8 +198,10 @@ def check_for_message_box(
 
         if not buttonTextToClick:
             if should_accept:
+                logging.debug(f"Accepting the message box with the text: '{the_message_box.text}'")
                 the_message_box.accept()
             else:
+                logging.debug(f"Rejecting the message box with the text: '{the_message_box.text}'")
                 the_message_box.reject()
         else:
             the_button = None
@@ -204,6 +215,7 @@ def check_for_message_box(
                 logging.error(f"The message box button {buttonTextToClick} doesn't exist in the current context.")
                 the_message_box.reject()
             else:
+                logging.debug(f"Clicking on the message box button with the text: '{the_button.text}'")
                 the_button.click()
 
         result[0] = True
@@ -224,6 +236,9 @@ def check_for_message_box(
     timer = None
 
     if result[0] is False:
+        logging.error(
+            f"Timed out waiting for the message box with the text: '{message}'. Please check if the the message box instance and its parents has a valid parent."
+        )
         raise AttributeError("The desired message box doesn't exist in the current context.")
 
 
@@ -330,6 +345,10 @@ def loadAllModules():
     modules = {obj.key: obj for sublist in groups.values() for obj in sublist}
     modules = list(modules.values())
     loadModules(modules, permanent=False, favorite=False)
+
+    moduleManager = slicer.modules.AppContextInstance.modules
+    if moduleManager.currentWorkingDataType is None:
+        moduleManager.setEnvironment(("Thin Section", "ThinSectionEnv"))
 
 
 def waitCondition(condition: Callable, timeoutSec: int = 5) -> None:

@@ -26,7 +26,7 @@ class WellLogImportWidget(qt.QWidget):
 
         self.loadClicked = blank_fn
 
-        self.tableView = ImageLogTableViewer()
+        self.tableView = ImageLogTableViewer(self)
         self.tableView.setMinimumHeight(500)
         self.tableView.loadClicked = self.onLoadClicked
 
@@ -173,7 +173,6 @@ class WellLogImportWidget(qt.QWidget):
                     appFolder=self.appFolder,
                     nullValue=nullvalues,
                     well_diameter_mm=well_diameter,
-                    well_name=well_name,
                 )
 
                 self.loadClicked(itemIDs)

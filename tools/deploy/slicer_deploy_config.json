@@ -91,13 +91,17 @@
         "tests/",
         "src/modules/TestsModule/",
         "src/ltrace/ltrace/image/dlis.py",
-        "src/modules/ImageLogExport/ImageLogExportLib/widgets/ImageLogExportClosedSourceWidget.py",
+        "src/modules/ImageLogExport/ImageLogExportLib/widgets/ImageLogExportExtendedWidget.py",
         "src/ltrace/ltrace/slicer/lazy/protocols/biaep.py",
         "src/modules/MicroCTLoader/Libs/MicroCTLoaderExtendedWidget.py",
         "src/ltrace/ltrace/slicer/tracking",
         "src/ltrace/ltrace/remote/hosts/biaep/",
         "tools/pipeline",
         "tools/jenkins",
+        "tools/packer",
+        "tools/docker",
+        "docker-compose.yml",
+        "docker-compose.gpu.yml",
         "src/ltrace/ltrace/slicer/ai_models/pdefs.py"
     ],
 
@@ -107,12 +111,14 @@
                   ["SampleData", "lib/$slicer_dir/qt-scripted-modules", 0],
                   ["h5pyd", "lib/Python/lib/site-packages", 0],
                   ["pytesseract", "lib/Python/lib/site-packages", 0],
-                  ["mpslib", "lib/Python/lib/site-packages", 0]],
+                  ["mpslib", "lib/Python/lib/site-packages", 0],
+                  ["pygments", "lib/Python/lib/site-packages", 0]],
         "linux": [["monai", "lib/Python/lib/python3.9/site-packages", 2],
                   ["DataProbe", "lib/$slicer_dir/qt-scripted-modules", 0],
                   ["SampleData", "lib/$slicer_dir/qt-scripted-modules", 0],
                   ["h5pyd", "lib/Python/lib/python3.9/site-packages", 0],
                   ["pytesseract", "lib/Python/lib/python3.9/site-packages", 0],
-                  ["mpslib", "lib/Python/lib/python3.9/site-packages", 0]]
+                  ["mpslib", "lib/Python/lib/python3.9/site-packages", 0],
+                  ["pygments", "lib/Python/lib/python3.9/site-packages", 0]]
     }
 }

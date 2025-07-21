@@ -1,3 +1,5 @@
+import re
+from typing import Callable, Union
 import slicer
 import qt
 
@@ -9,13 +11,27 @@ from ltrace.slicer.application_observables import ApplicationObservables
 
 
 class TrainedModelSelector(qt.QComboBox):
-    def __init__(self, tags: list[str], *args, **kwargs) -> None:
+    def __init__(self, tags: list[str], modelCategory: Union[None, str] = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.tags = None
+        self.modelCategory = None
         self.setToolTip("Select pre-trained model to use in this module")
-        self.setTags(tags)
-        self.__populateSelf()
+        self.setTags(tags, modelCategory)
         ApplicationObservables().modelPathUpdated.connect(self.__populateSelf)
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        ApplicationObservables().modelPathUpdated.disconnect(self.__populateSelf)
+
+    def __formatTitle(self, title):  # remove model category from model title to avoid redundance
+        if not self.modelCategory:
+            return title
+        title = title.replace(self.modelCategory, "").strip()
+        if title.startswith("("):
+            title = title[1:-1]
+        elif title.startswith("-"):
+            title = title[1:].strip()
+        return " ".join(title.split())
 
     def __populateSelf(self) -> None:
         modelsList = get_models_by_tag(self.tags)
@@ -30,37 +46,60 @@ class TrainedModelSelector(qt.QComboBox):
             self.addItem("No model found", None)
             self.setEnabled(False)
 
-    def setTags(self, tags: list[str]) -> None:
-        if tags == self.tags:
+    def setTags(self, tags: list[str], modelCategory: Union[None, str] = None) -> None:
+        if (tags == self.tags) and (modelCategory == self.modelCategory):
             return
 
         self.tags = tags
+        self.modelCategory = modelCategory
         self.__populateSelf()
 
     def triggerMissingModel(self) -> None:
+        loadModelsButtonText = "Load Models"
+        cancelButtonText = "Cancel"
+
         modelLinksDict = get_model_download_links()
         linksListHtml = ""
+        pluralSuffix = "s" if len(modelLinksDict) > 1 else ""
 
         for model in modelLinksDict:
-            linksListHtml += f'<li><a href="{modelLinksDict[model]}">{model}</a></<li>'
+            versionPattern = r"-\d+\.\d+\.\d+\.zip"
+            versionMatch = re.search(versionPattern, modelLinksDict[model])
 
-        text = f"""No AI models have been installed. Models can be found at the following links:
+            versionedModel = model[:]
+            if versionMatch:
+                versionedModel += f" v{Path(versionMatch.group()).stem[1:]}"
+            else:
+                versionedModel += " (original)"
+
+            linksListHtml += f'<li><a href="{modelLinksDict[model]}">{versionedModel}</a></<li>'
+
+        text = f"""<p>The current version of GeoSlicer requires a specific AI model package for this task. 
+            The compatible package version{pluralSuffix} can be found in the following
+            link{pluralSuffix}:</p>
                 {linksListHtml}
+            <p>Make sure to download the appropriate package and add its path by clicking on
+            "{loadModelsButtonText}" below. Remove older versions in order to avoid
+            duplicates in other tasks.</p>
         """
 
         messageBox = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
-        messageBox.setWindowTitle("No model found for this module")
+        messageBox.setWindowTitle("No model found")
         messageBox.setIcon(qt.QMessageBox.Warning)
         messageBox.setTextFormat(qt.Qt.RichText)
         messageBox.setText(text)
-        loadModelsButton = messageBox.addButton("&Load Models", qt.QMessageBox.ActionRole)
-        cancelButton = messageBox.addButton("&Cancel Exit", qt.QMessageBox.ActionRole)
+        loadModelsButton = messageBox.addButton(f"&{loadModelsButtonText}", qt.QMessageBox.ActionRole)
+        cancelButton = messageBox.addButton(f"&{cancelButtonText}", qt.QMessageBox.ActionRole)
 
         messageBox.exec_()
 
         if messageBox.clickedButton() == loadModelsButton:
             modelsDialog = AIModelsPathDialog(slicer.util.mainWindow())
             modelsDialog.exec_()
+
+    def addItem(self, text: str, userData: Union[None, Path] = None) -> None:
+        text = self.__formatTitle(text)
+        qt.QComboBox.addItem(self, text, userData)
 
     def getSelectedModelPath(self) -> str:
         return Path(self.currentData).as_posix()

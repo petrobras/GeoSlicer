@@ -4,15 +4,16 @@ import pickle
 import shutil
 import uuid
 import warnings
-from collections import namedtuple
-from pathlib import Path
-from threading import Lock
-
 import ctk
 import numpy as np
 import qt
 import slicer
 import vtk
+import traceback
+
+from collections import namedtuple
+from pathlib import Path
+from threading import Lock
 from DICOMLib.DICOMUtils import TemporaryDICOMDatabase
 from ltrace.image.core_box.core_box_depth_table_file import CoreBoxDepthTableFile
 from ltrace.slicer.helpers import setVolumeNullValue, save_path
@@ -652,7 +653,7 @@ class MulticoreLogic(LTracePluginLogic):
                     self.processCore(p, originalVolume, coreBoundaries[i])
                 except Exception as error:
                     error = f"Core {originalVolume.GetName()}: {error}"
-                    logging.error(error)
+                    logging.error(f"{error}.\n{traceback.format_exc()}")
                     errors.append(error)
                     extractedCoreVolume = self.getNodesByBaseNameAndNodeType(baseName, self.NODE_TYPE_CORE_VOLUME)
                     if len(extractedCoreVolume) == 1:

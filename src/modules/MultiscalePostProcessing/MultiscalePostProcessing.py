@@ -28,7 +28,7 @@ class MultiscalePostProcessing(LTracePlugin):
         self.parent.title = "Multiscale Post-Processing"
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = MultiscalePostProcessing.help()
+        self.set_manual_path("Modules/Multiscale/MultiscalePostProcessing.html")
 
     @classmethod
     def readme_path(cls):

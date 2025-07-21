@@ -87,11 +87,11 @@ class PoreStatsWidget(LTracePluginWidget):
         widget.text = "Classifier"
         formLayout = qt.QFormLayout(widget)
 
-        self.classifierInput = TrainedModelSelector(["PoreStats"])
+        self.classifierInput = TrainedModelSelector(["PoreStats"], modelCategory="Pore")
 
         self.classifierInput.objectName = "Classifier Input ComboBox"
 
-        self.classifierInput.activated.connect(self._onChangedClassifier)
+        self.classifierInput.currentTextChanged.connect(self._onChangedClassifier)
         self.classifierInput.currentIndexChanged.connect(lambda _: self.classifierInput.setStyleSheet(""))
 
         self.classifierInfo = qt.QLabel()
@@ -276,31 +276,34 @@ class PoreStatsWidget(LTracePluginWidget):
             else:
                 return float(self.imageSpacingLineEdit.text)
 
+    def _simplifyModelTitle(self, originalTitle):
+        pattern = re.search(r"\(([^()]*)\)", originalTitle)
+        if pattern:
+            return pattern.group(1)
+        return originalTitle
+
     """ Handlers """
 
     def enter(self) -> None:
         super().enter()
 
-        # Add pretrained models
         self._onChangedClassifier()
 
-    def _onChangedClassifier(self, selected=None):
         if self.classifierInput.currentData is None:
             self.classifierInput.triggerMissingModel()
-            return
 
-        metadata = self.classifierInput.getSelectedModelMetadata()
-        model_inputs = metadata.get("inputs")
-        model_outputs = metadata.get("outputs")
+    def _onChangedClassifier(self, selected=None):
+        metadata = self.classifierInput.getSelectedModelMetadata() if self.classifierInput.currentData else dict()
+        model_inputs = metadata.get("inputs", dict())
+        model_outputs = metadata.get("outputs", dict())
         if model_inputs is None or model_outputs is None:
             logging.debug(f"Model metadata {metadata} is unexpectedly invalid.")
             return
 
-        model_input_names = list(model_inputs.keys())
         model_output_names = list(model_outputs.keys())
         # temporary limitationonly taking one output
-        model_output = model_outputs[model_output_names[0]]
-        model_classes = model_output["class_names"]
+        model_output = model_outputs[model_output_names[0]] if model_outputs else dict()
+        model_classes = model_output.get("class_names", [])
 
         space = 2 * " "
 
@@ -356,7 +359,7 @@ class PoreStatsWidget(LTracePluginWidget):
         html = markdown.markdown(msg)
         self.classifierInfo.setText(html)
         self.classifierInfo.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        summary = f"Model info: {len(model_classes)} segments"
+        summary = f"Model info:"
         self.classifierInfoGroupBox.setTitle(summary)
 
     def _savePath(self):
@@ -415,7 +418,7 @@ class PoreStatsWidget(LTracePluginWidget):
 
         checkpointPath = Path(outputDir) / "checkpoint.txt"
         if checkpointPath.exists():
-            resumeMessageBox = qt.QMessageBox(slicer.util.mainWindow())
+            resumeMessageBox = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
             resumeMessageBox.setIcon(qt.QMessageBox.Warning)
             resumeMessageBox.setWindowTitle("Resume execution")
             resumeMessageBox.setText(

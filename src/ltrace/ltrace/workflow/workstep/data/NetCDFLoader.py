@@ -37,7 +37,7 @@ class NetCDFLoader(Workstep):
                 folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
                 scene_id = folderTree.GetSceneItemID()
                 current_dir = folderTree.CreateFolderItem(scene_id, name)
-                for node in import_dataset(dataset, images):
+                for (node, _) in import_dataset(dataset, images):
                     _ = folderTree.CreateItem(current_dir, node)
                     # Don't yield reference images
                     if type(node) == self.output_type():

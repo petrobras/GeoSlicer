@@ -26,7 +26,7 @@ class ImageLogCropVolume(LTracePlugin):
         self.parent.title = "Image Log Crop"
         self.parent.categories = ["ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = ImageLogCropVolume.help()
+        self.set_manual_path("Modules/Multiscale/ImageLogCropVolume.html")
 
     @classmethod
     def readme_path(cls):

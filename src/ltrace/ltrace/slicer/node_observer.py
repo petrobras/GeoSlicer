@@ -32,7 +32,9 @@ class NodeObserver(qt.QObject):
                 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__on_node_removed),
             )
         )
-        self.__signalModifiedDebouncer = DebounceCaller(parent=self, signal=self.modifiedSignal, intervalMs=50)
+        self.__signalModifiedDebouncer = DebounceCaller(
+            parent=self, callback=self.onModifiedSignalToBeTriggered, intervalMs=100
+        )
         self.destroyed.connect(self.__del__)
 
     def __del__(self):
@@ -56,7 +58,7 @@ class NodeObserver(qt.QObject):
             self.clear()
         except Exception as error:
             logging.debug(
-                f"Error from node observer related to node {node.GetName()} ({node.GetID()}): {error}. Traceback:\n{traceback.format_exc()}"
+                f"Bypassing error from node observer related to node {node.GetName()} ({node.GetID()}): {error}. Traceback:\n{traceback.format_exc()}"
             )
 
     def clear(self):
@@ -74,3 +76,10 @@ class NodeObserver(qt.QObject):
 
         self.__observerHandlers.clear()
         self.__nodeId = None
+
+    def onModifiedSignalToBeTriggered(self, *args, **kwargs):
+        # TODO this code does not look right
+        if len(args) + len(kwargs) == 0:
+            self.modifiedSignal.emit(None, None)
+
+        self.modifiedSignal.emit(*args, **kwargs)

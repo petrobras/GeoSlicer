@@ -47,6 +47,7 @@ class NodeEnvironment(NodeAttributeValue):
     Environment options for 'environment' node attribute
     """
 
+    EMPTY_ENV = "EmptyEnv"
     IMAGE_LOG = "ImageLogEnv"
     CORE = "CoreEnv"
     MICRO_CT = "MicroCTEnv"

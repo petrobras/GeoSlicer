@@ -35,7 +35,7 @@ class QEMSCANLoader(LTracePlugin):
         self.parent.categories = ["Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Thin%20Section/Modulos/QemscanLoader.html').as_posix()}"
+        self.set_manual_path("Modules/Thin_section/QemscanLoader.html")
 
     @classmethod
     def readme_path(cls):

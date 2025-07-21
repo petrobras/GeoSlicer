@@ -1,3 +1,4 @@
+import json
 import importlib
 import inspect
 import logging
@@ -5,11 +6,19 @@ import gc
 import qt
 import random
 import slicer
+import traceback
+import os
+import json
 
 from enum import Enum
+from ltrace.slicer.tests.caveat import Caveat
+from ltrace.slicer.tests.constants import TestState, CaseType
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
-from ltrace.slicer.tests.constants import TestState
+from ltrace.slicer.tests.utils import log, wait
+from pathlib import Path
 from typing import List
+
+TEST_STATUS_FILE_PATH = Path(slicer.app.temporaryPath) / "test_status.json"
 
 
 class TestsSource(Enum):
@@ -27,7 +36,7 @@ class TestSuiteData(qt.QObject):
     def __init__(
         self,
         test_class: object = None,
-        test_case_data_list: list = None,
+        test_case_data_list: List["TestCaseData"] = None,
         enabled: bool = False,
         module_name=None,
         *args,
@@ -184,8 +193,8 @@ class LTraceTestsModel(qt.QObject):
     test_case_finished = qt.Signal(object, object)
     tests_cancelled = qt.Signal()
 
-    def __init__(self, test_source=TestsSource.ANY, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent=None, test_source=TestsSource.ANY, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
         self.__test_source = test_source
         self.__test_suite_list, self.__generate_suite_list = self.__get_all_suites(test_source=self.__test_source)
         self.__is_running = False
@@ -197,11 +206,11 @@ class LTraceTestsModel(qt.QObject):
         return self.__is_running
 
     @property
-    def test_suite_list(self):
+    def test_suite_list(self) -> List["TestSuiteData"]:
         return self.__test_suite_list
 
     @property
-    def generate_suite_list(self):
+    def generate_suite_list(self) -> List["TestSuiteData"]:
         return self.__generate_suite_list
 
     @property
@@ -260,7 +269,7 @@ class LTraceTestsModel(qt.QObject):
             try:
                 module = importlib.import_module(module_name)
             except ModuleNotFoundError as error:
-                logging.info(error)
+                logging.info(f"{error}.\n{traceback.format_exc()}")
                 continue
 
             test_class_names = []
@@ -329,7 +338,8 @@ class LTraceTestsModel(qt.QObject):
             return [TestCaseData(test_case_method=test_class().runTest)]
 
         return [
-            TestCaseData(test_case_method=test_case_method) for test_case_method in test_class.get_test_case_methods()
+            TestCaseData(test_case_method=test_case_method)
+            for test_case_method in test_class.get_case_methods(CaseType.TEST)
         ]
 
     def __get_generate_methods_data(self, test_class):
@@ -337,12 +347,20 @@ class LTraceTestsModel(qt.QObject):
             return None
 
         return [
-            TestCaseData(test_case_method=test_case_method) for test_case_method in test_class.get_generate_methods()
+            TestCaseData(test_case_method=test_case_method)
+            for test_case_method in test_class.get_case_methods(CaseType.TEMPLATE_GENERATOR)
         ]
 
     def run_tests(self, **kwargs):
         self.__is_running = True
         shuffle = kwargs.get("shuffle", False)
+        useCaveat = kwargs.get("use_caveat", False)
+        if "use_caveat" in kwargs.keys():
+            del kwargs["use_caveat"]
+        shutdownAfterTest = kwargs.get("shutdown_after_test", False)
+        if "shutdown_after_test" in kwargs.keys():
+            del kwargs["shutdown_after_test"]
+
         test_suite_list: List[TestSuiteData] = kwargs.get("suite_list")
 
         if not isinstance(test_suite_list, list) or test_suite_list is None:
@@ -370,9 +388,16 @@ class LTraceTestsModel(qt.QObject):
 
                 self.__run_geoslicer_test_suite(test_suite, **kwargs)
             except Exception as error:
-                logging.info(error)
+                logging.info(f"{error}.\n{traceback.format_exc()}")
                 test_suite.test_status = TestState.FAILED
                 continue
+
+        self.create_test_status_file(useCaveat=useCaveat)
+
+        if shutdownAfterTest:
+            log("Shutting down application...")
+            wait(5)
+            slicer.app.exit()
 
         self.__cancelling = False
         self.__is_running = False
@@ -435,3 +460,50 @@ class LTraceTestsModel(qt.QObject):
 
     def __run_slicer_test_suite(self, test_suite: TestSuiteData):
         raise NotImplementedError("Slicer test runner not implemented yet.")
+
+    def create_test_status_file(self, useCaveat: bool = False, file_path: Path = TEST_STATUS_FILE_PATH) -> None:
+        state = self.result()
+        failed_test_suites = {}
+        for test_suite_data in self.test_suite_list:
+            if test_suite_data.test_status == TestState.SUCCEED:
+                continue
+
+            failed_test_cases = [
+                case.name for case in test_suite_data.test_case_data_list if case.test_status == TestState.FAILED
+            ]
+
+            if len(failed_test_cases) == 0:
+                continue
+
+            failed_test_suites[test_suite_data.name] = failed_test_cases
+
+        caveat = None
+        if useCaveat and state == TestState.FAILED:
+            caveat = Caveat()
+            log("Test failure detected. Checking caveat...")
+            should_bypass = True
+            for test_suite_name, failed_test_cases in failed_test_suites.items():
+                set_failed_test_cases = set(failed_test_cases)
+                set_expected_to_fail_test_cases = set(caveat.failing_test_cases(test_suite_name))
+                difference = set_failed_test_cases - set_expected_to_fail_test_cases
+                should_bypass &= len(difference) == 0
+
+                if not should_bypass:
+                    log(f"The test suite '{test_suite_name}' has failed cases that are not expected to fail.")
+                    break
+
+            if should_bypass:
+                log("All the current failed test cases are expected to fail, bypassing test failure...")
+                state = TestState.SUCCEED
+
+        data = {"status": state.value}
+        data = {**data, "failing_tests": {**failed_test_suites}}
+
+        if useCaveat and caveat is not None:
+            data = {**data, "expected_failing_tests": caveat.failing_tests}
+
+        if file_path.exists():
+            file_path.unlink()
+
+        with open(file_path, "x") as f:
+            json.dump(data, f, indent=4)

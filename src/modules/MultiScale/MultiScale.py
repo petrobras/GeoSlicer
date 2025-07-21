@@ -11,7 +11,9 @@ import numpy as np
 import qt
 import slicer
 from tifffile import tifffile
+from functools import partial
 
+from MultiscaleLib import ResampleBox
 from ltrace.slicer import helpers
 from ltrace.slicer import ui
 from ltrace.slicer import widgets
@@ -30,6 +32,11 @@ COLOCATE_DIMENSIONS = {
     "Y": 1,
     "Z": 2,
 }
+INPUT_TYPES = {
+    "TI": "Training Image",
+    "HD": "Hard Data",
+    "Mask": "Mask",
+}
 
 
 class MultiScale(LTracePlugin):
@@ -42,7 +49,7 @@ class MultiScale(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = MultiScale.help()
+        self.set_manual_path("Modules/Multiscale/Multiscale.html")
 
     @classmethod
     def readme_path(cls):
@@ -52,10 +59,12 @@ class MultiScale(LTracePlugin):
 class MultiScaleWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
+        self.runModeParallel = True
         self.logic = None
         self.valuesList = []
         self.isViewOn = False
         self.isContinuousCheckBoxLocked = False
+        self.currentPreview = INPUT_TYPES["HD"]
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -83,8 +92,10 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 0)
         self.trainingImageWidget.mainInput.currentItemChanged.connect(self.onTrainingImageChange)
-        self.trainingImageWidget.onReferenceSelectedSignal.connect(self.updateFinalImageWidgets)
-        self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(lambda: self.listItemChange())
+        self.trainingImageWidget.onReferenceSelectedSignal.connect(self.trainingImageSourceChange)
+        self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(
+            lambda item: self.listItemChange(item, INPUT_TYPES["TI"])
+        )
         self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.onTrainingImageChange)
 
         self.hardDataWidget = widgets.SingleShotInputWidget(
@@ -102,8 +113,10 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.hardDataWidget.formLayout.setContentsMargins(0, 0, 0, 0)
         self.hardDataWidget.mainInput.currentItemChanged.connect(self.onHardDataChange)
-        self.hardDataWidget.onReferenceSelectedSignal.connect(self.onReferenceChange)
-        self.hardDataWidget.segmentListGroup[1].itemChanged.connect(self.listItemChange)
+        self.hardDataWidget.onReferenceSelectedSignal.connect(self.onHardDataSourceChange)
+        self.hardDataWidget.segmentListGroup[1].itemChanged.connect(
+            lambda item: self.listItemChange(item, INPUT_TYPES["HD"])
+        )
         self.hardDataWidget.autoPorosityCalcCb.stateChanged.connect(
             lambda: self.checkListItems(self.hardDataWidget.segmentListGroup[1])
         )
@@ -135,7 +148,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.depthBottomSpinBox.objectName = "depthBottomSpinBox"
 
         self.previewDimensionSpinBox = qt.QSpinBox()
-        self.previewDimensionSpinBox.setRange(30, 150)
+        self.previewDimensionSpinBox.setRange(30, 500)
         self.previewDimensionSpinBox.setValue(122)
         self.previewDimensionSpinBox.setToolTip(
             "Number of pixels that will be used to generate the well. 122 pixels produces voxels enough to show all imagelog values. This option is only available for imagelogs data."
@@ -146,7 +159,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
         self.previewButton.setFixedWidth(30)
         self.previewButton.enabled = False
-        self.previewButton.clicked.connect(self.onViewPreviewToggle)
+        self.previewButton.clicked.connect(self.onHardDataPreviewClick)
         self.previewButton.setToolTip(
             "Create a 3d model preview of the hard data. The input must be a segmentation node or labelmap. Also generates a preview of the well for 2d image logs."
         )
@@ -179,31 +192,6 @@ class MultiScaleWidget(LTracePluginWidget):
         self.previewLabel = qt.QLabel("Hard Data preview:")
         self.previewLabel.hide()
 
-        self.enableWrapCheckBox = qt.QCheckBox()
-        self.enableWrapCheckBox.setText("Wrap cylinder")
-        self.enableWrapCheckBox.objectName = "enableWrapCheckBox"
-        self.enableWrapCheckBox.setToolTip(
-            "If checked, the 2D data will be wrapped into a cylinder, allowing for 3D simulation."
-        )
-        self.enableWrapCheckBox.enabled = False
-
-        self.continuousDataCheckBox = qt.QCheckBox()
-        self.continuousDataCheckBox.setText("Continuous data")
-        self.continuousDataCheckBox.objectName = "continuousDataCheckBox"
-        self.continuousDataCheckBox.setToolTip(
-            "If checked, the data is considered continuous instead of discrete. In this case, the reference volume will be used in the simulation as \
-            continuous data for both the training image and hard data. For the training image input, unselected segments will be changed to np.nan, \
-            and for the hard data input, the unselected segments areas are not going to be considered hard data."
-        )
-
-        dataOptionsLayout = qt.QHBoxLayout()
-        dataOptionsLayout.addWidget(self.enableWrapCheckBox)
-        dataOptionsLayout.addWidget(self.continuousDataCheckBox)
-        dataOptionsLayout.setContentsMargins(0, 0, 0, 0)
-
-        dataOptionsWidgets = qt.QWidget()
-        dataOptionsWidgets.setLayout(dataOptionsLayout)
-
         self.maskWidget = widgets.SingleShotInputWidget(
             hideSoi=True,
             hideCalcProp=False,
@@ -218,9 +206,11 @@ class MultiScaleWidget(LTracePluginWidget):
         )
         self.maskWidget.formLayout.setContentsMargins(0, 0, 0, 0)
 
-        self.maskWidget.mainInput.currentItemChanged.connect(self.onMaskChange)
-        self.maskWidget.onReferenceSelectedSignal.connect(self.updateFinalImageWidgets)
-        self.maskWidget.segmentListGroup[1].itemChanged.connect(lambda: self.listItemChange())
+        self.maskWidget.mainInput.currentItemChanged.connect(self.onMaskInputChange)
+        self.maskWidget.onReferenceSelectedSignal.connect(self.onMaskSourceChange)
+        self.maskWidget.segmentListGroup[1].itemChanged.connect(
+            lambda item: self.listItemChange(item, INPUT_TYPES["Mask"])
+        )
 
         inputFormLayout = qt.QFormLayout(inputSection)
         inputFormLayout.addRow(self.trainingImageWidget)
@@ -230,14 +220,38 @@ class MultiScaleWidget(LTracePluginWidget):
         inputFormLayout.addRow(self.previewLabel, self.previewWidget)
         inputFormLayout.addRow("", None)
         inputFormLayout.addRow(self.maskWidget)
-        inputFormLayout.addRow("", dataOptionsWidgets)
 
-        # Parameters section
-        parametersSection = ctk.ctkCollapsibleButton()
-        parametersSection.text = "Parameters"
-        parametersSection.collapsed = False
-        parametersSection.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
-        parametersLayout = qt.QFormLayout(parametersSection)
+        # Grid section
+        gridSection = ctk.ctkCollapsibleButton()
+        gridSection.collapsed = False
+        gridSection.text = "Simulation Options"
+
+        self.enableWrapCheckBox = qt.QCheckBox("Enable wrap")
+        self.enableWrapCheckBox.objectName = "enableWrapCheckBox"
+        self.enableWrapCheckBox.setToolTip(
+            "If checked, the 2D data will be wrapped into a cylinder, allowing for 3D simulation."
+        )
+        self.enableWrapCheckBox.enabled = False
+        self.enableWrapCheckBox.stateChanged.connect(self.onWrapStateChange)
+
+        self.continuousDataCheckBox = qt.QCheckBox("Continuous")
+        self.continuousDataCheckBox.stateChanged.connect(self.onContinuousDataStateChange)
+        self.continuousDataCheckBox.objectName = "continuousDataCheckBox"
+        self.continuousDataCheckBox.setToolTip(
+            "If checked, the data is considered continuous instead of discrete. In this case, the reference volume will be used in the simulation as \
+            continuous data for both the training image and hard data. For the training image input, unselected segments will be changed to np.nan, \
+            and for the hard data input, the unselected segments areas are not going to be considered hard data."
+        )
+        self.discreteDataCheckBox = qt.QCheckBox("Categorical")
+        self.discreteDataCheckBox.setChecked(qt.Qt.Checked)
+        self.discreteDataCheckBox.stateChanged.connect(self.onDiscreteDataStateChange)
+
+        dataTypeLayout = qt.QHBoxLayout()
+        dataTypeLayout.addWidget(self.discreteDataCheckBox)
+        dataTypeLayout.addWidget(self.continuousDataCheckBox)
+        dataTypeLayout.setContentsMargins(0, 0, 0, 0)
+        dataTypeWidget = qt.QWidget()
+        dataTypeWidget.setLayout(dataTypeLayout)
 
         self.imageSpacingValidator = qt.QRegExpValidator(qt.QRegExp("[+]?[0-9]*\\.?[0-9]{0,5}([eE][-+]?[0-9]+)?"))
 
@@ -247,6 +261,7 @@ class MultiScaleWidget(LTracePluginWidget):
             dimensionBoxImageResolution = qt.QLineEdit()
             dimensionBoxImageResolution.objectName = f"finalImageResolution_{_}"
             dimensionBoxImageResolution.setValidator(self.imageSpacingValidator)
+            dimensionBoxImageResolution.textChanged.connect(self.onGridSpacingChange)
             self.finalImageResolution.append(dimensionBoxImageResolution)
 
             dimensionBoxImageSize = qt.QSpinBox()
@@ -284,8 +299,45 @@ class MultiScaleWidget(LTracePluginWidget):
         self.finalImageSizeWidget = qt.QWidget()
         self.finalImageSizeWidget.setLayout(finalImageSizeLayout)
 
-        parametersLayout.addRow("Final image resolution (mm):", self.finalImageResolutionWidget)
-        parametersLayout.addRow("Final image dimensions:", self.finalImageSizeWidget)
+        self.resampleBoxTI = ResampleBox(title=INPUT_TYPES["TI"])
+        self.resampleBoxTI.signalResampledNode.connect(self.onResampleNodePreviewSignal)
+        self.resampleBoxTI.visible = False
+        self.resampleBoxHD = ResampleBox(title=INPUT_TYPES["HD"])
+        self.resampleBoxHD.signalResampledNode.connect(self.onResampleNodePreviewSignal)
+        self.resampleBoxHD.visible = False
+        self.resampleBoxMask = ResampleBox(title=INPUT_TYPES["Mask"])
+        self.resampleBoxMask.signalResampledNode.connect(self.onResampleNodePreviewSignal)
+        self.resampleBoxMask.visible = False
+
+        resampleBoxesLayout = qt.QHBoxLayout()
+        resampleBoxesLayout.setContentsMargins(0, 0, 0, 0)
+        resampleBoxesLayout.addWidget(self.resampleBoxTI)
+        resampleBoxesLayout.addWidget(self.resampleBoxHD)
+        resampleBoxesLayout.addWidget(self.resampleBoxMask)
+
+        self.resampleBoxesWidget = qt.QWidget()
+        self.resampleBoxesWidget.visible = False
+        self.resampleBoxesWidget.setLayout(resampleBoxesLayout)
+        self.resampleBoxesWidget.objectName = "resample Container"
+
+        self.resampleDataCheckbox = qt.QCheckBox("Allow Resampling")
+        self.resampleDataCheckbox.stateChanged.connect(self.onResampleStateChange)
+        self.resampleDataCheckbox.objectName = "resampleCheckBox"
+
+        gridFormLayout = qt.QFormLayout(gridSection)
+        gridFormLayout.addRow("Wrap HD into Cylinder: ", self.enableWrapCheckBox)
+        gridFormLayout.addRow("Data type:", dataTypeWidget)
+        gridFormLayout.addRow("Grid resolution (mm):", self.finalImageResolutionWidget)
+        gridFormLayout.addRow("Grid dimensions:", self.finalImageSizeWidget)
+        gridFormLayout.addRow("Automatic resampling:", self.resampleDataCheckbox)
+        gridFormLayout.addRow(None, self.resampleBoxesWidget)
+
+        # Parameters section
+        parametersSection = ctk.ctkCollapsibleButton()
+        parametersSection.text = "MPSlib Parameters"
+        parametersSection.collapsed = False
+        parametersSection.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
+        parametersLayout = qt.QFormLayout(parametersSection)
 
         self.ncondSpinBox = qt.QSpinBox()
         self.ncondSpinBox.setToolTip("Set number of conditiong points used in each simulation.")
@@ -442,14 +494,14 @@ class MultiScaleWidget(LTracePluginWidget):
         self.runButton.objectName = "runSequentialButton"
         self.runButton.enabled = False
         self.runButton.setFixedHeight(40)
-        self.runButton.clicked.connect(lambda: self.runLogic(False))
+        self.runButton.clicked.connect(lambda: self.startRun(False))
         self.runButton.setToolTip("Run Generalized ENESIM sequential algorithm")
 
         self.runParallelButton = qt.QPushButton("Run Parallel")
         self.runParallelButton.objectName = "runParallelButton"
         self.runParallelButton.enabled = False
         self.runParallelButton.setFixedHeight(40)
-        self.runParallelButton.clicked.connect(lambda: self.runLogic(True))
+        self.runParallelButton.clicked.connect(lambda: self.startRun(True))
         self.runParallelButton.setToolTip("Run Generalized ENESIM parallel algorithm")
 
         self.cancelButton = qt.QPushButton("Cancel")
@@ -475,12 +527,61 @@ class MultiScaleWidget(LTracePluginWidget):
         self.statusLabel.objectName = "MPS Time QLabel"
 
         self.layout.addWidget(inputSection)
+        self.layout.addWidget(gridSection)
         self.layout.addWidget(parametersSection)
         self.layout.addWidget(outputSection)
         self.layout.addLayout(buttonsHBoxLayout)
         self.layout.addWidget(self.statusLabel)
         self.layout.addWidget(self.localProgressBar)
         self.layout.addStretch(1)
+
+        self.resampleBoxTI.localProgressBar = self.localProgressBar
+        self.resampleBoxHD.localProgressBar = self.localProgressBar
+        self.resampleBoxMask.localProgressBar = self.localProgressBar
+
+    def onGridSpacingChange(self):
+        try:
+            gridSpacing = np.array([float(box.text) for box in self.finalImageResolution])
+            if np.any(gridSpacing <= 0):
+                raise ValueError("Spacing with value 0 is not valid")
+        except ValueError:
+            return
+        else:
+            self.resampleBoxTI.setGrid(gridSpacing)
+            self.resampleBoxHD.setGrid(gridSpacing)
+            self.resampleBoxMask.setGrid(gridSpacing)
+
+            if self.enableWrapCheckBox.isChecked():
+                sides, height = self.resampleBoxHD.calculateImagelogWrapDimensions()
+                self.setSimulationGridSize([sides, sides, height], False)
+
+            elif self.resampleDataCheckbox.isChecked():
+                self.updateFinalImageWidgets(skipSpacing=True)
+
+    def onWrapStateChange(self, state):
+        lock = [0, 1, 0] if state else [0, 0, 0]
+        self.resampleBoxHD.setLock(lock)
+        if state:
+            self.onGridSpacingChange()
+        else:
+            self.updateFinalImageWidgets(skipSpacing=True)
+
+    def onResampleStateChange(self, state):
+        self.resampleBoxesWidget.setVisible(state)
+        if state:
+            self.discreteDataCheckBox.setChecked(qt.Qt.Checked)
+
+        if not self.enableWrapCheckBox.isChecked():
+            self.updateFinalImageWidgets(skipSpacing=True)
+
+    def onContinuousDataStateChange(self, state):
+        if state:
+            self.resampleDataCheckbox.setChecked(qt.Qt.Unchecked)
+            self.discreteDataCheckBox.setChecked(qt.Qt.Unchecked)
+
+    def onDiscreteDataStateChange(self, state):
+        if state:
+            self.continuousDataCheckBox.setChecked(qt.Qt.Unchecked)
 
     def onSaveAllRealizationAsFileCheckBox(self):
         self.exportDirectoryButton.setEnabled(self.saveAllRealizationAsFileCheckBox.isChecked())
@@ -500,33 +601,59 @@ class MultiScaleWidget(LTracePluginWidget):
                 self.saveSingleRealizationCheckBox.setChecked(qt.Qt.Unchecked)
         self.checkRunButtonState()
 
-    def updateFinalImageWidgets(self, node):
-        self.updateOutputPrefix()
-        enableWidgets = True
-        if self.maskWidget.referenceInput.currentNode() is not None:
-            if node != self.maskWidget.referenceInput.currentNode():
-                return
-            enableWidgets = False
-        elif node is None and self.trainingImageWidget.referenceInput.currentNode() is not None:
-            node = self.trainingImageWidget.referenceInput.currentNode()
+    def trainingImageSourceChange(self, node) -> None:
+        self.updateFinalImageWidgets(node, False)
+        self.resampleBoxTI.setSourceID(self.trainingImageWidget.referenceInput.currentNode())
 
+    def updateFinalImageWidgets(self, node=None, skipSpacing=False):
+        self.updateOutputPrefix()
+        enableSpacing = True
+        enableSize = True
         dimensions = [0, 0, 0]
         spacing = [0, 0, 0]
         rseedMax = 100
 
-        if node is not None:
-            spacing = node.GetSpacing()
-            dimensions = node.GetImageData().GetDimensions()
-            rseedMax = min(dimensions[0] * dimensions[1] * dimensions[2], 2147483647)
+        if self.resampleDataCheckbox.isChecked():
+            if self.resampleBoxMask.referenceNodeId is not None:
+                dimensions = self.resampleBoxMask.getResampleDimensions()
+                enableSize = False
+                skipSpacing = True
 
+            elif self.resampleBoxTI.referenceNodeId is not None:
+                dimensions = self.resampleBoxTI.getResampleDimensions()
+
+        else:
+            if self.maskWidget.referenceInput.currentNode() is not None:
+                node = self.maskWidget.referenceInput.currentNode()
+                skipSpacing = False
+                enableSpacing = False
+                enableSize = False
+
+            elif node is None and self.trainingImageWidget.referenceInput.currentNode() is not None:
+                node = self.trainingImageWidget.referenceInput.currentNode()
+
+            if node is not None:
+                spacing = node.GetSpacing()
+                dimensions = node.GetImageData().GetDimensions()
+                rseedMax = min(dimensions[0] * dimensions[1] * dimensions[2], 2147483647)
+
+        self.rseedSpinBox.setRange(0, rseedMax)
+
+        self.setSimulationGridSpacing(spacing, enableSpacing, skipSpacing)
+        self.setSimulationGridSize(dimensions, enableSize)
+
+    def setSimulationGridSpacing(self, spacings, enableWidgets=True, skipUpdateValue=False):
         for dim in range(3):
-            self.finalImageResolution[dim].setText(round(spacing[dim], 5))
+            if not skipUpdateValue:
+                self.finalImageResolution[dim].setText(round(spacings[dim], 5))
             self.finalImageResolution[dim].enabled = enableWidgets
+
+    def setSimulationGridSize(self, dimensions, enableWidgets=True):
+        for dim in range(3):
             self.finalImageSize[dim].setValue(dimensions[dim])
             self.finalImageSize[dim].enabled = enableWidgets
-            self.rseedSpinBox.setRange(0, rseedMax)
 
-    def onReferenceChange(self, node=None):
+    def onHardDataSourceChange(self, node=None):
         self.enableWrapCheckBox.enabled = False
         self.enableWrapCheckBox.setChecked(qt.Qt.Unchecked)
         self.updateHardDataResolution(None)
@@ -540,6 +667,7 @@ class MultiScaleWidget(LTracePluginWidget):
             else:
                 self.setPreviewValues(False, node)
         self.checkRunButtonState()
+        self.resampleBoxHD.setSourceID(node)
 
     def onHardDataChange(self, nodeID):
         self.changePreviewOptionsVisibility()
@@ -553,11 +681,13 @@ class MultiScaleWidget(LTracePluginWidget):
             background = None
             if isinstance(node, slicer.vtkMRMLScalarVolumeNode):
                 background = node
+                sourceVolumeNode = node
 
             elif isinstance(node, slicer.vtkMRMLSegmentationNode):
                 sourceVolumeNode = helpers.getSourceVolume(self.hardDataWidget.mainInput.currentNode())
-                if sourceVolumeNode:
-                    background = sourceVolumeNode
+
+            if sourceVolumeNode:
+                background = sourceVolumeNode
 
             slicer.util.setSliceViewerLayers(
                 background=background,
@@ -567,15 +697,22 @@ class MultiScaleWidget(LTracePluginWidget):
 
             if self.isViewOn:
                 with ProgressBarProc() as progressBar:
-                    self.changePreviewState(progressBar)
+                    self.changePreviewState(None, progressBar)
+
+        self.resampleBoxHD.setReferenceNode(node)
 
         self.updateOutputPrefix()
         self.updateInputWidgetsVisibility()
 
-    def onMaskChange(self):
+    def onMaskSourceChange(self, node) -> None:
+        self.resampleBoxMask.setSourceID(node)
+
+    def onMaskInputChange(self):
         self.updateInputWidgetsVisibility()
         self.updateOutputPrefix()
         self.checkRunButtonState()
+        self.resampleBoxMask.setReferenceNode(self.maskWidget.mainInput.currentNode())
+        self.updateFinalImageWidgets()
 
     def updateInputWidgetsVisibility(self):
         showHardData = True
@@ -583,9 +720,8 @@ class MultiScaleWidget(LTracePluginWidget):
 
         if self.hardDataWidget.mainInput.currentNode() is not None:
             showMask = False
-        else:
-            if self.maskWidget.mainInput.currentNode() is not None:
-                showHardData = False
+        elif self.maskWidget.mainInput.currentNode() is not None:
+            showHardData = False
 
         self.hardDataWidget.setVisible(showHardData)
         self.hardDataWidget.enabled = showHardData
@@ -612,6 +748,8 @@ class MultiScaleWidget(LTracePluginWidget):
                 segmentList.item(item).setCheckState(qt.Qt.Checked)
         self.updateContinuousCheckBoxState()
         self.checkRunButtonState()
+
+        self.resampleBoxTI.setReferenceNode(self.trainingImageWidget.mainInput.currentNode())
 
     def changeRunButtonsState(self, state):
         self.runButton.enabled = state
@@ -658,77 +796,136 @@ class MultiScaleWidget(LTracePluginWidget):
         else:
             self.changeRunButtonsState(False)
 
-    def runLogic(self, isParallel):
-        with ProgressBarProc() as progressBar:
-            if self.isViewOn:
-                self.changePreviewState(progressBar)
+    def startRun(self, isParallel):
+        self.runModeParallel = isParallel
+        if self.resampleDataCheckbox.isChecked():
+            self.resampleStep()
+        else:
+            self.createPreprocessingData()
 
-            TISegmentation = False
-            hardDataSegmentation = False
-            maskSegmentation = False
+    def resampleStep(self):
+        self.resampleQueue = []
+
+        self.resampleQueue.append(self.resampleBoxTI.resampleNode(self.localProgressBar))
+        if self.hardDataWidget.mainInput.currentNode() is not None:
+            self.resampleQueue.append(self.resampleBoxHD.resampleNode(self.localProgressBar))
+
+        if self.maskWidget.mainInput.currentNode() is not None:
+            self.resampleQueue.append(self.resampleBoxMask.resampleNode(self.localProgressBar))
+
+        resampledOutputs = []
+        for cliNode in self.resampleQueue:
+            resampledOutputs.append(cliNode.GetParameterAsString("OutputVolume"))
+
+        self.resampleObserver = self.resampleQueue[-1].AddObserver(
+            "ModifiedEvent", partial(self.resampleCallback, resampledOutputs)
+        )
+
+    def resampleCallback(self, resampledOutputs, caller, event):
+        if caller.IsBusy():
+            return
+
+        if caller.GetStatusString() == "Completed":
+            resampledNodes = []
+            for name in resampledOutputs:
+                node = helpers.tryGetNode(name)
+
+                if node is not None:
+                    resampledNodes.append(node)
+                else:
+                    return
+
+            self.createPreprocessingData(resampledNodes)
+
+        if self.resampleObserver is not None:
+            self.resampleQueue[-1].RemoveObserver(self.resampleObserver)
+            self.resampleObserver = None
+
+        del self.resampleQueue
+        self.resampleQueue = []
+
+    def createPreprocessingData(self, resampledNodes=[]):
+        # Training Image
+        trainingImageReference = None
+        if resampledNodes:
+            trainingImageNode = resampledNodes[0]
+        else:
             if isinstance(self.trainingImageWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
-                TISegmentation = True
-                trainingImageLabelMap = self.segmentationInputToLabelmap(
+                trainingImageNode = self.segmentationInputToLabelmap(
                     self.trainingImageWidget.mainInput.currentNode(), "_TI"
                 )
+            else:
+                trainingImageNode = self.trainingImageWidget.mainInput.currentNode()
 
-            if isinstance(self.hardDataWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
-                hardDataSegmentation = True
-                hardDataLabelMap = self.segmentationInputToLabelmap(self.hardDataWidget.mainInput.currentNode(), "_HD")
-                self.hardDataResolution = np.array(hardDataLabelMap.GetSpacing())
+            if self.continuousDataCheckBox.isChecked():
+                trainingImageReference = self.trainingImageWidget.referenceInput.currentNode()
 
-            if isinstance(self.maskWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
-                maskSegmentation = True
-                maskLabelMap = self.segmentationInputToLabelmap(self.maskWidget.mainInput.currentNode(), "_mask")
+        preprocessing = {
+            "trainingDataVolume": trainingImageNode,
+            "trainingReference": trainingImageReference,
+            "trainingDataSegments": [segment + 1 for segment in self.trainingImageWidget.getSelectedSegments()],
+            "wrapCylinder": self.enableWrapCheckBox.isChecked(),
+        }
+
+        # Hard Data
+        if self.hardDataWidget.mainInput.currentNode() is not None:
+            hardDataReference = None
+            if len(resampledNodes) > 1:
+                hardDataNode = resampledNodes[1]
+                self.hardDataResolution = np.array(hardDataNode.GetSpacing())
+            else:
+                if isinstance(self.hardDataWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
+                    hardDataNode = self.segmentationInputToLabelmap(self.hardDataWidget.mainInput.currentNode(), "_HD")
+                    self.hardDataResolution = np.array(hardDataNode.GetSpacing())
+
+                else:
+                    hardDataNode = self.hardDataWidget.mainInput.currentNode()
+
+                if self.continuousDataCheckBox.isChecked():
+                    hardDataReference = self.hardDataWidget.referenceInput.currentNode()
+
+            preprocessing["hardDataVolume"] = hardDataNode
+            preprocessing["hardDataReference"] = hardDataReference
+            preprocessing["hardDataValues"] = [segment + 1 for segment in self.hardDataWidget.getSelectedSegments()]
+            preprocessing["hardDataResolution"] = self.hardDataResolution
+
+        # Mask
+        elif self.maskWidget.mainInput.currentNode() is not None:
+            if len(resampledNodes) > 1:
+                maskNode = resampledNodes[1]
+            else:
+                if isinstance(self.maskWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
+                    maskNode = self.segmentationInputToLabelmap(self.maskWidget.mainInput.currentNode(), "_mask")
+                else:
+                    maskNode = self.maskWidget.mainInput.currentNode()
+
+            preprocessing.update(
+                {
+                    "maskVolume": maskNode,
+                    "maskSegments": [segment + 1 for segment in self.maskWidget.getSelectedSegments()],
+                }
+            ),
+            if self.continuousDataCheckBox.isChecked():
+                preprocessing.update({"maskReference": self.maskWidget.referenceInput.currentNode()}),
+            else:
+                preprocessing.update(
+                    {
+                        "trainingImageSegmentList": helpers.getSegmentList(
+                            self.trainingImageWidget.mainInput.currentNode()
+                        ),
+                        "maskSegmentList": helpers.getSegmentList(self.maskWidget.mainInput.currentNode()),
+                    }
+                )
+
+        self.runLogic(preprocessing)
+
+    def runLogic(self, preprocessing):
+        with ProgressBarProc() as progressBar:
+            if self.isViewOn:
+                self.changePreviewState(None, progressBar)
 
             try:
                 self.changeRunButtonsState(False)
-
-                preprocessing = {
-                    "trainingDataVolume": (
-                        trainingImageLabelMap if TISegmentation else self.trainingImageWidget.mainInput.currentNode()
-                    ),
-                    "trainingReference": (
-                        self.trainingImageWidget.referenceInput.currentNode()
-                        if self.continuousDataCheckBox.isChecked()
-                        else None
-                    ),
-                    "trainingDataSegments": [segment + 1 for segment in self.trainingImageWidget.getSelectedSegments()],
-                    "wrapCylinder": self.enableWrapCheckBox.isChecked(),
-                }
-
-                if self.hardDataWidget.mainInput.currentNode() is not None:
-                    preprocessing["hardDataVolume"] = (
-                        hardDataLabelMap if hardDataSegmentation else self.hardDataWidget.mainInput.currentNode()
-                    )
-                    preprocessing["hardDataReference"] = (
-                        self.hardDataWidget.referenceInput.currentNode()
-                        if self.continuousDataCheckBox.isChecked()
-                        else None
-                    )
-                    preprocessing["hardDataValues"] = [
-                        segment + 1 for segment in self.hardDataWidget.getSelectedSegments()
-                    ]
-                    preprocessing["hardDataResolution"] = self.hardDataResolution
-
-                if self.maskWidget.mainInput.currentNode() is not None:
-                    preprocessing.update(
-                        {
-                            "maskVolume": maskLabelMap if maskSegmentation else self.maskWidget.mainInput.currentNode(),
-                            "maskSegments": [segment + 1 for segment in self.maskWidget.getSelectedSegments()],
-                        }
-                    ),
-                    if self.continuousDataCheckBox.isChecked():
-                        preprocessing.update({"maskReference": self.maskWidget.referenceInput.currentNode()}),
-                    else:
-                        preprocessing.update(
-                            {
-                                "trainingImageSegmentList": helpers.getSegmentList(
-                                    self.trainingImageWidget.mainInput.currentNode()
-                                ),
-                                "maskSegmentList": helpers.getSegmentList(self.maskWidget.mainInput.currentNode()),
-                            }
-                        ),
 
                 nreal = self.nrealSpinBox.value
                 if self.saveSingleRealizationCheckBox.isChecked() and not (
@@ -786,12 +983,12 @@ class MultiScaleWidget(LTracePluginWidget):
                     preprocessing,
                     mpsConfiguration,
                     saveOptions,
-                    isParallel,
+                    self.runModeParallel,
                     self.localProgressBar,
                     progressBar,
                 )
 
-                if isParallel:
+                if self.runModeParallel:
                     self.cancelButton.enabled = True
                 else:
                     self.changeRunButtonsState(True)
@@ -823,55 +1020,43 @@ class MultiScaleWidget(LTracePluginWidget):
             self.hardDataResolutionText.hide()
             self.hardDataResolutionLabel.hide()
 
-    def getPreviewSegmentationNode(self):
-        node = self.hardDataWidget.mainInput.currentNode()
-        if isinstance(node, slicer.vtkMRMLSegmentationNode):
-            hardDataLabelMap, _ = helpers.createLabelmapInput(node, "previewLabelmap")
-            if hardDataLabelMap.GetImageData().GetDimensions()[1] == 1:
-                self.previewSegmentationNode = self.logic.generatePreview(
-                    hardDataLabelMap,
-                    self.previewDimensionSpinBox.value,
-                    self.depthTopSpinBox.value,
-                    self.depthBottomSpinBox.value,
-                )
-            else:
-                slicer.util.setSliceViewerLayers(background=None, label=hardDataLabelMap, fit=True)
-                self.previewSegmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-                slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-                    hardDataLabelMap, self.previewSegmentationNode
-                )
-                self.previewSegmentationNode.SetName("previewSegmentation")
-                helpers.makeNodeTemporary(self.previewSegmentationNode, hide=True)
-
-        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
-            if node.GetImageData().GetDimensions()[1] == 1:
-                self.previewSegmentationNode = self.logic.generatePreview(
-                    node,
-                    self.previewDimensionSpinBox.value,
-                    self.depthTopSpinBox.value,
-                    self.depthBottomSpinBox.value,
-                )
-            else:
-                slicer.util.setSliceViewerLayers(background=None, label=node, fit=True)
-                self.previewSegmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-                slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-                    node, self.previewSegmentationNode
-                )
-                self.previewSegmentationNode.SetName("previewSegmentation")
-                helpers.makeNodeTemporary(self.previewSegmentationNode, hide=True)
-
+    def getPreviewSegmentationNode(self, node):
+        if node.GetImageData().GetDimensions()[1] == 1:
+            self.previewSegmentationNode = self.logic.generatePreview(
+                node,
+                self.previewDimensionSpinBox.value,
+                self.depthTopSpinBox.value,
+                self.depthBottomSpinBox.value,
+            )
         else:
-            raise TypeError("Cannot create preview of the the selected input")
+            slicer.util.setSliceViewerLayers(background=None, label=node, fit=True)
+            self.previewSegmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(node, self.previewSegmentationNode)
+            self.previewSegmentationNode.SetName("previewSegmentation")
+            helpers.makeNodeTemporary(self.previewSegmentationNode, hide=True)
 
-    def onViewPreviewToggle(self):
+    def onResampleNodePreviewSignal(self, node, title, widget):
         with ProgressBarProc() as progressBar:
-            self.changePreviewState(progressBar)
+            self.changePreviewState(node, progressBar, title, widget)
 
-    def changePreviewState(self, progressBar):
+    def onHardDataPreviewClick(self):
+        with ProgressBarProc() as progressBar:
+            node = self.hardDataWidget.mainInput.currentNode()
+            if node is None:
+                return
+            if isinstance(node, slicer.vtkMRMLSegmentationNode):
+                node, _ = helpers.createLabelmapInput(node, "previewLabelmap")
+                node.CreateDefaultDisplayNodes()
+
+            self.changePreviewState(node, progressBar)
+
+    def changePreviewState(self, node, progressBar=None, title=INPUT_TYPES["HD"], widget: ResampleBox = None):
+        self.currentPreview = title
         if not self.isViewOn:
-            progressBar.setMessage("Generating preview")
+            if progressBar is not None:
+                progressBar.setMessage("Generating preview")
             try:
-                self.getPreviewSegmentationNode()
+                self.getPreviewSegmentationNode(node)
             except TypeError:
                 self.previewButton.enabled = False
 
@@ -883,30 +1068,52 @@ class MultiScaleWidget(LTracePluginWidget):
 
             self.previewSegmentationNode.CreateClosedSurfaceRepresentation()
 
-            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            if widget is not None:
+                widget.changePreviewButton(True)
+            else:
+                self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+
             self.isViewOn = True
 
         elif self.isViewOn:
+            self.disablePreviews()
+
+    def disablePreviews(self):
+        with ProgressBarProc() as progressBar:
             progressBar.setMessage("Removing preview")
             self.previewSegmentationNode.RemoveClosedSurfaceRepresentation()
             helpers.removeTemporaryNodes()
+
             self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            self.resampleBoxTI.changePreviewButton(False)
+            self.resampleBoxHD.changePreviewButton(False)
+            self.resampleBoxMask.changePreviewButton(False)
+
             self.isViewOn = False
 
+    def getSegmentListWidget(self):
+        if self.currentPreview == INPUT_TYPES["TI"]:
+            return self.trainingImageWidget.segmentListGroup[1]
+        elif self.currentPreview == INPUT_TYPES["Mask"]:
+            return self.maskWidget.segmentListGroup[1]
+        else:
+            return self.hardDataWidget.segmentListGroup[1]
+
     def checkSegmentsVisibility(self, displayNode):
-        for n in range(self.hardDataWidget.segmentListGroup[1].count):
-            if not self.hardDataWidget.segmentListGroup[1].item(n).checkState() == qt.Qt.Checked:
-                displayNode.SetSegmentOpacity(self.hardDataWidget.segmentListGroup[1].item(n).text(), 0)
+        segmentWidget = self.getSegmentListWidget()
+        for n in range(segmentWidget.count):
+            if not segmentWidget.item(n).checkState() == qt.Qt.Checked:
+                displayNode.SetSegmentOpacity(segmentWidget.item(n).text(), 0)
 
     def onSegmentVisibilityChange(self, id, isVisible):
         if self.isViewOn:
             displayNode = self.previewSegmentationNode.GetDisplayNode()
             displayNode.SetSegmentOpacity(id, 1 if isVisible else 0)
 
-    def listItemChange(self, item=None):
+    def listItemChange(self, item, title):
         self.trainingImageWidget.dimensionsGroup.hide()
         self.checkRunButtonState()
-        if item and self.isViewOn:
+        if item and self.isViewOn and title == self.currentPreview:
             self.onSegmentVisibilityChange(item.text(), item.checkState() == qt.Qt.Checked)
 
     def changePreviewOptionsVisibility(self, isVisible: bool = False):
@@ -925,6 +1132,8 @@ class MultiScaleWidget(LTracePluginWidget):
         isScalar = tiScalar or hardDataScalar
 
         self.continuousDataCheckBox.enabled = not isScalar
+        self.discreteDataCheckBox.enabled = not isScalar
+        self.resampleDataCheckbox.enabled = not isScalar
         if isScalar:
             self.continuousDataCheckBox.setChecked(qt.Qt.Checked)
             self.isContinuousCheckBoxLocked = True

@@ -64,7 +64,13 @@ def get_models_by_tag(tags: list[str]) -> list[str]:
 
 
 def get_metadata(model_dir: str) -> dict:
+    if not model_dir:
+        raise ValueError("Model directory parameter is empty.")
+
     model_dir = Path(model_dir)
+    if not model_dir.exists():
+        raise FileNotFoundError(f"Model directory '{model_dir.as_posix()}' does not exist.")
+
     with open(model_dir / f"meta.json") as f:
         metadata = json.load(f)
     return metadata

@@ -83,7 +83,6 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 "BigImage",
                 [
                     "BigImage",
-                    "StreamlinedSegmentation",
                     "PolynomialShadingCorrectionBigImage",
                     "BoundaryRemovalBigImage",
                     "ExpandSegmentsBigImage",

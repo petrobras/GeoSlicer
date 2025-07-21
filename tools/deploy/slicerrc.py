@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import logging
 import os
@@ -25,7 +26,7 @@ from ltrace.slicer.module_utils import loadModules, fetchModulesFrom
 from ltrace.slicer.widget.global_progress_bar import GlobalProgressBar
 from ltrace.slicer.widget.memory_usage import MemoryUsageWidget
 from ltrace.slicer.widget.module_header import ModuleHeader
-from ltrace.slicer_utils import slicer_is_in_developer_mode, getResourcePath
+from ltrace.slicer_utils import slicer_is_in_developer_mode, getResourcePath, externalModulesPath
 from ltrace.slicer import helpers
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.utils.custom_event_filter import CustomEventFilter
@@ -95,62 +96,10 @@ def modelsPathDialog():
 
 
 def ltraceBugReport():
-    ltraceBugReportDialog = qt.QDialog(slicer.util.mainWindow())
-    ltraceBugReportDialog.setWindowTitle("Generate a bug report")
-    ltraceBugReportDialog.setMinimumSize(600, 400)
-    layout = qt.QFormLayout(ltraceBugReportDialog)
-    layout.setLabelAlignment(qt.Qt.AlignRight)
+    from ltrace.slicer.bug_report.bug_report_widget import BugReportDialog
 
-    layout.addRow("Please describe the problem in the area bellow:", None)
-    errorDescriptionArea = qt.QPlainTextEdit()
-    layout.addRow(errorDescriptionArea)
-    layout.addRow(" ", None)
-
-    ltraceBugReportDirectoryButton = ctk.ctkDirectoryButton()
-    ltraceBugReportDirectoryButton.caption = "Select a directory to save the report"
-    layout.addRow("Report destination directory:", None)
-    layout.addRow(ltraceBugReportDirectoryButton)
-    layout.addRow(" ", None)
-
-    buttonsLayout = qt.QHBoxLayout()
-    generateButton = qt.QPushButton("Generate report")
-    generateButton.setFixedHeight(40)
-    buttonsLayout.addWidget(generateButton)
-    cancelButton = qt.QPushButton("Cancel")
-    cancelButton.setFixedHeight(40)
-    buttonsLayout.addWidget(cancelButton)
-    layout.addRow(buttonsLayout)
-
-    def ltraceBugReportGenerate():
-        reportPath = Path(ltraceBugReportDirectoryButton.directory).absolute() / "GeoSlicerBugReport"
-        reportPath.mkdir(parents=True, exist_ok=True)
-
-        geoslicerLogFiles = list(slicer.app.recentLogFiles())
-        trackingManager = getAppContext().getTracker()
-        trackingLogFiles = trackingManager.getRecentLogs() if trackingManager else []
-
-        for file in geoslicerLogFiles + trackingLogFiles:
-            try:
-                shutil.copy2(file, str(reportPath))
-            except FileNotFoundError:
-                pass
-
-        Path(reportPath / "bug_description.txt").write_text(errorDescriptionArea.toPlainText())
-        shutil.make_archive(reportPath, "zip", reportPath)
-
-        try:
-            shutil.rmtree(str(reportPath))
-        except OSError as e:
-            # If for some reason can't delete the directory
-            pass
-
-        errorDescriptionArea.setPlainText("")
-        ltraceBugReportDialog.close()
-
-    generateButton.clicked.connect(ltraceBugReportGenerate)
-    cancelButton.connect("clicked()", ltraceBugReportDialog.close)
-
-    ltraceBugReportDialog.exec_()
+    dialog = BugReportDialog(slicer.util.mainWindow())
+    dialog.exec_()
 
 
 class ExpandToolbarActionNames:
@@ -294,8 +243,8 @@ def setModuleSelectorToolBar():
 
 def addEnvSelectorMenu():
     envButton = qt.QToolButton(APP_TOOLBARS["ModuleSelectorToolBar"])
-    envButton.setText("Choose a environment")
-    envButton.setToolTip("Change current envinronment")
+    envButton.setText("Choose an environment")
+    envButton.setToolTip("Change current environment")
     envButton.objectName = "environment Selector Menu"
 
     menu = qt.QMenu(envButton)
@@ -370,6 +319,12 @@ def setDialogToolBar():
         qt.QIcon((ICON_DIR / "IconSet-dark" / "Apps.svg").as_posix()),
         "Data Sources",
         lambda: slicer.modules.AppContextInstance.modules.showDataLoaders(APP_TOOLBARS["ModuleToolBar"]),
+    )
+
+    dialogToolBar.addAction(
+        qt.QIcon((ICON_DIR / "IconSet-dark" / "Extensions.svg").as_posix()),
+        "Module Installer",
+        lambda: slicer.util.mainWindow().moduleSelector().selectModule("ModuleInstaller"),
     )
 
     dialogToolBar.addAction(
@@ -951,6 +906,7 @@ def loadFoundations(modules):
         "Charts",
         "CustomizedSegmentEditor",
         "SegmentationEnv",
+        "ModuleInstaller",
     ]
 
     coreModules = [modules[m] for m in corePlugins]
@@ -960,16 +916,6 @@ def loadFoundations(modules):
     cliModules = [modules[m] for m in modules if m.endswith("CLI")]
 
     loadModules(cliModules, permanent=True, favorite=False)
-
-
-# def tryPetrobrasPlugins():
-#     try:
-#         if not slicer_is_in_developer_mode():
-#             from ltrace.slicer.helpers import install_git_module
-#
-#             install_git_module("https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git")
-#     except Exception as e:
-#         logging.warning("Petrobras GeoSlicer plugins not installed. Cause: " + str(e))
 
 
 def setGPUStatus():
@@ -1262,10 +1208,16 @@ def disableThemeSelectorInSettings():
     styleBox.setToolTip("Light Mode support coming soon")
 
 
+def updateLogConfiguration():
+    qt.QSettings().setValue("LogFiles/NumberOfFilesToKeep", 20)
+    qt.QSettings().sync()
+
+
 def configure(rebuild_index=False):
     mainWindow = getAppContext().mainWindow
     mainWindow.showMaximized()
 
+    updateLogConfiguration()
     setModulePanelVisible(False)
     slicer.app.setRenderPaused(True)
 
@@ -1346,15 +1298,43 @@ def configure(rebuild_index=False):
 
     setModulePanelVisible(True)
 
-    def _showDataLoaders():
-        showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
-        ApplicationObservables().applicationLoadFinished.disconnect(_showDataLoaders)
+    mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
 
-    ApplicationObservables().applicationLoadFinished.connect(_showDataLoaders)
+    def _startEnv():
+        ApplicationObservables().applicationLoadFinished.disconnect(_startEnv)
+
+        shouldRunTests = slicer.app.userSettings().value("LTraceTestsWidget/RunOnStartup", None) is not None
+        preLoadEnvironment = getCustomArguments().preLoadEnvironment
+        loaderInfo = [info for info in LOADERS.values() if info.environment == preLoadEnvironment]
+        loaderInfo = loaderInfo[0] if loaderInfo else None
+
+        if loaderInfo is None:
+            if shouldRunTests:
+                slicer.modules.AppContextInstance.runTest()
+                return
+
+            showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
+            return
+
+        loadEnvironment(APP_TOOLBARS["ModuleToolBar"], loaderInfo)
+        if shouldRunTests:
+            slicer.modules.AppContextInstance.runTest()
+
+    ApplicationObservables().applicationLoadFinished.connect(_startEnv)
 
     slicer.modules.RemoteServiceInstance.setupRemoteService()
 
     expandSceneFolder()
+
+
+def getCustomArguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="GeoSlicer application custom arguments.")
+
+    parser.add_argument("--preLoadEnvironment", default=None, help="Run test for SupervisedTrainingDataGenerator")
+
+    args = parser.parse_args(slicer.app.commandOptions().unparsedArguments)
+
+    return args
 
 
 def createIndex():
@@ -1362,7 +1342,7 @@ def createIndex():
         pb.setMessage("Indexing installed modules...")
         pb.setProgress(0)
 
-        ltracePlugins = fetchModulesFrom(path=GEOSLICER_MODULES_DIR, name="GeoSlicer")
+        allPlugins = fetchModulesFrom(path=GEOSLICER_MODULES_DIR, name="GeoSlicer")
 
         pb.setProgress(10)
         pb.setMessage("Indexing installed commands...")
@@ -1371,17 +1351,13 @@ def createIndex():
         if not cliDir.exists():
             cliDir = GEOSLICER_MODULES_DIR
 
-        ltracePlugins.update(fetchModulesFrom(path=cliDir, depth=2, name="GeoSlicer CLI"))
+        allPlugins.update(fetchModulesFrom(path=cliDir, depth=2, name="GeoSlicer CLI"))
+
+        externalModules = fetchModulesFrom(externalModulesPath(), depth=2, name="External")
+        allPlugins.update(externalModules)
 
         pb.setProgress(20)
         pb.setMessage("Saving indexing...")
-
-        # TODO how to control that externally
-        petroPlugins = fetchModulesFrom(
-            path="https://git.ep.petrobras.com.br/DRP/geoslicer_plugins.git", depth=2, name="External"
-        )
-
-        allPlugins = {**ltracePlugins, **petroPlugins}
 
         slicer.app.revisionUserSettings().setValue(f"{APP_NAME}/LTraceModules", pickle.dumps(allPlugins, 0).decode())
 
@@ -1404,11 +1380,10 @@ def bootstrapped(userSettings):
     revision = slicer.app.revisionUserSettings()
     booted = toBool(revision.value(f"{APP_NAME}/Booted", False))
     populated = len(revision.value(f"{APP_NAME}/LTraceModules", "")) > 0
-    favoriteModules = userSettings.value("Modules/FavoriteModules", []) or []
-    conflicted = len(favoriteModules) > 0
+    favorited = userSettings.value("Modules/FavoriteModules", None)
     themeIsDark = userSettings.value("Styles/Style", "") == "Dark Slicer"
 
-    return not conflicted and booted and populated and themeIsDark
+    return not favorited and booted and populated and themeIsDark
 
 
 def bootstrap(userSettings):
@@ -1418,7 +1393,7 @@ def bootstrap(userSettings):
         setModulePanelVisible(False)
         slicer.app.setRenderPaused(True)
 
-        favoriteModules = userSettings.value("Modules/FavoriteModules", []) or []
+        favoriteModules = userSettings.value("Modules/FavoriteModules", None)
         if favoriteModules:
             msg = (
                 "This GeoSlicer version is not compatible with the previous one. We already fixed the configuration for you"

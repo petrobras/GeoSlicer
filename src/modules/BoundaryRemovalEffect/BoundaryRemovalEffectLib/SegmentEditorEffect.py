@@ -107,10 +107,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
             segmentation = segmentationNode.GetSegmentation()
 
-            for segToAdd, segID, nextSegID in self.invisibleSegments:
-                segmentation.AddSegment(segToAdd, segID, nextSegID)
-            self.invisibleSegments.clear()
-            segmentation.RemoveSegment(self.filterSegmentID)
+            self.restoreSegments()
 
             segmentIDs = vtk.vtkStringArray()
             segmentation.GetSegmentIDs(segmentIDs)
@@ -341,7 +338,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     #
     def initialize(self):
         if self.scriptedEffect.parameterSetNode() is None:
-            slicer.util.errorDisplay("Failed to initialize the effect. The selected node is not valid.")
+            logging.warning("Failed to initialize the effect. The selected node is not valid.")
             return
 
         self.scriptedEffect.saveStateForUndo()
@@ -407,7 +404,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         for index in range(segmentIDs.GetNumberOfValues()):
             segmentationNode.GetDisplayNode().SetSegmentVisibility(segmentIDs.GetValue(index), False)
 
-        self.filterSegmentID = segmentationNode.GetSegmentation().AddEmptySegment("Edges")
+        self.filterSegmentID = segmentationNode.GetSegmentation().AddEmptySegment("Edges", "Edges")
         segmentationNode.GetSegmentation().GetSegment(self.filterSegmentID).SetColor([0, 0, 1])
         self.scriptedEffect.parameterSetNode().SetAndObserveSourceVolumeNode(self.filterOutputVolume)
         self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(self.filterSegmentID)
@@ -520,6 +517,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         widget.setParameters(**data)
 
+    def restoreSegments(self):
+        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+        segmentation = segmentationNode.GetSegmentation()
+        # Restore in reverse order so next segment exists when current segment is added
+        for segToAdd, segID, nextSegID in reversed(self.invisibleSegments):
+            segmentation.AddSegment(segToAdd, segID, nextSegID)
+        self.invisibleSegments.clear()
+
     def onApply(self):
         try:
             # Get master volume image data
@@ -556,11 +561,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             modifierLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet
         )
 
-        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-        segmentation = segmentationNode.GetSegmentation()
-        for segToAdd, segID, nextSegID in self.invisibleSegments:
-            segmentation.AddSegment(segToAdd, segID, nextSegID)
-        self.invisibleSegments.clear()
+        self.restoreSegments()
 
         # De-select effect
         self.scriptedEffect.selectEffect("")

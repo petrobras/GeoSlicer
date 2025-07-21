@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class TestState(Enum):
+    __test__ = False
+
     NOT_INITIALIZED = 0
     RUNNING = 1
     FAILED = 2
@@ -22,3 +24,10 @@ class TestState(Enum):
             return "Cancelled"
 
         raise ValueError("Invalid state.")
+
+
+class CaseType(Enum):
+    __test__ = False
+
+    TEST = 0
+    TEMPLATE_GENERATOR = 1

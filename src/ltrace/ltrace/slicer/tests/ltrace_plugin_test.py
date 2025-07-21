@@ -10,7 +10,7 @@ from ltrace.slicer import helpers
 from humanize import naturalsize
 from types import MappingProxyType
 from typing import List
-from ltrace.slicer.tests.constants import TestState
+from ltrace.slicer.tests.constants import TestState, CaseType
 from ltrace.slicer.tests.test_case import TestCase
 from ltrace.slicer.tests.utils import (
     log,
@@ -59,10 +59,10 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         self.__break_on_failure = break_on_failure
         self.__after_clear = after_clear
 
-        test_case_method_list = self.get_test_case_methods()
+        test_case_method_list = self.get_case_methods(CaseType.TEST)
         self.__test_cases: List[TestCase] = self.__get_methods(test_case_method_list, test_case_filter)
 
-        generate_method_list = self.get_generate_methods()
+        generate_method_list = self.get_case_methods(CaseType.TEMPLATE_GENERATOR)
         self.__generate_methods: List[TestCase] = self.__get_methods(generate_method_list, test_case_filter)
 
         self.__test_state = TestState.NOT_INITIALIZED
@@ -70,6 +70,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         self.__warnings = []
         self.__widgets = {}
         self.__timeout_timer = None
+        self.__test_suite_name = self.__class__.__name__
 
     @property
     def widgets(self):
@@ -92,20 +93,12 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         return self.__warnings
 
     @classmethod
-    def get_test_case_methods(cls):
+    def get_case_methods(cls, caseType: CaseType) -> list[TestCase]:
+        prefix = "test" if caseType == CaseType.TEST else "generate"
         methods = list()
         for attribute in dir(cls):
             attr = getattr(cls, attribute)
-            if hasattr(attr, "__name__") and attr.__name__.startswith("test_"):
-                methods.append(attr)
-        return methods
-
-    @classmethod
-    def get_generate_methods(cls):
-        methods = list()
-        for attribute in dir(cls):
-            attr = getattr(cls, attribute)
-            if hasattr(attr, "__name__") and attr.__name__.startswith("generate_"):
+            if hasattr(attr, "__name__") and attr.__name__.startswith(f"{prefix}_"):
                 methods.append(attr)
         return methods
 
@@ -198,7 +191,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         self.__test_state = TestState.RUNNING
 
         log(
-            f"Starting test session from {self.__class__.__name__} suite...",
+            f"Starting test session from {self.__test_suite_name} suite...",
             show_window=False,
         )
 
@@ -225,6 +218,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
                 show_window=False,
             )
             timeout_sec = (test.timeout_ms or self.GLOBAL_TIMEOUT_MS) // 1000
+
             with ThreadingTimeout(seconds=timeout_sec) as timeout_ctx:
                 test()
 
@@ -247,14 +241,14 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
 
         if valid_test_count == len(test_cases):
             log(
-                f"\nTest session from {self.__class__.__name__} finished succesfully! "
+                f"\nTest session from {self.__test_suite_name} finished succesfully! "
                 + f"Total test cases: {valid_test_count}\n"
             )
             self.__test_state = TestState.SUCCEED
         else:
             self.__test_state = TestState.FAILED
             log(
-                f"\nTest session from {self.__class__.__name__} finished with errors! "
+                f"\nTest session from {self.__test_suite_name} finished with errors! "
                 + f"Total valid test cases: {valid_test_count} from {len(test_cases)}\n"
             )
 
@@ -398,7 +392,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         if not failed_test_cases:
             return None
 
-        text = f"Errors from {self._module_name} test suite:"
+        text = f"Errors from {self.__test_suite_name} test suite:"
         for test in failed_test_cases:
             text += "\n" + "=" * 66
             text += f"\n{str(test)}"
@@ -410,7 +404,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         if not self.warnings:
             return ""
 
-        text = f"Warnings from {self._module_name} test suite:"
+        text = f"Warnings from {self.__test_suite_name} test suite:"
         for warning in self.warnings:
             text += "\n" + "=" * 66
             text += f"\n{warning}"
@@ -424,7 +418,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         Args:
             interval_ms (int, optional): The maximum duration in milliseconds. Defaults to 1000 ms.
         """
-        self.__timeout_timer = qt.QTimer()
+        self.__timeout_timer = qt.QTimer(slicer.modules.AppContextInstance.mainWindow)
         self.__timeout_timer.setSingleShot(True)
         self.__timeout_timer.timeout.connect(self.__on_timeout)
         self.__timeout_timer.setInterval(interval_ms)

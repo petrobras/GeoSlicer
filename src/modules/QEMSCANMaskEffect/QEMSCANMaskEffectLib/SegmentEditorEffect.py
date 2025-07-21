@@ -76,10 +76,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
-        return slicer.util.mainWindow().cursor
+        return slicer.modules.AppContextInstance.mainWindow.cursor
 
-    def masterVolumeNodeChanged(self):
-        sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
+    def onSourceVolumeNodeChanged(self):
+        parameterSetNode = self.scriptedEffect.parameterSetNode()
+        sourceVolumeNode = parameterSetNode.GetSourceVolumeNode() if parameterSetNode is not None else None
 
         if sourceVolumeNode is not None:
             if sourceVolumeNode.IsA(slicer.vtkMRMLLabelMapVolumeNode.__name__):

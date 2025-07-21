@@ -19,13 +19,13 @@ import tempfile
 import time
 import vtk
 import vtk.util.numpy_support as vn
+import traceback
 
 from ltrace import transforms
-from ltrace.slicer.module_utils import clone_or_update_repo
 from ltrace.slicer.node_attributes import (
+    ColorMapSelectable,
     NodeEnvironment,
     NodeTemporarity,
-    LosslessAttribute,
 )
 
 from pathlib import Path
@@ -289,13 +289,10 @@ def getCurrentEnvironment():
     try:
         envName = slicer.modules.AppContextInstance.modules.currentWorkingDataType[1]
     except Exception as error:
+        logging.debug(f"{error}.\n{traceback.format_exc()}")
         return None
 
-    for env in NodeEnvironment:
-        if env.value == envName:
-            return env
-
-    return None
+    return NodeEnvironment(envName)
 
 
 def in_image_log_environment():
@@ -521,11 +518,15 @@ def removeTemporaryNodes(environment=None, nodes=None):
             displayNode = node.GetDisplayNode()
             if displayNode and hasattr(displayNode, "GetColorNode"):
                 colorNode = displayNode.GetColorNode()
-                if colorNode:
-                    logging.debug(f"Removing temporary node named {colorNode.GetName()} with id {colorNode.GetID()}")
+                if colorNode and colorNode.GetAttribute(ColorMapSelectable.name()) is None:
+                    logging.debug(
+                        f"Removing the color node from temporary node named {colorNode.GetName()} with id {colorNode.GetID()}"
+                    )
                     slicer.mrmlScene.RemoveNode(colorNode)
 
-                logging.debug(f"Removing temporary node named {displayNode.GetName()} with id {displayNode.GetID()}")
+                logging.debug(
+                    f"Removing the display node from temporary node named {displayNode.GetName()} with id {displayNode.GetID()}"
+                )
                 slicer.mrmlScene.RemoveNode(displayNode)
 
         logging.debug(f"Removing temporary node named {name} with id {node.GetID()}")
@@ -961,16 +962,76 @@ def updateSegmentationFromLabelMap(
         raise RuntimeError("Importing of segment failed.")
 
 
-def tryGetNode(*tokens):
+def tryGetNode(*tokens: str, hasImageData: bool = False) -> slicer.vtkMRMLNode:
+    """Retrieve a single MRML node from the Slicer scene that match the given name patterns.
+
+    Args:
+        *tokens (list[str]): One or more string tokens used as patterns for matching node names.
+        hasImageData (bool, optional): If True, only returns a node that has valid image data
+            (i.e., has a GetImageData() method that does not return None). Defaults to False.
+
+    Returns:
+        slicer.vtkMRMLNode or None: The first matching node found that satisfies the conditions,
+        or None if no valid node is found.
+    """
     for token in tokens:
         if token:
             try:
-                node = slicer.util.getNode(handleNodeNameToRegex(token))
+                if hasImageData:
+                    nodename = handleNodeNameToRegex(token)
+                    nodes = slicer.util.getNodes(nodename, useLists=True)
+                    if len(nodes) > 0:
+                        for node in nodes[nodename]:
+                            if hasattr(node, "GetImageData") and node.GetImageData() is not None:
+                                return node
+                    else:
+                        return None
+                else:
+                    node = slicer.util.getNode(handleNodeNameToRegex(token))
                 return node
             except slicer.util.MRMLNodeNotFoundException:
                 continue  # searching
 
     return None
+
+
+def tryGetNodes(*tokens: list[str], hasImageData: bool = False) -> Tuple[list[slicer.vtkMRMLNode], int]:
+    """Retrieve a list of MRML nodes from the Slicer scene that match the given name patterns.
+
+    Args:
+        *tokens (list[str]): One or more string tokens to use as patterns for matching node names.
+        hasImageData (bool, optional): If True, only returns nodes that have valid image data
+            (i.e., nodes with a non-None result from GetImageData()). Defaults to False.
+
+    Returns:
+        Tuple[list[slicer.vtkMRMLNode], int]: A tuple containing:
+            - A list of matching nodes (filtered if hasImageData=True),
+            - The number of nodes found.
+        If no matching nodes are found, returns (None, 0).
+    """
+    for token in tokens:
+        if not token:
+            continue
+        try:
+            matched_nodes = slicer.util.getNodes(handleNodeNameToRegex(token), useLists=True)
+            if not matched_nodes:
+                continue
+
+            nodes_list = list(matched_nodes.values())[0]
+
+            if hasImageData:
+                nodes_with_image = [
+                    node for node in nodes_list if hasattr(node, "GetImageData") and node.GetImageData() is not None
+                ]
+                if nodes_with_image:
+                    return nodes_with_image, len(nodes_with_image)
+            else:
+                return nodes_list, len(nodes_list)
+
+        except slicer.util.MRMLNodeNotFoundException:
+            continue
+
+    return None, 0
 
 
 def mergeSegments(labelmapNode, labels="all"):
@@ -1953,6 +2014,13 @@ def highlight_error(widget, widget_name="QWidget"):
         widget.setStyleSheet(widget_name + " {background-color: #FFC0C0}")
 
 
+def highlight_warning(widget, widget_name="QWidget"):
+    if themeIsDark():
+        widget.setStyleSheet(widget_name + " {background-color: #606000}")
+    else:
+        widget.setStyleSheet(widget_name + " {background-color: #FFFFC0}")
+
+
 def remove_highlight(widget):
     widget.setStyleSheet("")
 
@@ -2006,63 +2074,6 @@ class ElapsedTime:
             if self.tag:
                 self.readout = f"[{self.tag}] {self.readout}"
             print(self.readout)
-
-
-class GitImportError(Exception):
-    pass
-
-
-def install_git_module(remote, collection=False):
-    from ltrace.slicer.app import getApplicationInfo
-
-    modules_parent_dir = get_scripted_modules_path().parent
-    third_party_dir = modules_parent_dir / "qt-scripted-external-modules"
-
-    repo = clone_or_update_repo(remote, third_party_dir, branch="master", collection=collection)
-
-    return repo
-
-    # modules_folders = (
-    #     *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-    #     *(("lib\\" + geoslicer_version + "\\qt-scripted-modules").split("\\")),
-    # )
-    # modules_path = os.path.join(modules_folders[0], os.sep, *modules_folders[1:])
-    #
-    # json_folders = (
-    #     *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-    #     *(("lib\\" + geoslicer_version + "\\qt-scripted-modules\\Resources\\json\\WelcomeGeoSlicer.json").split("\\")),
-    # )
-    # json_path = os.path.join(json_folders[0], os.sep, *json_folders[1:])
-    #
-    # new_module_name = remote.split("/")[-1].split(".")[0]
-    # new_module_path = os.path.join(modules_path, new_module_name)
-    # _ = import_git().Repo.clone_from(remote, new_module_path, env={"GIT_SSL_NO_VERIFY": "1"})
-    # config_module_paths(new_module_name, new_module_path, json_path)
-
-
-def config_module_paths(new_module_name, new_module_path, json_path):
-    import json
-
-    if f"{new_module_name}.py" in os.listdir(new_module_path):
-        with open(json_path, "r") as json_file:
-            data = json.load(json_file)
-        data["CUSTOM_REL_PATHS"].append(new_module_path)
-        data["VISIBLE_LTRACE_PLUGINS"].append(new_module_name)
-        with open(json_path, "w") as json_file:
-            json.dump(data, json_file, indent=4)
-    else:
-        new_modules_subfolders = {}
-        for subfolder in [i for i in os.listdir(new_module_path) if os.path.isdir(os.path.join(new_module_path, i))]:
-            new_module_subfolder = os.path.join(new_module_path, subfolder)
-            if f"{subfolder}.py" in os.listdir(new_module_subfolder):
-                new_modules_subfolders[subfolder] = new_module_subfolder
-        with open(json_path, "r") as json_file:
-            data = json.load(json_file)
-        for new_submodule_name, new_submodule_path in new_modules_subfolders.items():
-            data["CUSTOM_REL_PATHS"].append(new_submodule_path)
-            data["VISIBLE_LTRACE_PLUGINS"].append(new_submodule_name)
-        with open(json_path, "w") as json_file:
-            json.dump(data, json_file, indent=4)
 
 
 def handleNodeNameToRegex(nodeName: str) -> str:
@@ -2603,3 +2614,27 @@ def validateSourceVolume(annotationNode, soiNode, imageNode):
         slicer.modules.AppContextInstance.mainWindow, "Segmentation reference mismatch", message
     )
     return ret == qt.QMessageBox.Yes
+
+
+def limitLogFiles(logDir: Path, baseFilename: str, maxFiles: int) -> None:
+    """Ensures that only `maxFiles` log files exist in `logDir` by deleting the oldest ones.
+
+    Args:
+        logDir (Path): The log files path.
+        baseFilename (str): The log files base name.
+        maxFiles (int): The maximum number of files that should exist.
+    """
+    logFiles = sorted(Path(logDir).glob(f"{baseFilename}*"), key=os.path.getctime)
+
+    while len(logFiles) > maxFiles - 1:
+        oldestFile = logFiles.pop(0)
+        oldestFile.unlink()
+
+
+def displayScaleFactor():
+    if sys.platform.startswith("win"):
+        import ctypes
+
+        mainScreen = 0
+        return ctypes.windll.shcore.GetScaleFactorForDevice(mainScreen) / 100.0
+    return slicer.app.devicePixelRatio()

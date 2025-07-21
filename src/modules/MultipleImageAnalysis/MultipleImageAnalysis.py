@@ -18,6 +18,7 @@ import vtk, qt, ctk, slicer
 import logging
 import numpy as np
 import pandas as pd
+import traceback
 
 # Checks if closed source code is available
 try:
@@ -567,7 +568,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
             try:
                 self.__imageLogDataLogic.removeViewFromPrimaryNode(self.__generatedReportNodeId)
             except Exception as error:
-                logging.error(error)
+                logging.error(f"{error}.\n{traceback.format_exc()}")
 
             self.__generatedReportNodeId = None
 

@@ -3,14 +3,17 @@ import qt
 import slicer
 
 import json
+import logging
 import ltrace.algorithms.detect_cups as cups
+import traceback
 
 from .ManualCylinderCrop import ManualCylinderCropWidget
 from .RawLoader import RawLoaderWidget
 from dataclasses import dataclass, field
-from ltrace.slicer import microct
+from ltrace.slicer import microct, tescan
 from ltrace.slicer.helpers import (
     highlight_error,
+    BlockSignals,
 )
 from ltrace.slicer.ui import DirOrFileWidget
 from ltrace.slicer_utils import *
@@ -46,6 +49,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         super().__init__(parent)
         self.moduleName = "MicroCTLoader"
         self.is3dBatch = False
+        self.loadOrigin = [0 * ureg.millimeter] * 3
 
     def exit(self):
         self.rawWidget.exit()
@@ -250,6 +254,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
     def enableProcessing(self, enable):
         self.processingSection.collapsed = not enable
         self.processingSection.enabled = enable
+        self.cropCylinderCheckBox.setChecked(enable)
 
     def onPathSelected(self, path):
         self.pathWidget.pathLineEdit.setStyleSheet("")
@@ -285,9 +290,17 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             message = "Will import a single image from RAW file"
             self.rawWidget.onCurrentPathChanged(path)
         else:  # File path is a directory or a single file
-            spacing = microct.detectSpacing(Path(self.pathWidget.path))
-            mmSpacing = [f"{s.m_as('micrometer'):.3f}" for s in spacing] if spacing else None
-            self._setImageSpacingVisibility(True, values=mmSpacing)
+            tescan_info = tescan.get_tescan_info(path)
+            if tescan_info is None:
+                spacing = microct.detectSpacing(Path(self.pathWidget.path))
+                mmSpacing = [f"{s.m_as('micrometer'):.3f}" for s in spacing] if spacing else None
+                self._setImageSpacingVisibility(True, values=mmSpacing)
+            else:
+                self._setImageSpacingVisibility(True, values=(str(tescan_info.spacing * 1000),) * 3)
+                with BlockSignals(self.pathWidget):
+                    path = tescan_info.image_dir
+                    self.pathWidget.path = path
+                self.loadOrigin = [o * ureg.millimeter for o in tescan_info.origin_xyz]
 
             self.pathInfoLabel.setText("Analyzing...")
             slicer.app.processEvents()
@@ -354,6 +367,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
                 path,
                 callback=callback,
                 imageSpacing=imageSpacing,
+                imageOrigin=self.loadOrigin,
                 centerVolume=self.centerVolumeCheckbox.isChecked(),
                 invertDirections=invertDirections,
                 loadAsLabelmap=self.loadAsLabelmapCheckBox.isChecked(),
@@ -456,8 +470,12 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         callback("Detecting rock cylinder...", 20)
         try:
             cylinder = cups.detect_rock_cylinder(array)
-        except Exception:
+        except Exception as e:
+            logging.error(f"Failed to detect rock cylinder: {e}.\n{traceback.format_exc()}")
             cylinder = None
+        finally:
+            if not cylinder:
+                logging.debug("No rock cylinder detected.")
 
         if cylinder:
             float_cylinder = [float(x) for x in cylinder]

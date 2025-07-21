@@ -1,16 +1,17 @@
 import logging
 import os
 import re
-from pathlib import Path
-
 import ctk
 import qt
 import slicer
 import vtk
+import traceback
+
 from ImageLogExportLib import ImageLogCSV
 
 import ltrace.image.las as imglas
 from ltrace.slicer import export
+from ltrace.image.dlis import extract_dlis_info_from_node, export_dlis
 from ltrace.slicer.helpers import (
     createTemporaryNode,
     getNodeDataPath,
@@ -21,16 +22,18 @@ from ltrace.slicer.helpers import (
 from ltrace.slicer.node_attributes import NodeEnvironment, TableType
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.utils.recursive_progress import RecursiveProgress
+from pathlib import Path
 from .output_name_dialog import OutputNameDialog
 
 
-class ImageLogExportOpenSourceWidget(qt.QWidget):
+class ImageLogExportBaseWidget(qt.QWidget):
     EXPORT_DIR = "ImageLogExport/exportDir"
     IGNORE_DIR_STRUCTURE = "ImageLogExport/ignoreDirStructure"
     FORMAT_MATRIX_CSV = "CSV (matrix format)"
     FORMAT_TECHLOG_CSV = "CSV (Techlog format)"
     FORMAT_CSV = "CSV"
     FORMAT_LAS = "LAS"
+    FORMAT_DLIS = "DLIS"
     FORMAT_LAS_GEOLOG = "LAS (for Geolog)"
 
     EXPORTABLE_TYPES = (
@@ -59,13 +62,14 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
         self.subjectHierarchyTreeView.setFocusPolicy(qt.Qt.NoFocus)
 
         self.logFormatBox = qt.QComboBox()
-        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV)
-        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV)
-        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_LAS)
-        self.logFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG)
+        self.logFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_DLIS)
+        self.logFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_MATRIX_CSV)
+        self.logFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_TECHLOG_CSV)
+        self.logFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_LAS)
+        self.logFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_LAS_GEOLOG)
 
         self.tableFormatBox = qt.QComboBox()
-        self.tableFormatBox.addItem(ImageLogExportOpenSourceWidget.FORMAT_CSV)
+        self.tableFormatBox.addItem(ImageLogExportBaseWidget.FORMAT_CSV)
 
         self.ignoreDirStructureCheckbox = qt.QCheckBox()
         self.ignoreDirStructureCheckbox.checked = (
@@ -160,19 +164,22 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
 
         # Separate nodes
         nodeToExportList = []
+        nodeToDlisList = []
         nodeToLASList = []
         for node in self.nodes:
             if (
                 type(node) is slicer.vtkMRMLTableNode
-                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV
-                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV
+                or self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_MATRIX_CSV
+                or self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_TECHLOG_CSV
             ):
                 nodeToExportList.append(node)
-            elif (
-                self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
-                or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+            if (
+                self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS
+                or self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS_GEOLOG
             ):
                 nodeToLASList.append(node)
+            elif self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_DLIS:
+                nodeToDlisList.append(node)
 
         # Create progress management
         def progressCallback(progressValue):
@@ -180,9 +187,12 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
 
         baseProgress = RecursiveProgress(callback=progressCallback)
         progressList = []
+        dlisProgress = None
         lasProgress = None
         for node in nodeToExportList:
             progressList.append(baseProgress.create_sub_progress())
+        if len(nodeToDlisList) > 0:
+            dlisProgress = baseProgress.create_sub_progress(weight=len(nodeToDlisList))
         if len(nodeToLASList) > 0:
             lasProgress = baseProgress.create_sub_progress(weight=len(nodeToLASList))
 
@@ -193,35 +203,50 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
 
             if type(node) is slicer.vtkMRMLTableNode:
                 if node.GetAttribute(TableType.name()) == TableType.HISTOGRAM_IN_DEPTH.value:
-                    if self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV:
+                    if self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_MATRIX_CSV:
                         self.startLogToCsvExport(node, nodeDir, progress, isTechlog=False)
                     else:
                         if node in nodeToLASList:
                             logging.warning(
-                                f"If you want {node.GetName()} to be exported in a separated CSV file, select {ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV} option in the Well log and export again."
+                                f"If you want {node.GetName()} to be exported in a separated CSV file, select {ImageLogExportBaseWidget.FORMAT_MATRIX_CSV} option in the Well log and export again."
                             )
                         else:
                             logging.warning(
-                                f"{node.GetName()} not exported as CSV. Please select {ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV} option and try to export it again."
+                                f"{node.GetName()} not exported as CSV. Please select {ImageLogExportBaseWidget.FORMAT_MATRIX_CSV} option and try to export it again."
                             )
                 else:
-                    if self.tableFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_CSV:
+                    if self.tableFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_CSV:
                         export.exportTable(node, outputDir, nodeDir, export.TABLE_FORMAT_CSV)
                         progress.set_progress(1)
             else:
-                if self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_TECHLOG_CSV:
+                if self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_TECHLOG_CSV:
                     self.startLogToCsvExport(node, nodeDir, progress, isTechlog=True)
-                elif self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_MATRIX_CSV:
+                elif self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_MATRIX_CSV:
                     self.startLogToCsvExport(node, nodeDir, progress, isTechlog=False)
+                elif self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_DLIS:
+                    raise RuntimeError("Node selection went wrong")
                 elif (
-                    self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
-                    or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+                    self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS
+                    or self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS_GEOLOG
                 ):
                     raise RuntimeError("Node selection went wrong")
 
-        if (
-            self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS
-            or self.logFormatBox.currentText == ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG
+        if self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_DLIS and len(nodeToDlisList):
+            with ProgressBarProc() as progressBarProc:
+                progressBarProc.nextStep(5, "Starting to export DLIS...")
+                try:
+                    self.startDlisExport(nodeToDlisList, outputDir, dlisProgress)
+                except RuntimeError as e:
+                    logging.error(e)
+                    self._stopExport()
+                    self.progressBar.setValue(0)
+                    self.currentStatusLabel.text = "Export failed!"
+                    progressBarProc.nextStep(0, "Error exporting DLIS data.")
+                    return
+                progressBarProc.nextStep(100, "DLIS export completed")
+        elif (
+            self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS
+            or self.logFormatBox.currentText == ImageLogExportBaseWidget.FORMAT_LAS_GEOLOG
         ) and len(nodeToLASList):
 
             with ProgressBarProc() as progressBarProc:
@@ -229,7 +254,7 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
                 try:
                     self.startLasExport(nodeToLASList, outputDir, lasProgress)
                 except RuntimeError as e:
-                    logging.error(e)
+                    logging.error(f"{e}.\n{traceback.format_exc()}")
                     self._stopExport()
                     self.progressBar.setValue(0)
                     self.currentStatusLabel.text = "Export failed!"
@@ -258,7 +283,7 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
                     askForOutputName = True
                     break
             if askForOutputName:
-                outputNameDialog = OutputNameDialog(self.layout.parentWidget())
+                outputNameDialog = OutputNameDialog(self)
                 result = outputNameDialog.exec()
                 if bool(result):
                     fileId = outputNameDialog.getOutputName()
@@ -305,10 +330,41 @@ class ImageLogExportOpenSourceWidget(qt.QWidget):
         outputFilePathStr: str = outputFilePath.as_posix()
 
         # "FORMAT_LAS_GEOLOG" is in fact an initial support to LAS 3.0
-        version = 2 if self.logFormatBox.currentText != ImageLogExportOpenSourceWidget.FORMAT_LAS_GEOLOG else 3
+        version = 2 if self.logFormatBox.currentText != ImageLogExportBaseWidget.FORMAT_LAS_GEOLOG else 3
 
         try:
             imglas.export_las(nodeList2, outputFilePathStr, version=version)
+        except RuntimeError as e:
+            raise RuntimeError(e)
+        finally:
+            removeTemporaryNodes(NodeEnvironment.IMAGE_LOG)
+
+        return True
+
+    def startDlisExport(self, nodeList, outputDir, progressOutput):
+        nodePath, fileId = ImageLogExportBaseWidget.preExport(self, nodeList)
+        if not nodePath:
+            return False
+        outputDir = Path(outputDir)
+        tempDir = Path(slicer.app.temporaryPath) / "imagelogexport/"
+        if not os.path.exists(tempDir):
+            os.makedirs(tempDir)
+
+        if not self.ignoreDirStructureCheckbox.checked:
+            outputPath = outputDir / nodePath
+        else:
+            output_path = outputDir
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        file_name_no_extension = fileId
+
+        try:
+            export_dlis(
+                nodeList,
+                output_path,
+                file_name_no_extension,
+                tempDir,
+            )
         except RuntimeError as e:
             raise RuntimeError(e)
         finally:

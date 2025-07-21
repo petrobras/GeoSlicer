@@ -70,10 +70,10 @@ class ThinSectionEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["CustomizedSegmentEditor"],
                 modules["Segmenter"],
                 modules["SegmentInspector"],
-                # modules["ThinSectionInstanceSegmenter"],
-                # modules["ThinSectionInstanceEditor"],
+                modules["ThinSectionInstanceEditor"],
                 modules["LabelMapEditor"],
                 modules["PoreStats"],
+                modules["UnsupervisedSegmentation"],
             ],
             self.modulesToolbar,
         )

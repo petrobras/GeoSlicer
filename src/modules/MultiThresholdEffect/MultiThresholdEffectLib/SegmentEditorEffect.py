@@ -64,7 +64,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyFinishedCallback = lambda: None
         self.applyAllSupported = True
         self.segmentationChangedDebounceCaller = DebounceCaller(
-            parent=slicer.modules.AppContextInstance.mainWindow,
+            parent=self.scriptedEffect,
             callback=self.onSegmentationChangedHandler,
             intervalMs=200,
         )
@@ -346,6 +346,9 @@ the number of clusters equal to the number of segments added to the segmentation
         self.colorsBySegment = dict()
         segmentIDs = vtk.vtkStringArray()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+        if segmentationNode is None:
+            return []
+
         segmentation = segmentationNode.GetSegmentation()
         segmentation.GetSegmentIDs(segmentIDs)
         colors = list()
@@ -640,15 +643,27 @@ the number of clusters equal to the number of segments added to the segmentation
             self._max = _max
 
     def applyKmeans(self):
+        if self.svalues is None:
+            logging.debug("Invalid samples values.")
+            return
+
         if self.scriptedEffect.parameterSetNode() is None:
             slicer.util.errorDisplay("Failed to apply. The selected node is invalid.")
             return
 
+        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+        if segmentationNode is None:
+            logging.debug("Invalid segmentation node.")
+            return
+
         from scipy.cluster.vq import kmeans2
 
-        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         segmentation = segmentationNode.GetSegmentation()
         nsegs = segmentation.GetNumberOfSegments()
+        if nsegs == 0:
+            logging.debug("Invalid segmentation node. There are no segments.")
+            return
+
         centroids, labelmap = kmeans2(self.svalues.astype("float"), int(nsegs), iter=100, minit="points")
         self.transitions = self.getTransitions(centroids)
         self.transitions = np.append(self._min, self.transitions)

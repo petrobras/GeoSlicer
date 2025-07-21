@@ -27,7 +27,7 @@ class SaveNetcdfWidget(qt.QFrame):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.windowIcon = slicer.util.mainWindow().windowIcon
+        self.windowIcon = slicer.modules.AppContextInstance.mainWindow.windowIcon
         self.setWindowTitle("Save")
 
         self.setMinimumWidth(500)

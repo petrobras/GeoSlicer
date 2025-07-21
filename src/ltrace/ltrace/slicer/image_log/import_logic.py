@@ -33,6 +33,7 @@ NULL_VALUE_TAG = DLISImportConst.NULL_VALUE_TAG
 LOGICAL_FILE_TAG = DLISImportConst.LOGICAL_FILE_TAG
 FRAME_TAG = DLISImportConst.FRAME_TAG
 WELL_NAME_TAG = DLISImportConst.WELL_NAME_TAG
+ORIGIN_TAG = DLISImportConst.ORIGIN_TAG
 UNITS_TAG = DLISImportConst.UNITS_TAG
 DEPTH_LABEL = DLISImportConst.DEPTH_LABEL
 
@@ -48,6 +49,7 @@ ChannelMetadata = namedtuple(
         "is_labelmap",
         "is_table",
         "stacked_curves",  # For LAS files that contain curves to be stacked into images
+        "well_name",
     ],
 )
 
@@ -59,6 +61,8 @@ class DLISLoader(object):
         self.filepath = filepath
         self.logical_files = dlisio.load(str(self.filepath))
 
+        self._logMetadata()
+
         # Finally, the null values substitutions will be left to GeoSlicer's handle_null_values function
         self.null_value = nulls
         if self.logical_files[0].parameters:
@@ -69,8 +73,8 @@ class DLISLoader(object):
 
         self.null_value = nulls
 
-    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm, well_name):
-        return load_volumes(curves, stepCallback, appFolder, nullValue, well_diameter_mm, well_name)
+    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm):
+        return load_volumes(curves, stepCallback, appFolder, nullValue, well_diameter_mm)
 
     def clean(self):
         self.logical_files.close()
@@ -85,12 +89,15 @@ class DLISLoader(object):
         for f in self.logical_files:
             if len(f.origins) > 1:
                 logging.warning(f"File contains {len(f.origins)} origins")
-            for o in f.origins:
-                well_name = o.well_name
 
             for channel in f.channels:
                 if channel.frame is None:
                     continue
+
+                for o in f.origins:
+                    if o.origin == channel.origin:
+                        well_name = o.well_name
+                        break
 
                 framename = channel.frame.name
                 is_table = check_as_table(channel.name)
@@ -104,10 +111,13 @@ class DLISLoader(object):
                         False,
                         is_table,
                         False,
+                        well_name,
                     )
                 )
 
-        return well_name, values_db
+        last_loaded_well_name = well_name
+
+        return last_loaded_well_name, values_db
 
     def _logMetadata(self):
         well_name = ""
@@ -208,6 +218,8 @@ class DLISLoader(object):
                         metadata.is_labelmap,
                         metadata.is_table,
                         c.units,
+                        c.origin,
+                        metadata.well_name,
                     )
 
 
@@ -229,17 +241,15 @@ class LASLoader(object):
 
         self.stacked_curves_pattern = re.compile(r"(.+)[\[|(|{]([0-9]+)[\]|)|}]")
 
-    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm=None, well_name=None):
+    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm=None):
         if self.logical_files is None:
             return []
-
         return load_volumes(
             curves=curves,
             stepCallback=stepCallback,
             appFolder=appFolder,
             nullValue=nullValue,
             well_diameter_mm=well_diameter_mm,
-            well_name=well_name,
         )
 
     def clean(self):
@@ -255,7 +265,7 @@ class LASLoader(object):
             else:
                 well_name = Path(self.filepath).stem
         except Exception as e:
-            print(f"An error occurred while obtaining the Well name: {e}")
+            logging.error(f"An error occurred while obtaining the Well name: {e}")
 
         return well_name
 
@@ -280,6 +290,7 @@ class LASLoader(object):
                     "",
                     is_table=check_as_table(curve.original_mnemonic),
                     stacked_curves=False,
+                    well_name=well_name,
                 )
             )
 
@@ -305,7 +316,9 @@ class LASLoader(object):
             else:
                 last_curve_name = mnemonic
 
-        return well_name, values_db
+        last_loaded_well_name = well_name
+
+        return last_loaded_well_name, values_db
 
     def load_data(self, file_path, mnemonic_and_files):
         if self.logical_files is None:
@@ -377,6 +390,8 @@ class LASLoader(object):
                 mf.is_labelmap,
                 mf.is_table,
                 units,
+                None,
+                mf.well_name,
             )
 
 
@@ -394,7 +409,7 @@ class CSVLoader(object):
     def _isLength(unit):
         return isinstance(unit, str) and ureg(unit).check("[length]")
 
-    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm, well_name):
+    def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm):
         if self.filename is None:
             logging.debug("CSVLoader load_volumes load metadata")
             self.load_metadata()
@@ -403,7 +418,7 @@ class CSVLoader(object):
             "CSVLoader load_volumes return sucess name {} - type {}".format(self.filename, type(self.filename))
         )
         if self.loaded_as_image:
-            return load_volumes(curves, stepCallback, appFolder, nullValue, well_diameter_mm, well_name)
+            return load_volumes(curves, stepCallback, appFolder, nullValue, well_diameter_mm)
 
         return load_volumes_as_table(
             curves=curves,
@@ -411,7 +426,6 @@ class CSVLoader(object):
             appFolder=appFolder,
             nullValue=nullValue,
             name=self.filename,
-            well_name=well_name,
         )
 
     def clean(self):
@@ -478,7 +492,7 @@ class CSVLoader(object):
                 fake_mnemonic = f"Column {i+1}"
 
                 self.db[fake_mnemonic] = (
-                    ChannelMetadata(fake_mnemonic, column, unit, "", self.filename, "", "", False),
+                    ChannelMetadata(fake_mnemonic, column, unit, "", self.filename, "", "", False, self.filename),
                     data,
                 )
                 self.loaded_as_image = False
@@ -488,14 +502,24 @@ class CSVLoader(object):
             fake_mnemonic = f"Image"
             self.db[fake_mnemonic] = (
                 ChannelMetadata(
-                    fake_mnemonic, df.columns[1].replace("[0]", ""), "", "", self.filename, "", False, False
+                    fake_mnemonic,
+                    df.columns[1].replace("[0]", ""),
+                    "",
+                    "",
+                    self.filename,
+                    "",
+                    False,
+                    False,
+                    self.filename,
                 ),
                 df.iloc[:, 1:].to_numpy(),
             )
 
             self.loaded_as_image = True
 
-        return self.filename, [self.db[k][0] for k in self.db]
+        last_loaded_well_name = self.filename
+
+        return last_loaded_well_name, [self.db[k][0] for k in self.db]
 
     def load_data(self, file_path, mnemonic_and_files=None):
         for m in mnemonic_and_files:
@@ -514,6 +538,8 @@ class CSVLoader(object):
                     False,
                     False,
                     "mm",
+                    None,
+                    m.well_name,
                 )
 
             yield (
@@ -527,6 +553,8 @@ class CSVLoader(object):
                 m.is_labelmap,
                 m.is_table,
                 md.unit,
+                None,
+                m.well_name,
             )
 
     def checkImageData(self, df):
@@ -611,7 +639,7 @@ def load_volumes_with_depth(curves, stepCallback, appFolder=None, nullValue=None
     return loaded_nodes_ids
 
 
-def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=None, name="curves", well_name=""):
+def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=None, name="curves"):
     """Load the selected curves' data as a table node
 
     Args:
@@ -651,7 +679,8 @@ def load_volumes_as_table(curves, stepCallback=None, appFolder=None, nullValue=N
         name=name,
         null_value=nullValue,
         units=units,
-        well_name=well_name,
+        origin=curve[10],
+        well_name=curve[11],
     )
 
     return []
@@ -668,10 +697,12 @@ def add_volume(
     is_labelmap,
     is_table,
     units="",
+    origin=None,
+    well_name=None,
     app_folder=None,
     null_value=None,
     well_diameter_mm=310,
-    well_name=None,
+    # well_name=None,
 ):
     if is_depth:
         image = domain
@@ -693,16 +724,17 @@ def add_volume(
         image = image.reshape(image.shape[0], 1, image.shape[1])
 
         read_volume, item_id = add_volume_from_data(
-            top_folder,
-            folder,
-            name,
-            frame,
-            image,
-            is_labelmap,
-            units,
-            app_folder,
-            null_value,
-            well_name,
+            root_folder=top_folder,
+            folder=folder,
+            name=name,
+            frame=frame,
+            data=image,
+            is_labelmap=is_labelmap,
+            units=units,
+            origin=origin,
+            app_folder=app_folder,
+            nullValue=null_value,
+            well_name=well_name,
         )
         if read_volume:
             read_volume.SetSpacing(horizontal_spacing_millimeters, 0.48, vertical_spacing_millimeters)
@@ -729,6 +761,7 @@ def add_volume(
                 folder=folder,
                 frame=frame,
                 units=units,
+                origin=origin,
                 app_folder=app_folder,
                 name=name,
                 null_value=null_value,
@@ -741,6 +774,7 @@ def add_volume(
                 folder=folder,
                 frame=frame,
                 units=units,
+                origin=origin,
                 app_folder=app_folder,
                 name=name,
                 null_value=null_value,
@@ -764,7 +798,6 @@ def calculateWindowLevelMinMax(volume):
 
 def create_subject_hierarchy_folder(root_folder, folder, frame, app_folder):
     subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-
     if app_folder is not None:
         app_folder_id = subject_hierarchy.GetItemByName(app_folder)
         if app_folder_id == 0:
@@ -814,6 +847,7 @@ def add_volume_from_data(
     data,
     is_labelmap,
     units="",
+    origin=None,
     app_folder=None,
     nullValue=None,
     well_name=None,
@@ -840,9 +874,15 @@ def add_volume_from_data(
     volume_node.SetAttribute(SCALAR_VOLUME_TYPE, WELL_PROFILE_TAG)
     volume_node.SetAttribute(NULL_VALUE_TAG, str(nullValue))  # default set at handle_null_values
     volume_node.SetAttribute(WELL_NAME_TAG, well_name)
+    volume_node.SetAttribute(ORIGIN_TAG, str(origin) if origin else None)
+    volume_node.SetAttribute(LOGICAL_FILE_TAG, folder or "")
 
     volume_units = units if units != "" else None
-    volume_node.SetAttribute(UNITS_TAG, units)
+    volume_node.SetAttribute(UNITS_TAG, volume_units)
+
+    fr = frame if frame != "" else None
+    volume_node.SetAttribute(FRAME_TAG, fr)
+
     volume_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
     codedUnit = slicer.vtkCodedEntry()
     codedUnit.SetCodeValue(units)
@@ -881,12 +921,10 @@ def get_loader(file_path, null_values=""):
     raise NotImplementedError(f'Handler for "{ext}" not implemented.')
 
 
-def load_volumes(curves, stepCallback, appFolder=None, nullValue=None, well_diameter_mm=310, well_name=None):
+def load_volumes(curves, stepCallback, appFolder=None, nullValue=None, well_diameter_mm=310):
     loaded_nodes_ids = []
     for i, curve in enumerate(curves):
-        _, itemID = add_volume(
-            *curve, app_folder=appFolder, null_value=nullValue, well_diameter_mm=well_diameter_mm, well_name=well_name
-        )
+        _, itemID = add_volume(*curve, app_folder=appFolder, null_value=nullValue, well_diameter_mm=well_diameter_mm)
         if itemID:
             loaded_nodes_ids.append(itemID)
         stepCallback(curve[2], i + 1)
@@ -915,6 +953,7 @@ def create_depth_curves_table(
     folder,
     frame,
     units,
+    origin,
     app_folder,
     name: str = "curves",
     null_value=None,
@@ -965,6 +1004,9 @@ def create_depth_curves_table(
     table_node = dataFrameToTableNode(dataFrame=df)
     table_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
     table_node.SetAttribute(WELL_NAME_TAG, well_name)
+    table_node.SetAttribute(ORIGIN_TAG, str(origin) if origin else None)
+    # In the LAS cases, folder will be the well name. In the CSV cases, the file name
+    table_node.SetAttribute(LOGICAL_FILE_TAG, folder or "")
 
     data_units = units if units != "" else None
     # The first column should hold the depth (or time, if supported), and all others should have the same unit
@@ -983,7 +1025,10 @@ def create_depth_curves_table(
         table_node.SetColumnUnitLabel(
             df.columns[0], "mm"
         )  # NOTE - We expect that mm is enforced when loading the domain data
-        table_node.SetColumnUnitLabel(df.columns[1], units)
+        table_node.SetColumnUnitLabel(df.columns[1], units or "")
+
+    fr = frame if frame != "" else None
+    table_node.SetAttribute(FRAME_TAG, fr)
 
     subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     volume_item_id = subject_hierarchy.CreateItem(root_id, table_node)
@@ -996,7 +1041,16 @@ def create_depth_curves_table(
 
 
 def create_depth_curves_table_from_image(
-    curves: dict, root_folder, folder, frame, units, app_folder, name: str = "curves", null_value=None, well_name=""
+    curves: dict,
+    root_folder,
+    folder,
+    frame,
+    units,
+    origin,
+    app_folder,
+    name: str = "curves",
+    null_value=None,
+    well_name="",
 ):
     """[summary]
 
@@ -1036,6 +1090,11 @@ def create_depth_curves_table_from_image(
     table_node = dataFrameToTableNode(dataFrame=df)
     table_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
     table_node.SetAttribute(WELL_NAME_TAG, well_name)
+    table_node.SetAttribute(ORIGIN_TAG, str(origin) if origin else None)
+    table_node.SetAttribute(LOGICAL_FILE_TAG, folder or "")
+
+    fr = frame if frame != "" else None
+    table_node.SetAttribute(FRAME_TAG, fr)
 
     data_units = units if units != "" else None
     table_node.SetAttribute(UNITS_TAG, data_units)

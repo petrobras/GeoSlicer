@@ -120,6 +120,7 @@ nav:
       - Quantificação:
 #          - Instance Segmenter: "Modules/Quantification/instance_segmenter.md"
           - Segment Inspector: "Modules/Quantification/segment_inspector.md"
+          - Heterogeneity Index: "Modules/Quantification/heterogeneity_index.md"
       - PNM:
           - Pore Network Extraction: "Modules/PNM/PNExtraction.md"
           - Pore Network Simulation: "Modules/PNM/PNSimulation.md"

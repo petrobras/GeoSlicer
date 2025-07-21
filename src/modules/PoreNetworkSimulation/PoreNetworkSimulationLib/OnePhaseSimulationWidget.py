@@ -1,5 +1,6 @@
 import qt
 
+import numpy as np
 from .constants import *
 from ltrace.slicer import ui
 
@@ -108,10 +109,18 @@ class OnePhaseSimulationWidget(qt.QFrame):
         subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
         shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
 
+        subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
-            }
+            for i in subres_params.keys():
+                if subres_params[i] is not None:
+                    if isinstance(subres_params[i], np.ndarray):
+                        subres_params_copy.update({i: subres_params[i].tolist()})
+                    else:
+                        subres_params_copy.update({i: subres_params[i]})
+                else:
+                    subres_params_copy.update({i: None})
+        else:
+            subres_params_copy = subres_params
 
         return {
             "model type": self.modelTypeComboBox.currentText,
@@ -122,7 +131,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "subres_porositymodifier": subres_porositymodifier,
             "subres_shape_factor": shape_factor,
             "subres_model_name": subres_model_name,
-            "subres_params": subres_params,
+            "subres_params": subres_params_copy,
             "solver": self.solverComboBox.currentText,
             "solver_error": float(self.errorEdit.text),
             "preconditioner": self.preconditionerComboBox.currentText,

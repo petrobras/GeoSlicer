@@ -191,7 +191,7 @@ class ThroatAnalysis:
         direction_vector = params.get("direction", None)
         spacing = params.get("spacing", None)
 
-        operator = LabelStatistics2D(regions, spacing, direction_vector, 0)
+        operator = LabelStatistics2D(regions, spacing, direction_vector, 0, is_pore=True)
 
         volume_operator = VolumeOperator(args.labelVolume, dtype=np.uint16)  # uint16 to accept 2^16 labels at least.
         df, nlabels = exportSegmentsAsDataFrame(

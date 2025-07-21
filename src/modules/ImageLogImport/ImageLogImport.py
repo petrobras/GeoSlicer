@@ -28,8 +28,8 @@ class ImageLogImport(LTracePlugin):
         self.parent.categories = ["ImageLog", "Data Importer", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = """This module loads volumes from DLIS, LAS, CSV or PDF files into slicer as volumes."""
         self.parent.acknowledgementText = """"""
+        self.set_manual_path("Data_loading/load_well_log.html")
 
 
 class ImageLogImportWidget(LTracePluginWidget):

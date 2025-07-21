@@ -22,9 +22,6 @@ from mmdet.utils import register_all_modules
 from mmengine import Config
 import torch
 import pandas as pd
-from sahi import AutoDetectionModel
-from sahi.postprocess.combine import NMSPostprocess
-from sahi.predict import get_prediction, get_sliced_prediction
 import scipy
 from skimage.transform import resize
 
@@ -111,6 +108,9 @@ def resize_mask(output_shape, data):
     return output
 
 
+np.set_printoptions(suppress=True)
+
+
 class mmdetInference:
     def __init__(self, image, scale_percent, config, model_path, device):
         self.scale_percent = scale_percent
@@ -118,7 +118,7 @@ class mmdetInference:
         self.model = get_pth(model_path).as_posix()
         self.device = device
 
-        self.classes = get_metadata(model_path)["classes"]
+        self.classes = get_metadata(model_path)["outputs"]["y"]["class_names"]
 
         self.width = int(image.shape[1] * scale_percent)
         self.height = int(image.shape[0] * scale_percent)
@@ -156,7 +156,7 @@ class mmdetInference:
             instances.labels.numpy(),
         )
 
-        valid_confidence_indices = np.where(confidences > conf_thresh)
+        valid_confidence_indices = np.where(confidences >= conf_thresh)
         boxes = boxes[valid_confidence_indices]
         masks = masks[valid_confidence_indices]
         confidences = confidences[valid_confidence_indices]
@@ -197,7 +197,9 @@ class mmdetInference:
 
         return labels, boxes, confidences, class_ids, instances
 
-    def run_chunked_inference(self, conf_thresh, nms_thresh, chunk_size=3200, chunk_overlap=0.5, pad_size=30):
+    def run_chunked_inference(self, conf_thresh, nms_thresh, chunk_size=3200, chunk_overlap=0.5, pad_size=0):
+        chunk_size = int(self.scale_percent * chunk_size)
+
         for i in range(2):
             try:
                 results = self.inference_detector_by_chunks(conf_thresh, chunk_size, chunk_overlap, pad_size)
@@ -252,7 +254,6 @@ class mmdetInference:
         labels = []
         idx = np.zeros(len(self.classes), dtype=np.uint16)
         instances = np.zeros((len(self.classes), self.height, self.width), dtype=np.uint16)
-        scale = 1.0 / self.scale_percent
         if len(indices) > 0:
             for num, i in enumerate(indices):
                 chunk_instance = instances[
@@ -286,15 +287,17 @@ class mmdetInference:
 
     def inference_detector_by_chunks(self, conf_thresh, chunk_size, chunk_overlap, pad_size):
         results = []
-        stride = int((1 - chunk_overlap) * chunk_size)
-        chunk_size = int(stride / (1 - chunk_overlap))
+        stride = (1 - chunk_overlap) * chunk_size
 
         t = 0
         total = (self.width / stride) * (self.height / stride)
         progressUpdate(0.1)
-        for i in range(0, self.width, stride):
-            for j in range(0, self.height, stride):
+        for i in np.arange(0, self.width, stride):
+            for j in np.arange(0, self.height, stride):
+                i, j = int(i), int(j)
+
                 t += 1.0 / total
+                t = min(t, 1.0)
                 progressUpdate(0.1 + 0.7 * t)
 
                 a = self.image[j : j + chunk_size, i : i + chunk_size]
@@ -314,20 +317,20 @@ class mmdetInference:
                     instances.labels.numpy(),
                 )
 
-                valid_confidence_indices = np.where(confidences > conf_thresh)
+                valid_confidence_indices = np.where(confidences >= conf_thresh)
                 boxes = boxes[valid_confidence_indices]
                 masks = masks[valid_confidence_indices]
                 confidences = confidences[valid_confidence_indices]
                 class_ids = class_ids[valid_confidence_indices]
 
+                boxes = boxes.clip(pad_size, chunk_size + pad_size + -1)
                 valid = np.where(
                     (boxes[:, 0] + i < self.width)
                     & (boxes[:, 1] + j < self.height)
-                    & (boxes[:, 2] < pad_size + chunk_size)
-                    & (boxes[:, 3] < pad_size + chunk_size)
-                    & (boxes[:, 0] > pad_size)
-                    & (boxes[:, 1] > pad_size)
+                    & (boxes[:, 2] > boxes[:, 0])
+                    & (boxes[:, 3] > boxes[:, 1])
                 )
+
                 boxes = boxes[valid]
                 masks = masks[valid]
                 confidences = confidences[valid]
@@ -339,134 +342,28 @@ class mmdetInference:
         return results
 
 
-class sahiInference:
-    def __init__(self, image, scale_percent, config, model_path, device):
-        self.scale_percent = scale_percent
-        self.config = config
-        self.model = get_pth(model_path).as_posix()
-        self.device = device
-
-        self.classes = get_metadata(model_path)["classes"]
-
-        self.width = int(image.shape[1] * self.scale_percent)
-        self.height = int(image.shape[0] * self.scale_percent)
-
-        image = cv2.resize(image, dsize=(self.width, self.height), interpolation=cv2.INTER_AREA)
-        self.image = np.squeeze(image[np.newaxis, ...])
-        progressUpdate(0.3)
-
-    def run_inference(self, conf_thresh, nms_thresh):
-        return self.inference(conf_thresh, nms_thresh)
-
-    def run_chunked_inference(self, conf_thresh, nms_thresh, chunk_size=3200, chunk_overlap=0.5):
-        return self.inference(conf_thresh, nms_thresh, chunk_size, chunk_overlap)
-
-    def inference(self, conf_thresh, nms_thresh, chunk_size=None, chunk_overlap=None):
-        for i in range(2):
-            try:
-                detection_model = AutoDetectionModel.from_pretrained(
-                    model_type="mmdet",
-                    model_path=self.model,
-                    config_path=self.config,
-                    confidence_threshold=conf_thresh,
-                    image_size=max(self.image.shape[:2]),
-                    device=self.device,
-                )
-
-                if chunk_size is not None:
-                    result = get_sliced_prediction(
-                        self.image,
-                        detection_model,
-                        slice_height=chunk_size,
-                        slice_width=chunk_size,
-                        overlap_height_ratio=chunk_overlap,
-                        overlap_width_ratio=chunk_overlap,
-                        postprocess_match_threshold=nms_thresh,
-                    )
-                    progressUpdate(0.6)
-                else:
-                    result = get_prediction(
-                        self.image,
-                        detection_model,
-                        postprocess=NMSPostprocess(match_threshold=nms_thresh),
-                    )
-                    progressUpdate(0.6)
-                break
-            except Exception as e:
-                if self.device != "cpu":
-                    print(
-                        f"Error occured during inference while using device:{self.device}. Switching to 'cpu'.", e.args
-                    )
-                    self.device = "cpu"
-                else:
-                    raise e
-
-        return self.process_result(result)
-
-    def process_result(self, result):
-        object_prediction_list = result.object_prediction_list
-
-        removed_inds = []
-        labels = []
-        len_objects = len(object_prediction_list)
-
-        if len_objects == 0:
-            return None, None, None, None, None
-
-        indices = np.array(range(len_objects))
-        class_ids = np.zeros(len_objects, dtype=np.uint16)
-        boxes = np.zeros((len_objects, 4), dtype=np.uint16)
-        confidences = np.zeros(len_objects, dtype=np.float32)
-        idx = np.zeros(len(self.classes), dtype=np.uint16)
-        instances = np.zeros((len(self.classes), self.height, self.width), dtype=np.uint16)
-
-        for ind, obj in enumerate(object_prediction_list):
-            class_id = obj.category.id
-            class_ids[ind] = class_id
-            boxes[ind] = obj.bbox.to_xywh()
-            confidences[ind] = obj.score.value
-            mask = obj.mask.bool_mask
-
-            overlap = mask * (instances[class_id] != 0)
-            difference = mask * (instances[class_id] == 0)
-
-            if not np.any(overlap) or difference.sum() / mask.sum() > 0.5:
-                idx[class_id] += 1
-                instances[class_id] += idx[class_id] * mask * (instances[class_id] == 0)
-                labels.append(idx[class_id])
-            else:
-                removed_inds.append(ind)
-
-        indices = np.array([i for i in indices if i not in removed_inds])
-        boxes = boxes[indices]
-        confidences = confidences[indices]
-        class_ids = class_ids[indices]
-
-        progressUpdate(0.8)
-
-        return labels, boxes, confidences, class_ids, instances
-
-
 def calculate_statistics(df, instances, class_ids, classes, scale, spacing):
     df_props = pd.DataFrame()
     spacing[:2] *= scale
     referenceSpacing = spacing
     voxel_area = np.product(referenceSpacing)
     tot_classes = np.unique(class_ids)
-    for idx in tot_classes:
+    for idx, class_id in enumerate(tot_classes):
         progressUpdate(0.9 + 0.05 * np.float64(idx) / len(tot_classes))
-        if np.any(instances[idx] != 0):
-            print(f"------ {classes[idx]} ------")
+        if np.any(instances[class_id] != 0):
+            print(f"------ {classes[class_id]} ------")
             node = mrml.vtkMRMLLabelMapVolumeNode()
             node.SetAndObserveImageData(None)
-            slicer.util.updateVolumeFromArray(node, instances[idx])
+            slicer.util.updateVolumeFromArray(node, instances[class_id])
             node.SetSpacing(referenceSpacing)
             node.Modified()
 
             volumeOperator = VolumeOperator(node)
-            operator = LabelStatistics2D(instances[idx], referenceSpacing, direction=None, size_filter=0)
+            operator = LabelStatistics2D(
+                instances[class_id], referenceSpacing, direction=None, is_pore=False, size_filter=0
+            )
             df_stats, nlabels = calculate_statistics_on_segments(
-                instances[idx],
+                instances[class_id],
                 SegmentOperator(operator, volumeOperator.ijkToRasOperator),
                 callback=lambda i, total: None,
             )
@@ -475,10 +372,10 @@ def calculate_statistics(df, instances, class_ids, classes, scale, spacing):
                 for col in df_stats.select_dtypes(include=["float"]).columns:
                     df_stats[col] = df_stats[col].round(5)
 
-                df_stats["class_op"] = classes[idx]
+                df_stats["class_op"] = classes[class_id]
                 df_props = pd.concat([df_props, df_stats], ignore_index=True)
             else:
-                instances[idx] = 0
+                instances[class_id] = 0
 
     if not df_props.empty and not df.empty:
         df_props = df_props.rename(columns={"label": "label_op"})
@@ -505,15 +402,15 @@ def calculate_statistics(df, instances, class_ids, classes, scale, spacing):
         df_final = df_final.drop(excluded_props, axis=1)
 
         # normalize array and table to be sequential
-        for idx in np.unique(class_ids):
-            class_report = df[df["class"] == classes[idx]].copy()
+        for class_id in np.unique(class_ids):
+            class_report = df[df["class"] == classes[class_id]].copy()
             old_labels = np.array(class_report["label"])
             class_report.loc[:, "label"] = range(1, len(class_report) + 1)
-            df[df["class"] == classes[idx]] = class_report
-            unique_instances = np.zeros(instances[idx].shape, dtype=np.uint16)
+            df[df["class"] == classes[class_id]] = class_report
+            unique_instances = np.zeros(instances[class_id].shape, dtype=np.uint16)
             for i, lab in enumerate(old_labels):
-                unique_instances += np.uint16(i + 1) * (instances[idx] == lab) * (unique_instances == 0)
-            instances[idx] = unique_instances
+                unique_instances += np.uint16(i + 1) * (instances[class_id] == lab) * (unique_instances == 0)
+            instances[class_id] = unique_instances
     else:
         df_final = pd.DataFrame()
 
@@ -557,22 +454,20 @@ def runcli(args):
 
     model_path = Path(args.input_model)
     metadata = get_metadata(model_path)
-    classes = metadata["classes"]
+    classes = metadata["outputs"]["y"]["class_names"]
 
     config = Config.fromstring(metadata["cfg"], file_format=".py")
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     progressUpdate(0.05)
-    modelInference = mmdetInference if params["inference"].startswith("native_") else sahiInference
 
     # Inference
     start = time.time()
-    if params["inference"].endswith("direct"):
-        model = modelInference(image, scale_percent, config, model_path, device)
+    model = mmdetInference(image, scale_percent, config, model_path, device)
+    if chunk_size is None:
         labels, boxes, confidences, class_ids, instances = model.run_inference(conf_thresh, nms_thresh)
-    elif params["inference"].endswith("sliced"):
-        model = modelInference(image, scale_percent, config, model_path, device)
+    else:
         labels, boxes, confidences, class_ids, instances = model.run_chunked_inference(
             conf_thresh, nms_thresh, chunk_size, chunk_overlap
         )

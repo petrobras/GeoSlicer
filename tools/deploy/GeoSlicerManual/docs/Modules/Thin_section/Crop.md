@@ -1,6 +1,6 @@
-# Thin Section Crop
+# Volumes Crop
 
-O módulo Customized Crop Volume é uma ferramenta integrada ao GeoSlicer, projetada para permitir o recorte personalizado de volumes de imagem em coordenadas IJK, utilizando uma Região de Interesse (ROI) específica. O módulo é especialmente útil para focar em áreas específicas de volumes maiores, ajustando a dimensão do corte de acordo com as necessidades do usuário.
+O módulo _Volumes Crop_ é uma ferramenta integrada ao GeoSlicer, projetada para permitir o recorte personalizado de volumes de imagem em coordenadas IJK, utilizando uma Região de Interesse (ROI) específica. O módulo é especialmente útil para focar em áreas específicas de volumes maiores, ajustando a dimensão do corte de acordo com as necessidades do usuário.
 
 ## Painéis e sua utilização
 

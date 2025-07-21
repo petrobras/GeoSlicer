@@ -67,7 +67,7 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         # Adds confirmation step before delete action
         nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
-        self.deleteAction = nodeMenu.actions()[3]  # Delete
+        self.deleteAction = [action for action in nodeMenu.actions() if action.text == "Delete"][0]
 
         def confirmDeleteSelectedItems():
             message = "Are you sure you want to delete the selected nodes?"
@@ -108,6 +108,10 @@ class CustomizedDataWidget(LTracePluginWidget):
         infoFrameLayout.addWidget(self.segmentationWidget)
         self.segmentationWidget.setVisible(False)
 
+        self.textWidget = TextWidget()
+        infoFrameLayout.addWidget(self.textWidget)
+        self.textWidget.setVisible(False)
+
         self.fullPanel = qt.QSplitter()
         self.fullPanel.setOrientation(qt.Qt.Vertical)
         self.fullPanel.setHandleWidth(1)
@@ -138,6 +142,7 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.tableWidget.setVisible(False)
         self.labelMapWidget.setVisible(False)
         self.segmentationWidget.setVisible(False)
+        self.textWidget.setVisible(False)
 
         if itemID == 0:
             return
@@ -163,6 +168,9 @@ class CustomizedDataWidget(LTracePluginWidget):
                 if node.GetSegmentation().GetNumberOfSegments() <= 50:  # Performance reasons
                     self.segmentationWidget.setNode(node)
                     self.segmentationWidget.setVisible(True)
+            elif type(node) is slicer.vtkMRMLTextNode:
+                self.textWidget.setNode(node)
+                self.textWidget.setVisible(True)
         except Exception as error:
             logging.info(f"{error}\n{traceback.print_exc()}")
             pass

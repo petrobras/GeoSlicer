@@ -346,8 +346,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
                 color = distinctipy.get_colors(1, colors)[0]
             colors.append(color)
             segmentation = segmentationNode.GetSegmentation()
-            segmentation.AddEmptySegment(segmentName)
-            segmentation.GetSegment(segmentName).SetColor(color)
+            segmentation.AddEmptySegment(segmentName, segmentName, color)
 
         self.segmentationNodeComboBox.setCurrentNode(segmentationNode)
         self.sourceVolumeNodeComboBox.setCurrentNode(sourceNode)
@@ -435,7 +434,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
             soiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode", sourceNode.GetName() + "_SOI")
             soiNode.CreateDefaultDisplayNodes()
             segmentation = soiNode.GetSegmentation()
-            segmentation.AddEmptySegment("SOI")
+            segmentation.AddEmptySegment("SOI", "SOI")
             segmentation.GetSegment("SOI").SetColor(1, 0, 0)
         else:
             soiNode = self.flowState.soi

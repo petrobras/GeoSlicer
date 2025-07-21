@@ -12,18 +12,22 @@
 
 # GeoSlicer
 
-GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple approaches involving thin section, CT and mCT imagery. We use advanced techniques, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform.
+GeoSlicer is a software platform for digital rock visualization and image processing, encompassing multiple approaches involving thin section, CT and mCT imagery. We use advanced techniques, like Convolution Neural Networks, to deliver a unique solution that allows users to solve complex workflows from a single platform. Please find the latest public release on the GitHub [releases page](https://github.com/petrobras/GeoSlicer/releases).
+
+## Portable mode
+
+The application is released as portable, which means the user unpacks the compressed file and it is ready to use, there is no need to install it. The application also needs to write files and folders inside the subfolder **LTrace** inside the unpacked folder, hence the user needs write permission on the unpacked folder.
 
 ## Use cases and examples
 
 Users can find examples of GeoSlicer uses in the following video and at [LTrace's Youtube channel](https://www.youtube.com/@ltracegeo).
 
-[![Watch te video](https://img.youtube.com/vi/EPKBOYkJE40/0.jpg)](https://www.youtube.com/watch?v=EPKBOYkJE40)
+[![Watch te video](https://img.youtube.com/vi/EPKBOYkJE40/0.jpg)](https://www.youtube.com/watch?v=_FkbP9fqBJQ)
 
 ## Developer intro
 
 The GeoSlicer code is a set of modules and auxiliary functions to work with digital rock images. The modules are installed onto a modified version of [3D Slicer](https://github.com/Slicer/Slicer) which we call GeoSlicer-base. To do so, a deploy script is used to deploy and install modules, generate a release, install in development mode, generate the public and opensource versions and commit them to the open source repository.
-GeoSlicer-base can be obtained from pre-built binaries available for [windows](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/9YamKS-nDFknDBbJ_J3Dr8bgiUxfRDVnI5VhGXJpp81l1DUOCMPTZ58H0qHa056V/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.2.2-2024-04-01-win-amd64.zip) and [linux](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/ODrLP5ha4lH7usFggSHCVUbRTl70-bqYdf7gXUscC6AI82Kbd8namWWXmfknZ0J9/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.2.2-2024-04-01-linux-amd64.tar.gz) or built from source using the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories. 
+GeoSlicer-base can be obtained from pre-built binaries available for [windows](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/j3-M11OKFLGFcWJGYr4hUQnW8u4sFruUATaH2IcaoSp4f8PcRCisaQH6mH2rtGv0/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.2.2-2024-11-21-win-amd64.zip) and [linux](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/jy3VVQsDEJb9lVRLUz-6Iu_FBwPpw8ooCPdHP9aXKfEJPvWrFPt2Gy2hxwSy3mnq/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.2.2-2024-11-21-linux-amd64.tar.gz) or built from source using the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories. 
 
 ## Repository Structure
 
@@ -60,11 +64,11 @@ This project uses 3D Slicer version 4.11 and beyond with support for Python 3.9.
 
 1. Download the Visual Studio Community 2019 (https://visualstudio.microsoft.com/downloads/) and execute the installer. Under the tab "Individual components", select only: MSVC v142 for x64/x86 (14.29).
 
-1. Download (https://developer.nvidia.com/cuda-11.2.0-download-archive) and install CUDA 11.2.
+1. Download (https://developer.nvidia.com/cuda-11-6-2-download-archive) and install CUDA 11.6.2.
 
-1. Download (https://developer.nvidia.com/cudnn), unzip and copy the cuDNN 8.1 files to CUDA's installation directory (usually C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.2) This operation should merge the "bin" folders of CUDA and CUDNN.
+1. Download (https://developer.nvidia.com/cudnn), unzip and copy the cuDNN 8.9.7 files to CUDA's installation directory (usually C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6) This operation should merge the "bin" folders of CUDA and CUDNN.
 
-1. Check your environment variables. You should have a variable CUDA_PATH_V11_2 pointing to CUDA's installation directory.
+1. Check your environment variables. You should have a variable CUDA_PATH_V11_6 pointing to CUDA's installation directory.
 
 2. Download GeoSlicer base from the URLs at the INTRO section
 
@@ -193,3 +197,7 @@ git commit -m 'Example' -n
 - Carneiro, I., Sapucaia, V., Bordignon, F., Figueiredo, L., Honório, B., & Matias, J. (2024). Application of MPS to Image Log and CoreCT Images Inpainting. 85th EAGE Annual Conference & Exhibition, [2024](https://www.earthdoc.org/content/papers/10.3997/2214-4609.2024101489)(1), 1-5.
 
 - Carneiro, I., Souza, J., Zanellato, D., Mei, M., Sapucaia, V., Figueiredo, L., Bordignon, F., Matias, J., Honório, Bruno César Zanardo, & Surmas, R. (2024). Multiscale analysis of carbonate rocks for the digital rocks platform GeoSlicer, an open source plugin. ROG.e 2024, [2024](https://biblioteca.ibp.org.br/pt-BR/search/49511)(2975).
+
+- Arenhart, R., Bordignon, F., Figueiredo, L., Pereira, M., Formighieri, G., Pacheco, R., Cenci R., & Surmas, R. (2025). Geoslicer open source platform for digital rock image analysis. 5th International Rock Imaging Summit, [2025](https://www.rockimaging.org/risig_iris_2025_program_detail.php?abstractID=276)
+
+- Arenhart, R., Bordignon, F., Figueiredo, L., Pereira, M., Formighieri, G., Pacheco, R., Cenci R., Melo, R., & Surmas, R. (2025). A Multiscale Approach to Pore-Network Two-Phase Flow Simulation Applied to a Carbonate Reservoir. 17th Annual Meeting Interpore, [2025](https://events.interpore.org/event/56/contributions/7844/contribution.pdf)

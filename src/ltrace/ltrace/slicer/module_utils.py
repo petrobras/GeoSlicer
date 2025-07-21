@@ -1,11 +1,11 @@
 import logging
-import shutil
 
 from pathlib import Path
 
 import slicer, qt
 
 from ltrace.slicer.module_info import ModuleInfo
+from pathlib import Path
 
 
 def fetchAsList(settings, key) -> list:
@@ -15,8 +15,10 @@ def fetchAsList(settings, key) -> list:
 
     if isinstance(value, str):
         return [value]
-
-    return [] if value is None else value
+    elif isinstance(value, tuple):
+        return list(value)
+    else:
+        return []
 
 
 def loadModule(module: ModuleInfo):
@@ -81,49 +83,24 @@ def loadModules(modules, permanent=False, favorite=False):
         myModule.loaded = factory.isLoaded(myModule.key)
         logging.info(f"Module {myModule.key} loaded")
 
-    # Instantiate and load requested module(s)
-    # if len(modules) != len(modulesToLoad):
-    #     slicer.util.errorDisplay("The module factory manager reported an error. \
-    #              One or more of the requested module(s) and/or \
-    #              dependencies thereof may not have been loaded.")
-
-    if favorite and len(modulesToLoad) > 0:
-        favoriteModules = slicer.app.userSettings().value("Modules/FavoriteModules") or []
-        favorites = [*favoriteModules, *modulesToLoad]
-        slicer.app.userSettings().setValue("Modules/FavoriteModules", favorites)
+    if favorite and modulesToLoad:
+        favoritedModules = slicer.app.userSettings().value("Modules/FavoriteModules", None)
+        favoritedModules = modulesToLoad if not favoritedModules else [*favoritedModules, *modulesToLoad]
+        slicer.app.userSettings().setValue("Modules/FavoriteModules", favoritedModules)
 
 
 def fetchModulesFrom(path, depth=1, name="LTrace"):
-    from ltrace.slicer_utils import base_version
-
     if path is None:
         return {}
 
     candidates = {}
-
     try:
-        if isinstance(path, str) and path.endswith(".git"):
-            geoslicer_version = base_version()
-            dest = Path(slicer.app.slicerHome) / "lib" / geoslicer_version / "qt-scripted-extern-modules"
-            dest.mkdir(parents=True, exist_ok=True)
-
-            try:
-                # Clone or update the repository
-                path = clone_or_update_repo(path, dest, branch="master")
-            except RuntimeError as re:
-                if len(candidates) == 0:
-                    shutil.rmtree(dest, ignore_errors=True)
-
-        # Get list of modules in specified path
         modules = ModuleInfo.findModules(path, depth)
-
         candidates = {m.key: m for m in modules}
-
     except Exception as e:
         logging.warning(f"Failed to load modules: {e}")
 
     logging.info(f"{name} modules loaded: {len(candidates)}")
-
     return candidates
 
 
@@ -138,51 +115,3 @@ def mapByCategory(modules):
             groupedModulesByCategories[category].append(module)
 
     return groupedModulesByCategories
-
-
-def clone_or_update_repo(remote_url: str, destination_dir: Path, branch: str = "master") -> None:
-    """
-    Clone the repository from `remote_url` into `destination_dir`.
-    If the repository already exists, update it by pulling the latest changes.
-
-    Args:
-        remote_url (str): URL of the remote repository.
-        destination_dir (str | Path): Path where the repository should be cloned or updated.
-
-    Raises:
-        ValueError: If the existing repository in `destination_dir` has a different remote URL.
-
-    Returns:
-        str: A message indicating the action taken.
-    """
-    import os
-
-    os.environ["GIT_PYTHON_REFRESH"] = "quiet"
-    import git
-
-    try:
-        remote_repo = remote_url.split("/")[-1].split(".")[0]
-
-        destination_dir = destination_dir / remote_repo
-
-        if destination_dir.exists():
-            # If the directory exists, open the repo and check the remote URL
-            repo = git.Repo(destination_dir)
-            if repo.remotes.origin.url != remote_url:
-                raise ValueError(f"Directory exists but points to a different repository: {repo.remotes.origin.url}")
-
-            # Pull the latest changes if the remote URL matches
-            try:
-                repo.remotes.origin.pull(branch).raise_if_error()
-            except git.GitCommandError as e:
-                repo.remotes.origin.pull("main").raise_if_error()
-
-            logging.info(f"Updated '{branch}' branch in repository at '{destination_dir}'.")
-        else:
-            # Clone the repository if the directory does not exist
-            git.Repo.clone_from(remote_url, destination_dir, env={"GIT_SSL_NO_VERIFY": "1"})
-            logging.info(f"Cloned repository '{remote_repo}' into '{destination_dir}'.")
-    except git.GitCommandError as e:
-        raise RuntimeError(f"Failed to fetch {remote_url}")
-
-    return destination_dir

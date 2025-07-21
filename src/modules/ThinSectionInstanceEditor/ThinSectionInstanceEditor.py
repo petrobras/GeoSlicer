@@ -48,7 +48,7 @@ def calculate_instance_properties(mask, node):
     voxel_area = np.product(spacing)
     # TODO check that the inspector API is not being used correctly
     volumeOperator = VolumeOperator(node)
-    operator = LabelStatistics2D(mask_filt, spacing, direction=None, size_filter=0)
+    operator = LabelStatistics2D(mask_filt, spacing, direction=None, size_filter=0, is_pore=True)
     pointsInRAS = np.array(np.where(mask_filt)).T
     stats = operator.strict_calculate(mask_filt, pointsInRAS)
     statistics["area (mm^2)"] = stats[2]

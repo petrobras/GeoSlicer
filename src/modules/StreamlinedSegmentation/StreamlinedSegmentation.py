@@ -1,29 +1,37 @@
-import os
-from pathlib import Path
-
 import qt
 import slicer
-import json
 import ctk
-from slicer.util import VTKObservationMixin
+import json
+import logging
+import os
+import numpy as np
 import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
 
-from ltrace.slicer.app import getApplicationVersion
-from ltrace.utils.ProgressBarProc import ProgressBarProc
 from distinctipy import distinctipy
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer import helpers
+from ltrace.slicer.app import getApplicationVersion
+from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.slicer.lazy import lazy
+from ltrace.slicer.ui import hierarchyVolumeInput
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.utils.ProgressBarProc import ProgressBarProc
+from pathlib import Path
+from slicer.util import VTKObservationMixin
 
 
 try:
     from Test.StreamlinedSegmentationTest import StreamlinedSegmentationTest
 except ImportError:
     StreamlinedSegmentationTest = None
+
+
+MULTIPLE_THRESHOLD_LABEL = "Multiple Threshold"
+BOUNDARY_REMOVAL_LABEL = "Boundary removal"
+EXPAND_SEGMENTS_LABEL = "Expand segments"
+
+from dataclasses import dataclass
 
 
 class StreamlinedSegmentation(LTracePlugin):
@@ -54,6 +62,8 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.parameterSetNode = None
         self.editor = None
         self.__tag = None
+        self.__lastUsedEffect = None
+        self.destroyed.connect(self.cleanup)
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -100,6 +110,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.segmentationNodeComboBox = self.editor.findChild(slicer.qMRMLNodeComboBox, "SegmentationNodeComboBox")
         self.segmentationNodeComboBox.visible = False
+        self.segmentationNodeComboBox.currentNodeChanged.connect(self.__onSegmentationNodeChanged)
 
         self.editor.findChild(qt.QFrame, "EffectsGroupBox").visible = False
         self.editor.findChild(qt.QFrame, "UndoRedoGroupBox").visible = False
@@ -108,7 +119,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         layout = self.editor.findChild(qt.QGridLayout, "NodeSelectorLayout")
 
         self.customVolumeComboBox = hierarchyVolumeInput(
-            onChange=self.onInputChanged, nodeTypes=["vtkMRMLScalarVolumeNode"]
+            onChange=self.onInputChanged, nodeTypes=["vtkMRMLScalarVolumeNode"], hasNone=True
         )
 
         self.startOverButton = qt.QPushButton("Start over")
@@ -116,14 +127,23 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.startOverButton.setIcon(cancelIcon)
         self.startOverButton.enabled = False
-        self.startOverButton.clicked.connect(self.onStartOver)
+        self.startOverButton.clicked.connect(self.onStartOverButtonClicked)
         self.startOverButton.setToolTip(
             "Create a new volume and go back to multiple threshold effect (current segmentation will remain)"
         )
+
+        self.addBackgroundCheckBox = qt.QCheckBox("Add background")
+        self.addBackgroundCheckBox.setToolTip("Add background segment")
+        self.addBackgroundCheckBox.checked = False
+        self.addBackgroundCheckBox.visible = False
+        self.addBackgroundCheckBox.stateChanged.connect(self.__onAddBackgroundCheckBoxChanged)
+        self.addBackgroundCheckBox.objectName = "Add Background CheckBox"
+
         label = qt.QLabel("Input:")
         layout.addWidget(label, 0, 0)
         layout.addWidget(self.customVolumeComboBox, 0, 1)
         layout.addWidget(self.startOverButton, 0, 2)
+        layout.addWidget(self.addBackgroundCheckBox, 1, 1)
 
         switchToSegmentationsButton = self.editor.findChild(qt.QToolButton, "SwitchToSegmentationsButton")
         switchToSegmentationsButton.setVisible(False)
@@ -134,9 +154,9 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor.findChild(qt.QPushButton, "RemoveSegmentButton").visible = False
         self.editor.findChild(slicer.qMRMLSegmentationShow3DButton, "Show3DButton").visible = False
 
-        self.multipleThresholdEffect = self.editor.effectByName("Multiple Threshold").self()
-        self.boundaryRemovalEffect = self.editor.effectByName("Boundary removal").self()
-        self.expandSegmentsEffect = self.editor.effectByName("Expand segments").self()
+        self.multipleThresholdEffect = self.editor.effectByName(MULTIPLE_THRESHOLD_LABEL).self()
+        self.boundaryRemovalEffect = self.editor.effectByName(BOUNDARY_REMOVAL_LABEL).self()
+        self.expandSegmentsEffect = self.editor.effectByName(EXPAND_SEGMENTS_LABEL).self()
         self.multipleThresholdEffect.applyFinishedCallback = self.onMultipleThresholdFinished
         self.boundaryRemovalEffect.applyFinishedCallback = self.onBoundaryRemovalFinished
         self.expandSegmentsEffect.applyFinishedCallback = self.onExpandSegmentsFinished
@@ -175,7 +195,8 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
 
         ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
 
-        self.logic = StreamlinedSegmentationLogic()
+        self.logic = StreamlinedSegmentationLogic(parent=self.parent)
+        self.logic.processFinished.connect(self.onCLIFinished)
         self.multiFinishedTimer = qt.QTimer()
         self.multiFinishedTimer.setSingleShot(True)
         self.multiFinishedTimer.setInterval(100)
@@ -188,50 +209,66 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.logic.apply(lazyData, self.exportPathEdit.currentPath, progress_bar=self.cliProgressBar)
         helpers.save_path(self.exportPathEdit)
 
-    def onStartOver(self, _=None):
-        self.onInputChanged(None)
+    def onStartOverButtonClicked(self, mode: bool) -> None:
+        self.handleStartOver()
+
+    def handleStartOver(self):
+        self.segmentationNodeComboBox.setCurrentNode(None)
+        self.sourceVolumeNodeComboBox.setCurrentNode(None)
+        self.onInputChanged(-1)
+
+    def __onAddBackgroundCheckBoxChanged(self, state: qt.Qt.CheckState) -> None:
+        # Check if current effect is the first one (multiple threshold)
+        if self.editor.activeEffect().name.lower() != MULTIPLE_THRESHOLD_LABEL.lower():
+            return
+
+        createBackgroundSegment = state == qt.Qt.Checked
+        self.__populateSegments(self.segmentationNodeComboBox.currentNode(), createBackgroundSegment)
 
     def onMultipleThresholdFinished(self):
+        source = self.sourceVolumeNodeComboBox.currentNode()
+        source_dtype = slicer.util.arrayFromVolume(source).dtype
+        if np.issubdtype(source_dtype, np.integer):
+            dtype_min = np.iinfo(source_dtype).min
+        elif np.issubdtype(source_dtype, np.floating):
+            dtype_min = np.finfo(source_dtype).min  # most negative float
+
         self.logic.multipleThresholds = self.multipleThresholdEffect.transitions.tolist()
-        pb = ProgressBarProc()
-        pb.setMessage("Initializing boundary removal")
-        self.editor.setActiveEffectByName("Boundary removal")
+        self.logic.multipleThresholds[0] = dtype_min
+
+        self.editor.setActiveEffectByName(BOUNDARY_REMOVAL_LABEL)
 
         def afterWait():
-            with pb:
+            with ProgressBarProc() as pb:
                 pb.setMessage("Initializing boundary removal")
 
-                # Make all segments invisible except for microporosity
-                display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
-                display.SetSegmentVisibility("Macroporosity", False)
-                display.SetSegmentVisibility("Microporosity", True)
-                display.SetSegmentVisibility("Solid", False)
-                display.SetSegmentVisibility("Reference Solid", False)
+                self.__updateSegmentsVisibility(microporosity=True, others=False)
+
+                self.addBackgroundCheckBox.visible = False
 
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.visible = False
 
+        self.multiFinishedTimer.timeout.disconnect()
         self.multiFinishedTimer.timeout.connect(afterWait)
         self.multiFinishedTimer.start()
 
     def onBoundaryRemovalFinished(self):
         self.logic.boundaryThresholds = self.boundaryRemovalEffect.appliedMinMax
-        self.pb = ProgressBarProc()
-        self.pb.setMessage("Expanding segments")
-        self.editor.setActiveEffectByName("Expand segments")
-        display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+        with ProgressBarProc() as pb:
+            self.editor.setActiveEffectByName(EXPAND_SEGMENTS_LABEL)
+            self.addBackgroundCheckBox.visible = False
+            pb.setMessage("Expanding segments")
 
-        # Make all segments visible except for microporosity
-        display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
-        display.SetSegmentVisibility("Macroporosity", True)
-        display.SetSegmentVisibility("Microporosity", False)
-        display.SetSegmentVisibility("Solid", True)
-        display.SetSegmentVisibility("Reference Solid", True)
+            self.__updateSegmentsVisibility(microporosity=False, others=True)
 
-        self.expandSegmentsEffect.applyButton.click()
+            self.expandSegmentsEffect.applyButton.click()
 
     def getParentLazyNode(self):
         node = self.customVolumeComboBox.currentNode()
+        if node is None:
+            return None
+
         parentLazyNodeId = node.GetAttribute("ParentLazyNode")
         if parentLazyNodeId:
             lazyNode = slicer.mrmlScene.GetNodeByID(parentLazyNodeId)
@@ -239,46 +276,101 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
                 return lazyNode
         return None
 
+    def __updateSegmentsVisibility(self, microporosity: bool, others: bool) -> None:
+        display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
+        display.SetSegmentVisibility("Background", others)
+        display.SetSegmentVisibility("Macroporosity", others)
+        display.SetSegmentVisibility("Microporosity", microporosity)
+        display.SetSegmentVisibility("Solid", others)
+        display.SetSegmentVisibility("High Attenuation", others)
+
     def onExpandSegmentsFinished(self):
-        with self.pb:
+        with ProgressBarProc() as pb:
             self.editor.setActiveEffectByName("")
-            display = self.segmentationNodeComboBox.currentNode().GetDisplayNode()
-            display.SetSegmentVisibility("Microporosity", True)
+            self.addBackgroundCheckBox.visible = False
+            self.__updateSegmentsVisibility(microporosity=True, others=True)
+            segmentationNode = self.segmentationNodeComboBox.currentNode()
+            segmentationNode.RemoveAttribute("StreamlinedSegmentation")
             if self.getParentLazyNode():
                 self.applyGroup.visible = True
                 self.volumeSelector.setCurrentNode(self.getParentLazyNode())
+            else:
+                self.customVolumeComboBox.setCurrentNode(None)
+                self.handleStartOver()
 
-    def onInputChanged(self, _):
+    def __removeWorkingSegmentation(self):
+        segmentationNode = self.segmentationNodeComboBox.currentNode()
+        if segmentationNode is None:
+            return
+
+        attribute = segmentationNode.GetAttribute("StreamlinedSegmentation")
+        if attribute is None:
+            return
+
+        with helpers.BlockSignals(self.segmentationNodeComboBox):
+            logging.info("Removing working segmentation node...")
+            self.segmentationNodeComboBox.setCurrentNode(None)
+            slicer.mrmlScene.RemoveNode(segmentationNode)
+
+    def onInputChanged(self, itemId: int) -> None:
         sourceNode = self.customVolumeComboBox.currentNode()
         self.startOverButton.enabled = bool(sourceNode)
-        if not sourceNode:
+        self.applyGroup.visible = False
+        self.addBackgroundCheckBox.visible = True
+
+        self.__removeWorkingSegmentation()
+        self.editor.setActiveEffectByName("")
+
+        if sourceNode is None:
             return
+
         segmentationNode = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLSegmentationNode", sourceNode.GetName() + "_Segmentation"
         )
         segmentationNode.CreateDefaultDisplayNodes()
-        segmentNames = ["Macroporosity", "Microporosity", "Solid", "Reference Solid"]
+        segmentationNode.SetAttribute("StreamlinedSegmentation", "True")
+        self.__populateSegments(segmentationNode, self.addBackgroundCheckBox.isChecked())
+
+        self.segmentationNodeComboBox.setCurrentNode(segmentationNode)
+        self.sourceVolumeNodeComboBox.setCurrentNode(sourceNode)
+        self.editor.setActiveEffectByName(MULTIPLE_THRESHOLD_LABEL)
+
+    def __populateSegments(self, segmentationNode: slicer.vtkMRMLSegmentationNode, withBackground: bool):
+        segmentNames = ["Background", "Macroporosity", "Microporosity", "Solid", "High Attenuation"]
+
+        # Remove previous segments:
+        segmentation = segmentationNode.GetSegmentation()
+        segmentation.RemoveAllSegments()
+
+        if not withBackground:
+            segmentNames = segmentNames[1:]
 
         colors = []
-        for i, segmentName in enumerate(segmentNames):
-            if i == 0:
+        for segmentName in segmentNames:
+            if segmentName == "Background":
+                color = (0, 0, 0)
+            elif segmentName == "Macroporosity":
                 color = (1, 0, 0)
             else:
-                color = distinctipy.get_colors(1, colors)[0]
+                previousColors = colors[1:] if withBackground else colors
+                color = distinctipy.get_colors(1, previousColors)[0]
+
             colors.append(color)
-            segmentation = segmentationNode.GetSegmentation()
-            segmentation.AddEmptySegment(segmentName)
-            segmentation.GetSegment(segmentName).SetColor(color)
+            segmentation.AddEmptySegment(segmentName, segmentName, color)
 
         self.logic.segmentNames = segmentNames
         self.logic.segmentColors = colors
 
-        self.segmentationNodeComboBox.setCurrentNode(segmentationNode)
-        self.sourceVolumeNodeComboBox.setCurrentNode(sourceNode)
-        self.editor.setActiveEffectByName("Multiple Threshold")
+    def __onSegmentationNodeChanged(self):
+        if self.segmentationNodeComboBox.currentNode() is not None:
+            return
+
+        self.customVolumeComboBox.setCurrentNode(None)
+        self.handleStartOver()
 
     def __onApplicationLoadFinished(self):
         # Connect observers to scene events
+
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndImportEvent, self.onSceneEndImport)
@@ -351,16 +443,31 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
                 windowTitle="Segment Editor",
             )
 
-        # Allow switching between effects and selected segment using keyboard shortcuts
-        self.editor.installKeyboardShortcuts()
+        self.__enterEffect()
 
-        # Set parameter set node if absent
-        self.selectParameterNode()
+    def __enterEffect(self):
+        if not self.__lastUsedEffect:
+            self.editor.updateWidgetFromMRML()
+            self.selectParameterNode()
+            return
+
+        self.editor.setActiveEffectByName(self.__lastUsedEffect)
         self.editor.updateWidgetFromMRML()
+        self.editor.setupViewObservations()
+
+        if self.__lastUsedEffect.lower() == MULTIPLE_THRESHOLD_LABEL.lower():
+            if self.segmentationNodeComboBox.currentNode() is not None:
+                self.__updateSegmentsVisibility(microporosity=True, others=True)
+        elif self.__lastUsedEffect.lower() == BOUNDARY_REMOVAL_LABEL.lower():
+            self.__updateSegmentsVisibility(microporosity=True, others=False)
+            self.boundaryRemovalEffect.initialize()
+            self.boundaryRemovalEffect.initializeButton.visible = True
+        elif self.__lastUsedEffect.lower() == EXPAND_SEGMENTS_LABEL.lower():
+            self.__updateSegmentsVisibility(microporosity=True, others=True)
 
     def exit(self):
+        self.__lastUsedEffect = self.editor.activeEffect().name if self.editor.activeEffect() is not None else None
         self.editor.setActiveEffect(None)
-        self.editor.uninstallKeyboardShortcuts()
         self.editor.removeViewObservations()
 
     def onSceneStartClose(self, caller, event):
@@ -371,12 +478,26 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
     def onSceneEndClose(self, caller, event):
         if self.parent.isEntered:
             self.selectParameterNode()
+            self.editor.setupViewObservations()
             self.editor.updateWidgetFromMRML()
 
     def onSceneEndImport(self, caller, event):
         if self.parent.isEntered:
             self.selectParameterNode()
             self.editor.updateWidgetFromMRML()
+
+    def onCLIFinished(self, lazyOutputNode):
+        segmentationNode = self.segmentationNodeComboBox.currentNode()
+        if segmentationNode is not None:
+            segmentationNode.GetDisplayNode().SetVisibility(False)
+
+        with helpers.BlockSignals(self.customVolumeComboBox):
+            self.customVolumeComboBox.setCurrentNode(None)
+            self.handleStartOver()
+
+        self.__lastUsedEffect = None
+
+        lazy.set_visibility(lazyOutputNode, True)
 
     def cleanup(self):
         super().cleanup()
@@ -386,12 +507,16 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.expandSegmentsEffect.applyFinishedCallback = lambda: None
         self.multiFinishedTimer.stop()
         self.multiFinishedTimer.timeout.disconnect()
+        self.segmentationNodeComboBox.setCurrentNode(None)
+        self.sourceVolumeNodeComboBox.setCurrentNode(None)
         ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
 
 
 class StreamlinedSegmentationLogic(LTracePluginLogic):
-    def __init__(self):
-        LTracePluginLogic.__init__(self)
+    processFinished = qt.Signal(object)
+
+    def __init__(self, parent):
+        LTracePluginLogic.__init__(self, parent)
         self.segmentNames = None
         self.segmentColors = None
         self.multipleThresholds = None
@@ -441,7 +566,8 @@ class StreamlinedSegmentationLogic(LTracePluginLogic):
             return
 
         if caller.GetStatusString() == "Completed":
-            self.outputLazyData.to_node()
+            node = self.outputLazyData.to_node()
+            self.processFinished.emit(node)
 
         if self.__cli_node_modified_observer is not None:
             self._cli_node.RemoveObserver(self.__cli_node_modified_observer)

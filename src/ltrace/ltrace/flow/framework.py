@@ -163,7 +163,13 @@ class FlowWidget(qt.QFrame):
         self.navWidget.skipButton.clicked.connect(lambda: stepList.setCurrentRow(stepList.currentRow + 1))
         self.navWidget.nextButton.clicked.connect(lambda: self.steps[stepList.currentRow].next())
 
-        slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, lambda *args: self.onCloseScene())
+        self.__closeSceneObserverHandler = slicer.mrmlScene.AddObserver(
+            slicer.mrmlScene.StartCloseEvent, self.onCloseScene
+        )
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        slicer.mrmlScene.RemoveObserver(self.__closeSceneObserverHandler)
 
     def updateAvailableSteps(self):
         availableSteps = self.state.availableSteps()
@@ -187,9 +193,12 @@ class FlowWidget(qt.QFrame):
         self.currentStepSection.stepsWidget.setCurrentIndex(nextWidgetIndex)
         self.currentStepIndex = nextWidgetIndex
 
-    def onCloseScene(self):
-        self.state.reset()
-        self.overviewSection.stepList.setCurrentRow(0)
+    def onCloseScene(self, *args, **kwargs):
+        try:
+            self.state.reset()
+            self.overviewSection.stepList.setCurrentRow(0)
+        except Exception:
+            pass  # avoid run after widget being deleted
 
     def enter(self):
         self.steps[self.currentStepIndex].enter()

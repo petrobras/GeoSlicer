@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import re
-
 import slicer
+import traceback
 
 from ltrace.slicer import helpers, data_utils as du
 
@@ -191,7 +191,7 @@ class StokesKabsCompiler(BaseResultCompiler):
                 self.missing_results.append((sim_output_filepath, "File not found"))
                 continue
             except Exception as e:
-                logging.error(e)
+                logging.error(f"{e}.\n{traceback.format_exc()}")
                 continue
 
         name = "_".join([v.upper() for v in (prefix, simulator, direction) if v]) + "_Variables"
@@ -217,7 +217,7 @@ class StokesKabsCompiler(BaseResultCompiler):
                     attributes["Subvolume Cut Info"].append(str(cut_info))
 
         except Exception as e:
-            logging.error(e)
+            logging.error(f"{e}.\n{traceback.format_exc()}")
 
         table_node = helpers.createTemporaryNode(slicer.vtkMRMLTableNode, name)
 

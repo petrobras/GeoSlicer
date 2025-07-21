@@ -179,7 +179,6 @@ class SegmentationEnvLogic(LTracePluginLogic):
                 self.__modulesInfo["CustomizedSegmentEditor"],
                 self.__modulesInfo["Segmenter"],
                 self.__modulesInfo["SegmentInspector"],
-                self.__modulesInfo["ThinSectionInstanceSegmenter"],
                 self.__modulesInfo["ThinSectionInstanceEditor"],
                 self.__modulesInfo["LabelMapEditor"],
                 self.__modulesInfo["PoreStats"],

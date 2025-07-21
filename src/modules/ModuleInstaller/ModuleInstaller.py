@@ -1,22 +1,19 @@
-import os
-import requests
-import enum
-import vtk, qt, ctk, slicer
-import logging
+import shutil
+from pathlib import Path
 
-# -*- extra imports -*-
-from ltrace.slicer.helpers import install_git_module, GitImportError, config_module_paths, save_path
-from ltrace.slicer_utils import base_version, LTracePlugin, LTracePluginWidget, LTracePluginLogic
+import ctk
+import qt
+import slicer
 
-
-#
-# ModuleInstaller
-#
+from ltrace.slicer.module_utils import loadModules, ModuleInfo
+from ltrace.slicer_utils import externalModulesPath, LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer import helpers
 
 
-class SourceType(enum.Enum):
-    ZIP = 0
-    URL = 1
+try:
+    from Test.ModuleInstallerTest import ModuleInstallerTest
+except ImportError:
+    ModuleInstallerTest = None
 
 
 class ModuleInstaller(LTracePlugin):
@@ -27,19 +24,14 @@ class ModuleInstaller(LTracePlugin):
         self.parent.title = "Module Installer"
         self.parent.categories = ["Tools"]
         self.parent.dependencies = []
-        self.parent.contributors = ["Rafael Arenhart (LTrace Geophysics)"]
+        self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = """
-Imports a new module from a directory, zip file or git URL.
+Imports a new module from a folder or zip file.
 """
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = """
 This file was originally developed by LTrace Geophysics Solutions.
 """
-
-
-#
-# ModuleInstallerWidget
-#
 
 
 class ModuleInstallerWidget(LTracePluginWidget):
@@ -54,120 +46,103 @@ class ModuleInstallerWidget(LTracePluginWidget):
         formLayout.setContentsMargins(0, 0, 0, 0)
 
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
-        inputCollapsibleButton.setText("Module Instaler source")
+        inputCollapsibleButton.setText("Module Installer Source")
         formLayout.addRow(inputCollapsibleButton)
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         inputFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         self.selector = ctk.ctkPathLineEdit()
-        self.selector.setToolTip("Choose module zip file or git HTTPS URL.")
+        self.selector.setToolTip("Choose module zip file or folder.")
         self.selector.settingKey = "ModuleInstaller/Source"
+        self.selector.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Dirs
         inputFormLayout.addRow("Source:", self.selector)
-
-        self.username = qt.QLineEdit()
-        self.username.setToolTip("Input user name for the git repository (optional).")
-        inputFormLayout.addRow("User name:", self.username)
-        import getpass
-
-        user = str(getpass.getuser()).lower()
-        self.username.text = user
-
-        self.userpass = qt.QLineEdit()
-        self.userpass.setEchoMode(qt.QLineEdit.Password)
-        self.userpass.setToolTip("Input user password for git repository (optional).")
-        inputFormLayout.addRow("User password:", self.userpass)
 
         self.apply_button = qt.QPushButton("Apply")
         self.apply_button.toolTip = "Import the module."
         self.apply_button.enabled = True
-        inputFormLayout.addRow("Source:", self.apply_button)
+        inputFormLayout.addRow(self.apply_button)
         self.layout.addStretch(1)
 
         self.apply_button.clicked.connect(self.onApplyButton)
 
-    def onSelect(self):
-        pass
-
     def onApplyButton(self):
         path = self.selector.currentPath
-        save_path(self.selector)
-        user = self.username.text
-        user = user if user != "" else None
-        password = self.userpass.text
-        password = password if password != "" else None
-        self.module_logic.run(path, user, password)
+        if not path:
+            slicer.util.warningDisplay("Please select a source file or folder.")
+            return
 
-
-#
-# ModuleInstallerLogic
-#
+        helpers.save_path(self.selector)
+        self.module_logic.run(path)
 
 
 class ModuleInstallerLogic(LTracePluginLogic):
     def __init__(self, *args, **kwargs):
         LTracePluginLogic.__init__(self, *args, **kwargs)
-        geoslicer_version = base_version()
+        self.modules_path = externalModulesPath()
 
-        modules_folders = (
-            *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-            *(("lib\\" + geoslicer_version + "\\qt-scripted-modules").split("\\")),
-        )
-        self.modules_path = os.path.join(modules_folders[0], os.sep, *modules_folders[1:])
-
-        json_folders = (
-            *(os.path.dirname(slicer.app.launcherExecutableFilePath).split("/")),
-            *(
-                ("lib\\" + geoslicer_version + "\\qt-scripted-modules\\Resources\\json\\WelcomeGeoSlicer.json").split(
-                    "\\"
-                )
-            ),
-        )
-        self.json_path = os.path.join(json_folders[0], os.sep, *json_folders[1:])
-
-    def run(self, source_string, username=None, password=None):
-
-        source_type = self._check_source_type(source_string)
-
+    def run(self, path):
         try:
-            if source_type == SourceType.ZIP:
-                self._handle_zip_source(source_string)
-            elif source_type == SourceType.URL:
-                remote = source_string
-                if username is not None and password is not None:
-                    remote = source_string.split("@")[-1]
-                    remote = remote.split("https://")[-1]
-                    remote = f"https://{username}:{password}@{remote}"
-                install_git_module(remote)
+            modules_to_register = []
+            path = Path(path)
+            if path.is_file():
+                modules_to_register = self._handle_zip_source(path)
+            elif path.is_dir():
+                modules_to_register = self._handle_folder_source(path)
             else:
-                qt.QMessageBox.warning(
-                    slicer.modules.AppContextInstance.mainWindow,
-                    "Source is not valid",
-                    "Given source for module is neither a zip file nor an accessible git repository.",
+                slicer.util.warningDisplay(
+                    "The provided source is not a valid zip file or folder.",
+                    "Invalid Source",
                 )
                 return False
 
-            slicer.modules.CustomizerInstance.set_paths()
-            qt.QMessageBox.information(
-                slicer.modules.AppContextInstance.mainWindow,
-                "Module installation successful",
-                "Please restart GeoSlicer to finish new modules setup.",
-            )
+            if modules_to_register:
+                loadModules(modules_to_register, permanent=True)
+                module_manager = slicer.modules.AppContextInstance.modules
 
-        except GitImportError as err:
+                # Add modules to search so it works before a restart
+                module_manager.addModules(modules_to_register)
+                n_modules = len(modules_to_register)
+                prefix = "Module" if n_modules == 1 else f"{n_modules} modules"
+                slicer.util.infoDisplay(
+                    f"{prefix} successfully installed and loaded into the current session.\nUse the Module Search tool (ctrl+F) to find modules.",
+                    "Installation Complete",
+                )
+            return True
+
+        except Exception as e:
             slicer.util.errorDisplay(
-                "Unable to find a GIT executable. " "Please add a git installation directory to your PATH.",
-                "Module installation failed",
+                f"An unexpected error occurred during installation: {e}",
+                "Module Installation Failed",
             )
-
-    def _check_source_type(self, source_string):
-
-        if os.path.isfile(source_string) and source_string[-4:] == ".zip":
-            return SourceType.ZIP
-        else:
-            return SourceType.URL
+            raise e
 
     def _handle_zip_source(self, source_string):
-        new_module_name = os.path.basename(source_string).split(".")[0]
-        new_module_path = os.path.join(self.modules_path, new_module_name)
-        slicer.util.extractArchive(source_string, self.modules_path)
-        config_module_paths(new_module_name, new_module_path, self.json_path)
+        slicer.util.extractArchive(str(source_string), str(self.modules_path))
+
+        new_module_dir_name = Path(source_string).stem
+        new_module_path = self.modules_path / new_module_dir_name
+
+        if not new_module_path.exists():
+            new_module_path = self.modules_path
+
+        modules = ModuleInfo.findModules(str(new_module_path), depth=2)
+        if not modules:
+            raise RuntimeError(f"No valid Slicer modules found in {source_string}")
+
+        return modules
+
+    def _handle_folder_source(self, source_string):
+        source_path = Path(source_string)
+        new_module_dir_name = source_path.name
+        new_module_path = self.modules_path / new_module_dir_name
+
+        if new_module_path.exists():
+            shutil.rmtree(new_module_path)
+
+        shutil.copytree(source_path, new_module_path)
+
+        modules = ModuleInfo.findModules(str(new_module_path), depth=2)
+        if not modules:
+            raise RuntimeError(f"No valid Slicer modules found in {source_string}")
+
+        return modules

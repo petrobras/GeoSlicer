@@ -6,6 +6,7 @@ import slicer
 import logging
 import sys
 import ltrace.slicer.helpers as helpers
+import traceback
 
 from ltrace.slicer.app import getApplicationVersion
 from ltrace.slicer.lazy import lazy
@@ -136,7 +137,7 @@ class ExpandSegmentsBigImageWidget(LTracePluginWidget):
         helpers.save_path(self.__exportPathEdit)
 
     def onProcessError(self, error):
-        logging.error(error)
+        logging.error(f"{error}.\n{traceback.format_exc()}")
         slicer.util.errorDisplay(
             "An error was found during the process. Please, check the application logs for more details.", self.title
         )

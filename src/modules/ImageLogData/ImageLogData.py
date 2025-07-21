@@ -20,7 +20,7 @@ from ltrace.slicer_utils import getResourcePath
 from ltrace.constants import ImageLogConst
 from pathlib import Path
 from slicer.util import VTKObservationMixin
-from ltrace.slicer.helpers import tryGetNode
+from ltrace.slicer.helpers import tryGetNode, getCurrentEnvironment
 
 from CustomizedData import CustomizedDataWidget
 from CustomizedDataLib.LabelMap import LabelMapWidget
@@ -1011,10 +1011,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         """
         Handles timer to refresh views.
         """
-        env = slicer.modules.AppContextInstance.modules.currentWorkingDataType
+        env = getCurrentEnvironment()
         if self.debug:
             print("refreshViews:", source, env)
-        if not env or env[1] not in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT:
+        if env.value not in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT:
             return
 
         self.__delayedRefreshViews()
@@ -1103,7 +1103,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 self.observedPrimaryNodes.append([primaryNode, observerID])
 
     def updateViewLabel(self, identifier):
-        if identifier >= len(self.imageLogViewList):
+        if identifier >= len(self.imageLogViewList) or identifier >= len(self.viewControllerWidgets):
             return
 
         view = self.imageLogViewList[identifier]
@@ -1199,7 +1199,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
     def addView(self, selectedNode=None):
         nodeName = selectedNode.GetName() if selectedNode is not None else "None"
-        print(f"ImageLogDataLogic.addView from logic {self}: {nodeName}")
         if len(self.imageLogViewList) >= self.MAXIMUM_NUMBER_OF_VIEWS:
             slicer.app.layoutManager().setLayout(
                 slicer.modules.AppContextInstance.imageLogLayoutId
@@ -1948,7 +1947,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if self.imageLogLayoutViewAction is not None:
             return
 
-        viewToolBar = slicer.util.mainWindow().findChild("QToolBar", "ViewToolBar")
+        viewToolBar = slicer.modules.AppContextInstance.mainWindow.findChild("QToolBar", "ViewToolBar")
         layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
 
         imageLogActionText = "ImageLog View"
@@ -1974,10 +1973,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.imageLogLayoutViewAction.setData(slicer.modules.AppContextInstance.imageLogLayoutId)
 
     def __updateImageLogLayoutActionVisibility(self):
-        currentEnvironment = slicer.modules.AppContextInstance.modules.currentWorkingDataType[1]
-        isEnvironmentValid = currentEnvironment in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT
+        currentEnvironment = getCurrentEnvironment()
+        isEnvironmentValid = currentEnvironment.value in self.ALLOWED_ENVIRONMENTS_FOR_LAYOUT
         if not isEnvironmentValid and slicer.app.layoutManager().layout >= ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE:
-            viewToolBar = slicer.util.mainWindow().findChild("QToolBar", "ViewToolBar")
+            viewToolBar = slicer.modules.AppContextInstance.mainWindow.findChild("QToolBar", "ViewToolBar")
             layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
             layoutMenu.actions()[0].triggered()  # Force triggering action to update menu icon
 

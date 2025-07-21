@@ -85,8 +85,8 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         self.setupSegmentation("MicroCT")
         self.setupSegmentation("ImageLog")
 
-        self.modulesToolbar.actions()[1].setVisible(False)
-        self.modulesToolbar.actions()[12].setVisible(False)
+        self.modulesToolbar.actions()[1].setVisible(False)  # ImageLog Explorer
+        self.modulesToolbar.actions()[12].setVisible(False)  # ImageLog Segmentation
 
         self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
 
@@ -127,10 +127,10 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
     def switchViewDataModule(self, layoutID: int):
         if self.getModuleManager().currentWorkingDataType[0] == "Multiscale":
             isImageLogView = layoutID > ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE
-            self.modulesToolbar.actions()[0].setVisible(not isImageLogView)
-            self.modulesToolbar.actions()[11].setVisible(not isImageLogView)
-            self.modulesToolbar.actions()[1].setVisible(isImageLogView)
-            self.modulesToolbar.actions()[12].setVisible(isImageLogView)
+            self.modulesToolbar.actions()[0].setVisible(not isImageLogView)  # Volume Explorer
+            self.modulesToolbar.actions()[11].setVisible(not isImageLogView)  # Volume Segmentation
+            self.modulesToolbar.actions()[1].setVisible(isImageLogView)  # ImageLog Explorer
+            self.modulesToolbar.actions()[12].setVisible(isImageLogView)  # ImageLog Segmentation
 
             if slicer.util.selectedModule() in ["CustomizedData", "ImageLogData"]:
                 slicer.util.selectModule("ImageLogData" if isImageLogView else "CustomizedData")
@@ -148,7 +148,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 slicer.util.selectModule("CustomizedSegmentEditor")
 
     def addImageLogViewOption(self) -> None:
-        self.viewToolBar = slicer.util.mainWindow().findChild("QToolBar", "ViewToolBar")
+        self.viewToolBar = slicer.modules.AppContextInstance.mainWindow.findChild("QToolBar", "ViewToolBar")
         layoutMenu = self.viewToolBar.widgetForAction(self.viewToolBar.actions()[0]).menu()
 
         imageLogActionText = "ImageLog View"
