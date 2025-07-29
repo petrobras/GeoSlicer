@@ -44,6 +44,7 @@ pint-pandas==0.2
 pint==0.19.2
 plotly==5.18.0
 psutil==5.9.0
+pyarrow==20.0.0
 pyedt==0.1.5
 Pygments==2.18.0
 pynrrd==1.0.0

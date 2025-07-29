@@ -55,6 +55,7 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             relatedModules["QualityIndicator"],
             relatedModules["HeterogeneityIndex"],
             relatedModules["AzimuthShiftTool"],
+            relatedModules["CLAHETool"],
         ]
 
         if hasattr(slicer.modules, "eccentricity"):

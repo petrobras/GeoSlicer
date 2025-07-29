@@ -138,6 +138,11 @@ nav:
           - Treinamento de Modelo: "Modules/Segmenter/Semiauto/semiauto.md"
           - Modelos Pré-treinados (Micro CT): "Modules/Segmenter/Automatic/automatic_MicroCT.md"
           - Modelos Pré-treinados (Thin Section): "Modules/Segmenter/Automatic/automatic_ThinSection.md"
+      - Image Log:
+          - Importar: "Data_loading/load_well_log.md"
+          - Image Log Crop: "Modules/ImageLog/ImageLogCropVolume/ImageLogCropVolume.md"
+          - Processamento:
+              - CLAHE (Contrast Limit Adaptive Histogram Equalization): "Modules/ImageLog/CLAHETool/CLAHETool.md"
 #  - Suporte:
 #      - Error Log: "Support_and_assistance/error_log.md"
 #      - Reportar Erros: "Support_and_assistance/log_bundle.md"

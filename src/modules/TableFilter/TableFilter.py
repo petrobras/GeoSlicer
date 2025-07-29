@@ -335,7 +335,8 @@ class TableFilterWidget(LTracePluginWidget):
 
     def __applyComboBoxFilter(self):
         """Force qMRMLNodeComboBox nodes filter to handle hidden nodes correctly."""
-        self.referenceNodeSelector.sortFilterProxyModel().invalidateFilter()
+        if hasattr(self.referenceNodeSelector, "sortFilterProxyModel"):
+            self.referenceNodeSelector.sortFilterProxyModel().invalidateFilter()
 
     def onFilterListItemSlectionChanged(self):
         self.filterEditButton.enabled = len(self.filterList.selectedItems()) > 0

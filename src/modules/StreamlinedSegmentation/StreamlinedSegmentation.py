@@ -63,7 +63,6 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor = None
         self.__tag = None
         self.__lastUsedEffect = None
-        self.destroyed.connect(self.cleanup)
 
     def setup(self):
         LTracePluginWidget.setup(self)

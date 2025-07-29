@@ -52,7 +52,10 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 ],
             ),
             # ImageLog Modules
-            ("Image Log Pre-Processing", ["ImageLogCropVolume", "AzimuthShiftTool", "SpiralFilter", "ImageLogInpaint"]),
+            (
+                "Image Log Pre-Processing",
+                ["ImageLogCropVolume", "AzimuthShiftTool", "SpiralFilter", "ImageLogInpaint", "CLAHETool"],
+            ),
             # Volumes Modules
             (
                 "Volumes Pre-Processing",

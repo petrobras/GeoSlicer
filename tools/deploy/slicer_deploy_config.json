@@ -90,7 +90,6 @@
         "src/ltrace/ltrace/assets/private/",
         "tests/",
         "src/modules/TestsModule/",
-        "src/ltrace/ltrace/image/dlis.py",
         "src/modules/ImageLogExport/ImageLogExportLib/widgets/ImageLogExportExtendedWidget.py",
         "src/ltrace/ltrace/slicer/lazy/protocols/biaep.py",
         "src/modules/MicroCTLoader/Libs/MicroCTLoaderExtendedWidget.py",

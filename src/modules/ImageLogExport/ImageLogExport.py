@@ -47,7 +47,7 @@ class ImageLogExportWidget(LTracePluginWidget):
         self.versions["base"] = (ImageLogExportBaseWidget(), "Base")
         self.versions["extended"] = (ImageLogExportExtendedWidget(), "Extended")
 
-        if slicer_is_in_developer_mode():
+        if slicer_is_in_developer_mode() and self.versions["extended"][0] is not None:
             mainTab = qt.QTabWidget()
             for _, (widget, name) in self.versions.items():
                 if widget is None:
