@@ -1,10 +1,12 @@
+import importlib
+import os
+import sys
+from pathlib import Path
+
 import ctk
 import pyqtgraph as pg
 import qt
 import slicer
-import importlib
-import os
-import sys
 
 from MercurySimulationLib.MercurySimulationLogic import MercurySimulationLogic
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
@@ -12,21 +14,16 @@ from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulation
 from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
 from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
 from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE
-
-from pathlib import Path
+from ltrace.remote.handlers.PoreNetworkSimulationHandler import PoreNetworkSimulationHandler
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import (
-    LTracePlugin,
-    LTracePluginWidget,
-    getResourcePath,
-    slicer_is_in_developer_mode,
-)
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath, slicer_is_in_developer_mode
 
 try:
     from Test.PoreNetworkSimulationTest import PoreNetworkSimulationTest
 except ImportError:
     PoreNetworkSimulationTest = None  # tests not deployed to final version or closed source
+
 
 pg.setConfigOptions(antialias=True)
 
@@ -163,13 +160,16 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         super().onReload()
 
     def onCancelButtonClicked(self):
-        simulation = self.simulationSelector.currentText
-        self.logic.cancel()
-        self.applyButtonEnabled(True)
+        params = self.twoPhaseSimWidget.getParams()
+        if params["remote_execution"] == "F":
+            self.logic.cancel()
+            self.applyButtonEnabled(True)
 
     def applyButtonEnabled(self, enabled):
-        self.applyButton.setEnabled(enabled)
-        self.cancelButton.setEnabled(not enabled)
+        params = self.twoPhaseSimWidget.getParams()
+        if params["remote_execution"] == "F":
+            self.applyButton.setEnabled(enabled)
+            self.cancelButton.setEnabled(not enabled)
 
     def onChangeModel(self):
         simulation = self.simulationSelector.currentText
@@ -218,19 +218,38 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             callback=self.applyButtonEnabled,
         )
 
-    def runTwoPhaseSimulation(self, pore_node):
+    def runTwoPhaseSimulation(self, pore_table_node):
         self.applyButtonEnabled(False)
         slicer.app.processEvents()
         params = self.twoPhaseSimWidget.getParams()
-        params["subresolution function"] = params["subresolution function call"](pore_node)
+        params["subresolution function"] = params["subresolution function call"](pore_table_node)
         snapshot_node = self.snapshotSelector.currentNode()
-        self.logic.run_2phase(
-            pore_node,
-            snapshot_node,
-            params,
-            prefix=self.outputPrefix.text,
-            callback=self.applyButtonEnabled,
-        )
+        if params["remote_execution"] == "F":
+            self.logic.run_2phase(
+                pore_table_node,
+                snapshot_node,
+                params,
+                prefix=self.outputPrefix.text,
+                callback=self.applyButtonEnabled,
+            )
+        else:
+            self.handler = PoreNetworkSimulationHandler(pore_table_node.GetID(), params, self.outputPrefix.text)
+            success = slicer.modules.RemoteServiceInstance.cli.run(
+                self.handler, name="PoreNetworkSimulation", job_type="pnmsimulation"
+            )
+            if success:
+                self.showJobs()
+
+    def showJobs(self):
+        """this function open a dialog to confirm and if yes, emit the signal to delete the results"""
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText("Your job was succesfully scheduled on cluster. Do you want to move to job monitor view?")
+        msg.setWindowTitle("Show jobs")
+        msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+        msg.setDefaultButton(qt.QMessageBox.No)
+        if msg.exec_() == qt.QMessageBox.Yes:
+            slicer.modules.AppContextInstance.rightDrawer.show(1)
 
     def runMICPSimulation(self, pore_node):
         self.applyButtonEnabled(False)

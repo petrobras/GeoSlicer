@@ -15,9 +15,10 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "simulation type": ONE_ANGLE,
         "rotation angles": 100,
         "keep_temporary": False,
-        "subres_porositymodifier": 1.0,
         "subres_model_name": "Fixed Radius",
         "subres_params": {"radius": 0.1},
+        "subres_shape_factor": 0.04,
+        "subres_porositymodifier": 1.0,
         "solver": "pypardiso",
         "solver_error": 1e-7,
     }
@@ -152,7 +153,13 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.rotationAnglesEdit.setVisible(text == "Multiple orientations")
 
     def setParams(self, params):
-        self.modelTypeComboBox.setCurrentText(params["model type"])
-        self.modelTypeComboBox.setCurrentText(params["simulation type"])
-        self.modelTypeComboBox.setCurrentText(params["rotation angles"])
-        self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
+        self.modelTypeComboBox.setCurrentText(params.get("model type"))
+        self.modelTypeComboBox.setCurrentText(params.get("simulation type"))
+        self.modelTypeComboBox.setCurrentText(params.get("rotation angles"))
+        mercury_params = {
+            "subres_model_name": params.get("subres_model_name"),
+            "subres_params": params.get("subres_params"),
+            "subres_porositymodifier": params.get("subres_porositymodifier"),
+            "subres_shape_factor": params.get("subres_shape_factor"),
+        }
+        self.mercury_widget.setParams(mercury_params)

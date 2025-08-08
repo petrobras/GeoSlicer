@@ -5,6 +5,8 @@
 
 from __future__ import print_function
 
+import os
+
 import vtk
 
 import json
@@ -40,14 +42,6 @@ from PoreNetworkSimulationCLILib.vtk_utils import create_flow_model, create_perm
 
 from ltrace.slicer.cli_utils import progressUpdate
 import shutil
-
-
-def get_number_of_tests(params: dict):
-    num_tests = 1
-    for _, value in params.items():
-        if type(value) == list:
-            num_tests *= len(value)
-    return num_tests
 
 
 def writeDataFrame(df, path):
@@ -313,9 +307,10 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
     else:
         snapshot_file = None
 
-    num_tests = get_number_of_tests(params)
     keep_temporary = params["keep_temporary"]
     timeout_enabled = params["timeout_enabled"]
+
+    sim_suffix = get_simulation_suffix(args.simInterval)
 
     if statoil_dict is None:
         raise RuntimeError("The network is invalid.")
@@ -326,9 +321,9 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
         statoil_dict=statoil_dict,
         snapshot_file=snapshot_file,
         params=params,
-        num_tests=num_tests,
         timeout_enabled=timeout_enabled,
         write_debug_files=keep_temporary,
+        sim_interval=args.simInterval,
     )
 
     parallel.set_simulator(PNFLOW if params["simulator"] == "pnflow" else PORE_FLOW)
@@ -341,15 +336,17 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
         # Write results only every 10 new results
         krel_tables_len = len(krel_result.krel_tables)
         frequency = 10
-        if (krel_tables_len > 0 and krel_tables_len % frequency == 0) or krel_tables_len > num_tests - frequency:
+        if (
+            krel_tables_len > 0 and krel_tables_len % frequency == 0
+        ) or krel_tables_len > parallel.num_tests - frequency:
             df_cycle_results = pd.DataFrame(KrelTables.get_complete_dict(krel_result.krel_tables))
 
             for cycle in range(1, 4):
                 cycle_data_frame = df_cycle_results[df_cycle_results["cycle"] == cycle]
-                writeDataFrame(cycle_data_frame, cwd / f"krelCycle{cycle}")
+                writeDataFrame(cycle_data_frame, cwd / f"krelCycle{cycle}{sim_suffix}")
 
             curve_analysis_df = krel_result.to_dataframe()
-            writeDataFrame(curve_analysis_df, cwd / "krelResults")
+            writeDataFrame(curve_analysis_df, cwd / f"krelResults{sim_suffix}")
 
             if params["create_sequence"] == "T":
                 polydata, saturation_steps = generate_model_variable_scalar(
@@ -454,13 +451,30 @@ def simulate_mercury(args, params):
     progressUpdate(value=100)
 
 
+def parse_simulation_interval(s):
+    try:
+        start, end = map(int, s.split(":"))
+        if start > end:
+            raise ValueError("Start must be <= End")
+        return (start, end + 1)
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"Invalid simulation interval '{s}'. Expected format: start:end")
+
+
+def get_simulation_suffix(sim_tuple):
+    start, end = sim_tuple
+    if end is not None:
+        return f"_{start}-{end - 1}"
+    return ""
+
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace pore network simulation CLI.")
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--cwd", type=str, required=False)
-    parser.add_argument("--maxSubprocesses", type=int, default=8, required=False)
+    parser.add_argument("--maxSubprocesses", type=int, default=None, required=False)
     parser.add_argument("--tempDir", type=str, dest="tempDir", default=None, help="Temporary directory")
     parser.add_argument(
         "--returnparameterfile",
@@ -469,7 +483,17 @@ if __name__ == "__main__":
         help="File destination to store an execution outputs",
     )
     parser.add_argument("--isMultiScale", type=int, default=0, required=False)
+    parser.add_argument(
+        "--simInterval",
+        type=parse_simulation_interval,
+        default=(0, None),
+        help="Optional simulation interval in format start:end (e.g., 20:50). If omitted, run all simulations.",
+    )
     args = parser.parse_args()
+
+    if args.maxSubprocesses is None:
+        args.maxSubprocesses = max(os.cpu_count() - 2, 1)
+        print(f"Max subprocesses for node{get_simulation_suffix(args.simInterval)}: {args.maxSubprocesses}")
 
     with open(f"{args.cwd}/params_dict.json", "r") as file:
         params = json.load(file)

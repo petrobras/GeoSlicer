@@ -91,8 +91,8 @@ class LeverettOldLogic:
             pore_network["throat.phases"][:, 1],
         )
         resolved_radii = radii[resolved_throats]
-        smallest_raddi = resolved_radii.min()
-        highest_pc = estimate_pressure(smallest_raddi)
+        smallest_radii = resolved_radii.min()
+        highest_pc = estimate_pressure(smallest_radii)
         highest_pc_index = Pc >= highest_pc
         if highest_pc_index.sum() == 0:
             return lambda _: highest_pc
@@ -154,8 +154,8 @@ class LeverettNewLogic:
             pore_network["throat.phases"][:, 1],
         )
         resolved_radii = radii[resolved_throats]
-        smallest_raddi = resolved_radii.min()
-        highest_pc = estimate_pressure(smallest_raddi)
+        smallest_radii = resolved_radii.min()
+        highest_pc = estimate_pressure(smallest_radii)
         highest_pc_index = Pc >= highest_pc
         if highest_pc_index.sum() == 0:
             return lambda _: highest_pc
@@ -197,7 +197,7 @@ class LeverettNewLogic:
 
 
 class PressureCurveLogic:
-    required_params = ("throat radii", "capillary pressure", "dsn", "smallest_raddi_multiplier")
+    required_params = ("throat radii", "capillary pressure", "dsn", "smallest_radii_multiplier")
 
     def __init__(self):
         pass
@@ -216,15 +216,15 @@ class PressureCurveLogic:
         if resolved_radii.size == 0:
             return lambda _: None
 
-        smallest_resolved_raddi = resolved_radii.min()
+        smallest_resolved_radii = resolved_radii.min()
 
         if params["throat radii"] is not None:
             subresolution_radii_bool_index = np.logical_and(
                 params["throat radii"] > 1e-8,
-                params["throat radii"] <= params["smallest_raddi_multiplier"] * smallest_resolved_raddi,
+                params["throat radii"] <= params["smallest_radii_multiplier"] * smallest_resolved_radii,
             )
             if subresolution_radii_bool_index.sum() == 0:
-                return lambda _: smallest_resolved_raddi / 2
+                return lambda _: smallest_resolved_radii / 2
             elif subresolution_radii_bool_index.sum() == 1:
                 return lambda _: params["throat radii"][subresolution_radii_bool_index][0]
 

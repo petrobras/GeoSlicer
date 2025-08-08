@@ -191,10 +191,10 @@ def KabsREV(args, params):
             bounds = [0, 0, 0, 0, 0, 0]
             cropped_volume.GetBounds(bounds)  # In millimeters
             params["sizes"] = {
-                "x": (bounds[1] - bounds[0]) / 10.0,
-                "y": (bounds[3] - bounds[2]) / 10.0,
-                "z": (bounds[5] - bounds[4]) / 10.0,
-            }  # In cm
+                "x": bounds[1] - bounds[0],
+                "y": bounds[3] - bounds[2],
+                "z": bounds[5] - bounds[4],
+            }  # In mm
             sizes_product = params["sizes"]["x"] * params["sizes"]["y"] * params["sizes"]["z"]
             subres_func = set_subres_model(pore_network, params)
 

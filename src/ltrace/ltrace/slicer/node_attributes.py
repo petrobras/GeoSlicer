@@ -91,6 +91,7 @@ class TableType(NodeAttributeValue):
     HISTOGRAM_IN_DEPTH = "histogram_in_depth"
     BASIC_PETROPHYSICS = "basic_petrophysics"
     PNM_INPUT_PARAMETERS = "pnm_simulation_input_parameters"
+    PNM_SUBSCALE_PARAMETERS = "pnm_subscale_parameters"
     POROSITY_PER_REALIZATION = "porosity_per_realization"
     MEAN_IN_DEPTH = "mean_in_depth"
 

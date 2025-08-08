@@ -204,12 +204,20 @@ PARAMETERS = {
         "default_value": False,
     },
     "max_subprocesses": {
-        "display_name": "Max subprocesses",
+        "display_name": "Max subprocesses (Local)",
         "layout": "options",
         "dtype": "integerspinbox",
         "minimum_value": 1,
         "maximum_value": 256,
         "default_value": 8,
+    },
+    "n_jobs": {
+        "display_name": "Number of jobs (Remote)",
+        "layout": "options",
+        "dtype": "integerspinbox",
+        "minimum_value": 1,
+        "maximum_value": 8,
+        "default_value": 2,
     },
     "timeout_enabled": {
         "display_name": "Enable timeout",

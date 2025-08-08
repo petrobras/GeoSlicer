@@ -21,6 +21,7 @@ from ltrace.slicer.helpers import (
     setVolumeNullValue,
     extractSegmentInfo,
     remove_highlight,
+    safe_convert_array,
 )
 
 from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
@@ -684,6 +685,7 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
         if input_null_value is not None:
             outputImageArray[inputImageArray == input_null_value] = input_null_value
 
+        outputImageArray = safe_convert_array(outputImageArray, inputImageArray.dtype.name)
         end = datetime.datetime.now()
         elapsed = end - start
         logging.info("Polynomial shading correction elapsed time: " + str(elapsed.total_seconds()))

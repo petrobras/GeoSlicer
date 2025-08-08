@@ -85,7 +85,7 @@ Cada distribuição de ângulos, seja primária ou secundária, inicial ou de eq
 	- _Constant difference_: diferença constante dos ângulos de avanço/recuo em relação ao ângulo intrínsico;
 	- _Morrow curve_: curvas de avanço/recuo determinadas pelas curvas de Morrow;
 
-| <img src="../../assets/images/pnm/morrow.png" width="50%"> |
+| ![Figura 10](../../assets/images/pnm/morrow.png){ width=50% } |
 |:---------------------------------------------------------------------:|
 | Figura 10: Curvas para cada um dos modelos de ângulo de contato implementados no GeoSlicer. Imagem retirada de N. R. Morrow, 1975 (https://doi.org/10.2118/75-04-04). |
 

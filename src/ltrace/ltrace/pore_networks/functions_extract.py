@@ -346,14 +346,17 @@ def general_pn_extract(
         # Convert from adimensional voxel size to node scale
         # TODO: Deal with anisotropic data PL-1370
         scale = inputNode.GetSpacing()[::-1]
-        pn_properties = _porespy_extract(
-            input_multiphase,
-            input_watershed,
-            scale,
-            porosity_map=porosity_map,
-            watershed_blur=watershed_blur,
-            force_cpu=force_cpu,
-        )
+        try:
+            pn_properties = _porespy_extract(
+                input_multiphase,
+                input_watershed,
+                scale,
+                porosity_map=porosity_map,
+                watershed_blur=watershed_blur,
+                force_cpu=force_cpu,
+            )
+        except TypeError:
+            raise RuntimeError("Empty network extracted from porespy.")
         if pn_properties is False:
             return False
     elif method == "PNExtract":

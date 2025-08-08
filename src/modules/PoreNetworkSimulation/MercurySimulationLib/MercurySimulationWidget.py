@@ -32,6 +32,8 @@ class MercurySimulationWidget(qt.QFrame):
         "keep_temporary": False,
         "subres_model_name": "Fixed Radius",
         "subres_params": {"radius": 0.1},
+        "subres_shape_factor": 0.04,
+        "subres_porositymodifier": 1.0,
         "pressures": 100,
         "save_radii_distrib_plots": True,
         "experimental_radius": None,
@@ -173,3 +175,4 @@ class MercurySimulationWidget(qt.QFrame):
 
     def setParams(self, params):
         self.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
+        self.subscaleModelWidget.setParams(params)

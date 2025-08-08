@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import ctk
 import qt
 import slicer
+import ast
 
 import numpy as np
 from ltrace.slicer import ui
@@ -11,7 +13,8 @@ from ltrace.slicer.ui import (
     floatParam,
 )
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import dataframeFromTable
+from ltrace.slicer.node_attributes import TableType
+from ltrace.slicer_utils import dataframeFromTable, getResourcePath
 from ltrace.file_utils import read_csv
 from ltrace.pore_networks.subres_models import MODEL_DICT
 
@@ -20,6 +23,33 @@ class SubscaleModelWidget(qt.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = qt.QFormLayout(self)
+
+        style_sheet = """
+            QGroupBox {
+                border: 1px solid #999999;
+                border-radius: 3px;
+                margin-top: 7px;  /*leave space at the top for the title */
+                font-size: 13px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;    /* position at the top center */
+                padding: 0 5px 0 0px;
+                font-size: 13px;
+            }
+        """
+
+        subscaleBox = qt.QGroupBox()
+        subscaleBox.setTitle("Subscale properties      ")
+        subscaleBox.setStyleSheet(style_sheet)
+        help_button = HelpButton(
+            f"### [Subscale properties](file:///{getResourcePath('manual')}/Simulation/PNM/intro.html#simulacao) section of GeoSlicer Manual."
+        )
+        help_button.setFixedSize(20, 20)
+        help_button.setParent(subscaleBox)
+        help_button.move(130, 0)
+
+        formLayout = qt.QFormLayout()
 
         self.parameter_widgets = {}
 
@@ -33,6 +63,42 @@ class SubscaleModelWidget(qt.QWidget):
         ):
             self.parameter_widgets[widget.STR] = widget()
 
+        # Parameter input
+        self.parameterInputLoadCollapsible = ctk.ctkCollapsibleButton()
+        self.parameterInputLoadCollapsible.text = "Load subscale parameters"
+        self.parameterInputLoadCollapsible.collapsed = True
+        self.parameterInputLoadCollapsible.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Fixed)
+
+        self.parameterInputSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
+        self.parameterInputSelector.addNodeAttributeIncludeFilter("table_type", TableType.PNM_SUBSCALE_PARAMETERS.value)
+        self.parameterInputSelector.setToolTip("Select a table node containing simulation parameters.")
+        self.parameterInputSelector.objectName = "Subscale inputs"
+
+        self.parameterInputLoadButton = qt.QPushButton("Load")
+        self.parameterInputLoadButton.setObjectName("Subscale input load button")
+        self.parameterInputLoadButton.clicked.connect(self.onParameterInputLoadButtonClicked)
+
+        parameterInputLayout = qt.QFormLayout(self.parameterInputLoadCollapsible)
+        parameterInputLayout.addRow("Subscale parameters node:", self.parameterInputSelector)
+        parameterInputLayout.addRow(self.parameterInputLoadButton)
+
+        parameterInputLoadIcon = qt.QLabel()
+        parameterInputLoadIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Load.png").pixmap(qt.QSize(13, 13)))
+        parameterInputLoadIcon.setSizePolicy(qt.QSizePolicy.Fixed, qt.QSizePolicy.Fixed)
+        parameterInputLoadIcon.setContentsMargins(0, 5, 0, 0)
+
+        iconLayout = qt.QVBoxLayout()
+        iconLayout.addWidget(parameterInputLoadIcon)
+        iconLayout.addStretch()
+
+        hbox = qt.QHBoxLayout()
+        hbox.addLayout(iconLayout)
+        hbox.setContentsMargins(0, 10, 0, 0)
+        hbox.addWidget(self.parameterInputLoadCollapsible)
+
+        formLayout.addRow(hbox)
+
+        ## parameters
         porositymodifier_helpbutton = HelpButton(
             "Modifies subscale porosity.\n"
             "Values lower than 1 increase subscale porosity.\n"
@@ -48,7 +114,7 @@ class SubscaleModelWidget(qt.QWidget):
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.porositymodifier_edit)
         hbox.addWidget(porositymodifier_helpbutton)
-        layout.addRow(
+        formLayout.addRow(
             "Capillary porosity modifier",
             hbox,
         )
@@ -64,27 +130,45 @@ class SubscaleModelWidget(qt.QWidget):
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.subresolution_shapefactor_edit)
         hbox.addWidget(shapefactor_helpbutton)
-        layout.addRow(
+        formLayout.addRow(
             "Capillary pore shape factor",
             hbox,
         )
 
         self.microscale_model_dropdown = qt.QComboBox()
         self.microscale_model_dropdown.objectName = "Subscale Model Selector"
-        layout.addRow("Subscale entry pressure model:", self.microscale_model_dropdown)
+        formLayout.addRow("Subscale entry pressure model:", self.microscale_model_dropdown)
         for label, widget in self.parameter_widgets.items():
             self.microscale_model_dropdown.addItem(label)
-            layout.addRow(widget)
+            formLayout.addRow(widget)
             widget.setVisible(False)
 
         self.parameter_widgets[self.microscale_model_dropdown.currentText].setVisible(True)
 
         self.microscale_model_dropdown.currentTextChanged.connect(self._onUnresolvedModelChange)
 
+        subscaleBox.setLayout(formLayout)
+        layout.addRow(subscaleBox)
+
     def _onUnresolvedModelChange(self, new_text):
         for widget in self.parameter_widgets.values():
             widget.setVisible(False)
         self.parameter_widgets[new_text].setVisible(True)
+
+    def onParameterInputLoadButtonClicked(self):
+        parameter_node = self.parameterInputSelector.currentNode()
+        if parameter_node is None:
+            slicer.util.warningDisplay("No parameter table node selected.")
+            return
+
+        table = parameter_node.GetTable()
+        params = {}
+        for row in range(table.GetNumberOfRows()):
+            param_name = table.GetValue(row, 0).ToString()
+            param_value = table.GetValue(row, 1).ToString()
+            params[param_name] = param_value
+
+        self.setParams(params)
 
     def getParams(self):
         subres_model_name = self.microscale_model_dropdown.currentText
@@ -113,7 +197,12 @@ class SubscaleModelWidget(qt.QWidget):
         }
 
     def setParams(self, params):
+        self.subresolution_shapefactor_edit.text = params["subres_shape_factor"]
+        self.porositymodifier_edit.text = params["subres_porositymodifier"]
+
         self.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
+        subscale_widget = self.parameter_widgets[params["subres_model_name"]]
+        subscale_widget.set_params(params["subres_params"])
 
 
 class FixedRadiusWidget(qt.QWidget):
@@ -136,6 +225,12 @@ class FixedRadiusWidget(qt.QWidget):
             "radius": float(self.micropore_radius.text),
         }
         return params
+
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        self.micropore_radius.text = str(params["radius"])
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -175,6 +270,15 @@ class TruncatedGaussianWidget(qt.QWidget):
             "max radius": float(self.maximum_radius.text),
         }
         return params
+
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        self.mean_radius.text = params["mean radius"]
+        self.micropore_std.text = params["standard deviation"]
+        self.minimum_radius.text = params["min radius"]
+        self.maximum_radius.text = params["max radius"]
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -255,11 +359,22 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         cutoff_multiplier = float(self.cutoffMultiplierEdit.text)
 
         return {
+            "node id": self.throatRadiusSelector.currentNode().GetID(),
             "throat radii": Rc,
             "capillary pressure": None,
             "dsn": Fvol,
-            "smallest_raddi_multiplier": cutoff_multiplier,
+            "smallest_radii_multiplier": cutoff_multiplier,
         }
+
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        throatRadiusNode = slicer.mrmlScene.GetNodeByID(params["node id"])
+        self.throatRadiusSelector.setCurrentNode(throatRadiusNode)
+        self.cboxes["Throat Radius Column"].setCurrentText(params["throat radii"])
+        self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
+        self.cutoffMultiplierEdit.text = params["smallest_radii_multiplier"]
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -335,7 +450,22 @@ class PressureCurveWidget(qt.QWidget):
         Pc = df[self.cboxes["Throat Pressure Column"].currentText].to_numpy()
         Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
 
-        return {"throat radii": None, "capillary pressure": Pc, "dsn": Fvol, "smallest_raddi_multiplier": 2.0}
+        return {
+            "node id": self.pressureCurveSelector.currentNode().GetID(),
+            "throat radii": None,
+            "capillary pressure": Pc,
+            "dsn": Fvol,
+            "smallest_radii_multiplier": 2.0,
+        }
+
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        pressureCurveNode = slicer.mrmlScene.GetNodeByID(params["node id"])
+        self.pressureCurveSelector.setCurrentNode(pressureCurveNode)
+        self.cboxes["Throat Pressure Column"].setCurrentText(params["capillary pressure"])
+        self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -427,6 +557,14 @@ class LeverettOldWidget(LeverettWidgetBase):
         )
         return params
 
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        self.kModelCombo.text = params["model"]
+        self.kParameterA.text = params["corey_a"]
+        self.kParameterB.text = params["corey_b"]
+
 
 class LeverettNewWidget(LeverettWidgetBase):
     STR = "Leverett Function - Sample Permeability"
@@ -447,3 +585,6 @@ class LeverettNewWidget(LeverettWidgetBase):
             }
         )
         return params
+
+    def set_params(self, params):
+        pass

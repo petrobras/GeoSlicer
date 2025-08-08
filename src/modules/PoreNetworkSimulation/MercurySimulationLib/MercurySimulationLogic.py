@@ -26,6 +26,9 @@ from ltrace.slicer_utils import (
 )
 
 
+from PoreNetworkSimulationLib.utils import save_parameters_to_table
+
+
 class MercurySimulationLogic(LTracePluginLogic):
     def __init__(self, parent, progressBar):
         LTracePluginLogic.__init__(self, parent)
@@ -80,6 +83,9 @@ class MercurySimulationLogic(LTracePluginLogic):
             "y": float(inputTable.GetAttribute("y_size")) / 10,
             "z": float(inputTable.GetAttribute("z_size")) / 10,
         }  # values in cm
+
+        subres_params = {key: value for key, value in self.params.items() if key.startswith("subres_")}
+        save_parameters_to_table(subres_params, self.rootDir)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)

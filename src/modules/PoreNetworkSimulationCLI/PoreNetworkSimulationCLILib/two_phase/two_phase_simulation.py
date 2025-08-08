@@ -20,27 +20,28 @@ class TwoPhaseSimulation:
         statoil_dict: dict,
         snapshot_file: str,
         params: dict,
-        num_tests: int,
         timeout_enabled: bool,
         write_debug_files: bool,
+        sim_interval: tuple = (0, None),
     ):
         self.cwd = cwd
         self.statoil_file_strings = self.create_statoil_file_strings(statoil_dict)
         self.snapshot_file = snapshot_file
         self.params_dict = params
-        self.num_tests = num_tests
+        self.sim_interval = sim_interval
         self.timeout_enabled = timeout_enabled
         self.subprocess_id_count = 0
         self.subprocess_timeout_s = 0.1 * (len(statoil_dict["node1"]) + len(statoil_dict["link1"]))
         self.simulator_class = PnflowSubprocess
         self.simulator = PNFLOW
         self.write_debug_files = write_debug_files
+        self.params_list = self.get_params_list(self.params_dict)[slice(*sim_interval)]
+        self.num_tests = len(self.params_list)
 
     def set_simulator(self, simulator):
         self.simulator = simulator
 
     def run(self, max_subprocesses=8):
-        params_list = self.get_params_list(self.params_dict)
 
         # Check if drainage should be reused
         """
@@ -82,7 +83,7 @@ class TwoPhaseSimulation:
                     yield simulation_result
         else:
             for simulation_result in self.run_simulations(
-                params_list,
+                self.params_list,
                 self.snapshot_file,
                 max_subprocesses,
             ):

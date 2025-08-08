@@ -217,9 +217,10 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
         curvesWidget = self.__visualizationTypeSelector.widget(0)
         pressureWidget = self.__visualizationTypeSelector.widget(1)
+        distributionWidget = self.__visualizationTypeSelector.widget(11)
         number_of_simulations = self.data_manager.get_number_of_simulations()
         invalid_combination = (
-            currentWidget != curvesWidget and currentWidget != pressureWidget
+            currentWidget != curvesWidget and currentWidget != pressureWidget and currentWidget != distributionWidget
         ) and number_of_simulations == 1
 
         if self.data_manager.is_valid() and not invalid_combination:

@@ -35,6 +35,7 @@ from ltrace.slicer_utils import (
 )
 
 from .constants import *
+from .utils import save_parameters_to_table
 
 NUM_THREADS = 48
 
@@ -166,6 +167,9 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             "y": float(inputTable.GetAttribute("y_size")) / 10,
             "z": float(inputTable.GetAttribute("z_size")) / 10,
         }  # values in cm
+
+        subres_params = {key: value for key, value in self.params.items() if key.startswith("subres_")}
+        save_parameters_to_table(subres_params, self.rootDir)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)
@@ -481,6 +485,9 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
         self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Two_Phase_PN_Simulation")
         folderTree.SetItemExpanded(self.rootDir, False)
+
+        subres_params = {key: value for key, value in self.params.items() if key.startswith("subres_")}
+        save_parameters_to_table(subres_params, self.rootDir)
 
         if params["create_ca_distributions"] == "T":
             self.caDistributionTableDir = folderTree.CreateFolderItem(self.rootDir, "CA Distribution")

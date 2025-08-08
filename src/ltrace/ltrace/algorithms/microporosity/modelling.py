@@ -86,6 +86,10 @@ class DataVar:
     color: tuple = (0, 0, 0)
 
 
+class ModelDataTypeError(Exception):
+    pass
+
+
 class SampleModel:
     def __init__(self, pcrRange=(0.0, 1.0)):
         self.variables: typing.Dict[str, DataVar] = {}
@@ -95,16 +99,19 @@ class SampleModel:
         self.limits = None
 
     def addData(self, image: np.ndarray, mask: np.ndarray, label: int = 0, color: tuple = (0, 0, 0)):
+        if not np.issubdtype(image.dtype, np.integer):
+            raise ValueError("Input Image must be of integer type")
+
         self.image = image
         self.addSubGroup("Data", mask, label, color, markers=[0.0001, 0.99])
         self.limits = [int(np.round(v)) for v in self.variables["Data"].threshold]
 
     def addSubGroup(self, name: str, mask: np.ndarray, label: int, color: tuple, markers: typing.List[float] = None):
         if self.image is None:
-            raise ValueError("Image is missing")
+            raise ModelDataTypeError("Image is missing")
 
         if np.any(mask.shape != self.image.shape):
-            raise ValueError("Mask and image must have the same shape")
+            raise ModelDataTypeError("Mask and image must have the same shape")
 
         counts = fast1DBinCountUInt64(self.image[mask])
         counts[0] = 0  # exclude background 0

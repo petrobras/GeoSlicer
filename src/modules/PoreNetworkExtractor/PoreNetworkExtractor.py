@@ -147,16 +147,40 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         )
         self.inputSelector.showEmptyHierarchyItems = False
         self.inputSelector.objectName = "Input Selector"
-        self.inputSelector.setToolTip("Pick a label volume node.")
-        inputFormLayout.addRow("Input Volume: ", self.inputSelector)
+        self.inputSelector.setToolTip(
+            "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab)."
+        )
+        manual_path = getResourcePath("manual") / "Modules" / "PNM"
+        inputSelectorHelp = HelpButton(
+            "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab).\n\n"
+            "- If a labelmap is selected, extraction will be single-scale;\n\n- If a scalar volume (porosity map) is selected, extraction will be multiscale (resolved + unresolved pores);"
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=(manual_path / "PNExtraction.html").as_posix()),
+        )
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.inputSelector)
+        hbox.addWidget(inputSelectorHelp)
 
-        self.poresSelectorLabel = qt.QLabel("Pores Labelmap Selector: ")
+        inputFormLayout.addRow("Input Volume: ", hbox)
+
+        self.poresSelectorLabel = qt.QLabel("Labeled Pores (optional): ")
         self.poresSelectorLabel.visible = False
         self.poresSelector = ui.hierarchyVolumeInput(nodeTypes=["vtkMRMLLabelMapVolumeNode"], hasNone=True)
+        self.poresSelector.setToolTip(
+            "If a porosity map is selected, you can specify a LabelMap with individualized pores."
+        )
         self.poresSelector.showEmptyHierarchyItems = False
         self.poresSelector.visible = False
         self.poresSelector.objectName = "Pores Selector"
-        inputFormLayout.addRow(self.poresSelectorLabel, self.poresSelector)
+        self.poresSelectorHelp = HelpButton(
+            "If a porosity map is selected, you can optionally specify a LabelMap with individually labeled pores. The software will compute the mean porosity within each labeled region."
+        )
+        self.poresSelectorHelp.visible = False
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.poresSelector)
+        hbox.addWidget(self.poresSelectorHelp)
+
+        inputFormLayout.addRow(self.poresSelectorLabel, hbox)
 
         #
         # Parameters Area: parametersFormLayout
@@ -238,12 +262,14 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
             if input_node.IsA("vtkMRMLLabelMapVolumeNode"):
                 self.poresSelectorLabel.visible = False
                 self.poresSelector.visible = False
+                self.poresSelectorHelp.visible = False
                 self.poresSelector.setCurrentNode(None)
                 for widget in self.paramsWidget.blurWidgets:
                     widget.visible = False
             else:
                 self.poresSelectorLabel.visible = True
                 self.poresSelector.visible = True
+                self.poresSelectorHelp.visible = True
                 self.poresSelector.setCurrentNode(None)
                 for widget in self.paramsWidget.blurWidgets:
                     widget.visible = True

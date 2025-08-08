@@ -74,9 +74,10 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         "angle steps": 5,
         "keep_temporary": False,
         "create_sequence": False,
-        "subres_porositymodifier": 1.0,
         "subres_model_name": "Fixed Radius",
         "subres_params": {"radius": 0.1},
+        "subres_shape_factor": 0.04,
+        "subres_porositymodifier": 1.0,
     }
 
     WIDGET_TYPES = {
@@ -94,6 +95,18 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         layout = qt.QFormLayout(self)
         self.widgets = {}
         self.labels = {}
+
+        # Execution mode
+        optionsLayout = qt.QHBoxLayout()
+        optionsLayout.setAlignment(qt.Qt.AlignLeft)
+        optionsLayout.setContentsMargins(0, 0, 0, 0)
+        self.localQRadioButton = qt.QRadioButton("Local")
+        self.remoteQRadioButton = qt.QRadioButton("Remote")
+        optionsLayout.addWidget(self.localQRadioButton, 0, qt.Qt.AlignCenter)
+        optionsLayout.addWidget(self.remoteQRadioButton, 0, qt.Qt.AlignCenter)
+        self.localQRadioButton.setChecked(True)
+        layout.addRow("Execution Mode:", optionsLayout)
+        layout.addRow(" ", None)
 
         self.simulator_combo_box = qt.QComboBox()
         self.simulator_combo_box.objectName = "Simulator Selector"
@@ -133,7 +146,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         fluidPropertiesBox = qt.QGroupBox()
         fluidPropertiesBox.setTitle("Fluid properties      ")
         help_button = HelpButton(
-            f"### [Fluid properties](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#fluid-properties) section of GeoSlicer Manual."
+            f"### [Fluid properties](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#fluid-properties) section of GeoSlicer Manual."
         )
         help_button.setFixedSize(20, 20)
         help_button.setParent(fluidPropertiesBox)
@@ -175,7 +188,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.contactAngleLayout = qt.QFormLayout(self.contactAngleBox)
         self.contactAngleLayout.setContentsMargins(11, 9, 11, 5)
         help_button = HelpButton(
-            f"### [Contact angle options](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#contact-angle-options) section of GeoSlicer Manual."
+            f"### [Contact angle options](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#contact-angle-options) section of GeoSlicer Manual."
         )
         help_button.setFixedSize(20, 20)
         help_button.setParent(self.contactAngleBox)
@@ -219,7 +232,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.simulationOptionsLayout = qt.QFormLayout(self.simulationOptionsBox)
         self.simulationOptionsLayout.setContentsMargins(11, 9, 11, 5)
         help_button = HelpButton(
-            f"### [Simulation options](file:///{getResourcePath('manual')}/Micro CT/Simulações/pnm.html#simulation-options) section of GeoSlicer Manual."
+            f"### [Simulation options](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#simulation-options) section of GeoSlicer Manual."
         )
         help_button.setFixedSize(20, 20)
         help_button.setParent(self.simulationOptionsBox)
@@ -423,11 +436,18 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         params["subres_shape_factor"] = shape_factor
         params["subres_porositymodifier"] = subres_porositymodifier
         params["skip_imbibition"] = False
+        params["remote_execution"] = "T" if self.remoteQRadioButton.isChecked() else "F"
 
         return params
 
     def setParams(self, params):
-        self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
+        mercury_params = {
+            "subres_model_name": params.get("subres_model_name"),
+            "subres_params": params.get("subres_params"),
+            "subres_porositymodifier": params.get("subres_porositymodifier"),
+            "subres_shape_factor": params.get("subres_shape_factor"),
+        }
+        self.mercury_widget.setParams(mercury_params)
 
     def getFormParams(self):
         """

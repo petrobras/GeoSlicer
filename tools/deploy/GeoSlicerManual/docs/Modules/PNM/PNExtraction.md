@@ -1,6 +1,6 @@
 # Extração
 
-Esse módulo é utilizado para extrair a rede de poros e ligações a partir de: uma segmentação dos poros (_Label Map Volume_) realizada por um algoritmo de _watershed_, gerando uma rede uniescalar; ou por um mapa de porosidades (_Scalar Volume_), que gerará um modelo multiescalar com poros resolvidos e não-resolvidos.
+Esse módulo é utilizado para extrair a rede de poros e ligações a partir de: uma segmentação individualizada dos poros (_Label Map Volume_) realizada por um algoritmo de [_watershed_](../Quantification/segment_inspector.html), gerando uma rede uniescalar; ou por um mapa de porosidades (_Scalar Volume_), que gerará um modelo multiescalar com poros resolvidos e não-resolvidos.
 
 | <img src="../../assets/images/pnm/extract.png" width="100%"> |
 |:-----------------------------------------------------------------------:|

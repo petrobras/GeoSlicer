@@ -20,7 +20,7 @@ from numba import uint32
 from numba.types import ListType, Array
 from shiboken2 import shiboken2
 
-from ltrace.algorithms.microporosity.modelling import SampleModel, fastMapping
+from ltrace.algorithms.microporosity.modelling import SampleModel, fastMapping, ModelDataTypeError
 from ltrace.slicer import helpers, ui, data_utils
 from ltrace.slicer.helpers import themeIsDark, BlockSignals
 from ltrace.slicer.microct import loadPCRAsTextNode
@@ -36,12 +36,19 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWid
 # ----------------
 
 
+class PCRNotFoundError(Exception):
+    """Custom exception for PCR not found errors."""
+
+    def __init__(self, nodeName: str):
+        super().__init__(f"No PCR data associated with the image node '{nodeName}'.")
+
+
 def pcrMinMaxFromTableNode(imageNode):
     try:
         pcrFile = imageNode.GetAttribute("PCR")
         pcrDryTextNode = slicer.mrmlScene.GetNodeByID(pcrFile) if pcrFile else None
         if not pcrDryTextNode:
-            raise ValueError("PCR node not found")
+            raise PCRNotFoundError(imageNode.GetName())
 
         pcrDry = pcrDryTextNode.GetText()
         parser = configparser.ConfigParser()
@@ -50,8 +57,11 @@ def pcrMinMaxFromTableNode(imageNode):
         _max = np.float32(parser.getfloat("VolumeData", "Max"))
 
         return _min, _max
+    except PCRNotFoundError as e:
+        logging.warning(str(e))
+        raise
     except Exception as e:
-        logging.warning(f"Failed to load PCR for Image: {imageNode.GetName()}. Error: {e}")
+        logging.warning(f"Failed to associate PCR data for Image: {imageNode.GetName()}. Error: {str(e)}")
         raise
 
 
@@ -399,16 +409,22 @@ class DoubleImageWithSegmentationInputWidget(qt.QWidget):
         self.dryImageNodeInput = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLScalarVolumeNode"])
         self.dryPCRTableNodeInput = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
 
+        segmentationSelectorLayout = qt.QHBoxLayout()
         self.segmentationNodeSelectorInput = qt.QComboBox()
         self.segmentationNodeSelectorInput.addItem("None")
         self.roiNodeSelectorInput = qt.QComboBox()
         self.roiNodeSelectorInput.addItem("Optional")
 
+        self.allEnablerCheckBox = qt.QCheckBox("All")
+
+        segmentationSelectorLayout.addWidget(self.segmentationNodeSelectorInput)
+        segmentationSelectorLayout.addWidget(self.allEnablerCheckBox)
+
         self.segmentsBoard = CheckableSegmentListBoard(defaultState=qt.Qt.Checked)
 
         layout.addRow("Saturated Image: ", self.saturatedImageNodeInput)
         layout.addRow("Dry Image: ", self.dryImageNodeInput)
-        layout.addRow("Segmentation: ", self.segmentationNodeSelectorInput)
+        layout.addRow("Segmentation: ", segmentationSelectorLayout)
         layout.addRow("Region: ", self.roiNodeSelectorInput)
         layout.addRow(self.segmentsBoard)
 
@@ -419,6 +435,8 @@ class DoubleImageWithSegmentationInputWidget(qt.QWidget):
 
         self.segmentationSelected.connect(self.drawSegmentListBoard)
 
+        self.allEnablerCheckBox.toggled.connect(lambda checked: self.updateSegmentation(useAll=checked))
+
     def imageSelectedHandler(self, itemHierarchyTreeId):
         treeNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         node = treeNode.GetItemDataNode(itemHierarchyTreeId)
@@ -426,17 +444,12 @@ class DoubleImageWithSegmentationInputWidget(qt.QWidget):
         if not node:
             return
 
-        self.updateSegmentation()
+        self.updateSegmentation(useAll=self.allEnablerCheckBox.isChecked())
 
         self.imageSelected.emit(node.GetID())
         self.checkInput(node)
 
-    def updateSegmentation(self):
-
-        saturatedSegmentations = getAssociatedSegmentationNodes(self.saturatedImageNodeInput.currentNode())
-        drySegmentations = getAssociatedSegmentationNodes(self.dryImageNodeInput.currentNode())
-
-        set_ = {s.GetID(): s for s in [*saturatedSegmentations, *drySegmentations]}
+    def updateSegmentation(self, useAll=False):
 
         self.segmentationNodeSelectorInput.clear()
         self.segmentationNodeSelectorInput.addItem("None")
@@ -444,10 +457,21 @@ class DoubleImageWithSegmentationInputWidget(qt.QWidget):
         self.roiNodeSelectorInput.clear()
         self.roiNodeSelectorInput.addItem("None")
 
-        for segmentation in set_.values():
-            segName = segmentation.GetName()
-            self.segmentationNodeSelectorInput.addItem(segName, segmentation)
-            self.roiNodeSelectorInput.addItem(segName, segmentation)
+        if useAll:
+            for node in slicer.mrmlScene.GetNodesByClass("vtkMRMLSegmentationNode"):
+                segName = node.GetName()
+                self.segmentationNodeSelectorInput.addItem(segName, node)
+                self.roiNodeSelectorInput.addItem(segName, node)
+        else:
+            saturatedSegmentations = getAssociatedSegmentationNodes(self.saturatedImageNodeInput.currentNode())
+            drySegmentations = getAssociatedSegmentationNodes(self.dryImageNodeInput.currentNode())
+
+            set_ = {s.GetID(): s for s in [*saturatedSegmentations, *drySegmentations]}
+
+            for segmentation in set_.values():
+                segName = segmentation.GetName()
+                self.segmentationNodeSelectorInput.addItem(segName, segmentation)
+                self.roiNodeSelectorInput.addItem(segName, segmentation)
 
     def segmentationSelectedHandler(self, index):
         segmentation = self.segmentationNodeSelectorInput.itemData(index)
@@ -462,24 +486,25 @@ class DoubleImageWithSegmentationInputWidget(qt.QWidget):
         # TODO PCR here is ok? maybe another place
         try:
             minPCR, maxPCR = pcrMinMaxFromTableNode(node)
-            logging.info(f"PCR file loaded for {node.GetName()} with min: {minPCR} and max: {maxPCR}")
+            logging.info(f"PCR data linked to {node.GetName()} with min: {minPCR} and max: {maxPCR}")
         except:
-            try:
-                pcrNode = pcrFromFile(node)
-
-                if pcrNode:
-                    node.SetAttribute("PCR", pcrNode.GetID())
-
-                minPCR, maxPCR = pcrMinMaxFromTableNode(node)
-
-                logging.info(f"PCR file loaded for {node.GetName()} with min: {minPCR} and max: {maxPCR}")
-            except FileNotFoundError:
-                logging.debug("No PCR file found in the directory")
-            except:
-                import traceback
-
-                traceback.print_exc()
-                logging.warning(f"Failed to load PCR for Image: {node.GetName()}")
+            pass
+            # try:
+            #     pcrNode = pcrFromFile(node)
+            #
+            #     if pcrNode:
+            #         node.SetAttribute("PCR", pcrNode.GetID())
+            #
+            #     minPCR, maxPCR = pcrMinMaxFromTableNode(node)
+            #
+            #     logging.info(f"PCR file loaded for {node.GetName()} with min: {minPCR} and max: {maxPCR}")
+            # except FileNotFoundError:
+            #     logging.debug("No PCR file found in the directory")
+            # except:
+            #     import traceback
+            #
+            #     traceback.print_exc()
+            #     logging.warning(f"Failed to load PCR for Image: {node.GetName()}")
 
 
 class FactorsWidget(qt.QWidget):
@@ -593,6 +618,15 @@ class PorosityMappingFromSaturation(LTracePlugin):
 class PorosityMappingFromSaturationWidget(LTracePluginWidget):
     def __init__(self, parent=None) -> None:
         LTracePluginWidget.__init__(self, parent)
+
+    def enter(self):
+        if self.inputWidget.dryImageNodeInput.currentNode() or self.inputWidget.saturatedImageNodeInput.currentNode():
+            index = self.inputWidget.segmentationNodeSelectorInput.currentIndex
+            self.inputWidget.segmentationNodeSelectorInput.setCurrentIndex(0)
+            self.inputWidget.segmentationNodeSelectorInput.setCurrentIndex(index)
+            roiIndex = self.inputWidget.roiNodeSelectorInput.currentIndex
+            self.inputWidget.roiNodeSelectorInput.setCurrentIndex(0)
+            self.inputWidget.roiNodeSelectorInput.setCurrentIndex(roiIndex)
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -710,19 +744,23 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
 
                 self.progressBar.start("model_building", timeout=3600)
 
-                tic = timer()
-                models = self.logic.dryWetModel(
-                    self.inputWidget.dryImageNodeInput.currentNode(),
-                    self.inputWidget.saturatedImageNodeInput.currentNode(),
-                    self.inputWidget.segmentationNodeSelectorInput.currentData,
-                    self.inputWidget.segmentsBoard.getCheckedItems(),
-                    [self.porousSegmentSelector.currentData, self.referenceSolidSegmentSelector.currentData],
-                    pcrDryRange,
-                    pcrWetRange,
-                    self.inputWidget.roiNodeSelectorInput.currentData,
-                )
-                toc = timer()
-                print("Elapsed time 1", toc - tic)
+                try:
+                    tic = timer()
+                    models = self.logic.dryWetModel(
+                        self.inputWidget.dryImageNodeInput.currentNode(),
+                        self.inputWidget.saturatedImageNodeInput.currentNode(),
+                        self.inputWidget.segmentationNodeSelectorInput.currentData,
+                        self.inputWidget.segmentsBoard.getCheckedItems(),
+                        [self.porousSegmentSelector.currentData, self.referenceSolidSegmentSelector.currentData],
+                        pcrDryRange,
+                        pcrWetRange,
+                        self.inputWidget.roiNodeSelectorInput.currentData,
+                    )
+                    toc = timer()
+                    print("Elapsed time 1", toc - tic)
+                except Exception as e:
+                    slicer.util.errorDisplay(f"Failed to compute models. {str(e)}")
+                    return
 
                 if len(models) != 2:
                     slicer.util.warningDisplay(f"Failed to compute models. Expected 2, received {len(models)} models.")
@@ -778,12 +816,12 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
         missing = []
         try:
             pcrDryRange = self.logic.getMinMaxFromPCR(dryImageNode)
-        except ValueError as e:
+        except:
             missing.append("dry")
 
         try:
             pcrWetRange = self.logic.getMinMaxFromPCR(wetImageNode)
-        except ValueError as e:
+        except:
             missing.append("saturated")
 
         if not missing:
@@ -1226,11 +1264,13 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
             self.__expectedPrefix = self.captureExpectedName(dryImageNode.GetName())
 
             return models
+        except ModelDataTypeError as mde:
+            raise RuntimeError(f"Please, check the input data TYPE. {str(mde)}")
         except Exception as e:
             import traceback
 
             traceback.print_exc()
-            logging.error(f"Failed to compute models: {e}")
+            raise
         finally:
             helpers.removeTemporaryNodes()
 
