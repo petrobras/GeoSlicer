@@ -371,6 +371,8 @@ def single_phase_permeability(
     pore_network,
     in_face="xmin",
     out_face="xmax",
+    pressure_drop=101325,  # Pa
+    viscosity=0.001,  # Pa.s
     subresolution_function=None,
     subres_porositymodifier=1.0,
     subres_shape_factor=0.041,
@@ -424,6 +426,7 @@ def single_phase_permeability(
 
     water = openpnm.phase.Water(network=sub_proj.network)
     water.add_model_collection(openpnm.models.collections.physics.standard)
+    water["pore.viscosity"] = viscosity
     sub_proj["throat.hydraulic_conductance"] = sub_proj["throat.conductance"]
     sub_proj["pore.phase"][...] = 1
     perm = openpnm.algorithms.StokesFlow(
@@ -434,7 +437,7 @@ def single_phase_permeability(
     perm.settings["x_rtol"] = 1e-11
     # print("\n\n############## OpenPNM flow ###########\n\n", perm, "\n\n##############################\n\n")
     perm.set_value_BC(
-        pores=sub_proj.pores(in_face), values=101325, mode="overwrite"
+        pores=sub_proj.pores(in_face), values=pressure_drop, mode="overwrite"
     )  # pressure in pa: 101325 pa = 1 atm
     perm.set_value_BC(pores=sub_proj.pores(out_face), values=0, mode="overwrite")
     inlets = perm.network[f"pore.{in_face}"].astype(np.int32)

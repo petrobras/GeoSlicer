@@ -280,15 +280,27 @@ class CompanionProgressBar(LocalProgressBar):
         slicer.app.processEvents()
 
     def processStopped(self):
-        if self.shared_mem:
-            self.shared_mem.close()
-            self.shared_mem.unlink()
+        if not self.shared_mem:
+            return
 
+        old_shared_mem = self.shared_mem
         self.shared_mem = None
+
+        try:
+            old_shared_mem.close()
+            old_shared_mem.unlink()
+        except FileNotFoundError:
+            logging.info("Shared memory already unlinked or closed.")
+        except Exception as e:
+            logging.error(f"Error closing shared memory: {e}")
+
         gc.collect()
 
     def _onCLIModified(self, caller, event):
         super()._onCLIModified(caller, event)
+
+        if caller is None:
+            return
 
         if caller.GetStatusString() == "Completed":
             self.processStopped()

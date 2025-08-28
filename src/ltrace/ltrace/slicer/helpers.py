@@ -1873,11 +1873,25 @@ def setVolumeVisibilityIn3D(volumeNode, visible):
     renderingNode = volumeRenderingLogic.GetVolumeRenderingDisplayNodeForViewNode(volumeNode, viewNode)
     if renderingNode is None:
         renderingNode = volumeRenderingLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+        renderingNode.SetFollowVolumeDisplayNode(True)
     if visible:
         renderingNode.SetVisibility(True)
     else:
+        propertyNode = renderingNode.GetVolumePropertyNode()
         slicer.mrmlScene.RemoveNode(renderingNode.GetROINode())
         slicer.mrmlScene.RemoveNode(renderingNode)
+        slicer.mrmlScene.RemoveNode(propertyNode)
+
+
+def setOrientationMarkers(visible: bool):
+    layout_manager = slicer.app.layoutManager()
+    for name in slicer.app.layoutManager().sliceViewNames():
+        marker_type = (
+            slicer.vtkMRMLSliceNode.OrientationMarkerTypeAxes
+            if visible
+            else slicer.vtkMRMLSliceNode.OrientationMarkerTypeNone
+        )
+        layout_manager.sliceWidget(name).sliceController().setOrientationMarkerType(marker_type)
 
 
 def getVolumeVisibilityIn3D(volumeNode):

@@ -13,6 +13,7 @@ import slicer.util
 import vtk
 
 import ltrace.pore_networks.functions as pn
+from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
@@ -62,6 +63,18 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
 
         self.text = "Parameters"
         parametersFormLayout = qt.QFormLayout(self)
+
+        # Execution mode
+        optionsLayout = qt.QHBoxLayout()
+        optionsLayout.setAlignment(qt.Qt.AlignLeft)
+        optionsLayout.setContentsMargins(0, 0, 0, 0)
+        self.localQRadioButton = qt.QRadioButton("Local")
+        self.remoteQRadioButton = qt.QRadioButton("Remote")
+        optionsLayout.addWidget(self.localQRadioButton, 0, qt.Qt.AlignCenter)
+        optionsLayout.addWidget(self.remoteQRadioButton, 0, qt.Qt.AlignCenter)
+        self.localQRadioButton.setChecked(True)
+        parametersFormLayout.addRow("Execution Mode:", optionsLayout)
+        parametersFormLayout.addRow(" ", None)
 
         # Watershed blur
         self.blurWidgets = []
@@ -226,9 +239,15 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def onExtractButton(self):
-        self.extractButton.setEnabled(False)
-        self.warningsLabel.setText("")
-        self.warningsLabel.setVisible(False)
+        localMode = self.paramsWidget.localQRadioButton.isChecked()
+        if localMode:
+            self.extractButton.setEnabled(False)
+            self.warningsLabel.setText("")
+            self.warningsLabel.setVisible(False)
+            callback = self.extractButton.setEnabled
+        else:
+            callback = self.showJobs
+
         watershed_blur = {
             1: float(self.paramsWidget.resolvedBlurEdit.text),
             2: float(self.paramsWidget.subscaleBlurEdit.text),
@@ -240,7 +259,8 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
             self.paramsWidget.generateVisualizationCheckbox.isChecked(),
             self.paramsWidget.methodSelector.currentText,
             watershed_blur,
-            self.extractButton.setEnabled,
+            callback,
+            localMode,
         )
 
     def setWarning(self, message):
@@ -286,6 +306,17 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         vmax = 1.0 if is_float else 100
         return vmin <= vrange[0] <= vmax and vmin <= vrange[1] <= vmax
 
+    def showJobs(self):
+        """this function open a dialog to confirm and if yes, emit the signal to delete the results"""
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText("Your job was succesfully scheduled on cluster. Do you want to move to job monitor view?")
+        msg.setWindowTitle("Show jobs")
+        msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+        msg.setDefaultButton(qt.QMessageBox.No)
+        if msg.exec_() == qt.QMessageBox.Yes:
+            slicer.modules.AppContextInstance.rightDrawer.show(1)
+
 
 #
 # PoreNetworkExtractorLogic
@@ -309,13 +340,16 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         method: str,
         watershed_blur: list,
         callback,
+        localMode,
     ) -> Union[Tuple[slicer.vtkMRMLTableNode, slicer.vtkMRMLTableNode], bool]:
         params = {"prefix": prefix, "method": method}
 
         self.visualization = visualization
 
-        if inputVolumeNode:
-            self.inputNodeID = inputVolumeNode.GetID()
+        self.inputNodeID = inputVolumeNode.GetID()
+        labelNodeID = None
+        if inputLabelMap:
+            labelNodeID = inputLabelMap.GetID()
 
         if inputVolumeNode.IsA("vtkMRMLLabelMapVolumeNode") and inputLabelMap is None:
             params["is_multiscale"] = False
@@ -327,25 +361,27 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
 
         params["watershed_blur"] = watershed_blur
 
-        self.params = params
         self.cwd = Path(slicer.util.tempDirectory())
         self.callback = callback
         self.prefix = prefix
 
-        cliParams = {
-            "xargs": json.dumps(params),
-            "cwd": str(self.cwd),
-        }
-
-        if inputVolumeNode:
-            cliParams["volume"] = inputVolumeNode.GetID()
-
-        if inputLabelMap:
-            cliParams["label"] = inputLabelMap.GetID()
-
-        self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
-        self.progressBar.setCommandLineModuleNode(self.cliNode)
-        self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
+        if localMode:
+            cliParams = {"cwd": str(self.cwd)}
+            cliParams["volume"] = self.inputNodeID
+            if labelNodeID:
+                cliParams["label"] = labelNodeID
+            with open(str(self.cwd / "params_dict.json"), "w") as file:
+                json.dump(params, file)
+            self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
+            self.progressBar.setCommandLineModuleNode(self.cliNode)
+            self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
+        else:
+            self.handler = PoreNetworkExtractorHandler(self.inputNodeID, labelNodeID, params)
+            success = slicer.modules.RemoteServiceInstance.cli.run(
+                self.handler, name="PoreNetworkExtractor", job_type="pnmextractor"
+            )
+            if success:
+                self.callback()
 
     def cancel(self):
         if self.cliNode is None:
@@ -391,9 +427,9 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
     def onFinish(self):
         inputNode = slicer.mrmlScene.GetNodeByID(self.inputNodeID)
 
-        df_pores = pd.read_pickle(f"{self.cwd}/pores.pd")
-        df_throats = pd.read_pickle(f"{self.cwd}/throats.pd")
-        df_network = pd.read_pickle(f"{self.cwd}/network.pd")
+        df_pores = pd.read_pickle(str(self.cwd / "pores.pd"))
+        df_throats = pd.read_pickle(str(self.cwd / "throats.pd"))
+        df_network = pd.read_pickle(str(self.cwd / "network.pd"))
 
         throatOutputTable, poreOutputTable, networkOutputTable = self._create_tables("porespy")
 

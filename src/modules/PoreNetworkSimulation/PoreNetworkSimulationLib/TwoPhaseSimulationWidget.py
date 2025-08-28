@@ -113,11 +113,24 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.simulator_combo_box.addItem("py_pore_flow")
         self.simulator_combo_box.addItem("pnflow")
         self.simulator_combo_box.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+        self.simulator_combo_box.currentTextChanged.connect(self.onChangedSimulator)
         simulator_label = qt.QLabel("Simulator:")
         simulator_layout = qt.QHBoxLayout()
         simulator_layout.addWidget(simulator_label)
         simulator_layout.addWidget(self.simulator_combo_box)
         layout.addRow(simulator_layout)
+
+        self.direction_combo_box = qt.QComboBox()
+        self.direction_combo_box.objectName = "Simulation Direction"
+        self.direction_combo_box.addItem("Z")
+        self.direction_combo_box.addItem("Y")
+        self.direction_combo_box.addItem("X")
+        self.direction_combo_box.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+        direction_label = qt.QLabel("Simulation Direction:")
+        direction_layout = qt.QHBoxLayout()
+        direction_layout.addWidget(direction_label)
+        direction_layout.addWidget(self.direction_combo_box)
+        layout.addRow(direction_layout)
 
         self.parameterInputLoadCollapsible = ctk.ctkCollapsibleButton()
         self.parameterInputLoadCollapsible.text = "Load parameters"
@@ -315,6 +328,12 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         if not hide_parameters_io:
             layout.addRow(self.mercury_widget)
 
+        self.widgets["init_contact_distribution"].currentTextChanged.connect(
+            lambda: self.onChangedContactDistrib("init_contact_distribution")
+        )
+        self.widgets["equil_contact_distribution"].currentTextChanged.connect(
+            lambda: self.onChangedContactDistrib("equil_contact_distribution")
+        )
         self.widgets["init_contact_model"].currentTextChanged.connect(
             lambda: self.onChangedContactModel("init_contact_model")
         )
@@ -360,10 +379,34 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             label_list[widget_name] = new_label
 
     def updateFieldsActivation(self):
+        self.onChangedContactDistrib("init_contact_distribution")
+        self.onChangedContactDistrib("equil_contact_distribution")
         self.onChangedContactModel("init_contact_model")
         self.onChangedContactModel("equil_contact_model")
         self.onChangedFraction("second_contact_fraction")
         self.onChangedFraction("frac_contact_angle_fraction")
+
+    def onChangedSimulator(self, simulator):
+        if simulator == "pnflow":
+            for stage in ["init", "equil", "frac", "second"]:
+                self.widgets[f"{stage}_contact_distribution"].combo_box.setCurrentText("Weibull")
+                self.widgets[f"{stage}_contact_distribution"].setEnabled(False)
+        else:
+            for stage in ["init", "equil", "frac", "second"]:
+                self.widgets[f"{stage}_contact_distribution"].setEnabled(True)
+
+    def onChangedContactDistrib(self, name):
+        text = self.widgets[name].get_text()
+        prefix = name.split("_")[0]
+        for i in range(self.widgets[f"{prefix}_contact_angle_eta"].count()):
+            widget = self.widgets[f"{prefix}_contact_angle_eta"].itemAt(i).widget()
+            widget.setEnabled(text == "Weibull")
+        for i in range(self.widgets[f"{prefix}_contact_angle_del"].count()):
+            widget = self.widgets[f"{prefix}_contact_angle_del"].itemAt(i).widget()
+            widget.setEnabled(text == "Weibull")
+        for i in range(self.widgets[f"{prefix}_contact_angle_sig"].count()):
+            widget = self.widgets[f"{prefix}_contact_angle_sig"].itemAt(i).widget()
+            widget.setEnabled(text == "Gaussian")
 
     def onChangedContactModel(self, name):
         text = self.widgets[name].get_text()
@@ -426,6 +469,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         else:
             subres_params_copy = subres_params
         params["simulator"] = self.simulator_combo_box.currentText
+        geo_display_direction = self.direction_combo_box.currentText
+        if geo_display_direction == "X":
+            numpy_direction = "z"
+        if geo_display_direction == "Y":
+            numpy_direction = "y"
+        if geo_display_direction == "Z":
+            numpy_direction = "x"
+        params["direction"] = numpy_direction
 
         for widget in self.widgets.values():
             params.update(widget.get_values())

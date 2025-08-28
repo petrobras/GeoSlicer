@@ -67,9 +67,21 @@ def onePhase(args, params):
     flow_array = np.zeros((1, 3), dtype="float")
     permeability_array = np.zeros((1, 3), dtype="float")
 
-    sizes = params["sizes"]
     ijktoras = params["ijktoras"]
-    sizes_product = sizes["x"] * sizes["y"] * sizes["z"]
+
+    # sizes = params["sizes"]
+    # sizes_product = sizes["x"] * sizes["y"] * sizes["z"]
+
+    boundingbox = {
+        "xmin": pore_network["pore.coords"][:, 0].min(),
+        "xmax": pore_network["pore.coords"][:, 0].max(),
+        "ymin": pore_network["pore.coords"][:, 1].min(),
+        "ymax": pore_network["pore.coords"][:, 1].max(),
+        "zmin": pore_network["pore.coords"][:, 2].min(),
+        "zmax": pore_network["pore.coords"][:, 2].max(),
+    }  # mm
+    bb_sizes = {i: 0.1 * (boundingbox[f"{i}max"] - boundingbox[f"{i}min"]) for i in "xyz"}  # cm
+    sizes_product = bb_sizes["x"] * bb_sizes["y"] * bb_sizes["z"]
 
     subres_func = set_subres_model(pore_network, params)
 
@@ -79,64 +91,76 @@ def onePhase(args, params):
     for inlet, outlet in ((0, 0), (1, 1), (2, 2)):
         in_face = in_faces[inlet]
         out_face = out_faces[outlet]
-        perm, pn_pores, pn_throats = single_phase_permeability(
-            pore_network,
-            in_face,
-            out_face,
-            subresolution_function=subres_func,
-            subres_porositymodifier=params["subres_porositymodifier"],
-            subres_shape_factor=params["subres_shape_factor"],
-            solver=params["solver"],
-            target_error=params["solver_error"],
-            preconditioner=params["preconditioner"],
-            clip_check=params["clip_check"],
-            clip_value=params["clip_value"],
-        )
+        try:
+            perm, pn_pores, pn_throats = single_phase_permeability(
+                pore_network,
+                in_face,
+                out_face,
+                pressure_drop=params["pressure_drop"],
+                viscosity=params["fluid_viscosity"],
+                subresolution_function=subres_func,
+                subres_porositymodifier=params["subres_porositymodifier"],
+                subres_shape_factor=params["subres_shape_factor"],
+                solver=params["solver"],
+                target_error=params["solver_error"],
+                preconditioner=params["preconditioner"],
+                clip_check=params["clip_check"],
+                clip_value=params["clip_value"],
+            )
+        except ValueError as e:
+            print(f"Error at axis {inlet}")
+            print(e)
+            perm = 0
         if (perm == 0) or (perm.network.throats("all").size == 0):
             continue
         net = perm.project.network
 
-        flow_rate = get_flow_rate(pn_pores, pn_throats)
+        flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
 
         if in_face[0] == out_face[0]:
-            length = sizes[in_faces[2 - inlet][0]]
-            area = sizes_product / length
-            permeability = flow_rate * (length / area)
+            length = bb_sizes[in_faces[2 - inlet][0]]  # cm
+            if params["cilindrical_sample"] and in_faces[2 - inlet][0] == "z":
+                area = (np.pi / 4.0) * sizes_product / length  # cm^2
+            else:
+                area = sizes_product / length  # cm^2
+            mu = params["fluid_viscosity"]  # Pa*s
+            deltaP = params["pressure_drop"]  # Pa
+            permeability = 0.01**2 * (flow_rate / area) * (mu * length / deltaP)  # m^2
         else:
             # Darcy permeability for pluridimensional flow is undefined
             permeability = 0
         flow_array[0, inlet] = flow_rate
         # flow_array[outlet, 0] = flow_rate
-        permeability_array[0, inlet] = permeability * 1000  # Conversion factor from darcy to milidarcy
-        # permeability_array[outlet, 0] = permeability * 1000  # Conversion factor from darcy to milidarcy
+        permeability_array[0, inlet] = permeability * 1000 / 9.869233e-13  # Conversion factor from m^2 to milidarcy
+        # permeability_array[outlet, 0] = permeability * 1000 / 9.869233e-13  # Conversion factor from m^2 to milidarcy
 
-        # Create VTK models
-        # throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
-        throat_values = np.zeros(pn_throats["throat.all"].size)
-        try:
-            min_throat = np.min(throat_values[throat_values > (-np.inf)])
-            max_throat = np.max(throat_values[throat_values > (-np.inf)])
-        except:
-            min_throat = -np.inf
-            max_throat = np.inf
-        minmax.append({"inlet": inlet, "outlet": outlet, "min": min_throat, "max": max_throat})
+        if params["visualization"]:  # Create VTK models
+            # throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
+            throat_values = np.zeros(pn_throats["throat.all"].size)
+            try:
+                min_throat = np.min(throat_values[throat_values > (-np.inf)])
+                max_throat = np.max(throat_values[throat_values > (-np.inf)])
+            except:
+                min_throat = -np.inf
+                max_throat = np.inf
+            minmax.append({"inlet": inlet, "outlet": outlet, "min": min_throat, "max": max_throat})
 
-        # pore_values = perm["pore.pressure"]
-        pore_values = pn_pores["pore.pressure"]
-        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, sizes, ijktoras)
-        writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
-        writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
+            # pore_values = perm["pore.pressure"]
+            pore_values = pn_pores["pore.pressure"]
+            pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, bb_sizes, ijktoras)
+            writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
+            writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
 
-        throat_values = perm.network.throats("all")
+            throat_values = perm.network.throats("all")
 
-        pore_values = perm.project.network[f"pore.{out_face}"].astype(int) - perm.project.network[
-            f"pore.{in_face}"
-        ].astype(int)
-        border_pores_model_node, null_throats_model_node = create_flow_model(
-            perm.project, pore_values, throat_values, sizes, ijktoras
-        )
-        del null_throats_model_node
-        writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{inlet}_{outlet}.vtk")
+            pore_values = perm.project.network[f"pore.{out_face}"].astype(int) - perm.project.network[
+                f"pore.{in_face}"
+            ].astype(int)
+            border_pores_model_node, null_throats_model_node = create_flow_model(
+                perm.project, pore_values, throat_values, bb_sizes, ijktoras
+            )
+            del null_throats_model_node
+            writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{inlet}_{outlet}.vtk")
 
         df_pores = pd.DataFrame(pn_pores)
         df_throats = pd.DataFrame(pn_throats)
@@ -146,8 +170,9 @@ def onePhase(args, params):
         progressUpdate(value=0.1 + 0.9 * counter / 6)
         counter += 1
 
-    with open(f"{args.tempDir}/return_params.json", "w") as file:
-        json.dump(minmax, file)
+    if params["visualization"]:
+        with open(f"{args.tempDir}/return_params.json", "w") as file:
+            json.dump(minmax, file)
 
     flow_df = pd.DataFrame(
         flow_array,
@@ -350,7 +375,9 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
 
             if params["create_sequence"] == "T":
                 polydata, saturation_steps = generate_model_variable_scalar(
-                    Path(result["cwd"]) / "Output_res", is_multiscale=is_multiscale
+                    Path(result["cwd"]) / "Output_res",
+                    is_multiscale=is_multiscale,
+                    axis=params["direction"],
                 )
                 writePolydata(polydata, f"{args.tempDir}/cycle_node_{i}.vtk")
                 saturation_steps_list.append(saturation_steps)

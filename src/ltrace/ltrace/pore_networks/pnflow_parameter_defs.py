@@ -340,6 +340,16 @@ for i in ("init", "second", "equil", "frac"):
             "Model 3 (Morrow curve)": "3",
         },
     }
+    PARAMETERS[f"{i}_contact_distribution"] = {
+        "display_name": "Distribution",
+        "layout": i,
+        "dtype": "combobox",
+        "default_value": 1,
+        "display_names": {
+            "Weibull": "weibull",
+            "Gaussian": "gaussian",
+        },
+    }
     PARAMETERS[f"{i}_contact_angle"] = {
         "display_name": "CA center (deg)",
         "tooltip": "Contact angle distribution center (degrees)",
@@ -356,6 +366,12 @@ for i in ("init", "second", "equil", "frac"):
         "default_value": 10.0,
         "min_value": 0.0,
         "max_value": 180.0,
+        "layout": i,
+    }
+    PARAMETERS[f"{i}_contact_angle_sig"] = {
+        "display_name": "Standard deviation",
+        "dtype": "multifloat",
+        "default_value": 5.0,
         "layout": i,
     }
     PARAMETERS[f"{i}_contact_angle_del"] = {

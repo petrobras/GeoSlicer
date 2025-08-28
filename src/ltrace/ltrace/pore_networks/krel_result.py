@@ -363,7 +363,19 @@ class KrelTables:
 
     @staticmethod
     def _interpolate(interpolated_x, x_values, y_values):
-        return np.interp(interpolated_x, x_values, y_values, left=np.nan, right=np.nan)
+        interpolated_y = np.interp(interpolated_x, x_values, y_values, left=np.nan, right=np.nan)
+
+        # Ensure first and last data are represented in the interpolated data
+        extra_x_over_limit = interpolated_x > x_values[-1]
+        if np.any(extra_x_over_limit):
+            first_out_of_bounds = np.where(extra_x_over_limit == True)[0][0]
+            interpolated_y[first_out_of_bounds] = y_values[-1]
+        extra_x_under_limit = interpolated_x < x_values[0]
+        if np.any(extra_x_under_limit):
+            last_out_of_bounds = np.where(extra_x_under_limit == True)[0][-1]
+            interpolated_y[last_out_of_bounds] = y_values[0]
+
+        return interpolated_y
 
     @staticmethod
     def _interpolate_table(table, id, interpolated_x, cycles_id_list):
@@ -435,9 +447,9 @@ class KrelTables:
 
 class KrelParameterParser:
     def __init__(self):
-        self.input_regex = re.compile(f"{INPUT_PREFIX}(\S+)")
-        self.result_regex = re.compile(f"{RESULT_PREFIX}(\S+)")
-        self.error_regex = re.compile(f"{ERROR_PREFIX}(\S+)")
+        self.input_regex = re.compile(f"{INPUT_PREFIX}(\\S+)")
+        self.result_regex = re.compile(f"{RESULT_PREFIX}(\\S+)")
+        self.error_regex = re.compile(f"{ERROR_PREFIX}(\\S+)")
 
     def get_input_name(self, column_name):
         match = self.input_regex.match(column_name)

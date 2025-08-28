@@ -226,19 +226,21 @@ def KabsREV(args, params):
                 if perm == 0:
                     continue
 
-                length = params["sizes"][in_faces[2 - inlet][0]]
+                length = 0.1 * params["sizes"][in_faces[2 - inlet][0]]  # cm
                 flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
-                area = sizes_product / length
-                permeability = flow_rate * (length / area)  # length in mm, return is Darcy
+                mu = params["fluid_viscosity"]  # Pa*s
+                deltaP = params["pressure_drop"]  # Pa
+                area = 0.1**3 * sizes_product / length  # cm^2
+                permeability = 0.01**2 * (flow_rate / area) * (mu * length / deltaP)  # m^2
                 permeabilities[directions[inlet]].append(
                     (
-                        100 * length_fraction,
-                        length,
-                        area,
-                        flow_rate,
-                        1000 * permeability,
-                        volume_porosity,
-                        network_porosity,
+                        100 * length_fraction,  # %
+                        10 * length,  # mm
+                        100 * area,  # mm^2
+                        flow_rate,  # cm^3/s
+                        1000 * permeability / 9.869233e-13,  # mD
+                        volume_porosity,  # %
+                        network_porosity,  # %
                     )
                 )
 

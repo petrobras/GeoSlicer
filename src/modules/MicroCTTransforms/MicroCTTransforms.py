@@ -9,7 +9,7 @@ import vtk
 
 from scipy.spatial.transform import Rotation
 from ltrace.slicer_utils import *
-from ltrace.slicer.helpers import BlockSignals
+from ltrace.slicer.helpers import BlockSignals, setOrientationMarkers
 from ltrace.slicer_utils import getResourcePath
 from ltrace.slicer import ui
 
@@ -117,6 +117,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             dial.setOrientation(qt.Qt.Horizontal)
             dial.notchesVisible = True
             dial.setToolTip(f"Click and drag to rotate dial")
+            dial.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
             gridLayout.addWidget(dial, 1, i)
             self.dials.append(dial)
 
@@ -168,6 +169,13 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             ctk.ctkCollapsibleButton, "DisplayEditCollapsibleWidget"
         )
         self.displayEditCollapsibleWidget.setText("Parameters")
+
+        centerGroupBox = self.displayEditCollapsibleWidget.findChild(
+            ctk.ctkCollapsibleGroupBox, "CenterOfTransformationGroupBox"
+        )
+        if centerGroupBox is not None:
+            centerGroupBox.setFixedHeight(0)
+
         formLayout.addRow(self.displayEditCollapsibleWidget)
 
         self.reflectLRButton = qt.QPushButton("Reflect X")
@@ -352,7 +360,11 @@ class MicroCTTransformsWidget(LTracePluginWidget):
     def reflect(self, plane):
         transformNode = self.transformNodeSelector.currentNode()
         slicer.mrmlScene.SaveStateForUndo(transformNode)
-        self.logic.reflect(transformNode, plane)
+        bounds = [0] * 6
+        node = self.movingNodeSelector.currentNode()
+        node.GetBounds(bounds)
+        self.logic.reflect(transformNode, plane, bounds)
+        self.transformMatrix = slicer.util.arrayFromTransformMatrix(transformNode)
         self.configureButtonsState()
 
     def onReflectLRButton(self):
@@ -369,6 +381,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         slicer.mrmlScene.SaveStateForUndo(transformNode)
         order = order.replace(" ", "")
         self.logic.transpose(transformNode, order)
+        self.transformMatrix = slicer.util.arrayFromTransformMatrix(transformNode)
         self.configureButtonsState()
 
     def renewHiddenTransformNode(self):
@@ -392,11 +405,13 @@ class MicroCTTransformsWidget(LTracePluginWidget):
 
     def enter(self):
         super().enter()
+        setOrientationMarkers(True)
         if not self.transformInProgress:
             slicer.mrmlScene.SetUndoOn()
             self.renewHiddenTransformNode()
 
     def exit(self):
+        setOrientationMarkers(False)
         if not self.transformInProgress:
             slicer.mrmlScene.SetUndoOff()
             if self.transformNodeSelector.currentNode():
@@ -438,21 +453,32 @@ class MicroCTTransformsLogic(LTracePluginLogic):
     def __init__(self):
         LTracePluginLogic.__init__(self)
 
-    def reflect(self, transformNode, plane):
+    def reflect(self, transformNode, plane, bounds):
         vtkMatrix = transformNode.GetMatrixTransformToParent()
         matrixArray = slicer.util.arrayFromVTKMatrix(vtkMatrix)
+
+        center_ras = np.array(
+            [(bounds[0] + bounds[1]) / 2.0, (bounds[2] + bounds[3]) / 2.0, (bounds[4] + bounds[5]) / 2.0]
+        )
+
+        T_center = np.eye(4)
+        T_center[0:3, 3] = -center_ras
+        T_uncenter = np.eye(4)
+        T_uncenter[0:3, 3] = center_ras
+
+        R = np.eye(4)
         if plane == "LR":
-            if np.isclose(abs(matrixArray[0, 0]), 1):
-                matrixArray[:, 0] *= -1
+            R[0, 0] = -1
         elif plane == "PA":
-            if np.isclose(abs(matrixArray[1, 1]), 1):
-                matrixArray[:, 1] *= -1
+            R[1, 1] = -1
         elif plane == "IS":
-            if np.isclose(abs(matrixArray[2, 2]), 1):
-                matrixArray[:, 2] *= -1
+            R[2, 2] = -1
+
+        reflection_matrix = T_uncenter @ R @ T_center
+        final_matrix = matrixArray @ reflection_matrix
 
         vtkTransformationMatrix = vtk.vtkMatrix4x4()
-        vtkTransformationMatrix.DeepCopy(list(np.array(matrixArray).flat))
+        vtkTransformationMatrix.DeepCopy(list(final_matrix.flat))
         transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
 
     def transpose(self, transformNode, order):

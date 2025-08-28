@@ -15,7 +15,7 @@ class CustomBehaviorRequirements:
             return False
 
         # Check node types
-        if node.__class__ not in self.nodeTypes:
+        if issubclass(type(node), tuple(self.nodeTypes)) is False:
             return False
 
         # Check attributes

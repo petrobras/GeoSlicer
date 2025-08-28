@@ -70,13 +70,18 @@ Cada distribuição de ângulos, seja primária ou secundária, inicial ou de eq
 	- _Constant difference_: diferença constante dos ângulos de avanço/recuo em relação ao ângulo intrínsico;
 	- _Morrow curve_: curvas de avanço/recuo determinadas pelas curvas de Morrow;
 
-| <img src="morrow.png" width="50%"> |
+| <img src="../../assets/images/pnm/morrow.png" width="50%"> |
 |:---------------------------------------------------------------------:|
 | Figura 4: Curvas para cada um dos modelos de ângulo de contato implementados no GeoSlicer. |
 
 - _Contact angle distribution center_: Define o centro da distribuição de ângulo de contato;
 - _Contact angle distribution range_: Alcance da distribuição (center-range/2, center+range/2), com o ângulo mínimo/máximo sendo 0º/180º, respectivamente;
-- _Delta_, _Gamma_: Parâmetros da distribuição de Weibull truncada, se um número negativo é escolhido, usa uma distribuição uniforme;
+- _Delta_, _Gamma_: Parâmetros da distribuição de Weibull truncada, se um número negativo é escolhido, usa uma distribuição uniforme; Se números positivos são escolhidos, usa a seguinte distribuição de probabilidades: $p(\tilde\theta)=\frac{\gamma}{\delta}\frac{\tilde\theta^{\gamma-1}e^{-\tilde\theta^\gamma/\delta}}{1-e^{-1/\delta}}$ onde $\tilde\theta\in[\theta_{min},\theta_{max}]$. Algumas ideias de parâmetros para essa distribuição são gráficados abaixo:
+
+| <img src="../../assets/images/pnm/weibull.png" width="100%"> |
+|:---------------------------------------------------------------------:|
+| Figura 5: Distribuição de Weibull. |
+
 - _Contact angle correlation_: Escolhe como o ângulo de contato será correlacionado ao raio dos poros: _Positive radius_ define maiores ângulos de contato para raios maiores; _Negative radius_ faz o oposto, atribuindo maiores ângulos para raios menores; _Uncorrelated_ significa independência entre ângulos de contato com o raio do poro;
 - _Separation_: Se o modelo escolhido for _constant difference_, define a separação entre ângulos de avanço e recuo;
 

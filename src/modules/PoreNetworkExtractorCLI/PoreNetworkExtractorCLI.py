@@ -8,16 +8,9 @@ from __future__ import print_function
 import vtk
 
 import json
-from pathlib import Path
-import itertools
 
 import slicer
 import mrml
-import numpy as np
-import pandas as pd
-import pickle
-import porespy
-import openpnm
 from ltrace.slicer.cli_utils import progressUpdate
 from ltrace.pore_networks.functions_extract import general_pn_extract, multiscale_extraction
 
@@ -41,9 +34,7 @@ def writePolydata(polydata, filename):
     writer.Write()
 
 
-def extractPNM(args):
-    params = json.loads(args.xargs)
-
+def extractPNM(args, params):
     progressUpdate(value=0.1)
 
     if params["is_multiscale"]:
@@ -84,10 +75,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LTrace pore network extraction CLI.")
     parser.add_argument("--volume", type=str, default=None, required=False)
     parser.add_argument("--label", type=str, default=None, required=False)
-    parser.add_argument("--xargs", type=str, default="", required=False)
     parser.add_argument("--cwd", type=str, required=False)
     args = parser.parse_args()
 
-    extractPNM(args)
+    with open(f"{args.cwd}/params_dict.json", "r") as file:
+        params = json.load(file)
+
+    extractPNM(args, params)
 
     print("Done")

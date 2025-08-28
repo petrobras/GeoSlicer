@@ -314,12 +314,7 @@ def geo2pnf(
         input_x = pore_dict["pore.coords_0"][i] * scale_factor
         input_y = pore_dict["pore.coords_1"][i] * scale_factor
         input_z = pore_dict["pore.coords_2"][i] * scale_factor
-        if axis == "x":
-            p_z, p_y, p_x = input_x, input_y, input_z
-        elif axis == "y":
-            p_y, p_z, p_x = input_x, input_y, input_z
-        elif axis == "z":
-            p_x, p_y, p_z = input_x, input_y, input_z
+        p_z, p_y, p_x = input_x, input_y, input_z
         coordinate_number = len(pores_conns_pores[i])
         is_inlet = int(pore_dict[f"pore.{axis}max"][i])
         is_outlet = int(pore_dict[f"pore.{axis}min"][i])

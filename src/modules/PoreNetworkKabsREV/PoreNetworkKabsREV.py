@@ -96,6 +96,12 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
         hbox.addWidget(solverHelpButton)
         parametersLayout.addRow("Solver", hbox)
 
+        self.pressureDropFloat = ui.floatParam(101325.0)
+        parametersLayout.addRow("Pressure drop (Pa)", self.pressureDropFloat)
+
+        self.fluidViscosityFloat = ui.floatParam(1.0)
+        parametersLayout.addRow("Fluid viscosity (mPa.s)", self.fluidViscosityFloat)
+
         hbox = qt.QHBoxLayout()
         self.errorLabel = qt.QLabel("Target error")
         self.errorEdit = ui.floatParam(1e-7)
@@ -193,6 +199,8 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
             "subres_params": subres_params,
             "solver": self.solverComboBox.currentText,
             "solver_error": float(self.errorEdit.text),
+            "pressure_drop": float(self.pressureDropFloat.text),
+            "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),  # converts from mPa.s to Pa.s
             "preconditioner": self.preconditionerComboBox.currentText,
             "clip_check": self.clipCheck.isChecked(),
             "clip_value": float(self.clipEdit.text),

@@ -12,7 +12,7 @@ TUBE_TYPE = 2
 ARROW_TYPE = 3
 
 
-def visualize_vtu(
+def _visualize_vtu(
     filepath,
     cycle,
     scale_factor=10**3,
@@ -30,6 +30,19 @@ def visualize_vtu(
         Must be 'w' for wetting phase (usually waater) injection cycles and 'o'
         for non-wetting phase (usually oil) injection cycles
     """
+    if axis == "x":
+        arrow_x = 0
+        arrow_y = 0
+        arrow_z = 1
+    elif axis == "y":
+        arrow_x = 0
+        arrow_y = 1
+        arrow_z = 0
+    elif axis == "z":
+        arrow_x = 1
+        arrow_y = 0
+        arrow_z = 0
+
     reader = vtk.vtkXMLUnstructuredGridReader()
     reader.SetFileName(filepath)
     reader.Update()
@@ -116,7 +129,7 @@ def visualize_vtu(
         arrows_saturations.InsertTuple1(i, arrow_saturation)
         arrows_condW.InsertTuple1(i, 0)
         arrows_condO.InsertTuple1(i, 0)
-        arrows_direction.InsertTuple3(i, 0, 0, 1)
+        arrows_direction.InsertTuple3(i, arrow_x, arrow_y, arrow_z)
         arrows_position.InsertTuple3(i, *arrow_position)
         arrows_type.InsertTuple1(i, ARROW_TYPE)
         arrows_id.InsertTuple1(i, object_id)
@@ -193,13 +206,17 @@ def visualize_vtu(
     return pressure, merger
 
 
-def generate_model_variable_scalar(temp_folder, is_multiscale=False):
+def generate_model_variable_scalar(temp_folder, is_multiscale=False, **kwargs):
     file_names = sorted([i for i in os.listdir(temp_folder) if i[-4:] == ".vtu"])
 
     pressures = []
     base_filepath = os.path.join(temp_folder, file_names[0])
-    pressure, pore_mesh = visualize_vtu(
-        base_filepath, create_model=False, cycle=file_names[0][2].lower(), normalize_radius=is_multiscale
+    pressure, pore_mesh = _visualize_vtu(
+        base_filepath,
+        create_model=False,
+        cycle=file_names[0][2].lower(),
+        normalize_radius=is_multiscale,
+        **kwargs,
     )
     point_data = pore_mesh.GetOutput().GetPointData()
     pressures.append(pressure)
@@ -214,8 +231,12 @@ def generate_model_variable_scalar(temp_folder, is_multiscale=False):
 
     for data_point, file_name in enumerate(file_names[1:], start=1):
         filepath = os.path.join(temp_folder, file_name)
-        pressure, poly_data = visualize_vtu(
-            filepath, cycle=file_name[2].lower(), create_model=False, normalize_radius=is_multiscale
+        pressure, poly_data = _visualize_vtu(
+            filepath,
+            cycle=file_name[2].lower(),
+            create_model=False,
+            normalize_radius=is_multiscale,
+            **kwargs,
         )
         saturation = poly_data.GetOutput().GetPointData().GetArray("saturation")
         new_array = vtk.util.numpy_support.vtk_to_numpy(saturation)
@@ -285,6 +306,13 @@ def _unstructured_grid_to_dict(
     Returns:
         dict: model elements data
     """
+    if axis == "x":
+        arrow_displacement_axis = 2
+    elif axis == "y":
+        arrow_displacement_axis = 1
+    elif axis == "z":
+        arrow_displacement_axis = 0
+
     n_points = unstructured_grid.GetNumberOfPoints()
     n_cells = unstructured_grid.GetNumberOfCells()
 
@@ -347,8 +375,7 @@ def _unstructured_grid_to_dict(
         radius = unstructured_grid.GetPointData().GetArray("radius").GetComponent(pore_id, 0)
         sw = unstructured_grid.GetPointData().GetArray("Sw").GetComponent(pore_id, 0)
 
-        if axis == "x":
-            position = position[-1::-1]
+        position = position[-1::-1]
 
         is_inlet = unstructured_grid.GetPointData().GetArray("inlets").GetComponent(pore_id, 0)
         if is_inlet == 1:
@@ -400,9 +427,11 @@ def _unstructured_grid_to_dict(
     volume_side = volume ** (1.0 / 3.0)
 
     inlet_arrows_positions = position_list[inlet_bool_list] * scale_factor
-    inlet_arrows_positions[:, 2] -= volume_side * arrow_scale + pore_radius_list[inlet_bool_list] / 2
+    inlet_arrows_positions[:, arrow_displacement_axis] -= (
+        volume_side * arrow_scale + pore_radius_list[inlet_bool_list] / 2
+    )
     outlet_arrows_positions = position_list[outlet_bool_list] * scale_factor
-    outlet_arrows_positions[:, 2] += pore_radius_list[outlet_bool_list] / 2
+    outlet_arrows_positions[:, arrow_displacement_axis] += pore_radius_list[outlet_bool_list] / 2
 
     arrows = []
     for i, sw in enumerate(sw_list[inlet_bool_list]):

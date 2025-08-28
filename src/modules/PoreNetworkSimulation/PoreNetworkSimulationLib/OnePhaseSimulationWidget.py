@@ -21,6 +21,9 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "subres_porositymodifier": 1.0,
         "solver": "pypardiso",
         "solver_error": 1e-7,
+        "pressure_drop": 101325.0,
+        "fluid_viscosity": 1.0,
+        "cilindrical_sample": False,
     }
 
     def __init__(self):
@@ -46,6 +49,15 @@ class OnePhaseSimulationWidget(qt.QFrame):
         hbox.addWidget(self.solverComboBox)
         hbox.addWidget(solverHelpButton)
         layout.addRow("Solver", hbox)
+
+        self.pressureDropFloat = ui.floatParam(101325.0)
+        layout.addRow("Pressure drop (Pa)", self.pressureDropFloat)
+
+        self.fluidViscosityFloat = ui.floatParam(1.0)
+        layout.addRow("Fluid viscosity (mPa.s)", self.fluidViscosityFloat)
+
+        self.cilindricalSample = qt.QCheckBox()
+        layout.addRow("Cilindrical sample", self.cilindricalSample)
 
         hbox = qt.QHBoxLayout()
         self.errorLabel = qt.QLabel("Target error")
@@ -91,12 +103,13 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.rotationAnglesEdit.objectName = "Multiangle Steps"
         layout.addRow(self.rotationAnglesLabel, self.rotationAnglesEdit)
 
+        self.generateVisualizationLabel = qt.QLabel("Generate visualization:")
         self.generateVisualizationCheckbox = qt.QCheckBox()
         self.generateVisualizationCheckbox.setToolTip(
             "Enable to generate visualization model nodes. Note: For large projects, the generated model nodes may consume significant disk space when saved."
         )
         self.generateVisualizationCheckbox.objectName = "Visualization checkbox"
-        layout.addRow("Generate visualization:", self.generateVisualizationCheckbox)
+        layout.addRow(self.generateVisualizationLabel, self.generateVisualizationCheckbox)
 
         self.simulationTypeComboBox.currentTextChanged.connect(self.onSimulationTypeChanged)
         self.simulationTypeComboBox.currentTextChanged.emit(self.simulationTypeComboBox.currentText)
@@ -139,6 +152,9 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "clip_check": self.clipCheck.isChecked(),
             "clip_value": float(self.clipEdit.text),
             "visualization": self.generateVisualizationCheckbox.isChecked(),
+            "pressure_drop": float(self.pressureDropFloat.text),
+            "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),  # converts from mPa.s to Pa.s
+            "cilindrical_sample": self.cilindricalSample.isChecked(),
         }
 
     def onSolverChanged(self, text):
@@ -149,8 +165,10 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.preconditionerComboBox.setVisible(text == "pyflowsolver")
 
     def onSimulationTypeChanged(self, text):
-        self.rotationAnglesLabel.setVisible(text == "Multiple orientations")
-        self.rotationAnglesEdit.setVisible(text == "Multiple orientations")
+        self.rotationAnglesLabel.setVisible(text == MULTI_ANGLE)
+        self.rotationAnglesEdit.setVisible(text == MULTI_ANGLE)
+        self.generateVisualizationLabel.setVisible(text == ONE_ANGLE)
+        self.generateVisualizationCheckbox.setVisible(text == ONE_ANGLE)
 
     def setParams(self, params):
         self.modelTypeComboBox.setCurrentText(params.get("model type"))

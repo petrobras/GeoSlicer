@@ -258,11 +258,10 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             val = {"min": line["min"], "max": line["max"]}
             minmax_dict[key] = val
 
-        for inlet, outlet in itertools.combinations_with_replacement((0, 1, 2), 2):
+        for inlet, outlet in ((0, 0), (1, 1), (2, 2)):
             key = (inlet, outlet)
             if key not in minmax_dict.keys():
-                break
-
+                continue
             subDir = folderTree.CreateFolderItem(
                 visualization_dir, f"{['z', 'y', 'x'][inlet]}-{['z', 'y', 'x'][outlet]} folder"
             )
@@ -297,9 +296,9 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             max_throat = minmax_dict[key]["max"]
             model_node["throat_flow_rate"].GetDisplayNode().SetScalarRange(min_throat, max_throat)
 
-            if (inlet + outlet) != 0:  # by default only display z-z results
-                model_node["pore_pressure"].SetDisplayVisibility(False)
-                model_node["throat_flow_rate"].SetDisplayVisibility(False)
+            # if (inlet + outlet) != 0:  # by default only display z-z results
+            #    model_node["pore_pressure"].SetDisplayVisibility(False)
+            #    model_node["throat_flow_rate"].SetDisplayVisibility(False)
 
             folderTree.SetDisplayVisibilityForBranch(subDir, False)
             folderTree.SetItemExpanded(subDir, False)
@@ -536,6 +535,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         statoil_dict = geo2pnf(
             pore_node,
             subresolution_function,
+            axis=params["direction"],
             subres_shape_factor=params["subres_shape_factor"],
             subres_porositymodifier=params["subres_porositymodifier"],
         )
