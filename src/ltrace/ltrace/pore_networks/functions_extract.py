@@ -1,10 +1,12 @@
-import slicer
+from typing import Optional
 
 from ltrace.image import optimized_transforms
 from porespy.networks import regions_to_network_parallel, snow2
+from porespy.tools import make_contiguous
 
 import numpy as np
 import pandas as pd
+from numba import njit, prange
 
 
 def spy2geo(pn_properties):
@@ -21,6 +23,7 @@ def spy2geo(pn_properties):
     pn_properties.update(properties_pairs_to_add)
 
 
+'''
 def get_connected_array_from_node(inputVolume: slicer.vtkMRMLLabelMapVolumeNode) -> np.ndarray:
     """
     Receives a volume node, removes its array unconnected elements and returns that array.
@@ -43,56 +46,17 @@ def get_connected_array_from_node(inputVolume: slicer.vtkMRMLLabelMapVolumeNode)
     input_array = optimized_transforms.connected_image(input_array, direction="all_combinations")
 
     if input_array.max() == 0:
-        raise PoreNetworkExtractorError(
+        raise ValueError(
             "Pore network extraction failed: there was no percolating pore network through any oposite faces of the volume."
         )
 
     return input_array
+'''
 
 
-def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_blur=[0.4, 0.4], force_cpu=False):
+def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=None):
 
     # Extracts PNM with porespy and "flattens" the data into a dict of 1d arrays
-
-    if watershed is None:
-        "Only in multiscale can watershed be None"
-        input_array = multiphase
-        if type(watershed_blur) is dict:
-            keys = list(watershed_blur.keys())
-            for key in keys:
-                watershed_blur[int(key)] = watershed_blur[key]
-        snow_results = snow2(
-            multiphase,
-            porosity_map=porosity_map,
-            voxel_size=scale,
-            parallel_extraction=True,
-            sigma=watershed_blur,
-            force_cpu=force_cpu,
-        )
-        pn_properties = snow_results.network
-        watershed_image = snow_results.regions
-    else:
-        input_array = watershed
-        if multiphase is None:
-            pn_properties = regions_to_network_parallel(
-                watershed,
-                voxel_size=scale,
-                force_cpu=force_cpu,
-            )
-        else:
-            watershed[multiphase == 0] = 0
-            porosity_map[multiphase == 0] = 0
-            pn_properties = regions_to_network_parallel(
-                watershed,
-                phases=multiphase,
-                porosity_map=porosity_map,
-                voxel_size=scale,
-                force_cpu=force_cpu,
-            )
-        watershed_image = watershed
-
-    if not pn_properties:
-        return False
 
     porosity = pn_properties["pore.subresolution_porosity"]
     pn_properties["pore.subresolution_porosity"][porosity == 0] = porosity[porosity > 0].min()
@@ -146,7 +110,12 @@ def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_
     pn_properties["pore.shape_factor"] /= conns_total_area
 
     # Swap Z and X axis and displace by origin:
-    for coord_name in ("pore.coords_", "pore.local_peak_", "pore.global_peak_", "pore.geometric_centroid_"):
+    for coord_name in (
+        "pore.coords_",
+        "pore.local_peak_",
+        "pore.global_peak_",
+        "pore.geometric_centroid_",
+    ):
         temp_coord = pn_properties[f"{coord_name}0"]
         pn_properties[f"{coord_name}0"] = pn_properties[f"{coord_name}2"]
         pn_properties[f"{coord_name}2"] = temp_coord
@@ -173,7 +142,7 @@ def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_
         edge_labels["all"] = np.unique(np.append(edge_labels["all"], edge_labels[face]))
         pn_properties[face] = np.isin(labels, edge_labels[face])
 
-    max_coords = [(i * scale[input_array.ndim-1-coord]) for coord,i in enumerate(input_array.shape[-1::-1])]
+    max_coords = [(i * scale[watershed_image.ndim-1-coord]) for coord,i in enumerate(watershed_image.shape[-1::-1])]
     # fmt: off
     for labels_list, coord_axis, new_position in (
             (edge_labels["pore.xmax"], 2, 0),
@@ -255,12 +224,12 @@ def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_
             porosity_map.size * 100
         )
     else:
-        input_volume_porosity = (input_array > 0).sum() / input_array.size
+        input_volume_porosity = (watershed_image > 0).sum() / watershed_image.size
         input_resolved_porosity = input_volume_porosity
         input_subscale_porosity = 0.0
 
     voxel_volume = scale[0] * scale[1] * scale[2]
-    input_total_volume = input_array.size * voxel_volume
+    input_total_volume = watershed_image.size * voxel_volume
 
     pore_resolved_volume = pn_properties["pore.volume"][pn_properties["pore.phase"] == 1].sum()
     pore_subscale_volume = (
@@ -301,15 +270,26 @@ def _porespy_extract(multiphase, watershed, scale, porosity_map=None, watershed_
     pn_properties["network.throat_subscale_porosity"] = throat_subscale_volume / input_total_volume
     pn_properties["network.throat_total_porosity"] = throat_total_volume / input_total_volume
 
+    areas = get_throat_areas_from_labelmap(labelmap=watershed_image, voxel_size=scale)
+    areas_keys = list(areas.keys())
+    throat_area_full = np.zeros_like(pn_properties["throat.all"], dtype=np.float64) - 1
+    for i in range(len(pn_properties["throat.all"])):
+        left_conn = pn_properties["throat.conns_0"][i]
+        right_conn = pn_properties["throat.conns_1"][i]
+        key = (left_conn, right_conn)
+        if key in areas_keys:
+            throat_area_full[i] = areas[key]
+
+    pn_properties["throat.area_full"] = throat_area_full
     return pn_properties
 
 
 def general_pn_extract(
-    multiphaseNode: slicer.vtkMRMLLabelMapVolumeNode,
-    watershedNode: slicer.vtkMRMLLabelMapVolumeNode,
-    method: str,
-    porosity_map=None,
-    watershed_blur=0.4,
+    scalar_array: Optional[np.ndarray],
+    label_array: Optional[np.ndarray],
+    scale: np.ndarray,
+    watershed_blur=[0.4, 0.8],
+    is_multiscale=False,
     force_cpu=False,
 ):
     """
@@ -334,37 +314,66 @@ def general_pn_extract(
         properties could not be extracted.
     """
 
-    if method == "PoreSpy":
-        input_multiphase = None
-        input_watershed = None
-        if multiphaseNode is not None:
-            inputNode = multiphaseNode
-            input_multiphase = slicer.util.arrayFromVolume(multiphaseNode)
-        if watershedNode is not None:
-            inputNode = watershedNode
-            input_watershed = get_connected_array_from_node(watershedNode)
-        # Convert from adimensional voxel size to node scale
-        # TODO: Deal with anisotropic data PL-1370
-        scale = inputNode.GetSpacing()[::-1]
-        try:
-            pn_properties = _porespy_extract(
-                input_multiphase,
-                input_watershed,
-                scale,
-                porosity_map=porosity_map,
-                watershed_blur=watershed_blur,
-                force_cpu=force_cpu,
-            )
-        except TypeError:
-            raise RuntimeError("Empty network extracted from porespy.")
-        if pn_properties is False:
-            return False
-    elif method == "PNExtract":
-        print("Method is no longer supported")
-        return False
-    else:
-        print(f"method not found: {method}")
-        return False
+    if (label_array is None) and (is_multiscale is True):
+        if type(watershed_blur) is dict:
+            keys = list(watershed_blur.keys())
+            for key in keys:
+                watershed_blur[int(key)] = watershed_blur[key]
+
+        multiphase_array = _phases_from_porosity_map(scalar_array)
+
+        snow_results = snow2(
+            phases=multiphase_array,
+            porosity_map=scalar_array,
+            voxel_size=scale,
+            parallel_extraction=True,
+            sigma=watershed_blur,
+            force_cpu=force_cpu,
+            boundary_width=0,
+        )
+        pn_properties = snow_results.network
+        watershed_output = snow_results.regions
+        # if watershed_output.size > scalar_array:
+
+    elif is_multiscale is True:  # and label_array is not None
+        if not is_contiguous(label_array):
+            watershed_output = make_contiguous(label_array)
+            label_array = watershed_output
+        else:
+            watershed_output = None
+        multiphase_array = _phases_from_porosity_map(scalar_array)
+
+        pn_properties = regions_to_network_parallel(
+            regions=label_array,
+            phases=multiphase_array,
+            porosity_map=scalar_array,
+            voxel_size=scale,
+            force_cpu=force_cpu,
+        )
+    else:  # is_multiscale is False and label_array is not None
+        if not is_contiguous(label_array):
+            watershed_output = make_contiguous(label_array)
+            label_array = watershed_output
+        else:
+            watershed_output = None
+
+        pn_properties = regions_to_network_parallel(
+            regions=label_array,
+            voxel_size=scale,
+            force_cpu=force_cpu,
+        )
+
+    if watershed_output is not None:
+        watershed_output = watershed_output.astype(np.int32)
+
+    if not pn_properties:
+        return None
+    pn_properties = _porespy_postprocessing(
+        pn_properties,
+        watershed_image=(watershed_output if (watershed_output is not None) else label_array),
+        scale=scale,
+        porosity_map=(scalar_array if is_multiscale else None),
+    )
 
     pn_throats = {}
     pn_pores = {}
@@ -381,9 +390,10 @@ def general_pn_extract(
     df_throats = pd.DataFrame(pn_throats)
     df_network = pd.DataFrame(pn_network, index=[0])
 
-    return df_pores, df_throats, df_network
+    return df_pores, df_throats, df_network, watershed_output
 
 
+"""
 def multiscale_extraction(
     inputPorosityNode: slicer.vtkMRMLScalarVolumeNode,
     inputWatershed: slicer.vtkMRMLLabelMapVolumeNode,
@@ -414,3 +424,86 @@ def multiscale_extraction(
     )
 
     return extract_result
+"""
+
+
+@njit(parallel=True)
+def _phases_from_porosity_map(porosity_map):
+    W, H, D = porosity_map.shape
+    phases = np.zeros((W, H, D), dtype=np.uint8)
+    for x in prange(W):
+        for y in range(H):
+            for z in range(D):
+                if porosity_map[x, y, z] == 100:
+                    phases[x, y, z] = 1
+                elif porosity_map[x, y, z] > 0:
+                    phases[x, y, z] = 2
+
+    return phases
+
+
+@njit
+def get_throat_areas_from_labelmap(labelmap, voxel_size):
+    areas = {}
+    W, H, D = labelmap.shape
+    area = voxel_size[1] * voxel_size[2]
+    for x in range(1, W):
+        for y in range(H):
+            for z in range(D):
+                left_label = labelmap[x - 1, y, z] - 1
+                right_label = labelmap[x, y, z] - 1
+                if (left_label == -1) or (right_label == -1) or (left_label == right_label):
+                    continue
+                if right_label < left_label:
+                    right_label = left_label
+                    left_label = labelmap[x, y, z] - 1
+                key = (left_label, right_label)
+                if key not in areas:
+                    areas[key] = area
+                else:
+                    areas[key] += area
+    area = voxel_size[0] * voxel_size[2]
+    for x in range(W):
+        for y in range(1, H):
+            for z in range(D):
+                left_label = labelmap[x, y - 1, z] - 1
+                right_label = labelmap[x, y, z] - 1
+                if (left_label == -1) or (right_label == -1) or (left_label == right_label):
+                    continue
+                if right_label < left_label:
+                    right_label = left_label
+                    left_label = labelmap[x, y, z] - 1
+                key = (left_label, right_label)
+                if key not in areas:
+                    areas[key] = area
+                else:
+                    areas[key] += area
+    area = voxel_size[0] * voxel_size[1]
+    for x in range(W):
+        for y in range(H):
+            for z in range(1, D):
+                left_label = labelmap[x, y, z - 1] - 1
+                right_label = labelmap[x, y, z] - 1
+                if (left_label == -1) or (right_label == -1) or (left_label == right_label):
+                    continue
+                if right_label < left_label:
+                    right_label = left_label
+                    left_label = labelmap[x, y, z] - 1
+                key = (left_label, right_label)
+                if key not in areas:
+                    areas[key] = area
+                else:
+                    areas[key] += area
+    return areas
+
+
+def is_contiguous(labelmap):
+    unique_vals = np.unique(labelmap)
+    while unique_vals[0] <= 0:
+        unique_vals = unique_vals[1:]
+    if len(unique_vals) == unique_vals[-1]:
+        return True
+    elif len(unique_vals) < unique_vals[-1]:
+        return False
+    else:
+        raise Exception

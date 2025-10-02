@@ -13,14 +13,16 @@ import ctk
 import qt
 import slicer
 import slicer.util
+import traceback
 
 from ltrace.slicer.about.about_dialog import AboutDialog
 from ltrace.slicer.ai_models.widget import AIModelsPathDialog, AIModelsPathModel
-from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData
+from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData, MANUAL_BASE_URL
 from ltrace.slicer.app.custom_3dview import customize_3d_view as customize3DView
 from ltrace.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
 from ltrace.slicer.app.onboard import showDataLoaders, LOADERS, loadEnvironment
 from ltrace.slicer.application_observables import ApplicationObservables
+from ltrace.slicer.bug_report import BugReportDialog
 from ltrace.slicer.custom_export_to_file import customizeExportToFile
 from ltrace.slicer.module_utils import loadModules, fetchModulesFrom
 from ltrace.slicer.widget.global_progress_bar import GlobalProgressBar
@@ -46,7 +48,6 @@ APP_NAME = slicer.app.applicationName
 APP_HOME = Path(slicer.app.slicerHome)
 RESOURCES_PATH = APP_HOME / "LTrace" / "Resources"
 ICON_DIR = RESOURCES_PATH / "Icons"
-MANUAL_FILE_PATH = RESOURCES_PATH / "manual" / "index.html"
 APP_TOOLBARS = {toolbar.name: toolbar for toolbar in slicer.util.mainWindow().findChildren("QToolBar")}
 GEOSLICER_MODULES_DIR = Path(getJsonData()["GEOSLICER_MODULES"])
 
@@ -96,16 +97,14 @@ def modelsPathDialog():
 
 
 def ltraceBugReport():
-    from ltrace.slicer.bug_report.bug_report_widget import BugReportDialog
-
     dialog = BugReportDialog(slicer.util.mainWindow())
     dialog.exec_()
 
 
 class ExpandToolbarActionNames:
     def __init__(self):
-        self.__closeIcon = qt.QIcon((ICON_DIR / "IconSet-dark" / "PanelLeftClose.svg").as_posix())
-        self.__openIcon = qt.QIcon((ICON_DIR / "IconSet-dark" / "PanelLeftOpen.svg").as_posix())
+        self.__closeIcon = qt.QIcon((ICON_DIR / "svg" / "PanelLeftClose.svg").as_posix())
+        self.__openIcon = qt.QIcon((ICON_DIR / "svg" / "PanelLeftOpen.svg").as_posix())
 
     def __call__(self, *args, **kwargs):
         modulebar = APP_TOOLBARS["ModuleToolBar"]
@@ -289,7 +288,7 @@ def setMainToolBar():
     handler = ExpandToolbarActionNames()
 
     APP_TOOLBARS["MainToolBar"].addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "PanelLeftOpen.svg").as_posix()), "Expand Menu", handler
+        qt.QIcon((ICON_DIR / "svg" / "PanelLeftOpen.svg").as_posix()), "Expand Menu", handler
     )
 
     APP_TOOLBARS["MainToolBar"].setVisible(True)
@@ -304,31 +303,31 @@ def setDialogToolBar():
     dialogToolBar = APP_TOOLBARS["DialogToolBar"]
 
     dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "Bug.svg").as_posix()),
+        qt.QIcon((ICON_DIR / "svg" / "Bug.svg").as_posix()),
         "Bug Report",
         ltraceBugReport,
     )
 
     dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "CloudJobs.svg").as_posix()),
+        qt.QIcon((ICON_DIR / "svg" / "CloudJobs.svg").as_posix()),
         "Task Monitor",
         lambda clicked: getAppContext().rightDrawer.show(1),
     )
 
     dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "Apps.svg").as_posix()),
+        qt.QIcon((ICON_DIR / "svg" / "Apps.svg").as_posix()),
         "Data Sources",
         lambda: slicer.modules.AppContextInstance.modules.showDataLoaders(APP_TOOLBARS["ModuleToolBar"]),
     )
 
     dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "Extensions.svg").as_posix()),
+        qt.QIcon((ICON_DIR / "svg" / "Extensions.svg").as_posix()),
         "Module Installer",
         lambda: slicer.util.mainWindow().moduleSelector().selectModule("ModuleInstaller"),
     )
 
     dialogToolBar.addAction(
-        qt.QIcon((ICON_DIR / "IconSet-dark" / "Account.svg").as_posix()),
+        qt.QIcon((ICON_DIR / "svg" / "Account.svg").as_posix()),
         "Accounts",
         partial(slicer.modules.RemoteServiceInstance.cli.initiateConnectionDialog, keepDialogOpen=True),
     )
@@ -338,7 +337,7 @@ def setDialogToolBar():
         # Model directories are not configured by the environment
         # Allow user to edit model directories
         dialogToolBar.addAction(
-            qt.QIcon((ICON_DIR / "IconSet-dark" / "FolderPlus.svg").as_posix()),
+            qt.QIcon((ICON_DIR / "svg" / "FolderPlus.svg").as_posix()),
             "Models Path",
             modelsPathDialog,
         )
@@ -351,7 +350,7 @@ def setDialogToolBar():
         model.addPath(envModelDir)
 
     # dialogToolBar.addAction(
-    #     qt.QIcon((ICON_DIR / "IconSet-dark" / "Settings.svg").as_posix()),
+    #     qt.QIcon((ICON_DIR / "svg" / "Settings.svg").as_posix()),
     #     "Settings",
     #     lambda: None,
     # )
@@ -366,7 +365,7 @@ def setDialogToolBar():
 
     action = findConsoleAction()
     if action:
-        action.setIcon(helpers.svgToQIcon(ICON_DIR / "IconSet-dark" / "Console.svg"))
+        action.setIcon(helpers.svgToQIcon(ICON_DIR / "svg" / "Console.svg"))
         spacer = ui_Spacer(layoutType=qt.QVBoxLayout)
         spacer.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Expanding)
         dialogToolBar.insertWidget(action, spacer)
@@ -415,7 +414,7 @@ def setCustomCaptureToolBar():
         captureToolBar.removeAction(action)
 
     screenshotAction = captureToolBar.addAction(
-        qt.QIcon((ICON_DIR / "Screenshot.png").as_posix()),
+        qt.QIcon((ICON_DIR / "png" / "Screenshot.png").as_posix()),
         "",
         lambda: ScreenshotWidget().exec(),
     )
@@ -435,20 +434,22 @@ def setModulePanel():
 
     def handle(moduleName):
         try:
-            module = getattr(slicer.modules, moduleName.lower())
-            moduleHeader.update(module.title, module.helpText)
+            module = getattr(slicer.modules, f"{moduleName}Instance")
+            url = module.helpUrl if hasattr(module, "helpUrl") else MANUAL_BASE_URL
+            title = module.title() if hasattr(module, "title") else moduleName
+            moduleHeader.update(title, url)
         except Exception as e:
-            pass
+            logging.error(f"Failed to update module header: {e}.\n{traceback.format_exc()}")
 
     modulePanelDockWidget.setTitleBarWidget(moduleHeader)
 
-    slicer.util.moduleSelector().connect("moduleSelected(QString)", handle)
+    slicer.util.moduleSelector().moduleSelected.connect(handle)
 
 
 def updateFileMenu():
     fileMenu = slicer.util.mainWindow().findChild("QMenu", "FileMenu")
     actions = {action.text: action for action in fileMenu.actions()}
-    createIcon = lambda fileName: qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / fileName).as_posix())
+    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     loadSceneAction = qt.QAction(createIcon("Load.svg"), "Load Scene", fileMenu)
     loadSceneAction.setToolTip("Load project/scene .mrml file")
@@ -501,7 +502,7 @@ def updateFileMenu():
 def updateEditMenu():
     editMenu = slicer.util.mainWindow().findChild("QMenu", "EditMenu")
     actions = {action.text: action for action in editMenu.actions()}
-    createIcon = lambda fileName: qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / fileName).as_posix())
+    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     actions["Cut"].setIcon(createIcon("Cut.svg"))
     actions["Copy"].setIcon(createIcon("Copy.svg"))
@@ -512,7 +513,7 @@ def updateEditMenu():
 def updateViewMenu():
     viewMenu = slicer.util.mainWindow().findChild("QMenu", "ViewMenu")
     actions = {action.text: action for action in viewMenu.actions()}
-    createIcon = lambda fileName: helpers.svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / fileName)
+    createIcon = lambda fileName: helpers.svgToQIcon(getResourcePath("Icons") / "svg" / fileName)
 
     fuzzySearchAction = qt.QAction(createIcon("SearchCode.svg"), "Module Search", viewMenu)
     fuzzySearchAction.triggered.connect(showSearchPopup)
@@ -548,7 +549,7 @@ def updateViewMenu():
 def updateHelpMenu():
     helpMenu = slicer.util.mainWindow().findChild("QMenu", "HelpMenu")
     actions = {action.text: action for action in helpMenu.actions()}
-    createIcon = lambda fileName: qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / fileName).as_posix())
+    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     # Bug report
     bugReportAction = qt.QAction(createIcon("Bug.svg"), "Bug Report", helpMenu)
@@ -563,9 +564,9 @@ def updateHelpMenu():
 
     # Manual
     def __openGeoslicerManual():
-        qt.QDesktopServices.openUrl(qt.QUrl(f"file:///{MANUAL_FILE_PATH}"))
+        qt.QDesktopServices.openUrl(qt.QUrl(MANUAL_BASE_URL))
 
-    geoslicerIcon = qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / "CircleHelp.svg").as_posix())
+    geoslicerIcon = helpers.svgToQIcon((getResourcePath("Icons") / "svg" / "CircleHelp.svg").as_posix())
     manualHelpAction = qt.QAction(geoslicerIcon, "Getting Started", helpMenu)
     manualHelpAction.triggered.connect(__openGeoslicerManual)
 
@@ -743,15 +744,15 @@ def setVolumeRenderingModule():
     volumeRenderingModule = slicer.modules.volumerendering.widgetRepresentation()
     qSlicerIconComboBox = volumeRenderingModule.findChild(qt.QObject, "PresetComboBox").children()[2].children()[-1]
     qSlicerIconComboBox.setItemText(0, "CT Carbonate")
-    qSlicerIconComboBox.setItemIcon(0, qt.QIcon(ICON_DIR / "IconSet-samples" / "Carbonate-CT.png"))
+    qSlicerIconComboBox.setItemIcon(0, qt.QIcon(ICON_DIR / "samples" / "Carbonate-CT.png"))
     qSlicerIconComboBox.setItemText(1, "CT Sandstone")
-    qSlicerIconComboBox.setItemIcon(1, qt.QIcon(ICON_DIR / "IconSet-samples" / "Sandstone-CT.png"))
+    qSlicerIconComboBox.setItemIcon(1, qt.QIcon(ICON_DIR / "samples" / "Sandstone-CT.png"))
     qSlicerIconComboBox.setItemText(2, "Grains")
-    qSlicerIconComboBox.setItemIcon(2, qt.QIcon(ICON_DIR / "IconSet-samples" / "small_Grains.png"))
+    qSlicerIconComboBox.setItemIcon(2, qt.QIcon(ICON_DIR / "samples" / "small_Grains.png"))
     qSlicerIconComboBox.setItemText(3, "Pores")
-    qSlicerIconComboBox.setItemIcon(3, qt.QIcon(ICON_DIR / "IconSet-samples" / "small_Pores.png"))
+    qSlicerIconComboBox.setItemIcon(3, qt.QIcon(ICON_DIR / "samples" / "small_Pores.png"))
     qSlicerIconComboBox.setItemText(4, "microCT")
-    qSlicerIconComboBox.setItemIcon(4, qt.QIcon(ICON_DIR / "IconSet-samples" / "small_mCT.png"))
+    qSlicerIconComboBox.setItemIcon(4, qt.QIcon(ICON_DIR / "samples" / "small_mCT.png"))
 
     # Link all volumes display properties
     layout = volumeRenderingModule.findChild(qt.QObject, "DisplayCollapsibleButton").children()[0]
@@ -1025,7 +1026,7 @@ def extraChangesOnMenu():
     sn = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
     sn.RemovePlaceNodeClassNameFromList("vtkMRMLAnnotationRulerNode")
     cname = "vtkMRMLMarkupsLineNode"
-    resource = ":/Icons/AnnotationDistanceWithArrow.png"
+    resource = ":/Icons/png/AnnotationDistanceWithArrow.png"
     iconName = "Ruler"
     sn.AddNewPlaceNodeClassNameToList(cname, resource, iconName)
 
@@ -1043,6 +1044,7 @@ def setLayoutViews():
 
     slicer.modules.SideBySideLayoutViewInstance.sideBySideImageLayout()
     slicer.modules.SideBySideLayoutViewInstance.sideBySideSegmentationLayout()
+    slicer.modules.SideBySideLayoutViewInstance.sideBySideDumbLayout()
 
     toolbar = APP_TOOLBARS["ViewToolBar"]
     layoutAction = toolbar.actions()[0]
@@ -1191,7 +1193,7 @@ def setupShortcuts():
 
 
 def updateModuleSelectorIcons() -> None:
-    createIcon = lambda fileName: qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / fileName).as_posix())
+    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
     for child in slicer.util.moduleSelector().children():
         if not hasattr(child, "text"):
             continue
@@ -1287,7 +1289,7 @@ def configure(rebuild_index=False):
     setupShortcuts()
     with open(getResourcePath("Styles") / "StyleSheet-dark.qss", "r") as style:
         stylesheet = style.read()
-        stylesheet = Template(stylesheet).substitute(iconPath=getResourcePath("Icons/IconSet-widgets").as_posix())
+        stylesheet = Template(stylesheet).substitute(iconPath=getResourcePath("Icons/widgets").as_posix())
         slicer.app.styleSheet = stylesheet
         slicer.app.pythonConsole().setStyleSheet("QTextEdit { background-color: #1e1e1e; }")
 

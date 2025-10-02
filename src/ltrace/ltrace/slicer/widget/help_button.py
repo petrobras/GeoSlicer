@@ -5,20 +5,18 @@ import markdown
 import qt
 from ltrace.slicer.helpers import get_scripted_modules_path, svgToQIcon
 from ltrace.slicer_utils import getResourcePath
+from ltrace.slicer.app import MANUAL_BASE_URL
 import re
 
 
 def is_url(url: str) -> bool:
-    if url is None:
+    if not url:
         return False
 
-    return re.match(r"^(?:https|file)s?://", url) is not None
+    return re.match(r"^(?:https|file)s?://", str(url)) is not None
 
 
 class HelpButton(qt.QToolButton):
-
-    DEFAULT_URL = (getResourcePath("manual") / "index.html").as_posix()
-
     def __init__(
         self,
         message: str = None,
@@ -35,7 +33,7 @@ class HelpButton(qt.QToolButton):
         self.md_message = message
         self.url = url
         self.setStyleSheet("border : none;")
-        self.setIcon(svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "CircleHelp.svg"))
+        self.setIcon(svgToQIcon(getResourcePath("Icons") / "svg" / "CircleHelp.svg"))
         self.setIconSize(qt.QSize(18, 18))
         self.clicked.connect(self.handleClick)
         self.replacer = replacer
@@ -49,12 +47,11 @@ class HelpButton(qt.QToolButton):
     def updateLink(self, helpURL: str) -> None:
         # check if it is a valid URI/URL
         if not is_url(helpURL):
-            helpURL = self.DEFAULT_URL
+            helpURL = MANUAL_BASE_URL
 
         self.url = helpURL
 
     def showFloatingMessage(self, message: str) -> None:
-
         message = self.replacer(message) if self.replacer else message
         message = markdown.markdown(message)
 
@@ -106,8 +103,7 @@ class HelpButton(qt.QToolButton):
                 if qt.QDesktopServices.openUrl(qt.QUrl(url)):
                     return
 
-            manualPath = (getResourcePath("manual") / "index.html").as_posix()
-            qt.QDesktopServices.openUrl(qt.QUrl(f"file:///{manualPath}"))
+            qt.QDesktopServices.openUrl(qt.QUrl(MANUAL_BASE_URL))
         finally:
             if hasattr(self, "text_browser"):
                 self.text_browser.hide()

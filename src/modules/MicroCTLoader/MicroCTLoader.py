@@ -4,6 +4,7 @@ import ctk
 import qt
 import slicer
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 # Checks if closed source code is available
 try:
@@ -24,7 +25,8 @@ class MicroCTLoader(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.set_manual_path("Data_loading/load_microct.html")
+        self.setHelpUrl("Volumes/MicroCTImport/Import.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/ImportTools/MicroCTImport.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

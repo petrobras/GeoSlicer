@@ -30,9 +30,7 @@ class ImageTools(LTracePlugin):
         self.parent.categories = ["Tools", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/ImageTools.html').as_posix()}"
-        )
+        self.setHelpUrl("ThinSection/Filters/ImageTools.html")
 
     @classmethod
     def readme_path(cls):
@@ -122,7 +120,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.hideToolWidgets()
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         self.applyButton.setToolTip(
             "Apply the current tool changes. These changes can be undone, unless you click Save."
         )
@@ -130,13 +128,13 @@ class ImageToolsWidget(LTracePluginWidget):
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         self.cancelButton.setToolTip("Cancel the current tool changes.")
         self.cancelButton.enabled = False
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo applied tool changes. The earliest undo is where the image was loaded or saved."
         )
@@ -144,7 +142,7 @@ class ImageToolsWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Redo.png"))
         self.redoButton.setToolTip("Redo applied tool changes.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)

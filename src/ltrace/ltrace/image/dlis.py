@@ -6,10 +6,7 @@ from ImageLogExportLib.ImageLogCSV import _arrayPartsFromNode
 import numpy as np
 import os
 import slicer
-from ltrace.slicer.helpers import (
-    getVolumeNullValue,
-    arrayFromVisibleSegmentsBinaryLabelmap,
-)
+from ltrace.slicer.helpers import getVolumeNullValue, arrayFromVisibleSegmentsBinaryLabelmap, getWellAttributeFromNode
 from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE
 from pathlib import Path
 import re
@@ -234,8 +231,8 @@ def assert_single_well(nodes_list):
     well_name = ""
     count_well = 0
     for node in nodes_list:
-        if node.GetAttribute(WELL_NAME_TAG) != well_name:
-            well_name = node.GetAttribute(WELL_NAME_TAG)
+        if getWellAttributeFromNode(node, WELL_NAME_TAG) != well_name:
+            well_name = getWellAttributeFromNode(node, WELL_NAME_TAG)
             count_well += 1
         if count_well == 2:
             raise RuntimeError("Error exporting to DLIS. You can't export nodes from different Wells to the same file.")
@@ -485,7 +482,7 @@ def export_dlis(
                 if node_origin:
                     if int(node_origin) not in origins_per_logical_file[lf_header_id]:
                         added_orig = add_origin(
-                            writer, lf_header_id, node.GetAttribute(WELL_NAME_TAG), int(node_origin)
+                            writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), int(node_origin)
                         )
                 else:  # Shouldn't enter here, as nodes with frame info come from DLIS - so, should have origin info also
                     logger.info(
@@ -499,7 +496,7 @@ def export_dlis(
 
                     # If still not found an origin, create one
                 if not node.GetAttribute(DLIS_ORIGIN_TAG):
-                    added_orig = add_origin(writer, lf_header_id, node.GetAttribute(WELL_NAME_TAG), None)
+                    added_orig = add_origin(writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), None)
                     node.SetAttribute(DLIS_ORIGIN_TAG, str(added_orig.origin_reference))
 
                 if added_orig:
@@ -517,7 +514,9 @@ def export_dlis(
                     "Make sure it has correct data and attributes..."
                 )
                 if int(node_origin) not in origins_per_logical_file:
-                    added_orig = add_origin(writer, lf_header_id, node.GetAttribute(WELL_NAME_TAG), int(node_origin))
+                    added_orig = add_origin(
+                        writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), int(node_origin)
+                    )
             else:
                 # if node didn't have origin attribute, we assume one origin per well
                 # If another node has the same logical file and well, copy its origin
@@ -525,7 +524,7 @@ def export_dlis(
 
                 # If still not found an origin, create one
                 if not node.GetAttribute(DLIS_ORIGIN_TAG):
-                    added_orig = add_origin(writer, lf_header_id, node.GetAttribute(WELL_NAME_TAG), None)
+                    added_orig = add_origin(writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), None)
                     node.SetAttribute(DLIS_ORIGIN_TAG, str(added_orig.origin_reference))
 
             if added_orig:
@@ -571,7 +570,9 @@ def single_node_to_dlis(
         long_name="Value used to represent absent data - equivalent to LAS' NULL_VALUE",
     )
 
-    origin = writer.dlisFile.logical_files[0].add_origin(name="ORIGIN", well_name=node.GetAttribute(WELL_NAME_TAG))
+    origin = writer.dlisFile.logical_files[0].add_origin(
+        name="ORIGIN", well_name=getWellAttributeFromNode(node, WELL_NAME_TAG)
+    )
 
     writer.write_single_node(
         origin,

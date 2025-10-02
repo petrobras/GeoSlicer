@@ -92,7 +92,9 @@ def _getItemsSubitemsIds(items):
         return []
     for i in range(numberOfIds):
         itemId = items.GetId(i)
-        if itemId == 3:  # when not selecting any item, it supposes entire scene, which we don't want
+        if (
+            itemId == 3 or itemId == subjectHierarchyNode.GetSceneItemID()
+        ):  # when not selecting any item, it supposes entire scene, which we don't want
             return []
         nodesIds.append(itemId)
         itemChildren = vtk.vtkIdList()

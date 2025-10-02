@@ -11,13 +11,10 @@ import vtk
 
 import json
 from pathlib import Path
-import itertools
 
-import mrml
 import numpy as np
 import pandas as pd
 import pickle
-import porespy
 import openpnm
 
 from ltrace.algorithms.common import (
@@ -26,7 +23,7 @@ from ltrace.algorithms.common import (
 )
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
 from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
-from PoreNetworkSimulationCLILib.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
+from ltrace.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
 
 from ltrace.pore_networks.functions_simulation import (
     get_connected_spy_network,
@@ -38,7 +35,7 @@ from ltrace.pore_networks.functions_simulation import (
 )
 from ltrace.pore_networks.subres_models import set_subres_model
 
-from PoreNetworkSimulationCLILib.vtk_utils import create_flow_model, create_permeability_sphere
+from ltrace.pore_networks.processing.vtk_utils import create_flow_model, create_permeability_sphere
 
 from ltrace.slicer.cli_utils import progressUpdate
 import shutil
@@ -144,11 +141,24 @@ def onePhase(args, params):
                 min_throat = -np.inf
                 max_throat = np.inf
             minmax.append({"inlet": inlet, "outlet": outlet, "min": min_throat, "max": max_throat})
+            throat_values = pn_throats["throat.flow"]
 
             # pore_values = perm["pore.pressure"]
             pore_values = pn_pores["pore.pressure"]
-            pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, bb_sizes, ijktoras)
+            pores_model, throats_model, resolved_model, unresolved_model = create_flow_model(
+                perm.project,
+                pore_values,
+                throat_values,
+                bb_sizes,
+                pore_diameters=pn_pores["pore.inscribed_diameter"],
+                throat_diameters=pn_throats["throat.equivalent_diameter"],
+                IJKTORAS=ijktoras,
+            )
+
             writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
+            if params["advanced visualization"] == True:
+                writePolydata(resolved_model, f"{args.tempDir}/resolved_pore_pressure_{inlet}_{outlet}.vtk")
+                writePolydata(unresolved_model, f"{args.tempDir}/unresolved_pore_pressure_{inlet}_{outlet}.vtk")
             writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
 
             throat_values = perm.network.throats("all")
@@ -156,8 +166,8 @@ def onePhase(args, params):
             pore_values = perm.project.network[f"pore.{out_face}"].astype(int) - perm.project.network[
                 f"pore.{in_face}"
             ].astype(int)
-            border_pores_model_node, null_throats_model_node = create_flow_model(
-                perm.project, pore_values, throat_values, bb_sizes, ijktoras
+            border_pores_model_node, null_throats_model_node, _, _ = create_flow_model(
+                perm.project, pore_values, throat_values, bb_sizes, IJKTORAS=ijktoras
             )
             del null_throats_model_node
             writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{inlet}_{outlet}.vtk")
@@ -284,7 +294,7 @@ def onePhaseMultiAngle(args, params):
             max_throat = np.inf
         minmax.append({"index": i, "min": min_throat, "max": max_throat})
         pore_values = pn_pores["pore.pressure"]
-        pores_model, throats_model = create_flow_model(perm.project, pore_values, throat_values, None)
+        pores_model, throats_model, _, _ = create_flow_model(perm.project, pore_values, throat_values, sizes=None)
 
         writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{i}.vtk")
         writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{i}.vtk")
@@ -292,8 +302,8 @@ def onePhaseMultiAngle(args, params):
         throat_values = perm.network.throats("all")
 
         pore_values = perm.project.network["pore.xmin"].astype(int) - perm.project.network["pore.xmax"].astype(int)
-        border_pores_model_node, null_throats_model_node = create_flow_model(
-            perm.project, pore_values, throat_values, None
+        border_pores_model_node, null_throats_model_node, _, _ = create_flow_model(
+            perm.project, pore_values, throat_values, sizes=None
         )
         del null_throats_model_node
         writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{i}.vtk")
@@ -320,7 +330,7 @@ def onePhaseMultiAngle(args, params):
         json.dump(return_params, file)
 
 
-def twoPhaseSensibilityTest(args, params, is_multiscale):
+def twoPhaseSensibilityTest(args, params):
     cwd = Path(args.cwd)
 
     with open(str(cwd / "statoil_dict.json"), "r") as file:
@@ -332,8 +342,8 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
     else:
         snapshot_file = None
 
-    keep_temporary = params["keep_temporary"]
-    timeout_enabled = params["timeout_enabled"]
+    keep_temporary = params["keep_temporary"] == "T"
+    timeout_enabled = params["timeout_enabled"] == "T"
 
     sim_suffix = get_simulation_suffix(args.simInterval)
 
@@ -355,7 +365,7 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
 
     saturation_steps_list = []
     krel_result = KrelResult()
-    for i, result in enumerate(parallel.run(args.maxSubprocesses)):
+    for i, result in enumerate(parallel.run(params["max_subprocesses"])):
         krel_result.add_single_result(result["input_params"], result["table"])
 
         # Write results only every 10 new results
@@ -376,7 +386,7 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
             if params["create_sequence"] == "T":
                 polydata, saturation_steps = generate_model_variable_scalar(
                     Path(result["cwd"]) / "Output_res",
-                    is_multiscale=is_multiscale,
+                    is_multiscale=bool(params["is_multiscale"]),
                     axis=params["direction"],
                 )
                 writePolydata(polydata, f"{args.tempDir}/cycle_node_{i}.vtk")
@@ -401,8 +411,13 @@ def twoPhaseSensibilityTest(args, params, is_multiscale):
             if not keep_temporary:
                 shutil.rmtree(result["cwd"])
 
-    with open(args.returnparameterfile, "w") as returnFile:
-        returnFile.write("saturation_steps=" + json.dumps(saturation_steps_list) + "\n")
+    if saturation_steps_list:
+        if "saturation_steps" in params:
+            params["saturation_steps"].extend(saturation_steps_list)
+        else:
+            params["saturation_steps"] = saturation_steps_list
+        with open(str(cwd / "params_dict.json"), "w") as file:
+            json.dump(params, file)
 
 
 def simulate_mercury(args, params):
@@ -501,15 +516,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LTrace pore network simulation CLI.")
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--cwd", type=str, required=False)
-    parser.add_argument("--maxSubprocesses", type=int, default=None, required=False)
     parser.add_argument("--tempDir", type=str, dest="tempDir", default=None, help="Temporary directory")
-    parser.add_argument(
-        "--returnparameterfile",
-        type=str,
-        default=None,
-        help="File destination to store an execution outputs",
-    )
-    parser.add_argument("--isMultiScale", type=int, default=0, required=False)
     parser.add_argument(
         "--simInterval",
         type=parse_simulation_interval,
@@ -518,12 +525,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.maxSubprocesses is None:
-        args.maxSubprocesses = max(os.cpu_count() - 2, 1)
-        print(f"Max subprocesses for node{get_simulation_suffix(args.simInterval)}: {args.maxSubprocesses}")
-
     with open(f"{args.cwd}/params_dict.json", "r") as file:
         params = json.load(file)
+
+    if params.get("remote_execution") == "T":
+        params["maxSubprocesses"] = max(os.cpu_count() - 2, 1)
+        print(f"Max subprocesses for node{get_simulation_suffix(args.simInterval)}: {params['maxSubprocesses']}")
 
     progressUpdate(value=0.1)
 
@@ -532,7 +539,7 @@ if __name__ == "__main__":
     elif args.model == "onePhase" and params.get("simulation type") == "Multiple orientations":
         onePhaseMultiAngle(args, params)
     elif args.model == "TwoPhaseSensibilityTest":
-        twoPhaseSensibilityTest(args, params, bool(args.isMultiScale))
+        twoPhaseSensibilityTest(args, params)
     elif args.model == "MICP":
         simulate_mercury(args, params)
 

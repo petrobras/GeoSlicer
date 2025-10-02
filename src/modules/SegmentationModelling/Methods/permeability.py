@@ -28,6 +28,7 @@ class Permeability(widgets.BaseSettingsWidget):
             referenceName="Porosity Map",
             dependentInputs=None,
             autoReferenceFetch=False,
+            checkable=False,
         )
         self.inputWidget.objectName = f"{self.DISPLAY_NAME} Single Shot Input Widget"
         self.segments_layout = qt.QFormLayout()

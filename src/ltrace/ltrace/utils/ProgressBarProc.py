@@ -13,9 +13,7 @@ if sys.platform.startswith("win32"):
     import win32con
     import pywintypes
 
-from . import ProgressBarWidget
-
-
+from ltrace.utils import ProgressBarWidget
 from ..slicer_utils import base_version
 
 
@@ -57,7 +55,6 @@ class ProgressBarProc:
 
         progressbar_icon_file = "GeoSlicer-ProgressBar.ico"
         icon_path = f"lib/{base_version()}/qt-scripted-modules/Resources/{progressbar_icon_file}"
-
         self.setTitle("Processing")
         self.setMessage("Processing, please wait...")
 

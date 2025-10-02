@@ -11,8 +11,8 @@ class ExpandDataDrawer:
 
     def __init__(self, drawer: qt.QWidget):
 
-        self.closeIcon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "PanelRightClose.svg")
-        self.openIcon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "PanelRightOpen.svg")
+        self.closeIcon = svgToQIcon(getResourcePath("Icons") / "svg" / "PanelRightClose.svg")
+        self.openIcon = svgToQIcon(getResourcePath("Icons") / "svg" / "PanelRightOpen.svg")
         self.__actionButton = None
         self.__drawer = drawer
 

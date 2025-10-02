@@ -31,6 +31,7 @@ class PoreNetworkKabsREV(LTracePlugin):
         self.parent.categories = ["MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = PoreNetworkKabsREV.help()
+        self.setHelpUrl("Volumes/PNM/KabsREV.html")
 
     @classmethod
     def readme_path(cls):

@@ -198,9 +198,10 @@ def findPeaks(values: np.ndarray, default=None):
         return default
 
     if np.issubdtype(values.dtype, np.integer):
-        offset = abs(np.min(values))
-        bins = np.bincount(values + offset)
-        largerBin = np.argmax(bins) - offset
+        # offset = abs(np.min(values))
+        # bins = np.bincount(values + offset)
+        # largerBin = np.argmax(bins) - offset
+        largerBin = sp.stats.mode(values, axis=None).mode[0]
     else:
         hist, edges = np.histogram(values, bins="auto")
         largerBin = edges[np.argmax(hist)]
@@ -243,73 +244,94 @@ def microporosity(
     labels,
     backgroundPorosity,
     stepCallback=None,
-    microporosityLowerLimit: float = None,
-    microporosityUpperLimit: float = None,
+    microporosityLowerLimit: np.float32 = None,
+    microporosityUpperLimit: np.float32 = None,
 ):
-    outputVoxelArray = np.zeros_like(textureVoxelArray, dtype=np.float32)
+    poreLowerThreshold = None
+    refSolidUpperThreshold = None
 
-    done = 0
-
-    layers = {}
+    progress = 0
 
     if "Macroporosity" in labels:
-        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Macroporosity"])
-        macroPorosityPeak = findPeaks(textureVoxelArray[mask])
-        outputVoxelArray[mask] = 1
+        porousMediumMask = labelmapVoxelArray == labels["Macroporosity"][0]
+        poreLowerThreshold = (
+            microporosityLowerLimit if microporosityLowerLimit else findPeaks(textureVoxelArray[porousMediumMask])
+        )
 
-        layers["Macroporosity Voxels"] = mask.sum()
-
-        done += len(labels["Macroporosity"])
-        stepCallback(done)
-    else:
-        macroPorosityPeak = None
+        progress += len(labels["Macroporosity"])
+        stepCallback(progress)
 
     if "Reference Solid" in labels:
-        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference Solid"])
-        solidPeak = findPeaks(textureVoxelArray[mask])
-        outputVoxelArray[mask] = backgroundPorosity
+        if microporosityUpperLimit is None:
+            refSolidMask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Reference Solid"])
+            refSolidUpperThreshold = findPeaks(textureVoxelArray[refSolidMask])
+        else:
+            refSolidUpperThreshold = microporosityUpperLimit
+        progress += len(labels["Reference Solid"])
+        stepCallback(progress)
+    elif "Solid" in labels:
+        if microporosityUpperLimit is None:
+            refSolidMask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Solid"])
+            refSolidUpperThreshold = findPeaks(textureVoxelArray[refSolidMask])
+        else:
+            refSolidUpperThreshold = microporosityUpperLimit
+        progress += len(labels["Solid"])
+        stepCallback(progress)
 
-        nsolidvoxels = mask.sum()
-        layers["Ref Solid Voxels"] = nsolidvoxels
+    microMediumMask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Microporosity"])
 
-        layers["Microporosity Weighted"] = nsolidvoxels * backgroundPorosity
+    if poreLowerThreshold is None and refSolidUpperThreshold is None:
+        microMedium = textureVoxelArray[microMediumMask]
 
-        done += len(labels["Reference Solid"])
-        stepCallback(done)
-    else:
-        solidPeak = None
+    if poreLowerThreshold is None:
+        poreLowerThreshold = extendPeak(textureVoxelArray, np.min(microMedium), "lower")
+        porousMediumMask = textureVoxelArray <= poreLowerThreshold
 
-    if "Solid" in labels:
-        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Solid"])
-        outputVoxelArray[mask] = backgroundPorosity
+    if refSolidUpperThreshold is None:
+        refSolidUpperThreshold = extendPeak(textureVoxelArray, np.max(microMedium), "upper")
 
-        nsolidvoxels = mask.sum()
+    delta = refSolidUpperThreshold - poreLowerThreshold
+    outputVoxelArray = (
+        porousMediumMask + microMediumMask * np.clip((refSolidUpperThreshold - textureVoxelArray) / delta, 0, 1)
+    ).astype(np.float32)
 
-        layers["Solid Voxels"] = nsolidvoxels
-        layers["Microporosity Weighted"] = layers["Microporosity Weighted"] + nsolidvoxels * backgroundPorosity
+    progress += len(labels["Microporosity"])
+    stepCallback(progress)
 
-        done += len(labels["Solid"])
-        stepCallback(done)
-    else:
-        solidPeak = None
+    _dtype = np.uint64 if outputVoxelArray.size >= np.iinfo(np.uint32).max else np.uint32
 
-    if "Microporosity" in labels:
-        mask = mergeLabelsIntoMask(labelmapVoxelArray, labels["Microporosity"])
-        micropores = textureVoxelArray[mask]
+    label_values, label_count = np.unique(labelmapVoxelArray, return_counts=True)
 
-        b = microporosityUpperLimit or solidPeak or extendPeak(textureVoxelArray, np.max(micropores), "upper")
-        a = microporosityLowerLimit or macroPorosityPeak or extendPeak(textureVoxelArray, np.min(micropores), "lower")
+    if "Ignore" in labels:
+        for v in labels["Ignore"]:
+            label_count = label_count[label_values != v]
+            label_values = label_values[label_values != v]
 
-        # truncate negative values on zero
-        outputVoxelArray[mask] = np.clip((b - micropores.astype(np.float64)) / (b - a), backgroundPorosity, 1)
+    info = {"Image Size (voxels)": np.sum(label_count, dtype=_dtype)}
+    coverage = {}
+    for name, values in labels.items():
+        sumup = 0
+        for v in values:
+            sumup += np.sum(label_count[(label_values == v).nonzero()], dtype=_dtype)
 
-        layers["Microporosity Voxels"] = mask.sum()
-        m = layers.get("Microporosity Weighted", 0)  # check if solid has being set first
-        layers["Microporosity Weighted"] = outputVoxelArray[mask].sum() + m
+        coverage[f"{name} Segment Coverage (vx)"] = sumup
+        coverage[f"{name} Segment Coverage (%)"] = sumup / info["Image Size (voxels)"] * 100
 
-        stepCallback(done + len(labels["Microporosity"]))
+    info.update(
+        {
+            "Porous Threshold": poreLowerThreshold,
+            "Solid Threshold": refSolidUpperThreshold,
+            **coverage,
+            "Weighted Microporosity (%)": 100
+            * np.sum(outputVoxelArray[microMediumMask], dtype=np.float32)
+            / info["Image Size (voxels)"],
+            "Weighted Total Porosity (%)": 100
+            * np.sum(outputVoxelArray, dtype=np.float32)
+            / info["Image Size (voxels)"],
+        }
+    )
 
-    return outputVoxelArray, outputVoxelArray.sum(), layers
+    return outputVoxelArray, info
 
 
 MicroporosityData = namedtuple(

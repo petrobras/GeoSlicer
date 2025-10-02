@@ -6,5 +6,3 @@ class TriggerEvent(Enum):
     SAVE = 1
     SAVE_AS = 2
     LOAD = 3
-    NODE_ADDED = 4
-    NODE_REMOVED = 5

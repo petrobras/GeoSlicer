@@ -127,6 +127,7 @@ class ModuleInfo:
             except:
                 # Error while processing the file (e.g., syntax error),
                 # it cannot be a Slicer module.
+                # TODO(PL-2872): log the error if necessary
                 pass
 
             # We have the option to identify scripted CLI modules, such as by examining the existence of a

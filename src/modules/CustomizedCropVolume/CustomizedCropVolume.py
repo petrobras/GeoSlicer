@@ -8,7 +8,8 @@ import slicer
 import vtk
 
 from ltrace.slicer import ui
-from ltrace.slicer.helpers import bounds2size, copy_display
+from ltrace.slicer import helpers
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import *
 from ltrace.slicer_utils import getResourcePath
 from ltrace.utils.callback import Callback
@@ -27,11 +28,14 @@ class CustomizedCropVolume(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Volumes Crop"
+        self.parent.title = "Crop"
         self.parent.categories = ["Tools", "MicroCT", "Thin Section", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Crop.html').as_posix()}"
+
+        self.setHelpUrl("Volumes/Crop/Crop.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Crop/Crop.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Crop.html", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):
@@ -305,7 +309,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(croppedVolume), itemParent)
 
         slicer.util.setSliceViewerLayers(background=croppedVolume, fit=True)
-        copy_display(volume, croppedVolume)
+        helpers.copy_display(volume, croppedVolume)
 
         if self.roi is not None:
             self.roi.SetDisplayVisibility(False)
@@ -328,7 +332,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
                 min(volumeExtents[i * 2 + 1], position[i] + radius[i]),
             ]
 
-        rasSize = bounds2size(rasExtents)
+        rasSize = helpers.bounds2size(rasExtents)
         spacing = volume.GetSpacing()
         ijkSize = tuple(round(rasDim / spacingDim) for rasDim, spacingDim in zip(rasSize, spacing))
         return ijkSize

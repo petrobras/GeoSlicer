@@ -13,7 +13,7 @@ import vtk
 
 from ThinSectionInstanceEditorLib.widget.FilterableTableWidgets import GenericTableWidget
 from ltrace.algorithms.measurements import LabelStatistics2D
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, tryGetNode
+from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, tryGetNode, svgToQIcon
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.volume_operator import VolumeOperator
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
@@ -82,6 +82,7 @@ class ThinSectionInstanceEditor(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ThinSectionInstanceEditor.help()
+        self.setHelpUrl("ThinSection/Segmentation/ThinSectionInstanceEditor.html")
 
     @classmethod
     def readme_path(cls):
@@ -152,29 +153,29 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
         editFormLayout = qt.QFormLayout(self.editCollapsibleButton)
 
         self.addSegmentButton = qt.QPushButton("Add")
-        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
+        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Add.png"))
         self.addSegmentButton.clicked.connect(self.onAddSegmentButtonClicked)
 
         self.paintButton = qt.QPushButton("Paint")
-        self.paintButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Edit.png"))
+        self.paintButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Edit.png"))
         self.paintButton.clicked.connect(self.onPaintButtonClicked)
 
         self.eraseButton = qt.QPushButton("Erase")
-        self.eraseButton.setIcon(qt.QIcon(getResourcePath("Icons") / "IconSet-dark" / "Eraser.png"))
+        self.eraseButton.setIcon(svgToQIcon(getResourcePath("Icons") / "svg" / "Eraser.svg"))
         self.eraseButton.clicked.connect(self.onEraseButtonClicked)
 
         self.applySegmentButton = qt.QPushButton("Apply")
-        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         self.applySegmentButton.setEnabled(False)
         self.applySegmentButton.clicked.connect(self.onApplySegmentButtonClicked)
 
         self.cancelSegmentButton = qt.QPushButton("Cancel")
-        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         self.cancelSegmentButton.setEnabled(False)
         self.cancelSegmentButton.clicked.connect(self.onCancelSegmentButtonClicked)
 
         self.declineSegmentButton = qt.QPushButton("Decline")
-        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Delete.png"))
+        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Delete.png"))
         self.declineSegmentButton.clicked.connect(self.onDeclineSegmentButtonClicked)
 
         editButtonsHBoxLayout = qt.QHBoxLayout()

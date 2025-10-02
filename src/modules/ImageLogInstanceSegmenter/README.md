@@ -1,6 +1,6 @@
 ## Image Log Instance Segmenter
 
-_GeoSlicer_ module to apply instance segmentation for image logs, as described in the steps bellow. For a more detailed description on the methods, please check the GeoSlicer [[manual]](lib/{base_version}/qt-scripted-modules/Resources/manual/Image Log/Instance Segmenter/instance_segmenter.html).
+_GeoSlicer_ module to apply instance segmentation for image logs, as described in the steps bellow. For a more detailed description on the methods, please check the GeoSlicer [manual](https://ltracegeo.github.io/GeoSlicerManual/latest/ImageLog/Segmentation/InstanceSegmenter/InstanceSegmenter.html).
 
 1. Select the model, which determines the type of artifact to be detected.
 

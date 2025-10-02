@@ -5,7 +5,13 @@ import slicer
 
 from ltrace.slicer.helpers import svgToQIcon
 from ltrace.slicer.widget.custom_toolbar_buttons import addAction, addMenu
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, getResourcePath, LTraceEnvironmentMixin
+from ltrace.slicer_utils import (
+    LTracePlugin,
+    LTracePluginLogic,
+    getResourcePath,
+    LTraceEnvironmentMixin,
+    slicer_is_in_developer_mode,
+)
 
 
 class MicroCTEnv(LTracePlugin):
@@ -20,6 +26,7 @@ class MicroCTEnv(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ""
+        self.parent.hidden = True
         self.environment = MicroCTEnvLogic()
 
     @classmethod
@@ -35,6 +42,17 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
 
     def setupEnvironment(self):
         relatedModules = self.getModuleManager().fetchByCategory([self.category])
+
+        pore_network_modules = [
+            "PoreNetworkExtractor",
+            "PoreNetworkSimulation",
+            "PoreNetworkKabsREV",
+            "PoreNetworkVisualization",
+            "PoreNetworkKrelEda",
+            "PoreNetworkProduction",
+        ]
+        if slicer_is_in_developer_mode():
+            pore_network_modules.append("PoreNetworkCompare")
 
         modules = [
             "CustomizedData",
@@ -60,18 +78,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                     "CTAutoRegistration",
                 ],
             ),
-            (
-                "Pore Network",
-                [
-                    "PoreNetworkExtractor",
-                    "PoreNetworkSimulation",
-                    "PoreNetworkKabsREV",
-                    "PoreNetworkVisualization",
-                    "PoreNetworkKrelEda",
-                    "PoreNetworkProduction",
-                    "PoreNetworkCompare",
-                ],
-            ),
+            ("Pore Network", pore_network_modules),
             (
                 "Multiscale",
                 [
@@ -101,7 +108,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules = [m for m in modules if m is not None]
                 if modules:
                     addMenu(
-                        svgToQIcon(getResourcePath("Icons") / "IconSet-svg" / f"{name}.svg"),
+                        svgToQIcon(getResourcePath("Icons") / "svg" / f"{name}.svg"),
                         name,
                         modules,
                         self.modulesToolbar,
@@ -109,22 +116,25 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             elif callable(module):
                 module()
 
-        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts", "VariogramAnalysis"])
+        self.setupTools(
+            tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts", "VariogramAnalysis", "NetCDF"]
+        )
 
         self.setupLoaders()
 
         self.getModuleManager().setEnvironment(("Volumes", "MicroCTEnv"))
 
     def setupSegmentation(self):
-        modules = self.getModuleManager().fetchByCategory(("Thin Section",), intersectWith="Segmentation")
+        modules = self.getModuleManager().fetchByCategory(("MicroCT",), intersectWith="Segmentation")
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Layers.svg"),
             "Segmentation",
             [
                 modules["CustomizedSegmentEditor"],
                 modules["Segmenter"],
                 modules["SegmentInspector"],
+                modules["InteractiveSegmenter"],
             ],
             self.modulesToolbar,
         )

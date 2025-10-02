@@ -6,7 +6,11 @@ import vtk
 from ltrace.slicer.app.layouts import customLayout
 from ltrace.slicer.side_by_side_image_layout import setupViews, SideBySideImageManager
 from ltrace.slicer_utils import LTracePlugin
-from ltrace.constants import SIDE_BY_SIDE_IMAGE_LAYOUT_ID, SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID
+from ltrace.constants import (
+    SIDE_BY_SIDE_IMAGE_LAYOUT_ID,
+    SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID,
+    SIDE_BY_SIDE_DUMB_LAYOUT_ID,
+)
 
 
 class SideBySideLayoutView(LTracePlugin):
@@ -14,6 +18,7 @@ class SideBySideLayoutView(LTracePlugin):
 
     SIDE_BY_SIDE_IMAGE_GROUP = 70
     SIDE_BY_SIDE_SEGMENTATION_GROUP = 71
+    SIDE_BY_SIDE_DUMB_GROUP = 72
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
@@ -155,6 +160,35 @@ class SideBySideLayoutView(LTracePlugin):
         layout.layoutChanged.connect(onLayoutChanged)
 
         slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, onNodeAdded)
+
+    def sideBySideDumbLayout(self):
+        """Same layout as side-by-side, but without any extra management logic.
+        Not accessible from the UI.
+        """
+        layout_template = self.side_by_side_layout_template()
+        view_2d_template_with_group = self.view_2D_with_group_template()
+
+        layoutXML = layout_template.substitute(
+            view1=view_2d_template_with_group.substitute(
+                size="500",
+                tag="SideBySideDumb1",
+                orientation="XY",
+                label="1",
+                color="#EEEEEE",
+                group=self.SIDE_BY_SIDE_DUMB_GROUP,
+            ),
+            view2=view_2d_template_with_group.substitute(
+                size="500",
+                tag="SideBySideDumb2",
+                orientation="XY",
+                label="2",
+                color="#EEEEEE",
+                group=self.SIDE_BY_SIDE_DUMB_GROUP,
+            ),
+        )
+        layoutID = SIDE_BY_SIDE_DUMB_LAYOUT_ID
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutXML)
 
     def updateSideBySideSegmentation(self):
         sliceWidget = slicer.app.layoutManager().sliceWidget("SideBySideSegmentationSlice")

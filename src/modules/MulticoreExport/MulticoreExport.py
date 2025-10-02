@@ -11,6 +11,7 @@ import vtk
 from MulticoreExportLib import MulticoreCSV
 from ltrace.slicer import export
 from ltrace.slicer.helpers import getNodeDataPath, checkUniqueNames
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 from ltrace.transforms import getRoundedInteger, transformPoints
 from ltrace.units import global_unit_registry as ureg
@@ -35,7 +36,8 @@ class MulticoreExport(LTracePlugin):
         self.parent.categories = ["Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = MulticoreExport.help()
+        self.setHelpUrl("Core/MulticoreExport.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/ExportTools/MulticoreExport.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

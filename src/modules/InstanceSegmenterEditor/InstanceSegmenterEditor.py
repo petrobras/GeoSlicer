@@ -39,7 +39,7 @@ class InstanceSegmenterEditor(LTracePlugin):
         self.parent.categories = ["Segmentation", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = InstanceSegmenterEditor.help()
+        self.setHelpUrl("ImageLog/Segmentation/InstanceSegmenterEditor/InstanceSegmenterEditor.html")
 
     @classmethod
     def readme_path(cls):
@@ -105,25 +105,25 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
         editFormLayout = qt.QFormLayout(self.editCollapsibleButton)
 
         self.addSegmentButton = qt.QPushButton("Add")
-        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
+        self.addSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Add.png"))
         self.addSegmentButton.clicked.connect(self.onAddSegmentButtonClicked)
 
         self.editSegmentButton = qt.QPushButton("Edit")
-        self.editSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Edit.png"))
+        self.editSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Edit.png"))
         self.editSegmentButton.clicked.connect(self.onEditSegmentButtonClicked)
 
         self.applySegmentButton = qt.QPushButton("Apply")
-        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        self.applySegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         self.applySegmentButton.setEnabled(False)
         self.applySegmentButton.clicked.connect(self.onApplySegmentButtonClicked)
 
         self.cancelSegmentButton = qt.QPushButton("Cancel")
-        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        self.cancelSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         self.cancelSegmentButton.setEnabled(False)
         self.cancelSegmentButton.clicked.connect(self.onCancelSegmentButtonClicked)
 
         self.declineSegmentButton = qt.QPushButton("Decline")
-        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Delete.png"))
+        self.declineSegmentButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Delete.png"))
         self.declineSegmentButton.clicked.connect(self.onDeclineSegmentButtonClicked)
 
         editButtonsHBoxLayout = qt.QHBoxLayout()

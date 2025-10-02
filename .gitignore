@@ -148,6 +148,7 @@ _deps
 
 !/ltrace/ltrace/assets/**/*
 /tools/deploy/Assets/Tesseract-OCR/
+/tools/deploy/manual/
 /tools/deploy/Resources/manual/
 /tools/deploy/GeoSlicerManual/site/
 

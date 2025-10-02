@@ -10,7 +10,7 @@ from ltrace.slicer_utils import *
 from ltrace.units import convert_to_global_registry, global_unit_registry as ureg
 
 from ltrace.slicer.directorylistwidget import DirectoryListWidget
-
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 #
 # CorePluggingExporter
@@ -26,9 +26,9 @@ class CorePluggingExporter(LTracePlugin):
         self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = ""
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Core/MulticoreExport.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/ExportTools/MulticoreExport.html", NodeEnvironment.MULTISCALE)
 
 
 #
@@ -120,7 +120,6 @@ class CorePluggingExporterLogic(LTracePluginLogic):
             rock_cores_list = []
             for i, sourceDir in enumerate(dataSources):
                 output_file = temp_dir / f"output_plug_locations_{i}"
-                print(sourceDir)
                 success, message = RunCLIWithProgressBar(
                     slicer.modules.importcoreimagescli,
                     parameters={
@@ -168,7 +167,6 @@ class CorePluggingExporterLogic(LTracePluginLogic):
 
         current_depth *= ureg.meter
         cores = []
-        print(str(outputFile))
         with open(str(outputFile), "rb") as f:
             result = pickle.loads(f.read())
 

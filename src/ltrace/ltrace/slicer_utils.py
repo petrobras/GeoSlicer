@@ -12,10 +12,12 @@ from abc import abstractmethod
 from SegmentEditorEffects import *
 from slicer import ScriptedLoadableModule
 
+from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.helpers import svgToQIcon
+from ltrace.slicer.helpers import svgToQIcon, getCurrentEnvironment
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
 from ltrace.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 
 __all__ = [
@@ -46,6 +48,7 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
 
     def __init__(self, *args, **kwargs):
         ScriptedLoadableModule.ScriptedLoadableModule.__init__(self, *args, **kwargs)
+        self.__helpUrl = dict()
         if self.SETTING_KEY is None:
             raise NotImplementedError
 
@@ -93,14 +96,29 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
     def set_setting(cls, key, value):
         slicer.app.settings().setValue(f"{cls.SETTING_KEY}/{key}", value)
 
-    def set_manual_path(self, relative_path):
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / relative_path).as_posix()}"
-
     def resource(self, resourceName):
         return Path(slicer.util.modulePath(self.moduleName)).parent / "Resources" / resourceName
 
     def title(self):
         return self.parent.title
+
+    @property
+    def helpUrl(self):
+        env = getCurrentEnvironment()
+        default = self.__helpUrl.get("DEFAULT", "")
+        url = self.__helpUrl.get(env.value, default)
+        return url
+
+    def setHelpUrl(self, relativePath: str, environment: NodeEnvironment = None) -> None:
+        helpUrl = f"{MANUAL_BASE_URL}{relativePath}"
+
+        if self.__helpUrl.get("DEFAULT") is None:
+            self.__helpUrl["DEFAULT"] = helpUrl
+
+        if environment is None:
+            return
+
+        self.__helpUrl[environment.value] = helpUrl
 
 
 class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
@@ -122,8 +140,11 @@ class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
             if hasattr(self, "reloadTestAction"):
                 self.reloadTestAction.triggered.disconnect()
 
-        for pluginWidget in self.parent.findChildren("qSlicerScriptedLoadableModuleWidget"):
-            pluginWidget.setParent(None)
+        try:
+            for pluginWidget in self.parent.findChildren("qSlicerScriptedLoadableModuleWidget"):
+                pluginWidget.setParent(None)
+        except ValueError:
+            pass  # parent already deleted
 
 
 class LTracePluginLogicMeta(type(qt.QObject), type(ScriptedLoadableModule.ScriptedLoadableModuleLogic)):

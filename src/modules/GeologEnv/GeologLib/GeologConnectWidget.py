@@ -95,7 +95,7 @@ class GeologConnectWidget(qt.QWidget):
 
         self.refreshButton = qt.QPushButton()
         self.refreshButton.clicked.connect(self.onProjectPathSelected)
-        self.refreshButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
+        self.refreshButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Reset.png"))
         self.refreshButton.setFixedWidth(30)
         self.refreshButton.setToolTip("Refresh the directory to check for newly created projects")
 

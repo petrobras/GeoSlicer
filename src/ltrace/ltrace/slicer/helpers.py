@@ -22,11 +22,7 @@ import vtk.util.numpy_support as vn
 import traceback
 
 from ltrace import transforms
-from ltrace.slicer.node_attributes import (
-    ColorMapSelectable,
-    NodeEnvironment,
-    NodeTemporarity,
-)
+from ltrace.slicer.node_attributes import ColorMapSelectable, NodeEnvironment, NodeTemporarity, CorrelatedNodeAttributes
 
 from pathlib import Path
 from skimage.segmentation import relabel_sequential
@@ -676,7 +672,14 @@ def createMaskWithROI(inputNode, roiNode):
 
 
 def getColorTableForLabels(labelMapNode):
+    if labelMapNode is None:
+        logging.debug("Invalid labelmap node provided.")
+        return {}
     colors = labelMapNode.GetDisplayNode().GetColorNode()
+    if colors is None:
+        logging.debug(f"No color node available for labelmap '{labelMapNode.GetID()}'.")
+        return {}
+
     id = labelMapNode.GetImageData()
     srange = id.GetScalarRange()
 
@@ -690,6 +693,10 @@ def getColorTableForLabels(labelMapNode):
 
 
 def getCountForLabels(labelMapNode, roiNode=None):
+    if labelMapNode is None:
+        logging.debug("Invalid labelmap node provided.")
+        return {"total": 0}
+
     labelVoxelArray = slicer.util.arrayFromVolume(labelMapNode)
     if labelVoxelArray.dtype == np.float64:
         logging.warning(f"LabelMap <{labelMapNode.GetName()}> has wrong type, casting to uin32")
@@ -723,8 +730,24 @@ def setSourceVolume(node: slicer.vtkMRMLSegmentationNode, source: slicer.vtkMRML
         node.RemoveNodeReferenceIDs(slicer.vtkMRMLSegmentationNode.GetReferenceImageGeometryReferenceRole())
 
 
+def getWellAttributeFromNode(node, attribute: str) -> Union[int, str]:
+    if (
+        node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+        == CorrelatedNodeAttributes.PROPORTION_NODE.value
+    ):
+        node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+    if isinstance(node, slicer.vtkMRMLSegmentationNode):
+        node = getSourceVolume(node)
+
+    return node.GetAttribute(attribute)
+
+
 # TODO change that name
-def segmentProportionFromLabelMap(labelMapNode, roiNode=None, return_proportions=False):
+def segmentProportionFromLabelMap(labelMapNode, roiNode=None, return_proportions=False) -> dict:
+    if labelMapNode is None:
+        logging.debug("Invalid labelmap node provided.")
+        return {}
+
     if return_proportions:
         colors = getColorTableForLabels(labelMapNode)
         segmentmap = getCountForLabels(labelMapNode, roiNode)
@@ -2652,3 +2675,8 @@ def displayScaleFactor():
         mainScreen = 0
         return ctypes.windll.shcore.GetScaleFactorForDevice(mainScreen) / 100.0
     return slicer.app.devicePixelRatio()
+
+
+def isValidEmail(email: str) -> bool:
+    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    return re.match(pattern, email) is not None

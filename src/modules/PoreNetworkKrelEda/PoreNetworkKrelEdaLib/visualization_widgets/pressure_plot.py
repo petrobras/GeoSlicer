@@ -374,13 +374,13 @@ class FilterListWidget(qt.QFrame):
         self.estimationMethodCombobox.setCurrentIndex(1)
 
         addRefCurveButton = qt.QPushButton("Add reference curve")
-        addRefCurveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
+        addRefCurveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Add.png"))
         addRefCurveButton.setIconSize(qt.QSize(16, 16))
         addRefCurveButton.clicked.connect(self.__onAddRefCurveClicked)
 
         addFilterButton = qt.QPushButton("Add filter")
         addFilterButton.objectName = "Add filter button"
-        addFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
+        addFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Add.png"))
         addFilterButton.setIconSize(qt.QSize(16, 16))
         addFilterButton.clicked.connect(self.__onAddFilterClicked)
 
@@ -490,7 +490,7 @@ class FilterBaseWidget(qt.QFrame):
         super().__init__(parent)
 
         self.removeFilterButton = qt.QPushButton()
-        self.removeFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        self.removeFilterButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         self.removeFilterButton.setIconSize(qt.QSize(16, 16))
         self.removeFilterButton.setFlat(True)
         self.removeFilterButton.clicked.connect(self.__onRemoveButtonClicked)

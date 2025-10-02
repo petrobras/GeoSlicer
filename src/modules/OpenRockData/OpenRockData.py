@@ -12,6 +12,7 @@ import time
 from Libs.drd_wrapper import Source, DATASET_METADATA
 from ltrace.slicer import netcdf
 from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
 
 try:
@@ -29,7 +30,8 @@ class OpenRockData(LTracePlugin):
         self.parent.title = "Digital Rocks Portal"
         self.parent.categories = ["Tools", "OpenRockData", "MicroCT", "Thin Section", "Image Log", "Core", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Volumes/OpenRockData.html').as_posix()}"
+        self.setHelpUrl("Volumes/Import/OpenRockData.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Import/OpenRockData.html", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):

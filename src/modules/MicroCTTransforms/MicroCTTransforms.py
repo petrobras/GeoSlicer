@@ -31,6 +31,7 @@ class MicroCTTransforms(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = MicroCTTransforms.help()
+        self.setHelpUrl("Volumes/Register/Register.html")
 
     @classmethod
     def readme_path(cls):
@@ -214,7 +215,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         buttonsLayout = qt.QFormLayout(self.buttonsWidget)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo last change. The earliest undo is when the volume was loaded or transformation was last applied."
         )
@@ -222,7 +223,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Redo.png"))
         self.redoButton.setToolTip("Redo last change.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)
@@ -233,13 +234,13 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         buttonsLayout.addRow(buttonsHBoxLayout)
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         self.applyButton.setToolTip("Apply changes. This action cannot be undone.")
         self.applyButton.enabled = False
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.resetButton = qt.QPushButton("Reset")
-        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
+        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Reset.png"))
         self.resetButton.setToolTip("Reset changes to the last applied state.")
         self.resetButton.enabled = False
         self.resetButton.clicked.connect(self.onResetButtonClicked)

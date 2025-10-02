@@ -5,6 +5,7 @@ import numpy as np
 import qt
 import slicer
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 
@@ -20,7 +21,7 @@ class MulticoreTransforms(LTracePlugin):
         self.parent.categories = ["Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = MulticoreTransforms.help()
+        self.setHelpUrl("Core/Multicore.html", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):

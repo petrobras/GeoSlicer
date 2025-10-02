@@ -51,37 +51,6 @@ APP_NAME = "GeoSlicer"
 
 IGNORED_DIRS = "Skeleton, SkeletonCLI"
 
-# Third party modules installation
-with open(REQUIREMENTS_FILE) as file:
-    for line in file:
-        if line[0] == "#":
-            continue
-
-        if "#" in line:
-            module_name = re.split("#|=", line)[0].strip()
-            import_name = line.split("#")[-1].strip()
-        else:
-            module_name = line.split("=")[0]
-            import_name = module_name
-
-        if (
-            import_name != "mkdocs-localsearch"
-            and import_name != "mkdocs-material"
-            and import_name != "mkdocs-mermaid2-plugin"
-            and import_name != "mkdocs-include-markdown-plugin"
-        ):
-            try:
-                logger.info(f"Importing python module: {import_name}")
-                globals()[import_name] = importlib.__import__(import_name)
-            except ModuleNotFoundError:
-                logger.info(f"Module {import_name} not found, running pip with requirements file")
-                python_interpreter = sys.executable
-                runResult = subprocess.run([python_interpreter, "-m", "pip", "install", "-r", REQUIREMENTS_FILE])
-                runResult.check_returncode()
-                globals()[import_name] = importlib.import_module(import_name)
-            except Exception as error:
-                logger.info(f"Error: {error}\n{traceback.print_exc()}")
-
 
 def generate_slicer_package(
     slicer_archive,
@@ -204,14 +173,7 @@ def generic_deploy(
         modules_to_add.extend(copy_extensions(slicer_dir, find_cli_source(modules_package_folder), "cli-modules"))
 
     logger.info("Building GeoSlicer manual")
-    wd = os.getcwd()
-    os.chdir(THIS_FOLDER / "GeoSlicerManual")
-    output_manual_path_str = (THIS_FOLDER / "Resources" / "manual").as_posix()
-    # delete content inside output_manual_path_str
-    if os.path.exists(output_manual_path_str):
-        shutil.rmtree(output_manual_path_str)
-    subprocess.check_call([sys.executable, "-m", "mkdocs", "build", "--site-dir", output_manual_path_str])
-    os.chdir(wd)
+    build_manual()
 
     logger.info("Installing customizer")
     install_customizer(slicer_dir, modules_to_add, find_extensions(slicer_dir), version_string, development)
@@ -650,6 +612,7 @@ def commit_to_opensource_repository(args, force):
     if args.no_public_commit:
         logger.info("Skipping commit to public repository' step because it is disabled.")
         return
+
     local_public_master_branch_name = "GeoSlicerPublic_Master"
     remote_public_master_branch_name = "master"
     public_remote_repository_name = "GeoSlicerPublic"
@@ -691,6 +654,7 @@ def commit_to_opensource_repository(args, force):
     # Add only opensource files
     origin_reference = repository.head.reference
     try:
+
         repository.delete_head(local_public_master_branch_name, force=True)
     except git.exc.GitCommandError:
         pass
@@ -700,6 +664,7 @@ def commit_to_opensource_repository(args, force):
     else:
         repository.git.checkout("--orphan", local_public_master_branch_name)
 
+    remove_large_files_from_public_repository(args)
     repository.git.add(all=True)
 
     # Commit and push
@@ -719,23 +684,56 @@ def commit_to_opensource_repository(args, force):
         repository.git.checkout(origin_reference)
 
 
+def remove_large_files_from_public_repository(args) -> None:
+    """Removes large files from the public repository. Expected to use after deploy process and before git commit to public repository
+
+    Args:
+        args (argparse.Namespace): The command line arguments
+    """
+    repository = git.Repo(SLICERLTRACE_REPO_FOLDER)
+
+    with open(DEPLOY_CONFIG) as f:
+        config = json.JSONDecoder().decode(f.read())
+
+    if not config:
+        logger.warning("No deploy configuration file found.")
+        return
+
+    lfs_tracked_files = repository.git.execute(["git", "lfs", "ls-files"])
+    for file_or_path in config["LargeFilesClosedSourceHostOnly"]:
+        path = SLICERLTRACE_REPO_FOLDER / file_or_path
+        if file_or_path in lfs_tracked_files:
+            repository.git.execute(["git", "lfs", "untrack", path.as_posix()])
+        if path.is_file():
+            path.unlink()
+        else:
+            shutil.rmtree(path.as_posix(), onerror=make_directory_writable)
+
+
 def remove_closed_source_files(args):
     repository = git.Repo(SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
     with open(DEPLOY_CONFIG) as f:
         config = json.JSONDecoder().decode(f.read())
-        for file_or_path in config["ClosedSourceFiles"]:
-            path = SLICERLTRACE_REPO_FOLDER / file_or_path
-            if path.is_file():
-                path.unlink()
-            elif path.is_dir():
-                if "submodules" in path.parent.name:
-                    repository.git.submodule("deinit", "-f", path.resolve().as_posix())
-                    repository.git.rm(path, r=True)
-                    repository.git.add(".gitmodules")
-                    git_module_path = SLICERLTRACE_REPO_FOLDER / ".git" / "modules" / path.name
-                    remove_directory_recursively(git_module_path)
 
-                remove_directory_recursively(path)
+    if not config:
+        logger.warning("No deploy configuration file found.")
+        remove_module_test_directories(args)
+        return
+
+    for file_or_path in config["ClosedSourceFiles"]:
+        path = SLICERLTRACE_REPO_FOLDER / file_or_path
+
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            if "submodules" in path.parent.name:
+                repository.git.submodule("deinit", "-f", path.resolve().as_posix())
+                repository.git.rm(path, r=True)
+                repository.git.add(".gitmodules")
+                git_module_path = SLICERLTRACE_REPO_FOLDER / ".git" / "modules" / path.name
+                remove_directory_recursively(git_module_path)
+
+            remove_directory_recursively(path)
 
     remove_module_test_directories(args)
 
@@ -777,6 +775,7 @@ def clean_repository_changes():
     repository = git.Repo(SLICERLTRACE_REPO_FOLDER)
     repository.git.clean("-fd")
     repository.git.reset("--hard")
+    repository.git.submodule("update", "--init", "--recursive")
 
 
 def prepare_open_source_environment(args):
@@ -949,6 +948,24 @@ def run(args):
             logger.info(
                 f"{GREEN_TAG}The application's extended version has been deployed in {GREEN_BOLD_TAG}production{RESET_COLOR_TAG}{GREEN_TAG} mode.{RESET_COLOR_TAG}"
             )
+
+
+def build_manual() -> None:
+    output_manual_path = THIS_FOLDER / "manual"
+    output_manual_path_str = output_manual_path.resolve().absolute().as_posix()
+
+    # Delete old content
+    if output_manual_path.exists():
+        shutil.rmtree(output_manual_path)
+
+    # Run mkdocs to compile the documentation
+    cwd = THIS_FOLDER / "GeoSlicerManual"
+    subprocess.check_call([sys.executable, "-m", "mkdocs", "build", "--site-dir", output_manual_path_str], cwd=cwd)
+
+    # Check remaning manual directory inside 'Resources' folder and remove it to avoid it being deployed within the application
+    old_manual_path_dir = THIS_FOLDER / "Resources" / "manual"
+    if old_manual_path_dir.exists():
+        shutil.rmtree(old_manual_path_dir)
 
 
 if __name__ == "__main__":

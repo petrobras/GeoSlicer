@@ -39,9 +39,16 @@ class CustomizedData(LTracePlugin):
 
 
 class CustomizedDataWidget(LTracePluginWidget):
+    activeTreeView = None
+
     def __init__(self, parent):
         super().__init__(parent)
         self.subjectHierarchyTreeView = None
+        self.nodeMenu = None
+
+    def onRightClickMenuAboutToShow(self):
+        if self.nodeMenu:
+            CustomizedDataWidget.activeTreeView = self.nodeMenu.parentWidget()
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -66,8 +73,9 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.subjectHierarchyTreeView.doubleClicked.connect(showSearchPopup)
 
         # Adds confirmation step before delete action
-        nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
-        self.deleteAction = [action for action in nodeMenu.actions() if action.text == "Delete"][0]
+        self.nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
+        self.nodeMenu.aboutToShow.connect(self.onRightClickMenuAboutToShow)  # Find active tree view
+        self.deleteAction = [action for action in self.nodeMenu.actions() if action.text == "Delete"][0]
 
         def confirmDeleteSelectedItems():
             message = "Are you sure you want to delete the selected nodes?"
@@ -81,6 +89,27 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         self.deleteAction.triggered.disconnect()
         self.deleteAction.triggered.connect(confirmDeleteSelectedItems)
+
+        # Replaces default clone action with a custom one that also copies attributes and references
+        self.cloneAction = [
+            action
+            for action in self.nodeMenu.actions()
+            if action.text == "Clone" and isinstance(action.parent(), slicer.qSlicerSubjectHierarchyCloneNodePlugin)
+        ][0]
+
+        def customCloneSelectedItems():
+            tree_view = CustomizedDataWidget.activeTreeView
+            if not tree_view:
+                logging.debug("Custom clone called, but no active tree view found.")
+                return
+
+            selected_items = vtk.vtkIdList()
+            tree_view.currentItems(selected_items)
+
+            SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(scriptedPlugin).find_and_clone_items(selected_items)
+
+        self.cloneAction.triggered.disconnect()
+        self.cloneAction.triggered.connect(customCloneSelectedItems)
 
         self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
 
@@ -180,4 +209,5 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.subjectHierarchyTreeView.currentItemsChanged.disconnect()
         slicer.mrmlScene.RemoveObserver(self.endSceneObserver)
         self.deleteAction.triggered.disconnect()
+        self.cloneAction.triggered.disconnect()
         self.scalarVolumeWidget.cleanup()

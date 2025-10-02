@@ -4,7 +4,7 @@ import qt
 import slicer
 
 from ltrace.slicer import helpers
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
+from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
 from ltrace.slicer.ui import hierarchyVolumeInput, numericInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.utils.recursive_progress import RecursiveProgress
@@ -29,9 +29,8 @@ class CLAHETool(LTracePlugin):
         self.parent.title = "CLAHE Tool"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/ImageLog/CLAHETool/CLAHETool.html').as_posix()}"
-        )
+        self.setHelpUrl("ImageLog/Processing/CLAHETool/CLAHETool.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ImageLogPreProcessing/CLAHETool/CLAHETool.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

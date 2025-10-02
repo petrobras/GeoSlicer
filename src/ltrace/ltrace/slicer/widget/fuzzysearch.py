@@ -13,7 +13,7 @@ from ltrace.slicer_utils import getResourcePath
 class FuzzySearchDialog(qt.QDialog):
     def __init__(self, model=None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "GeoSlicer.ico").as_posix()))
+        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "ico" / "GeoSlicer.ico").as_posix()))
 
         layout = qt.QVBoxLayout(self)
 

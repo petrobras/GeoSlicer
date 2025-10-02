@@ -40,7 +40,7 @@ class ImageLogInstanceSegmenter(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ImageLogInstanceSegmenter.help()
-        self.set_manual_path("Quantification/instance_segmenter.html")
+        self.setHelpUrl("ImageLog/Segmentation/InstanceSegmenter/InstanceSegmenter.html")
 
     @classmethod
     def readme_path(cls):

@@ -44,8 +44,8 @@ class PoreNetworkProduction(LTracePlugin):
         self.parent.categories = ["Tutorials/Examples", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/production.html').as_posix()}"
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Volumes/PNM/production.html")
 
     @classmethod
     def readme_path(cls):

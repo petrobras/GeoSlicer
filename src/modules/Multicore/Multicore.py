@@ -17,6 +17,7 @@ from threading import Lock
 from DICOMLib.DICOMUtils import TemporaryDICOMDatabase
 from ltrace.image.core_box.core_box_depth_table_file import CoreBoxDepthTableFile
 from ltrace.slicer.helpers import setVolumeNullValue, save_path
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.ui import MultiplePathsWidget
 from ltrace.slicer_utils import *
 from ltrace.transforms import transformPoints, getRoundedInteger
@@ -52,7 +53,8 @@ class Multicore(LTracePlugin):
         self.parent.categories = ["Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = Multicore.help()
+        self.setHelpUrl("Core/Multicore.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/ImportTools/Multicore.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

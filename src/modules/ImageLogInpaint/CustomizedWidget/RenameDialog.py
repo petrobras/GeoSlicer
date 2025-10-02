@@ -12,11 +12,11 @@ class RenameDialog(qt.QDialog):
         self.newPlotWidgetLineEdit = qt.QLineEdit()
 
         okButton = qt.QPushButton("OK")
-        okButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        okButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         okButton.setIconSize(qt.QSize(12, 14))
 
         cancelButton = qt.QPushButton("Cancel")
-        cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         cancelButton.setIconSize(qt.QSize(12, 14))
 
         okButton.clicked.connect(lambda checked: self.okButtonClicked())

@@ -12,6 +12,7 @@ from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer import helpers
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import global_unit_registry as ureg
 
 # Checks if closed source code is available
@@ -34,6 +35,8 @@ class SpiralFilter(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = SpiralFilter.help()
+        self.setHelpUrl("ImageLog/Processing/SpiralFilter/SpiralFilter.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ImageLogPreProcessing/SpiralFilter/SpiralFilter.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

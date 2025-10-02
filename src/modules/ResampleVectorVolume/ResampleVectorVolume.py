@@ -11,6 +11,7 @@ from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
 from ltrace.slicer import helpers as lsh
 from functools import partial
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.ResampleVectorVolumeTest import ResampleVectorVolumeTest
@@ -30,7 +31,8 @@ class ResampleVectorVolume(LTracePlugin):
         self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = ResampleVectorVolume.help()
+        self.setHelpUrl("Volumes/Resample/Resample.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/VolumesPreProcessing/Resample.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -203,7 +205,6 @@ class ResampleVectorVolumeLogic(LTracePluginLogic):
                 "ModifiedEvent", partial(self.eventHandler, outputVolumeID=outputVolume.GetID())
             )
         except Exception as e:
-            print(f"Exception on Resample: {repr(e)}")
             lsh.removeTemporaryNodes(nodes=[outputVolume])
 
     def getVolumeRealDimensions(self, volume):
@@ -227,7 +228,6 @@ class ResampleVectorVolumeLogic(LTracePluginLogic):
                 lsh.removeTemporaryNodes(nodes=[outputNode])
 
         except Exception as e:
-            print(f'Exception on Event Handler: {repr(e)} with status "{status}"')
             lsh.removeTemporaryNodes(nodes=[outputNode])
 
     def cancel(self):

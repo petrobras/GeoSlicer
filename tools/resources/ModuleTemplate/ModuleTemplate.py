@@ -22,7 +22,7 @@ class {{name}}(LTracePlugin):
         self.parent.title = "{{title}}"
         self.parent.categories = ["{{category}}"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = {{name}}.help()
+        self.parent.helpText = "/Environment/{{name}}.html"
 
     @classmethod
     def readme_path(cls):

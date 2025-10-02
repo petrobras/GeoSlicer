@@ -16,6 +16,7 @@ from ltrace.slicer.helpers import (
     clone_volume,
     tryGetNode,
     NodeEnvironment,
+    removeTemporaryNodes,
 )
 from ltrace.constants import ImageLogInpaintConst
 from CustomizedWidget.RenameDialog import RenameDialog
@@ -39,7 +40,8 @@ class ImageLogInpaint(LTracePlugin):
         self.parent.title = "Image Log Inpaint"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.set_manual_path("Modules/Multiscale/ImageLogInpaint.html")
+        self.setHelpUrl("ImageLog/Inpainting/ImageLogInpaint/ImageLogInpaint.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ImageLogPreProcessing/Inpaint/ImageLogInpaint.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -517,9 +519,9 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             slicer.mrmlScene.RemoveNode(self._tempSegmentation)
 
         if self._tempLabelMap is not None and self._tempLabelMap.GetDisplayNode():
-            slicer.mrmlScene.RemoveNode(self._tempLabelMap.GetDisplayNode().GetColorNode())
             slicer.mrmlScene.RemoveNode(self._tempLabelMap)
 
+        removeTemporaryNodes()
         self._tempLabelMap = None
         self._tempSegmentation = None
 

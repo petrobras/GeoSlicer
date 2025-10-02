@@ -7,9 +7,11 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
-from ltrace.slicer.helpers import copy_display
+from ltrace.slicer import helpers
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
+
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 
 class CustomizedMedianImageFilter(LTracePlugin):
@@ -24,6 +26,9 @@ class CustomizedMedianImageFilter(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
+        self.setHelpUrl("Volumes/Filter/MicroCTFlowApplyFilters.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/VolumesPreProcessing/Filter.html", NodeEnvironment.MULTISCALE)
+
         self.parent.helpText = CustomizedMedianImageFilter.help()
 
     @classmethod
@@ -188,9 +193,6 @@ class CustomizedMedianImageFilterLogic(LTracePluginLogic):
     def apply(self, p):
         # Removing old cli node if it exists
         slicer.mrmlScene.RemoveNode(self.cliNode)
-
-        print("Filtering start time: " + str(datetime.datetime.now()))
-
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         inputVolumeItemParent = subjectHierarchyNode.GetItemParent(
             subjectHierarchyNode.GetItemByDataNode(p.inputVolume)
@@ -222,10 +224,9 @@ class CustomizedMedianImageFilterLogic(LTracePluginLogic):
             self.cliNode = None
 
             slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
-            copy_display(self.inputVolume, self.outputVolume)
+            helpers.copy_display(self.inputVolume, self.outputVolume)
 
             if status == "Completed":
-                print("Filtering end time: " + str(datetime.datetime.now()))
                 self.onComplete()
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputVolume)

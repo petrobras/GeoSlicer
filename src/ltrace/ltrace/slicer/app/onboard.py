@@ -1,32 +1,32 @@
-import logging
-from dataclasses import dataclass
-from pathlib import Path
-
 import qt
 import slicer
+import logging
 
+from dataclasses import dataclass
 from ltrace.slicer.module_utils import loadModules
 from ltrace.slicer.ui import LineSeparator, LineSeparatorWithText
 from ltrace.slicer_utils import getResourcePath
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer.app import tryDetectProjectDataType
+from pathlib import Path
+from typing import Union
+from ltrace.slicer.app import MANUAL_BASE_URL
 
 
 class ui_IntroToolButton(qt.QToolButton):
-    def __init__(self, text: str, moduleName: str, icon: str, parent=None) -> None:
+    def __init__(self, text: str, moduleName: str, icon: Union[Path, str], parent=None) -> None:
         super().__init__(parent)
-
         self.__updateStyleSheet()
         self.__moduleName = moduleName
         self.objectName = f"{moduleName} Tool Button"
+        if isinstance(icon, str):
+            icon = Path(icon)
         iconWidget = qt.QIcon(icon.as_posix())
         self.setToolButtonStyle(qt.Qt.ToolButtonTextUnderIcon)
         self.setIcon(iconWidget)
         self.setText(text)
         self.setIconSize(qt.QSize(60, 60))
         self.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
-        #
-        # self.clicked.connect(self._action)
 
     def __updateStyleSheet(self) -> None:
         self.setStyleSheet(
@@ -54,16 +54,48 @@ class ui_IntroToolButton(qt.QToolButton):
             logging.debug(f"Error in {self.__moduleName} shortcut: {error}.")
 
 
+class ui_WebDocumentToolButton(qt.QToolButton):
+    def __init__(self, text: str, url: str, icon: str, parent=None) -> None:
+        super().__init__(parent)
+
+        self.__updateStyleSheet()
+        self.__url = url
+        self.objectName = f"{text} Tool Button"
+        iconWidget = qt.QIcon(icon.as_posix())
+        self.setToolButtonStyle(qt.Qt.ToolButtonTextUnderIcon)
+        self.setIcon(iconWidget)
+        self.setText(text)
+        self.setIconSize(qt.QSize(60, 60))
+        self.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+        self.clicked.connect(self._action)
+
+    def __updateStyleSheet(self) -> None:
+        self.setStyleSheet(
+            "QToolButton {\
+                background-color: transparent;\
+                border: none;\
+                padding-top: 8px;\
+                padding-bottom: 8px;\
+            }\
+            QToolButton:hover {\
+                background-color: gray;\
+                border-radius: 3px;\
+            }\
+            QToolButton:pressed {\
+                background-color: #6B6B6B;\
+            }"
+        )
+
+    def _action(self):
+        qt.QDesktopServices.openUrl(qt.QUrl(self.__url))
+
+
 class ui_DataLoaderSelectorDialog(qt.QDialog):
     signalEnvironmentClicked = qt.Signal(object)
 
-    def __init__(self, modules, parent=None) -> None:
+    def __init__(self, modules, parent) -> None:
         super().__init__(parent)
-
-        self.projectOptionVisible = True
-
-        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "GeoSlicer.ico").as_posix()))
-
+        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "ico" / "GeoSlicer.ico").as_posix()))
         layout = qt.QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
 
@@ -72,15 +104,25 @@ class ui_DataLoaderSelectorDialog(qt.QDialog):
 
         self.projectOptionFrame = qt.QFrame()
         layoutProjectOption = qt.QVBoxLayout(self.projectOptionFrame)
+        openProjectLayout = qt.QVBoxLayout()
+        openProjectLayout.setSpacing(20)
 
         openProjectButton = qt.QPushButton("Open .mrml Project")
         openProjectButton.clicked.connect(self.openProject)
         openProjectButton.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
         openProjectButton.setProperty("class", "actionButtonBackground")
 
+        openNCProjectButton = qt.QPushButton("Open NetCDF Project (.nc)")
+        openNCProjectButton.objectName = "Open NetCDF Project Button"
+        openNCProjectButton.clicked.connect(self.openNetCDFProject)
+        openNCProjectButton.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+        openNCProjectButton.setProperty("class", "actionButtonBackground")
+
         OrLine = LineSeparatorWithText("Or")
 
-        layoutProjectOption.addWidget(openProjectButton)
+        openProjectLayout.addWidget(openProjectButton)
+        openProjectLayout.addWidget(openNCProjectButton)
+        layoutProjectOption.addLayout(openProjectLayout)
         layoutProjectOption.addWidget(OrLine)
         layoutProjectOption.setContentsMargins(0, 0, 0, 0)
 
@@ -96,9 +138,18 @@ class ui_DataLoaderSelectorDialog(qt.QDialog):
         for i, module in enumerate(modules):
             button = ui_IntroToolButton(text=module.displayName, moduleName=module.moduleName, icon=module.icon)
             button.installEventFilter(self)
-            button.setToolTip(f"Load {module.displayName} data")
+            button.setToolTip(module.description)
             buttonsGridLayout.addWidget(button, i // 3, i % 3)
             button.clicked.connect(lambda _, m=module: self.handleSignalEmit(m))
+
+        appHome = Path(slicer.app.slicerHome)
+        resourcesPath = appHome / "LTrace" / "Resources"
+        iconPath = resourcesPath / "Icons" / "png" / "Manual.png"
+
+        docButton = ui_WebDocumentToolButton(text="Documentation", url=MANUAL_BASE_URL, icon=iconPath)
+        docButton.setToolTip("Open GeoSlicer's documentation in web browser")
+        docButton.installEventFilter(self)
+        buttonsGridLayout.addWidget(docButton, (i + 1) // 3, (i + 1) % 3)
 
         layout.addWidget(self.projectOptionFrame)
         layout.addWidget(introMsgLabel)
@@ -106,7 +157,7 @@ class ui_DataLoaderSelectorDialog(qt.QDialog):
         layout.addWidget(buttonsFrame)
         layout.addWidget(self.helpBoxTextEdit)
 
-        self.projectOptionFrame.visible = self.projectOptionVisible
+        self.projectOptionFrame.visible = True
 
     def handleSignalEmit(self, module):
         self.signalEnvironmentClicked.emit(module)
@@ -131,6 +182,15 @@ class ui_DataLoaderSelectorDialog(qt.QDialog):
         else:
             self.showOnlyDataTypes()
 
+    def openNetCDFProject(self):
+        loaderInfo: LoaderInfo = LOADERS["Volumes"]
+        self.handleSignalEmit(loaderInfo)
+
+        netCdfWidget = slicer.util.getModuleWidget("NetCDF")
+        slicer.util.selectModule(netCdfWidget.moduleName)
+        netCdfImportWidget = netCdfWidget.selectTab("Import")
+        netCdfImportWidget.file_selector.browse()
+
     def showOnlyDataTypes(self):
         self.projectOptionFrame.visible = False
 
@@ -140,6 +200,7 @@ class LoaderInfo:
     displayName: str
     moduleName: str
     icon: Path
+    description: str
     category: str = None
     environment: str = None
 
@@ -150,44 +211,42 @@ LOADERS = {
         LoaderInfo(
             displayName="Volumes",
             moduleName="MicroCTLoader",
-            icon=getResourcePath("Icons") / "MicroCT3D.png",
+            icon=getResourcePath("Icons") / "png" / "MicroCT3D.png",
             category="MicroCT",
             environment="MicroCTEnv",
+            description="Load MicroCT Data",
         ),
         LoaderInfo(
             displayName="Thin Section",
             moduleName="ThinSectionLoader",
-            icon=getResourcePath("Icons") / "ThinSection.png",
+            icon=getResourcePath("Icons") / "png" / "ThinSection.png",
             category="Thin Section",
             environment="ThinSectionEnv",
+            description="Load Thin Section Data",
         ),
         LoaderInfo(
             displayName="Well Logs",
             moduleName="ImageLogData",
-            icon=getResourcePath("Icons") / "ImageLog.png",
+            icon=getResourcePath("Icons") / "png" / "ImageLog.png",
             category="ImageLog",
             environment="ImageLogEnv",
+            description="Load Well Logs Data",
         ),
         LoaderInfo(
             displayName="Core",
             moduleName="Multicore",
-            icon=getResourcePath("Icons") / "CoreEnv.png",
+            icon=getResourcePath("Icons") / "png" / "CoreEnv.png",
             category="Core",
             environment="CoreEnv",
+            description="Load Core Data",
         ),
         LoaderInfo(
             displayName="Multiscale",
             moduleName="CustomizedData",
-            icon=getResourcePath("Icons") / "MultiscaleIcon.png",
+            icon=getResourcePath("Icons") / "png" / "MultiscaleIcon.png",
             category="Multiscale",
             environment="MultiscaleEnv",
-        ),
-        LoaderInfo(
-            displayName="NetCDF",
-            moduleName="NetCDFLoader",
-            icon=getResourcePath("Icons") / "NetCDF.png",
-            category="MicroCT",
-            environment="MicroCTEnv",
+            description="Load Multiscale Data",
         ),
     ]
 }

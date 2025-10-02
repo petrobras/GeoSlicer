@@ -7,6 +7,7 @@ import slicer
 import pandas as pd
 import numpy as np
 from ltrace.slicer import ui, helpers, widgets
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer.node_attributes import ImageLogDataSelectable, TableType
@@ -28,7 +29,8 @@ class MultiscalePostProcessing(LTracePlugin):
         self.parent.title = "Multiscale Post-Processing"
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.set_manual_path("Modules/Multiscale/MultiscalePostProcessing.html")
+        self.setHelpUrl("Multiscale/MultiscalePostProcessing/MultiscalePostProcessing.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Multiscale/MultiscalePostProcessing.html", NodeEnvironment.MICRO_CT)
 
     @classmethod
     def readme_path(cls):

@@ -439,7 +439,7 @@ class MicrotomRemote(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.acknowledgementText = ""
-        self.set_manual_path("Simulation/microtom.html")
+        self.setHelpUrl("Volumes/Microtom/Microtom.html")
 
     @classmethod
     def readme_path(cls):
@@ -851,7 +851,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             hbox.addWidget(updateScripts)
             advancedFormLayout.addRow(hbox)
 
-            ApplicationObservables().applicationLoadFinished.connect(self.server.retrieveActiveStreamlit)
+            ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
         else:
             self.server = None
             self.toggleServerButton.clicked.connect(self.onStreamlitServerUnavailable)
@@ -859,6 +859,19 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         ioPageFormLayout.addWidget(self.streamlitAdvancedSection)
 
         return ioPageFormLayout
+
+    def __onApplicationLoadFinished(self) -> None:
+        if StreamlitServer.StreamlitServer is None:
+            return
+
+        self.server.retrieveActiveStreamlit()
+        ApplicationObservables().applicationLoadFinished.disconnect(self.server.retrieveActiveStreamlit)
+
+    def cleanup(self) -> None:
+        super().cleanup()
+        self.modeWidgets[widgets.BatchInputWidget.MODE_NAME].onDirSelected = None
+        if StreamlitServer.StreamlitServer is not None:
+            ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
 
     def onStreamlitServerUnavailable(self):
         slicer.util.errorDisplay("Server unavailable at this version.")
@@ -1479,7 +1492,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             import traceback
 
             traceback.print_exc()
-            print(repr(e))
+            logging.error(e)
             return None
 
     def onPorosimetryCLIModified(self, sim_info, cliNode, event):

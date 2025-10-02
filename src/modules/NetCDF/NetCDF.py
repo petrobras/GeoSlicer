@@ -1,9 +1,12 @@
 import os
 import qt
 import slicer
+
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.widget.save_netcdf import SaveNetcdfWidget
+from ltrace.slicer.node_attributes import NodeEnvironment
 from pathlib import Path
+from typing import Union
 
 # Checks if closed source code is available
 try:
@@ -21,7 +24,8 @@ class NetCDF(LTracePlugin):
         self.parent.title = "NetCDF"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = NetCDF.help()
+        self.setHelpUrl("Volumes/MoreTools/NetCDF/Introduction.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/MoreTools/NetCDF/Introduction.html", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):
@@ -35,17 +39,30 @@ class NetCDFWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        self.import_module = slicer.modules.netcdfloader.createNewWidgetRepresentation()
-        self.export_module = slicer.modules.netcdfexport.createNewWidgetRepresentation()
-        self.save_module = SaveNetcdfWidget()
+        self.importModule = slicer.modules.netcdfloader.createNewWidgetRepresentation()
+        self.exportModule = slicer.modules.netcdfexport.createNewWidgetRepresentation()
+        self.saveModule = SaveNetcdfWidget()
 
-        self.main_tab = qt.QTabWidget()
-        self.main_tab.addTab(self.import_module, "Import")
-        self.main_tab.addTab(self.save_module, "Save")
-        self.main_tab.addTab(self.export_module, "Export")
+        self.mainTab = qt.QTabWidget()
+        self.mainTab.addTab(self.importModule, "Import")
+        self.mainTab.addTab(self.saveModule, "Save")
+        self.mainTab.addTab(self.exportModule, "Export")
 
-        self.layout.addWidget(self.main_tab)
+        self.layout.addWidget(self.mainTab)
         self.layout.addStretch(1)
+
+    def selectTab(self, tabName: str) -> Union[qt.QWidget, None]:
+        for i in range(self.mainTab.count):
+            if self.mainTab.tabText(i) != tabName:
+                continue
+
+            self.mainTab.setCurrentIndex(i)
+            widget = self.mainTab.currentWidget()
+            if hasattr(self.mainTab.currentWidget(), "self"):
+                widget = self.mainTab.currentWidget().self()
+            return widget
+
+        return
 
 
 class NetCDFLogic(LTracePluginLogic):

@@ -32,6 +32,17 @@ class NodeObserver(qt.QObject):
                 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__on_node_removed),
             )
         )
+        if node.IsA("vtkMRMLSegmentationNode"):
+            for eventType in (
+                slicer.vtkSegmentation.RepresentationModified,
+                slicer.vtkSegmentation.SegmentModified,
+            ):
+                self.__observerHandlers.append(
+                    (
+                        node,
+                        node.AddObserver(eventType, self.__on_node_modified),
+                    )
+                )
         self.__signalModifiedDebouncer = DebounceCaller(
             parent=self, callback=self.onModifiedSignalToBeTriggered, intervalMs=100
         )

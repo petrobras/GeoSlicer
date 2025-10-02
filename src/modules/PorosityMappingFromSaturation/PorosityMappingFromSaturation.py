@@ -34,8 +34,6 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWid
 
 
 # ----------------
-
-
 class PCRNotFoundError(Exception):
     """Custom exception for PCR not found errors."""
 
@@ -609,6 +607,7 @@ class PorosityMappingFromSaturation(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ""
+        self.setHelpUrl("Volumes/Microporosity/PorosityFromSaturation.html")
 
     @classmethod
     def readme_path(cls):
@@ -745,7 +744,6 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
                 self.progressBar.start("model_building", timeout=3600)
 
                 try:
-                    tic = timer()
                     models = self.logic.dryWetModel(
                         self.inputWidget.dryImageNodeInput.currentNode(),
                         self.inputWidget.saturatedImageNodeInput.currentNode(),
@@ -756,8 +754,6 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
                         pcrWetRange,
                         self.inputWidget.roiNodeSelectorInput.currentData,
                     )
-                    toc = timer()
-                    print("Elapsed time 1", toc - tic)
                 except Exception as e:
                     slicer.util.errorDisplay(f"Failed to compute models. {str(e)}")
                     return
@@ -1130,31 +1126,6 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
 
             if all(len(timings[k]) == 7 for k in timings):
                 break
-
-        print(
-            "numpy",
-            np.mean(timings["numpy"]),
-            np.std(timings["numpy"]),
-            np.min(timings["numpy"]),
-            np.max(timings["numpy"]),
-            len(timings["numpy"]),
-        )
-        print(
-            "expr",
-            np.mean(timings["expr"]),
-            np.std(timings["expr"]),
-            np.min(timings["expr"]),
-            np.max(timings["expr"]),
-            len(timings["expr"]),
-        )
-        print(
-            "model",
-            np.mean(timings["model"]),
-            np.std(timings["model"]),
-            np.min(timings["model"]),
-            np.max(timings["model"]),
-            len(timings["model"]),
-        )
 
     # def runDryWetModel(self, dryImageNode, wetImageNode, segmentationNode, segments, targets, maskNode=None):
     #

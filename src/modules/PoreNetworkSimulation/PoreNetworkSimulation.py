@@ -17,6 +17,7 @@ from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE
 from ltrace.remote.handlers.PoreNetworkSimulationHandler import PoreNetworkSimulationHandler
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath, slicer_is_in_developer_mode
 
 try:
@@ -39,8 +40,9 @@ class PoreNetworkSimulation(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/PNSimulation.html').as_posix()}"
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Volumes/PNM/PNSimulation.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/PNM/PNSimulation.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -74,11 +76,13 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
 
         self.snapshotSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTextNode"])
         self.snapshotSelector.showEmptyHierarchyItems = True
+        self.snapshotSelector.objectName = "Snapshot Selector"
         self.snapshotSelectorLabel = qt.QLabel("Snapshot selector")
         inputFormLayout.addRow(self.snapshotSelectorLabel, self.snapshotSelector)
-        if not slicer_is_in_developer_mode():
-            self.snapshotSelectorLabel.setVisible(False)
-            self.snapshotSelector.setVisible(False)
+
+        self.snapshotEnabled = slicer_is_in_developer_mode()
+        if not self.snapshotEnabled:
+            self.setSnapshotVisible(False)
 
         #
         # Parameters Area: parametersFormLayout
@@ -142,6 +146,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         #
         self.inputSelector.currentItemChanged.connect(self.onInputSelectorChange)
         self.simulationSelector.currentIndexChanged.connect(self.onChangeModel)
+        self.snapshotSelector.currentItemChanged.connect(self.onChangeSnapshot)
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
         self.onChangeModel()
@@ -160,14 +165,12 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         super().onReload()
 
     def onCancelButtonClicked(self):
-        params = self.twoPhaseSimWidget.getParams()
-        if params["remote_execution"] == "F":
+        if not self.twoPhaseSimWidget.remoteQRadioButton.isChecked():
             self.logic.cancel()
             self.applyButtonEnabled(True)
 
     def applyButtonEnabled(self, enabled):
-        params = self.twoPhaseSimWidget.getParams()
-        if params["remote_execution"] == "F":
+        if not self.twoPhaseSimWidget.remoteQRadioButton.isChecked():
             self.applyButton.setEnabled(enabled)
             self.cancelButton.setEnabled(not enabled)
 
@@ -177,6 +180,8 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.onePhaseSimWidget.setVisible(simulation == ONE_PHASE)
         self.twoPhaseSimWidget.setVisible(simulation == TWO_PHASE)
         self.mercurySimWidget.setVisible(simulation == MICP)
+
+        self.setSnapshotVisible(self.snapshotEnabled and (simulation == TWO_PHASE))
 
         if simulation == ONE_PHASE:
             self.logic = OnePhaseSimulationLogic(self.parent, self.progressBar)
@@ -221,8 +226,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def runTwoPhaseSimulation(self, pore_table_node):
         self.applyButtonEnabled(False)
         slicer.app.processEvents()
-        params = self.twoPhaseSimWidget.getParams()
-        params["subresolution function"] = params["subresolution function call"](pore_table_node)
+        params = self.twoPhaseSimWidget.getParams(pore_table_node)
         snapshot_node = self.snapshotSelector.currentNode()
         if params["remote_execution"] == "F":
             self.logic.run_2phase(
@@ -234,8 +238,9 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             )
         else:
             self.handler = PoreNetworkSimulationHandler(pore_table_node.GetID(), params, self.outputPrefix.text)
+            job_name = f"PNM Two-phase: {self.outputPrefix.text}"
             success = slicer.modules.RemoteServiceInstance.cli.run(
-                self.handler, name="PoreNetworkSimulation", job_type="pnmsimulation"
+                self.handler, name=job_name, job_type="pnmsimulation"
             )
             if success:
                 self.showJobs()
@@ -275,3 +280,11 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             self.logic = None
 
         super().cleanup()
+
+    def setSnapshotVisible(self, visible):
+        self.snapshotSelectorLabel.setVisible(visible)
+        self.snapshotSelector.setVisible(visible)
+
+    def onChangeSnapshot(self):
+        if self.snapshotSelector.currentNode() != None:
+            self.twoPhaseSimWidget.uncheckCreateSnapshot()

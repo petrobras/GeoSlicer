@@ -240,8 +240,8 @@ class JobMonitor(LTracePlugin):
         self.parent.categories = ["Tools"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = JobMonitor.help()
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("GettingStarted/RemoteComputing.html")
 
         self.filter = JobListFilter()
 

@@ -15,7 +15,7 @@ class ModuleHeader(qt.QWidget):
         self.headerLayout.setSpacing(3)
         self.headerLayout.setAlignment(qt.Qt.AlignLeft)
 
-        self.baseIcon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "ChevronRight.svg")
+        self.baseIcon = svgToQIcon(getResourcePath("Icons") / "svg" / "ChevronRight.svg")
         self.baseLabel = qt.QLabel()
         self.baseLabel.setPixmap(self.baseIcon.pixmap(qt.QSize(16, 16)))
         self.moduleTitle = qt.QLabel("")

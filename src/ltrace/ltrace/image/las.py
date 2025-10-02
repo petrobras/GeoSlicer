@@ -8,7 +8,12 @@ import slicer
 
 from ltrace.constants import DLISImportConst
 from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE
-from ltrace.slicer.helpers import getVolumeNullValue, arrayFromVisibleSegmentsBinaryLabelmap, arrayPartsFromNode
+from ltrace.slicer.helpers import (
+    getVolumeNullValue,
+    arrayFromVisibleSegmentsBinaryLabelmap,
+    arrayPartsFromNode,
+    getWellAttributeFromNode,
+)
 
 
 def retrieve_depth_curve(node_list):
@@ -186,15 +191,15 @@ def extract_las_info_from_node(node):
 
     #  well name
     well_from_node_name = node.GetName().split("_")[0] if len(node.GetName().split("_")) > 1 else ""
-    if node.GetAttribute(DLISImportConst.WELL_NAME_TAG) is not None:
-        las_info["well_name"] = node.GetAttribute(DLISImportConst.WELL_NAME_TAG)
+    if getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) is not None:
+        las_info["well_name"] = getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)
         if well_from_node_name == "":
             logging.info(
-                f"Node name ({node.GetName()}) doesn't have the well name ({node.GetAttribute(DLISImportConst.WELL_NAME_TAG)}) prepended to it."
+                f"Node name ({node.GetName()}) doesn't have the well name ({getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)}) prepended to it."
             )
-        elif node.GetAttribute(DLISImportConst.WELL_NAME_TAG) != well_from_node_name:
+        elif getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) != well_from_node_name:
             logging.warning(
-                f"Well name informed in {node.GetName()} ({node.GetAttribute(DLISImportConst.WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {node.GetAttribute(DLISImportConst.WELL_NAME_TAG)} will be considered as the well name."
+                f"Well name informed in {node.GetName()} ({getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)} will be considered as the well name."
             )
     else:
         las_info["well_name"] = well_from_node_name
@@ -202,11 +207,16 @@ def extract_las_info_from_node(node):
             logging.warning(f"No well name found for {node.GetName()}.")
 
     las_info["data_name"] = node.GetName().replace("[" + units + "]", "")
+    if "_Proportions" in las_info["data_name"]:
+        las_info["data_name"] = f"Proportions_{las_info['data_name'].split('_Proportions'   )[0]}"
+
     new_data_name = las_info["data_name"]
-    if node.GetAttribute(DLISImportConst.WELL_NAME_TAG):
-        new_data_name = las_info["data_name"].replace(node.GetAttribute(DLISImportConst.WELL_NAME_TAG) + "_", "")
+    if getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG):
+        new_data_name = las_info["data_name"].replace(
+            getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) + "_", ""
+        )
     if len(new_data_name) == 0:
-        new_data_name = node.GetAttribute(DLISImportConst.WELL_NAME_TAG)
+        new_data_name = getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)
     las_info["data_name"] = new_data_name
 
     las_info["null_value"] = (

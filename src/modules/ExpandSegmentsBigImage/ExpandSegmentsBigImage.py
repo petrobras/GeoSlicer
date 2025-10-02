@@ -42,6 +42,7 @@ class ExpandSegmentsBigImage(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ExpandSegmentsBigImage.help()
+        self.setHelpUrl("Volumes/BigImage/ExpandSegments.html")
 
     @classmethod
     def readme_path(cls):

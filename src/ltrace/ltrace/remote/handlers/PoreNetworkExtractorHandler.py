@@ -134,26 +134,59 @@ class PoreNetworkExtractorHandler:
         try:
             job_status = slurm_utils.sacct(client, self.slurm_job_ids)
             if slurm_utils.all_done(job_status):
+                failed_jobs = []
+                for job_id in self.slurm_job_ids:
+                    slurm_out = self.job_local_path / f"slurm-{job_id}.out"
+                    progress_pct = self.read_last_progress(slurm_out)
+                    if progress_pct < 100:
+                        failed_jobs.append(
+                            {"job_id": job_id, "last_progress": progress_pct, "slurm_out": str(slurm_out)}
+                        )
+
+                if failed_jobs:
+                    failed_ids = ", ".join([f["job_id"] for f in failed_jobs])
+                    caller.set_state(
+                        uid,
+                        "FAILED",
+                        100,
+                        message=f"The following jobs did not complete: {failed_ids}.",
+                        details={"failed_jobs": failed_jobs},
+                        end_time=datetime.now().timestamp(),
+                    )
+                    return
+
                 caller.set_state(
-                    uid,
-                    "COMPLETED",
-                    100,
-                    message="All jobs completed.",
-                    end_time=datetime.now().timestamp(),
+                    uid, "COMPLETED", 100, message="All jobs completed.", end_time=datetime.now().timestamp()
                 )
+                return
             else:
-                # Aggregate progress from each job output file
                 total_progress = 0
+                count = 0
                 for job_id in self.slurm_job_ids:
                     slurm_out = self.job_local_path / f"slurm-{job_id}.out"
                     total_progress += self.read_last_progress(slurm_out)
-                avg_progress = max(total_progress / len(self.slurm_job_ids), 10)
-
+                    count += 1
+                avg_progress = max(total_progress / count, 10) if count > 0 else 10
                 caller.set_state(uid, "RUNNING", avg_progress)
                 caller.schedule(uid, "PROGRESS")
         except Exception as e:
             traceback.print_exc()
             logging.debug(f"Error in progress: {repr(e)}")
+
+    def read_last_progress(self, slurm_out_file_path):
+        last_progress = 0.1
+        try:
+            with slurm_out_file_path.open("r") as f:
+                for line in f:
+                    match = re.search(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>", line)
+                    if match:
+                        last_progress = float(match.group(1))
+        except FileNotFoundError:
+            return 10
+        except Exception:
+            logging.exception(f"Error reading slurm out file {slurm_out_file_path}")
+            return 10
+        return last_progress * 100
 
     def cancel(self, caller: JobManager, uid: str, client: Any = None):
         try:
@@ -231,16 +264,3 @@ class PoreNetworkExtractorHandler:
             slicer.util.infoDisplay(
                 f"Could not find the reference node with ID '{self.input_node_id}'. Load the scene that contains that node before collecting the job result."
             )
-
-    def read_last_progress(self, slurm_out_file_path):
-        last_progress = 0.1
-        try:
-            with slurm_out_file_path.open("r") as f:
-                for line in f:
-                    match = re.search(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>", line)
-                    if match:
-                        last_progress = float(match.group(1))
-        except FileNotFoundError:
-            return 0.1
-
-        return last_progress * 100

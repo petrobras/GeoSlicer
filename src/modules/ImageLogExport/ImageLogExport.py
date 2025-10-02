@@ -3,7 +3,7 @@ import qt
 
 from pathlib import Path
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, slicer_is_in_developer_mode
-
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 # Checks if closed source code is available
 try:
@@ -25,6 +25,8 @@ class ImageLogExport(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogExport.help()
+        self.setHelpUrl("ImageLog/Export/Export.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ExportTools/ImageLogExport.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

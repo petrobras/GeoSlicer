@@ -23,7 +23,7 @@ class WidgetTracking(LTracePlugin):
         self.parent.categories = ["Tools"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = WidgetTracking.help()
-        # self.parent.hidden = True
+        self.parent.hidden = True
 
     @classmethod
     def readme_path(cls):
@@ -34,7 +34,7 @@ class WidgetTrackingWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
 
-    def buttonsWidget(self) -> qt.QWidget():
+    def buttonsWidget(self) -> qt.QWidget:
         mainWidget = qt.QWidget()
         mainLayout = qt.QVBoxLayout()
         mainWidget.setLayout(mainLayout)

@@ -4,15 +4,12 @@
 from __future__ import print_function
 
 import json
-import sys
-import numpy as np
 import pandas as pd
 
-import vtk, slicer, mrml, slicer.util
+import slicer, mrml, slicer.util
 
 from ltrace.slicer.cli_utils import readFrom, writeDataInto, writeToTable, progressUpdate
 from ltrace.algorithms import measurements as measure
-from ltrace.transforms import clip_to
 
 
 def main(args):
@@ -29,7 +26,7 @@ def main(args):
         progressUpdate(1)
 
     params = json.loads(args.params) if args.params else {}
-    bgPorosity = params.get("intrinsic_porosity", 1)
+    bgPorosity = params.get("intrinsic_porosity", 0)
     labels_ = params.get("labels", None)
     microporosityLowerLimit = params.get("microporosityLowerLimit", None)
     microporosityUpperLimit = params.get("microporosityUpperLimit", None)
@@ -42,7 +39,7 @@ def main(args):
 
     validLabels = sum([len(labels_[key]) for key in labels_ if key != "Ignore"])
 
-    outputVoxelArray, totalPorosity, porosityLayer = measure.microporosity(
+    outputVoxelArray, info = measure.microporosity(
         inputVoxelArray,
         labelmapVoxelArray,
         labels_,
@@ -52,23 +49,7 @@ def main(args):
         microporosityUpperLimit=microporosityUpperLimit,
     )
 
-    voxel_size = np.prod(np.array([i for i in inputVolumeNode.GetSpacing()]))
-
-    N = outputVoxelArray.size
-    rows = [
-        (name.replace("Voxels", "Segment (%)"), 100 * (value / N))
-        for name, value in porosityLayer.items()
-        if "Voxels" in name
-    ]
-
-    rows.extend(
-        [
-            ("Total Microporosity (%)", 100 * (porosityLayer["Microporosity Weighted"] / N)),
-            ("Total Pore Voxels", totalPorosity),
-            ("Total Pore Volume (mm^3)", totalPorosity * voxel_size),
-            ("Total Porosity (Micro+Macro) (%)", totalPorosity * 100 / outputVoxelArray.size),
-        ]
-    )
+    rows = [(key, value) for key, value in info.items()]
 
     df = pd.DataFrame(rows, columns=("Property", "Value"))
     df = df.round(decimals=4)

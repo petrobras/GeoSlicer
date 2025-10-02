@@ -23,6 +23,7 @@ class MultipleThresholdBigImage(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MultipleThresholdBigImage.help()
+        self.setHelpUrl("Volumes/BigImage/MultipleThreshold.html")
 
     @classmethod
     def readme_path(cls):

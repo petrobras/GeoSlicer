@@ -47,6 +47,7 @@ class BoundaryRemovalBigImage(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = BoundaryRemovalBigImage.help()
+        self.setHelpUrl("Volumes/BigImage/BoundaryRemoval.html")
 
     @classmethod
     def readme_path(cls):

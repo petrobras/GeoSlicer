@@ -507,7 +507,7 @@ class CSVLoader(object):
                     "",
                     "",
                     self.filename,
-                    "",
+                    False,
                     False,
                     False,
                     self.filename,

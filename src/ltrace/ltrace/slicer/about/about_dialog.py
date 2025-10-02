@@ -11,7 +11,7 @@ class AboutDialog(qt.QDialog):
 
         self.setWindowTitle("About GeoSlicer")
         self.setWindowFlags(self.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
-        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "GeoSlicer.ico").as_posix()))
+        self.setWindowIcon(qt.QIcon((getResourcePath("Icons") / "ico" / "GeoSlicer.ico").as_posix()))
         self.setFixedSize(600, 430)
         self.setupUi()
         self.setObjectName("GeoSlicer About Dialog")
@@ -19,7 +19,7 @@ class AboutDialog(qt.QDialog):
     def setupUi(self) -> None:
         layout = qt.QVBoxLayout(self)
 
-        pixMap = qt.QPixmap((getResourcePath("Icons") / "GeoSlicerLogo.png").as_posix())
+        pixMap = qt.QPixmap((getResourcePath("Icons") / "png" / "GeoSlicerLogo.png").as_posix())
         pixMap = pixMap.scaled(
             pixMap.width() // 10, pixMap.height() // 10, qt.Qt.KeepAspectRatio, qt.Qt.SmoothTransformation
         )

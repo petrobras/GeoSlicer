@@ -6,6 +6,8 @@ import slicer
 import ast
 
 import numpy as np
+
+from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
 from ltrace.slicer import ui
 from ltrace.slicer.ui import (
     hierarchyVolumeInput,
@@ -69,8 +71,8 @@ class SubscaleModelWidget(qt.QWidget):
         self.parameterInputLoadCollapsible.collapsed = True
         self.parameterInputLoadCollapsible.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Fixed)
 
-        self.parameterInputSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
-        self.parameterInputSelector.addNodeAttributeIncludeFilter("table_type", TableType.PNM_SUBSCALE_PARAMETERS.value)
+        self.parameterInputSelector = ui.hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTextNode"])
+        self.parameterInputSelector.addNodeAttributeIncludeFilter("table_type", TableType.PNM_INPUT_PARAMETERS.value)
         self.parameterInputSelector.setToolTip("Select a table node containing simulation parameters.")
         self.parameterInputSelector.objectName = "Subscale inputs"
 
@@ -83,7 +85,9 @@ class SubscaleModelWidget(qt.QWidget):
         parameterInputLayout.addRow(self.parameterInputLoadButton)
 
         parameterInputLoadIcon = qt.QLabel()
-        parameterInputLoadIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Load.png").pixmap(qt.QSize(13, 13)))
+        parameterInputLoadIcon.setPixmap(
+            qt.QIcon(getResourcePath("Icons") / "png" / "Load.png").pixmap(qt.QSize(13, 13))
+        )
         parameterInputLoadIcon.setSizePolicy(qt.QSizePolicy.Fixed, qt.QSizePolicy.Fixed)
         parameterInputLoadIcon.setContentsMargins(0, 5, 0, 0)
 
@@ -161,14 +165,8 @@ class SubscaleModelWidget(qt.QWidget):
             slicer.util.warningDisplay("No parameter table node selected.")
             return
 
-        table = parameter_node.GetTable()
-        params = {}
-        for row in range(table.GetNumberOfRows()):
-            param_name = table.GetValue(row, 0).ToString()
-            param_value = table.GetValue(row, 1).ToString()
-            params[param_name] = param_value
-
-        self.setParams(params)
+        parameters_dict = parameter_node_to_dict(parameter_node)
+        self.setParams(parameters_dict)
 
     def getParams(self):
         subres_model_name = self.microscale_model_dropdown.currentText

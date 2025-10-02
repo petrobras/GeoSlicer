@@ -38,8 +38,9 @@ class PoreStats(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section", "ImageLog", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Modules/Thin_section/PoreStats.html').as_posix()}"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
+        self.setHelpUrl("ThinSection/Segmentation/PoreStats.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/PoreStats.html", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):
@@ -403,7 +404,6 @@ class PoreStatsWidget(LTracePluginWidget):
             )
 
         if not caller.IsBusy():
-            print("ExecCmd CLI %s" % caller.GetStatusString())
             self.cliNode.RemoveObserver(self.__cliNodeObserver)
             self.__cliNodeObserver = None
             del self.cliNode

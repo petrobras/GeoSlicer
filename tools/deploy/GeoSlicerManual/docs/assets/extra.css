@@ -1,17 +1,29 @@
 /* theme/extra.css */
+/* Table of contents active section */
+.md-sidebar--secondary .md-sidebar__scrollwrap a.md-nav__link.md-nav__link--active {
+    background-color: rgba(38, 194, 82, 0.22);
+    display: block;
+}
+
 [data-md-color-scheme=slate] {
     --md-hue: 240;
+    --md-primary-fg-color: hsl(0deg 0% 17.25%);
     --md-default-bg-color: hsl(0deg 0% 17.25%);
     --md-footer-bg-color: hsl(0, 0%, 13%);
-    --md-typeset-a-color: #dadada !important;
+    --md-typeset-a-color: #90ee90 !important;
     --md-accent-fg-color: #dadada !important;
     --md-default-fg-color--light: #dadada;
 }
 
 [data-md-color-scheme=default] {
-    --md-typeset-a-color: rgba(0, 0, 0, .87) !important;
+    --md-primary-fg-color: white;
+    --md-typeset-a-color: #006400 !important;
     --md-accent-fg-color: rgba(0, 0, 0, .87) !important;
     --md-default-fg-color--light: rgba(0, 0, 0, .87) !important;
+}
+
+.md-typeset a {
+    text-decoration: underline;
 }
 
 h1 {
@@ -82,9 +94,21 @@ h6#entre-em-contato {
     cursor: pointer;
 }
 
+/* General search input styling */
 .md-search__input {
-    background-color: #dadada;
     border-radius: 8px;
+}
+
+/* Light mode search bar styles */
+[data-md-color-scheme="default"] .md-search__input {
+    background-color: #dadada;
+    color: rgba(0, 0, 0, .87);
+}
+
+/* Dark mode search bar styles for both idle and focused states */
+[data-md-color-scheme="slate"] .md-search__input {
+    background-color: #404040;
+    color: #ffffff;
 }
 
 /* fonts */
@@ -95,11 +119,6 @@ h6#entre-em-contato {
 /* Remove the unwanted icon */
 .md-nav__icon {
     display: none;
-}
-
-/* Remove the unwanted label for nav drawer */
-.md-nav__title {
-    background-color: white !important;
 }
 
 label[for="__drawer"] {
@@ -123,11 +142,27 @@ label[for="__drawer"] {
 
 /* General active link styling */
 .md-nav__item--active .md-nav__link--active {
-    background-color: rgba(38, 195, 82, 0.1);
     padding: 5px;
     border-radius: 8px;
     display: block;
     margin-left: 0;
+    margin-top: 0.3em;
+}
+
+[data-md-color-scheme=slate] .md-nav__item--active .md-nav__link--active {
+    background-color: rgba(38, 195, 82, 0.1);
+    svg.lucide {
+        stroke: #FFFFFF;
+        color: rgba(38, 195, 82, 0.1);
+    }
+}
+
+[data-md-color-scheme=default] .md-nav__item--active .md-nav__link--active {
+    background-color: rgba(38, 195, 82, 0.35);
+    svg.lucide {
+        stroke: #000000;
+        color: rgba(38, 195, 82, 0.1);
+    }
 }
 
 /* Basic styling for the active label in nested menus */
@@ -166,13 +201,6 @@ label[for="__drawer"] {
     touch-action: auto;
     max-width: 100%;
 }
-
-.md-sidebar.md-sidebar--secondary[data-md-component="sidebar"][data-md-type="toc"] {
-    width: 0;
-    height: 0;
-    overflow: hidden;
-}
-
 
 .content-wrapper {
     display: flex;
@@ -253,4 +281,25 @@ label[for="__drawer"] {
     .md-nav__link {
         margin-right: 0%;
     }
+}
+
+svg {
+    width: 1.2em;
+    height: 1.2em;
+    margin: 0;
+    padding: 0;
+    vertical-align: middle;
+    display: inline-block;
+}
+
+/* light mode */
+[data-md-color-scheme="default"] svg.lucide {
+    stroke: #000000;
+    color: #e1e1e1;
+}
+
+/* dark mode */
+[data-md-color-scheme="slate"] svg.lucide {
+    stroke: #FFFFFF;
+    color: #333333;
 }

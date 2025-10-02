@@ -2,6 +2,7 @@ import qt
 import psutil
 
 from ltrace.slicer_utils import getResourcePath
+from ltrace.slicer.helpers import svgToQIcon
 
 
 class MemoryUsageWidget(qt.QWidget):
@@ -11,7 +12,8 @@ class MemoryUsageWidget(qt.QWidget):
         layout = qt.QHBoxLayout()
         layout.setContentsMargins(8, 0, 16, 0)
         layout.setSpacing(3)
-        icon = qt.QIcon((getResourcePath("Icons") / "IconSet-dark" / "Memory.svg").as_posix())
+
+        icon = svgToQIcon((getResourcePath("Icons") / "svg" / "Memory.svg").as_posix())
         self.labelIcon = qt.QLabel()
         self.labelIcon.setPixmap(icon.pixmap(16, 16))
         self.memoryCounter = qt.QLabel("")

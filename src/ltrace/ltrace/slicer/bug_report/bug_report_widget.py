@@ -1,10 +1,8 @@
 import logging
 import ctk
 import qt
-import slicer
-import shutil
 
-from datetime import datetime
+from ltrace.slicer.bug_report.bug_report_model import BugReportModel
 from pathlib import Path
 
 
@@ -40,7 +38,7 @@ class BugReportDialog(qt.QDialog):
         layout.addRow(buttonsLayout)
 
         generateButton.clicked.connect(self._onGenerateButtonClicked)
-        cancelButton.clicked.connect(self.close)
+        cancelButton.clicked.connect(self._onCloseButtonClicked)
 
     def _onGenerateButtonClicked(self) -> None:
         reportPath = Path(self.reportDirectoryButton.directory).absolute() / "GeoSlicerBugReport"
@@ -53,14 +51,14 @@ class BugReportDialog(qt.QDialog):
         except Exception as error:
             logging.error(f"Failed to generate bug report: {error}.")
 
-        htmlMessage = f"Bug report was generated in <b>{generatedFilePath}</b>.<br>Please send this file to <a href='mailto:contact@ltrace.com.br'>contact@ltrace.com.br</a>."
+        htmlMessage = f"Bug report was generated in <b>{generatedFilePath}</b>.<br>Please create a issue in our <a href='https://github.com/petrobras/GeoSlicer/issues/new'>GitHub repository</a> and attach the report file."
 
         messageBox = qt.QMessageBox(self)
         messageBox.setWindowTitle("Bug report generated")
         messageBox.setIcon(qt.QMessageBox.Information)
         messageBox.setText(htmlMessage)
         openFolderButton = messageBox.addButton("&Open report folder", qt.QMessageBox.ActionRole)
-        closeButton = messageBox.addButton("&Close", qt.QMessageBox.AcceptRole)
+        closeButton = messageBox.addButton("&Close", qt.QMessageBox.RejectRole)
         messageBox.exec_()
         if messageBox.clickedButton() == openFolderButton:
             folder = Path(generatedFilePath).parent
@@ -69,56 +67,5 @@ class BugReportDialog(qt.QDialog):
         self.errorDescriptionTextEdit.setPlainText("")
         self.close()
 
-
-class BugReportModel:
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
-    def _getTrackingLogs() -> list[Path]:
-        trackingManager = slicer.modules.AppContextInstance.getTracker()
-        return trackingManager.getRecentLogs() if trackingManager else []
-
-    @staticmethod
-    def _getRecentLogs() -> list[Path]:
-        logFilePaths = [Path(file) for file in list(slicer.app.recentLogFiles())]
-        files = [file for file in logFilePaths if file.exists()]
-        return files
-
-    @staticmethod
-    def _getTimeNowAsString() -> str:
-        return datetime.now().strftime("%m_%d_%Y-%H_%M_%S")
-
-    @staticmethod
-    def generateBugReport(outputPath: Path, errorDescription: str) -> str:
-        """Generate a bug report
-
-        Args:
-            outputPath (Path): the path to save the bug report
-            errorDescription (str): the error description
-
-        Returns:
-            str: the generated filepath
-        """
-        outputPath.mkdir(parents=True, exist_ok=True)
-        geoslicerLogFiles = BugReportModel._getRecentLogs()
-        trackingLogFiles = BugReportModel._getTrackingLogs()
-
-        nowString = BugReportModel._getTimeNowAsString()
-        compresseFilePath = outputPath.parent / f"{outputPath.stem}-{nowString}"
-        for file in geoslicerLogFiles + trackingLogFiles:
-            try:
-                shutil.copy2(file, str(outputPath))
-            except FileNotFoundError:
-                logging.debug(f"Unable to copy the file '{file}'. File not found.")
-
-        Path(outputPath / "bug_description.txt").write_text(errorDescription)
-        generatedFilePath = shutil.make_archive(compresseFilePath, "zip", outputPath)
-
-        try:
-            shutil.rmtree(str(outputPath))
-        except OSError as e:
-            # If for some reason can't delete the directory
-            pass
-
-        return generatedFilePath
+    def _onCloseButtonClicked(self) -> None:
+        self.close()

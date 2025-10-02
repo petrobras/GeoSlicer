@@ -4,6 +4,7 @@ import qt
 import slicer
 
 from ltrace.slicer import ui
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 
@@ -21,6 +22,8 @@ class ImageLogUnwrapImport(LTracePlugin):
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogUnwrapImport.help()
+        self.setHelpUrl("ImageLog/Unwrap/Unwrap.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ImportTools/ImageLogUnwrap.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

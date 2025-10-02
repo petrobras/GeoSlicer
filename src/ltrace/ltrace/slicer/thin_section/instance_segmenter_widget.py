@@ -15,6 +15,7 @@ import ctk
 import slicer
 
 from .instance_segmenter_logic import ThinSectionInstanceSegmenterLogic
+from ltrace.slicer.app import MANUAL_BASE_URL
 
 
 class ThinSectionInstanceSegmenterWidget(qt.QWidget):
@@ -76,7 +77,7 @@ class ThinSectionInstanceSegmenterWidget(qt.QWidget):
         self.classifierInput.objectName = "Thin Section Instance Segmenter Model ComboBox"
 
         classifierInputHelpButton = HelpButton(
-            f"### Instance Segmentation Inference\n\n The frameworks provided here can support different types of models. Select one of then from the list.\n\n-----\n More information available at [Geoslicer Manual]({scripted_modules_path}/Resources/manual/Segmenter/Semiauto/semiauto.html)"
+            f"### Instance Segmentation Inference\n\n The frameworks provided here can support different types of models. Select one of then from the list.\n\n-----\n More information available at [Geoslicer Manual]({MANUAL_BASE_URL}ThinSection/Segmentation/ThinSectionSegmenter.html)"
         )
 
         hbox = qt.QHBoxLayout(widget)

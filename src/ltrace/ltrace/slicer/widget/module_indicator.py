@@ -20,8 +20,8 @@ class ModuleIndicator(qt.QWidget):
         # TODO check if it worth it to have a bookmark
         # self.bookmarkBtn = self.checkableButton(
         #     lambda checked: print("Bookmark checked" if checked else "Bookmark unchecked"),
-        #     svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "BookmarkCheck.svg"),
-        #     svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Bookmark.svg"),
+        #     svgToQIcon(getResourcePath("Icons") / "svg" / "BookmarkCheck.svg"),
+        #     svgToQIcon(getResourcePath("Icons") / "svg" / "Bookmark.svg"),
         #     checked=False
         # )
         # self.bookmarkBtn.setToolButtonStyle(qt.Qt.ToolButtonIconOnly)
@@ -29,7 +29,7 @@ class ModuleIndicator(qt.QWidget):
 
         self.docBtn = qt.QToolButton(self)
         self.docBtn.setIcon(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "CircleHelp.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "CircleHelp.svg"),
         )
         self.docBtn.setToolButtonStyle(qt.Qt.ToolButtonIconOnly)
         self.docBtn.setAutoRaise(True)

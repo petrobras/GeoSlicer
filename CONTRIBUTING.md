@@ -1,99 +1,301 @@
-[![Apache 2.0][apache-shield]][apache] 
-[![CC BY 4.0][cc-by-shield]][cc-by]
+# Contributing to GeoSlicer
 
-[apache]: https://opensource.org/licenses/Apache-2.0
-[apache-shield]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
-[cc-by]: http://creativecommons.org/licenses/by/4.0/
-[cc-by-shield]: https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg
+First off, thank you for considering contributing to GeoSlicer!
 
-# Welcome to the GeoSlicerPublic project contributing guide
+This document is a guide to help you through the process. We have a few guidelines that we need contributors to follow so that we can have a chance of keeping on top of things.
 
-:+1: Thank you for taking the time to contribute to the GeoSlicerPublic project! :+1:
+## Code of Conduct
 
-We expect to receive various types of contributions from individuals, research institutions, startups, companies and oil operators partners.
+This project and everyone participating in it is governed by the [GeoSlicer Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior.
 
-In this guide we present how each of the expected contributions might be proposed.
+## How Can I Contribute?
 
-# Table of Content
+There are many ways to contribute to GeoSlicer, from writing tutorials or blog posts, improving the documentation, submitting bug reports and feature requests or writing code which can be incorporated into GeoSlicer itself.
 
-- [Welcome to the GeoSlicerPublic project contributing guide](#welcome-to-the-geoslicerpublic-project-contributing-guide)
-- [Table of Content](#table-of-content)
-- [Getting started](#getting-started)
-- [Asking questions](#asking-questions)
-- [Before contributing](#before-contributing)
-  - [Contribution levels](#contribution-levels)
-  - [GeoSlicerPublic repository structure](#geoslicerpublic-repository-structure)
-- [Proposing contributions](#proposing-contributions)
-  - [Citation](#citation)
-  - [Bugs](#bugs)
-  - [Documentation improvements](#documentation-improvements)
-  - [Cosmetic improvements](#cosmetic-improvements)
-  - [Other improvements](#other-improvements)
-- [Backlog](#backlog)
+### Reporting Bugs
 
-# Getting started
+Bugs are tracked as [GitHub issues](https://github.com/petrobras/geoslicer/issues). Before creating a bug report, please check the list of existing issues to see if the bug has already been reported. If it has, please add a comment to the existing issue instead of creating a new one.
 
-The recommended first step is to read the project's [README](README.md) for an overview of what this repository contains.
+When you are creating a bug report, please include as many details as possible. Fill out the required template, the information it asks for helps us resolve issues faster.
 
-# Asking questions
+### Suggesting Enhancements
 
-Please do not open issues to ask questions. Please use the Discussions section accessed through the link that appears in the top menu.
+Enhancement suggestions are tracked as [GitHub issues](https://github.com/petrobras/geoslicer/issues). Before creating an enhancement suggestion, please check the list of existing issues to see if the enhancement has already been suggested. If it has, please add a comment to the existing issue instead of creating a new one.
 
-# Before contributing
+When you are creating an enhancement suggestion, please include as many details as possible. Fill out the required template, the information it asks for helps us to better understand the enhancement.
 
-Before you can contribute to this project, we require you read and agree to the following documents:
+### Submitting Pull Requests
 
-* [CODE OF CONDUCT](CODE_OF_CONDUCT.md);
-* [CONTRIBUTOR LICENSE AGREEMENT](CONTRIBUTOR_LICENSE_AGREEMENT.md);
-* This contributing guide.
+If you have a bugfix or a new feature that you would like to contribute to GeoSlicer, you can do so by sending a pull request. We are always thrilled to receive pull requests, and do our best to process them as fast as we can. Before you start to code, we recommend discussing your plans through a GitHub issue, especially for more ambitious contributions. This gives other contributors a chance to point you in the right direction, give you feedback on your design, and help you find out if someone else is working on the same thing.
 
-It is also very important to know, participate and follow the discussions. Click on the Discussions link that appears in the top menu.
+#### Pull Request Workflow
 
-## Contribution levels
+1.  **Fork the repository** and create your branch from `master`.
+2.  **Set up your development environment** by following the instructions in the [compiling guide](BUILD.md).
+3.  **Make your changes.**
+4.  **Run the test suite** to ensure that your changes don't break anything.
 
-We expect to receive contributions at different levels, as shown in the figure below. Some examples for each level are:
+    ```bash
+    pytest tests/unit -v
+    ```
 
-* Basic: 
-    * Identify and report any issues related to the GUI and platform
-* Intermediary:
-    * Identify, report and fix bugs;
-    * Suggest documentation improvements;
-    * Suggest new features for digital rocks image analysis and processing
-* Advanced:
-    * Suggest or develop new approaches for the processing and automation of digital petrophysics
+5.  **Commit your changes** using a descriptive commit message that follows our [commit message conventions](#commit-message-conventions).
+6.  **Push your branch** to your fork.
+7.  **Open a pull request** to the `master` branch of the main repository.
 
-## GeoSlicerPublic repository structure
+#### Commit Message Conventions
 
-GeoSlicerPublic is an opensource automatically generated version of GeoSlicer. The src folder contains 3 main types of artifacts. The modules folder consists of python and cli modules for GeoSlicer. The ltrace folder aims to concentrate generic functions that are useful for interacting with GeoSlicer, its objects and the various data types when dealing with digital rock images.
+We use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification for our commit messages. This allows us to automatically generate changelogs and release notes. Please follow this specification for your commit messages.
 
-Due to the project not being a pure python project, the main requirements file is stored at [src/ltrace/requirements.txt](src/ltrace/requirements.txt).
+Here are some examples:
 
-# Proposing contributions
+*   `feat: Add new feature`
+*   `fix: Fix bug`
+*   `docs: Update documentation`
+*   `style: Format code`
+*   `refactor: Refactor code`
+*   `test: Add tests`
+*   `chore: Update build scripts`
 
-For each type of expected contribution, there is a subsection below with specific instructions. The last subsection specifies additional requirements for contributions to be incorporated into this project.
+## Repository Structure
 
-## Citation
+The repository is structured as follows:
 
-If you use any resource published in this repository, we ask that it be properly cited in your work. Click on the ***Cite this repository*** link on this repository landing page to access different citation formats supported by the GitHub citation feature.
+*   `src`: Contains all the source code.
+    *   `ltrace`: The library with code shared across different modules.
+    *   `modules`: Houses the various modules of the GeoSlicer application. Each module is in its own subdirectory.
+        *   `ModuleName`: Each module folder contains the Python files that define its functionality. The `new_module.py` script can be used to generate a new module from a template.
+        *   `ModuleNameCLI`: Command Line Interface modules are denoted by a `CLI` suffix in their folder name.
+    *   `submodules`: Contains git submodules used in the project.
+*   `tools`: Provides scripts and utilities for developers.
+    *   `deploy`: Includes scripts for application deployment.
+    *   `hooks`: Holds Git hooks for the repository.
+    *   `resources`: Files used by the tool scripts.
+*   The root directory also general files such as documentation and configuration files.
 
-## Bugs
 
-Please open an **issue** to report any bug. If you've implemented a fix, please create a **pull request** on a branch called `bugs`.
+## Create a new GeoSlicer module
 
-## Documentation improvements
+### From a template
 
-We believe that any part of the documentation for this project can be improved, including this guide. You can work on that and then create a **pull requests** on a branch called `documentation_improvements` directly.
+To create a new module from a template, you can use the `new_module.py` script located in the `tools` directory. This script will generate all the necessary boilerplate files for a new module.
 
-## Cosmetic improvements
+Run the following command from the root of the repository:
 
-Changes that are cosmetic in nature and do not add anything substantial to the stability, functionality, or testability of the GeoSlicerPublic project are also welcome. In this case, please create a **pull requests** on a branch called `cosmetic_improvements` directly.
+```console
+python tools/new_module.py -n NewModuleName
+```
 
-## Other improvements
+You can also customize the module by using the following optional arguments:
 
-If you intend to work and propose a more significant improvement, please consult our [backlog](BACKLOG.md) first. If you have any questions about the best strategy for the GeoSlicerPublic project, please contact us or start  new **discussions**. When your proposed improvement is ready, please create a **pull request** on a branch called `other_improvements`.
+*   `--title` or `-t`: Sets the title of the module in the GeoSlicer UI. If not provided, it will be generated from the module's name.
+*   `--category` or `-c`: Specifies the category under which the module will appear in the GeoSlicer UI. The default is `Tools`.
+*   `--cli`: Use this flag to include a Command Line Interface (CLI) template for your module.
 
-It is important to keep in mind that all source code is implemented according to the style guide established by [PEP 8](https://peps.python.org/pep-0008/). This is guaranteed with the use of the [Black formatter](https://github.com/psf/black) with custom options described at [pyproject.toml](pyproject.toml) file.
+**Example:**
 
-# Backlog
+To create a new module named "My Awesome Module" with the title "My Awesome Module" in the "LTrace Tools" category, and with a CLI, you would run:
 
-The list of priority improvements for the GeoSlicerPublic project that we intend to develop collaboratively with the community is detailed in the file [BACKLOG.md](BACKLOG.md).
+```console
+python tools/new_module.py -n "My Awesome Module" --cli
+```
+
+### Manually
+
+If you prefer to create a module manually, follow these steps:
+
+1.  **Create the module directory:** Inside the `src/modules` directory, create a new folder for your module (e.g., `src/modules/NewModule`).
+
+2.  **Create the main Python file:** Inside the new module directory, create a Python file with the same name as the directory (e.g., `NewModule.py`). This file will be the entry point for your module.
+
+3.  **Define the plugin classes:** In the main Python file, you need to define three classes:
+    *   **Plugin Class:** This class should inherit from `LTracePlugin` and is responsible for defining the module's metadata, such as its title, category, and dependencies.
+    *   **Widget Class:** This class should inherit from `LTracePluginWidget` and is where you will build the user interface of your module using Qt widgets.
+    *   **Logic Class:** This class should inherit from `LTracePluginLogic` and will contain the core logic of your module, separating it from the UI code.
+
+4.  **Create a CLI (Optional):** If your module requires a Command Line Interface (CLI), create a new subdirectory within your module's folder with the `CLI` suffix (e.g., `NewModuleCLI`). Place your CLI script inside this folder. Note that the CLI environment does not have access to the Qt library, so your CLI script should not contain any GUI-related code.
+
+By following this structure, you ensure that your new module integrates correctly with the GeoSlicer framework.
+
+### Insert the module in an environment
+
+After creating a new module, you might want to add it to one of the existing environments in GeoSlicer, such as the MicroCT, Thin Section, or Segmentation environments. This will make your module accessible from the toolbar of that specific environment.
+
+To do this, you need to modify the environment's setup file. For example, to add a module to the **MicroCT Environment**, you would edit the `src/modules/MicroCTEnv/MicroCTEnv.py` file.
+
+Inside the `setupEnvironment` method of the `MicroCTEnvLogic` class, you will find a list of modules that are loaded into the environment. You can add your new module to this list.
+
+**Example:**
+
+Let's say you have created a new module named `MyAwesomeModule`. To add it to the MicroCT environment, you would modify the `modules` list in `MicroCTEnv.py` as follows:
+
+```python
+class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
+    def setupEnvironment(self):
+        modules = [
+            "CustomizedData",
+            "MicroCTLoader",
+            "MicroCTExport",
+            # ...
+            "MyAwesomeModule",  # Add your new module here
+        ]
+```
+
+After making this change, your module will appear in the MicroCT environment's toolbar the next time you run GeoSlicer.
+
+
+## Debugging
+
+Developers can debug extensions by attaching a python debugger to Slicer. Checkout the available tools at [SlicerDebuggingTools repository](https://github.com/SlicerRt/SlicerDebuggingTools).
+
+## IDE tips
+
+Add GeoSlicer/bin/PythonSlicer.exe as the python interpreter
+
+
+## Code Style
+
+GeoSlicer integrates multiple third-party libraries, including VTK, CTK, Slicer, and Qt, each with its own coding conventions. To maintain consistency and readability across the codebase, we have established the following guidelines.
+
+### Naming Conventions
+
+When contributing to GeoSlicer, please adhere to the naming conventions appropriate for the context of your code:
+
+-   **`camelCase`**: Use for scripting in GeoSlicer modules, especially when interacting with Qt, 3D Slicer, and CTK libraries.
+    
+    *Example: `myVariableName`, `calculateVolume()`*
+    
+-   **`PascalCase`**: Preferred for class names and when working with the VTK library.
+    
+    *Example: `MyClassName`, `vtkImageData`*
+    
+-   **`snake_case`**: Use for the LTrace library code, except when the code directly interfaces with Qt or Slicer libraries.
+    
+    *Example: `my_variable_name`, `calculate_volume()`*
+
+### General Guidelines
+
+-   **PEP 8**: GeoSlicer follows the default [PEP 8](https://www.python.org/dev/peps/pep-0008/) style guide, with the exception of an increased line length limit of **120 characters**.
+-   **Consistency**: If you are modifying existing code, maintain the established style of that file. If you encounter code that does not adhere to the current style guide, feel free to refactor it, but only if it does not involve a significant amount of work.
+
+### Auto-formatting
+
+To ensure a consistent code style, we use [Black](https://pypi.org/project/black/) as our auto-formatter. The configuration for Black is available in the `pyproject.toml` file.
+
+To format your code manually, run the following command from the root of the repository:
+
+```bash
+black .
+```
+
+### Typing
+
+Adding type hints to your code is highly encouraged, as it helps other developers understand the expected inputs and outputs of functions and classes. It also improves IDE support for autocompletion and error checking.
+
+**Example:**
+
+```python
+from typing import Callable
+
+def register(self, model: str, builder: Callable) -> None:
+    # ...
+    pass
+```
+
+In this example, the `register` method is defined to accept a `model` of type `str` and a `builder` of type `Callable`, and it is specified to return `None`.
+
+
+## Pre-Commit Hook
+
+This project uses a pre-commit hook to automatically format your code with Black before each commit. This ensures that all code pushed to the repository adheres to a consistent style.
+
+### Installation
+
+To install the pre-commit hook, run the following command from the root of the repository:
+
+```bash
+python ./tools/install_pre_commit_hook.py
+```
+
+This script will copy the pre-commit hook to the `.git/hooks` directory and make it executable.
+
+### Bypassing the Hook
+
+If you need to make a commit without running the pre-commit hook, you can use the `--no-verify` or `-n` flag with the `git commit` command:
+
+```bash
+git commit -m "Your commit message" -n
+```
+
+This is useful for small changes that do not require code formatting, such as fixing a typo in the documentation.
+
+## Troubleshooting
+
+This section provides solutions to common problems you might encounter while installing or running GeoSlicer.
+
+### Windows-Specific Issues
+
+#### Long Path Limitation
+
+On Windows, you may encounter errors if the installation path for GeoSlicer exceeds the default character limit. To resolve this, you need to enable long path support in the Windows Registry.
+
+For detailed instructions, please refer to the official Microsoft documentation: [Enable Long Paths in Windows](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry).
+
+#### Missing Media Feature Pack
+
+Newer versions of OpenCV, a dependency of GeoSlicer, require the Windows Media Feature Pack. If you are using a version of Windows where this is not installed by default, you may encounter errors when `cv2` fails to import.
+
+To install the Media Feature Pack:
+
+1.  Open the **Start Menu** and go to **Settings**.
+2.  Select **Apps** > **Apps & Features**.
+3.  Click on **Optional Features** and then **Add a feature**.
+4.  Find and install the **Media Feature Pack**.
+5.  A system reboot is required after installation.
+
+### Linux-Specific Issues
+
+#### GCC Compiler Not Found
+
+If you encounter an error message indicating that the GCC compiler was not found during the installation process, it may be because the build script is looking for it in a specific, non-standard directory.
+
+**Error Message Example:**
+
+```console
+error: command '/opt/rh/devtoolset-7/root/usr/bin/gcc' failed: No such file or directory
+```
+
+To resolve this, you can create symbolic links from the expected directory to the actual location of your GCC and G++ compilers.
+
+**Solution:**
+
+First, ensure that you have `gcc` and `g++` installed on your system. Then, run the following commands to create the required directory and symbolic links:
+
+```bash
+sudo mkdir -p /opt/rh/devtoolset-7/root/usr/bin/
+sudo ln -s $(which gcc) /opt/rh/devtoolset-7/root/usr/bin/gcc
+sudo ln -s $(which g++) /opt/rh/devtoolset-7/root/usr/bin/g++
+```
+
+These commands will create the necessary directory structure and link your system's default compilers to the location where the build script expects to find them.
+
+### General Issues
+
+#### Conflicting Python Interpreters in PATH
+
+If you have multiple Python installations, your system's `PATH` environment variable might point to a different Python interpreter than the one required by GeoSlicer. This can lead to package installation failures.
+
+To fix this, remove any references to other Python directories from your `PATH` and other relevant environment variables. Remember to restart your terminal or system for the changes to take effect.
+
+#### GeoSlicer Restarts Indefinitely
+
+In some cases, an incompatibility between the GeoSlicer source code and the GeoSlicerBase files can cause the application to enter a restart loop. If you notice the splash screen repeatedly appearing, try one of the following solutions:
+
+*   **Re-deploy the application:** Delete the current GeoSlicer application directory and re-deploy it from the original compressed file (`.zip` or `.tar.gz`).
+*   **Update GeoSlicerBase:** Download the latest version of GeoSlicerBase that is compatible with your version of the GeoSlicer source code.
+
+#### Access Denied During Installation or Deployment
+
+If you receive a "permission denied" error while running `PythonSlicer -m pip install` or during the deployment process, it is likely that a GeoSlicer instance is still running in the background. This prevents the script from modifying or deleting files that are in use.
+
+To resolve this, ensure that all instances of GeoSlicer are closed before trying again.

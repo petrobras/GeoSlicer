@@ -14,6 +14,7 @@ import time
 
 from functools import lru_cache, partial
 from ltrace.slicer import ui, helpers, widgets
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.helpers import getPythonQtWidget, tryGetNode
 from ltrace.slicer_utils import *
 from numpy.random import RandomState
@@ -153,6 +154,9 @@ class TableFilter(LTracePlugin):
         self.parent.helpText = ""
         self.parent.helpText += TableFilter.help()
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Volumes/MoreTools/TableFilter.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/TableFilter.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/TableFilter.html", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):
@@ -1062,8 +1066,8 @@ class MultiThresholdWidget(qt.QWidget):
         buttonsLayout = qt.QVBoxLayout(container)
 
         buttons = [
-            (":/Icons/Add.png", self.addClass, "Add another class"),
-            (":/Icons/Remove.png", self.removeClass, "Remove selected class"),
+            (":/Icons/png/Add.png", self.addClass, "Add another class"),
+            (":/Icons/png/Remove.png", self.removeClass, "Remove selected class"),
             (
                 self.table.style().standardIcon(getattr(ps.QtWidgets.QStyle, "SP_BrowserReload")),
                 self.reloadView,

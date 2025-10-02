@@ -173,7 +173,7 @@ class SegmentationEnvLogic(LTracePluginLogic):
         self.setModules(modules)
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Layers.svg"),
             "Segmentation",
             [
                 self.__modulesInfo["CustomizedSegmentEditor"],

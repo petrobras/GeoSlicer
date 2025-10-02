@@ -31,8 +31,7 @@ class CorePhotographLoader(LTracePlugin):
         self.parent.categories = ["Tools", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = CorePhotographLoader.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.setHelpUrl("Core/CorePhotographLoader.html")
 
     @classmethod
     def readme_path(cls):

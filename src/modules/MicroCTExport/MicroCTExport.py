@@ -4,9 +4,12 @@ import ctk
 import slicer
 import re
 import numpy as np
+import logging
+
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer import helpers, export, netcdf
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.utils.callback import Callback
 from collections import OrderedDict
@@ -36,6 +39,8 @@ class MicroCTExport(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MicroCTExport.help()
+        self.setHelpUrl("Volumes/MicroCTExport/Export.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/ExportTools/MicroCTExport.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -167,6 +172,14 @@ class MicroCTExportWidget(LTracePluginWidget):
         self.exportDirButton.setMaximumWidth(374)
         self.exportDirButton.directoryChanged.connect(self._updateInterface)
         self._addRow("Export directory", self.exportDirButton)
+
+        self.singleCoordsCheckBox = qt.QCheckBox("Use the same coordinate system for all images")
+        self.singleCoordsCheckBox.setToolTip(
+            "Export images in the same coordinate system, making the arrays spatially aligned. Uncheck to avoid padding images and thus reduce file size."
+        )
+        self.singleCoordsCheckBox.checked = True
+        self.singleCoordsCheckBox.visible = self.formatComboBox.currentText == MicroCTExport.FORMAT_NC
+        self._addRow(None, self.singleCoordsCheckBox)
         self._addSpace()
 
         self.progressBar = qt.QProgressBar()
@@ -235,6 +248,7 @@ class MicroCTExportWidget(LTracePluginWidget):
     def _onFormatChanged(self, _):
         self._updateImageName()
         self._setSegEnabled(self.formatComboBox.currentText != MicroCTExport.FORMAT_TIF)
+        self.singleCoordsCheckBox.visible = self.formatComboBox.currentText == MicroCTExport.FORMAT_NC
 
     def _onImageNameChanged(self, _):
         self.logic.userDefinedImageName(self.imageNameLineEdit.text)
@@ -252,14 +266,17 @@ class MicroCTExportWidget(LTracePluginWidget):
     def _onExportButtonClicked(self):
         self.progressBar.visible = True
         try:
-            self.logic.export(
-                imageFormat=self.formatComboBox.currentText,
-                imageDict=self._imageDict(),
-                tableNode=self.tableSelector.currentNode(),
-                outputDir=self.exportDirButton.directory,
-                imageName=self.imageNameLineEdit.text,
-                callback=self.callback,
-            )
+            kwargs = {
+                "imageFormat": self.formatComboBox.currentText,
+                "imageDict": self._imageDict(),
+                "tableNode": self.tableSelector.currentNode(),
+                "outputDir": self.exportDirButton.directory,
+                "imageName": self.imageNameLineEdit.text,
+                "callback": self.callback,
+            }
+            if self.formatComboBox.currentText == MicroCTExport.FORMAT_NC:
+                kwargs["singleCoords"] = self.singleCoordsCheckBox.checked
+            self.logic.export(**kwargs)
         except Exception as e:
             self.statusLabel.text = f"Error: {e}"
             raise
@@ -301,11 +318,29 @@ class MicroCTExportLogic(LTracePluginLogic):
 
     SEGMENTATION_TYPES = {"BIN", "BIW", "BASINS", "LABELS"}
 
+    # Types that come earlier in the list have higher priority to be chosen as reference item
+    REFERENCE_PRIORITY = [
+        "CT",
+        "CT filtered",
+        "FLOAT",
+        "PSD",
+        "MICP",
+        "POR",
+        "PHI",
+        "KABS",
+        "MANGO",
+        "BIN",
+        "BIW",
+        "BASINS",
+        "LABELS",
+    ]
+
     def __init__(self):
         LTracePluginLogic.__init__(self)
         self.suggestImageName = True
+        assert set(self.TYPE_TO_NC_NAME.keys()) == set(self.TYPE_TO_DTYPE.keys()) == set(self.REFERENCE_PRIORITY)
 
-    def export(self, imageFormat, imageDict, tableNode, outputDir, imageName, callback):
+    def export(self, imageFormat, imageDict, tableNode, outputDir, imageName, callback, singleCoords=True):
         if tableNode:
             callback.on_update("Exporting table…", 0)
 
@@ -325,6 +360,8 @@ class MicroCTExportLogic(LTracePluginLogic):
                 images = []
                 names = []
                 dtypes = []
+                bestPriority = len(self.REFERENCE_PRIORITY) + 1
+                referenceItem = None
                 for type_, image in imageDict.items():
                     if type_ == "BASINS":
                         isSegmentation = isinstance(image, slicer.vtkMRMLSegmentationNode)
@@ -342,7 +379,20 @@ class MicroCTExportLogic(LTracePluginLogic):
                     names.append(self.TYPE_TO_NC_NAME[type_])
                     dtypes.append(self.TYPE_TO_DTYPE[type_])
 
-                netcdf.exportNetcdf(path, images, nodeNames=names, nodeDtypes=dtypes, callback=callback)
+                    priority = self.REFERENCE_PRIORITY.index(type_)
+                    if priority < bestPriority:
+                        bestPriority = priority
+                        referenceItem = image
+
+                netcdf.exportNetcdf(
+                    path,
+                    images,
+                    nodeNames=names,
+                    nodeDtypes=dtypes,
+                    callback=callback,
+                    single_coords=singleCoords,
+                    referenceItem=referenceItem,
+                )
             else:
                 for i, (type_, image) in enumerate(imageDict.items()):
                     callback.on_update(f"Exporting {type_} image…", i * 100 / len(imageDict))
@@ -439,7 +489,7 @@ class MicroCTExportLogic(LTracePluginLogic):
 
         if unknownLabels:
             # slicer.util.warningDisplay(
-            print(
+            logging.error(
                 f"Unsupported label names found in BASINS image: {', '.join(unknownLabels)}.\n"
                 "Image will be exported as-is.\n\n"
                 "The following label names are supported in a BASINS image: Pore, Quartz, Microporosity, Calcite, High attenuation coefficient."

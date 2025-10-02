@@ -188,7 +188,7 @@ class HistogramSegmenterWidget(LTracePluginWidget):
         self.inputSelector.setStyleSheet("QComboBox {font-size: 11px; font-weight: bold; padding: 6px;}")
 
         inputSelectorCleanBtn = qt.QPushButton("")
-        inputSelectorCleanBtn.icon = qt.QIcon(":/Icons/ClearSelection.png")
+        inputSelectorCleanBtn.icon = qt.QIcon(":/Icons/png/ClearSelection.png")
         inputSelectorCleanBtn.setToolTip("Clear current selection")
         inputSelectorCleanBtn.clicked.connect(self.onClearSelectionButtonClicked)
 
@@ -294,8 +294,8 @@ class HistogramSegmenterWidget(LTracePluginWidget):
         buttonsLayout = qt.QHBoxLayout()
 
         buttons = [
-            (":/Icons/Add.png", self.onClassInsertion, "Add another class"),
-            (":/Icons/Remove.png", self.onClassRemoval, "Remove selected class"),
+            (":/Icons/png/Add.png", self.onClassInsertion, "Add another class"),
+            (":/Icons/png/Remove.png", self.onClassRemoval, "Remove selected class"),
             (
                 self.tableWidget.style().standardIcon(getattr(qt.QStyle, "SP_BrowserReload")),
                 self.onReloadHistogram,

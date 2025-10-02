@@ -7,8 +7,8 @@ from ltrace.slicer_utils import getResourcePath
 
 class Workstep:
     NAME = None
-    CHECK_ICON_PATH = getResourcePath("Icons") / "GreenCheckCircle.png"
-    ERROR_ICON_PATH = getResourcePath("Icons") / "RedBangCircle.png"
+    CHECK_ICON_PATH = getResourcePath("Icons") / "png" / "GreenCheckCircle.png"
+    ERROR_ICON_PATH = getResourcePath("Icons") / "png" / "RedBangCircle.png"
 
     INPUT_TYPES = None
     OUTPUT_TYPE = None

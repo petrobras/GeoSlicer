@@ -4,6 +4,8 @@ from pathlib import Path
 import qt
 import slicer.util
 from ltrace.slicer_utils import *
+from ltrace.slicer import helpers
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 from CustomizedCurvatureAnisotropicDiffusion import CustomizedCurvatureAnisotropicDiffusion
 from CustomizedGaussianBlurImageFilter import CustomizedGaussianBlurImageFilter
@@ -24,7 +26,8 @@ class FilteringTools(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.set_manual_path("Filtering_and_Segmentation/Filters/apply_filters.html")
+        self.setHelpUrl("Volumes/Filter/MicroCTFlowApplyFilters.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/VolumesPreProcessing/Filter.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

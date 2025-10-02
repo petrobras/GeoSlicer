@@ -4,6 +4,7 @@ import slicer
 import numpy as np
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from ltrace.pore_networks.functions import is_multiscale_geo
 
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
@@ -136,7 +137,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.parameterInputLoadCollapsible.text = "Load parameters"
         self.parameterInputLoadCollapsible.collapsed = True
         self.parameterInputWidget = ui.hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLTableNode"],
+            nodeTypes=["vtkMRMLTextNode"],
             defaultText="Select node to load parameters from",
         )
         self.parameterInputWidget.objectName = "Parameter input"
@@ -149,7 +150,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameterInputLayout.addRow("Input parameter node:", self.parameterInputWidget)
         parameterInputLayout.addRow(parameterInputLoadButton)
         parameterInputLoadIcon = qt.QLabel()
-        parameterInputLoadIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Load.png").pixmap(qt.QSize(13, 13)))
+        parameterInputLoadIcon.setPixmap(
+            qt.QIcon(getResourcePath("Icons") / "png" / "Load.png").pixmap(qt.QSize(13, 13))
+        )
         if not hide_parameters_io:
             layout.addRow(parameterInputLoadIcon, self.parameterInputLoadCollapsible)
 
@@ -302,20 +305,6 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.infoLabel = qt.QLabel()
         layout.addRow(self.infoLabel)
 
-        parameterInputSaveCollapsible = ctk.ctkCollapsibleButton()
-        parameterInputSaveCollapsible.text = "Save parameters"
-        parameterInputSaveCollapsible.collapsed = True
-        self.parameterInputLineEdit = qt.QLineEdit("simulation_input_parameters")
-        parameterInputSaveButton = qt.QPushButton("Save parameters")
-        parameterInputSaveButton.clicked.connect(self.onParameterInputSave)
-        parameterInputLayout = qt.QFormLayout(parameterInputSaveCollapsible)
-        parameterInputLayout.addRow("Output parameter node name:", self.parameterInputLineEdit)
-        parameterInputLayout.addRow(parameterInputSaveButton)
-        parameterInputSaveIcon = qt.QLabel()
-        parameterInputSaveIcon.setPixmap(qt.QIcon(getResourcePath("Icons") / "Save.png").pixmap(qt.QSize(13, 13)))
-        if not hide_parameters_io:
-            layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
-
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
         for key, widget in self.widgets.items():
@@ -448,49 +437,6 @@ class TwoPhaseSimulationWidget(qt.QFrame):
     def setCurrentNode(self, currentNode):
         self.currentNode = currentNode
 
-    def getParams(self):
-        params = {}
-
-        subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
-        subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
-        shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
-        subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
-
-        subres_params_copy = {}
-        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            for i in subres_params.keys():
-                if subres_params[i] is not None:
-                    if isinstance(subres_params[i], np.ndarray):
-                        subres_params_copy.update({i: subres_params[i].tolist()})
-                    else:
-                        subres_params_copy.update({i: subres_params[i]})
-                else:
-                    subres_params_copy.update({i: None})
-        else:
-            subres_params_copy = subres_params
-        params["simulator"] = self.simulator_combo_box.currentText
-        geo_display_direction = self.direction_combo_box.currentText
-        if geo_display_direction == "X":
-            numpy_direction = "z"
-        if geo_display_direction == "Y":
-            numpy_direction = "y"
-        if geo_display_direction == "Z":
-            numpy_direction = "x"
-        params["direction"] = numpy_direction
-
-        for widget in self.widgets.values():
-            params.update(widget.get_values())
-
-        params["subresolution function call"] = self.mercury_widget.getFunction
-        params["subres_model_name"] = subres_model_name
-        params["subres_params"] = subres_params_copy
-        params["subres_shape_factor"] = shape_factor
-        params["subres_porositymodifier"] = subres_porositymodifier
-        params["skip_imbibition"] = False
-        params["remote_execution"] = "T" if self.remoteQRadioButton.isChecked() else "F"
-
-        return params
-
     def setParams(self, params):
         mercury_params = {
             "subres_model_name": params.get("subres_model_name"),
@@ -500,41 +446,82 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         }
         self.mercury_widget.setParams(mercury_params)
 
-    def getFormParams(self):
+    def getParams(self, pore_table_node):
         """
-        Get a dictionary with the value of all parameter values.
+        Get a dictionary with the value of all parameter values plus simulator/direction/subresolution metadata
 
         Return:
-            dict: With all values, None if there's a invalid value
-            error: None if everything is ok. String with parameters name if invalid.
+            dict: With all values. Keys that describe sweepable inputs are named "input-<name>"
+                  and map to dicts with "start", "stop", "steps".
         """
         parameters_dict = {}
 
+        # gather widget inputs (multistep and single)
         for widget in self.widgets.values():
+            parameter = widget.get_name()
+            if parameter not in parameters_dict:
+                parameters_dict[parameter] = {}
             if isinstance(widget, simulation_widgets.MultistepEditWidget):
-                parameter_name = widget.get_name()
-                if widget.get_start() is None:
-                    return None, f"{parameter_name} start"
-                elif widget.get_stop() is None:
-                    return None, f"{parameter_name} stop"
-                elif widget.get_steps() is None:
-                    return None, f"{parameter_name} steps"
-
-                parameter = f"input-{parameter_name}"
-                if parameter not in parameters_dict:
-                    parameters_dict[parameter] = {}
                 parameters_dict[parameter]["start"] = widget.get_start()
                 parameters_dict[parameter]["stop"] = widget.get_stop()
                 parameters_dict[parameter]["steps"] = widget.get_steps()
+                if widget.step_spacing == "logarithmic":
+                    parameters_dict[parameter]["step_spacing"] = widget.step_spacing
             else:
-                parameter_name = widget.get_name()
-                parameter = f"input-{parameter_name}"
-                if parameter not in parameters_dict:
-                    parameters_dict[parameter] = {}
-                parameters_dict[parameter]["start"] = widget.get_value()
-                parameters_dict[parameter]["stop"] = widget.get_value()
-                parameters_dict[parameter]["steps"] = 1
-        return parameters_dict, None
+                parameters_dict[parameter] = widget.get_value()
+
+        # simulator
+        parameters_dict["simulator"] = self.simulator_combo_box.currentText
+
+        # direction mapping: display -> numpy direction
+        geo_display_direction = self.direction_combo_box.currentText
+        if geo_display_direction == "X":
+            numpy_direction = "z"
+        elif geo_display_direction == "Y":
+            numpy_direction = "y"
+        elif geo_display_direction == "Z":
+            numpy_direction = "x"
+        else:
+            numpy_direction = geo_display_direction  # fallback / unexpected value
+        parameters_dict["direction"] = numpy_direction
+
+        # subresolution model name & params (convert numpy arrays to lists)
+        subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
+        raw_subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+        subres_params = {}
+        if (subres_model_name in ("Throat Radius Curve", "Pressure Curve")) and raw_subres_params:
+            for k in raw_subres_params.keys():
+                v = raw_subres_params[k]
+                if v is None:
+                    subres_params[k] = None
+                elif isinstance(v, (list, tuple)):
+                    subres_params[k] = list(v)
+                elif hasattr(v, "tolist"):  # e.g. numpy.ndarray
+                    subres_params[k] = v.tolist()
+                else:
+                    subres_params[k] = v
+        else:
+            subres_params = raw_subres_params
+
+        parameters_dict["subres_model_name"] = subres_model_name
+        parameters_dict["subres_params"] = subres_params
+
+        shape_factor = self.mercury_widget.getParams().get("subres_shape_factor", None)
+        subres_porositymodifier = self.mercury_widget.getParams().get("subres_porositymodifier", None)
+        parameters_dict["subres_shape_factor"] = shape_factor
+        parameters_dict["subres_porositymodifier"] = subres_porositymodifier
+
+        # function handle/reference and execution flags
+        parameters_dict["subresolution function call"] = getattr(self.mercury_widget, "getFunction", None)
+        parameters_dict["subresolution function"] = parameters_dict["subresolution function call"](
+            pore_table_node
+        )  # @todo checar com o romulo
+        parameters_dict["skip_imbibition"] = False
+        parameters_dict["remote_execution"] = "T" if self.remoteQRadioButton.isChecked() else "F"
+
+        parameters_dict["is_multiscale"] = int(is_multiscale_geo(pore_table_node))
+
+        return parameters_dict
 
     def onCreateSequenceChecked(self, state):
         self.updateSimulationCount()
@@ -571,23 +558,22 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         selectedNode = self.parameterInputWidget.currentNode()
         if selectedNode:
             parameters_dict = parameter_node_to_dict(selectedNode)
+            print(parameters_dict)
             for name, widget in self.widgets.items():
+                print(name, name in parameters_dict)
                 if name in parameters_dict:
                     if isinstance(widget, simulation_widgets.MultistepEditWidget):
                         values = parameters_dict[name]
-                        widget.set_value(values["start"] or "", values["stop"] or "")
-                        widget.set_steps(values["steps"] or "")
+                        widget.set_value(values["start"], values["stop"])
+                        widget.set_steps(values["steps"])
                     else:
-                        values = parameters_dict[name]
-                        widget.set_value(values["start"] or "")
-            self.parameterInputLoadCollapsible.collapsed = True
-        self.updateFieldsActivation()
+                        value = parameters_dict[name]
+                        widget.set_value(value)
 
-    def onParameterInputSave(self):
-        parameterValues, invalidParameter = self.getFormParams()
-        if parameterValues is None:
-            slicer.util.errorDisplay(f"Could not save parameter input. {invalidParameter} has invalid value.")
-            return
-        parameterNode = dict_to_parameter_node(parameterValues, self.parameterInputLineEdit.text, self.currentNode)
-        slicer.app.applicationLogic().GetSelectionNode().SetActiveTableID(parameterNode.GetID())
-        slicer.app.applicationLogic().PropagateTableSelection()
+            self.mercury_widget.subscaleModelWidget.setParams(parameters_dict)
+
+            self.parameterInputLoadCollapsible.collapsed = True
+            self.updateFieldsActivation()
+
+    def uncheckCreateSnapshot(self):
+        self.widgets["create_drainage_snapshot"].set_value("F")

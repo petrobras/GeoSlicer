@@ -40,9 +40,7 @@ class ThinSectionAutoRegistration(LTracePlugin):
         self.parent.categories = ["Registration", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/AutoRegistration.html').as_posix()}"
-        )
+        self.setHelpUrl("ThinSection/Register/AutoRegistration.html")
 
     @classmethod
     def readme_path(cls):
@@ -281,8 +279,6 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
         return binaryScalarNode
 
     def register(self, p):
-        print("Thin Section Auto Registration start time: " + str(datetime.datetime.now()))
-
         self.movingNode = p.movingNode
         self.outputPrefix = p.outputPrefix
 
@@ -382,7 +378,6 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
                 slicer.util.setSliceViewerLayers(
                     background=None, foreground=transformedMovingNode, label=None, fit=True
                 )
-                print("Thin Section Auto Registration end time: " + str(datetime.datetime.now()))
                 slicer.util.infoDisplay("Registration completed.")
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputLinearTransform)

@@ -32,7 +32,7 @@ from ltrace.slicer.helpers import (
     themeIsDark,
     isNodeImage2D,
 )
-from ltrace.slicer.node_attributes import Tag
+from ltrace.slicer.node_attributes import Tag, NodeEnvironment
 from ltrace.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widgets import BaseSettingsWidget
@@ -71,6 +71,10 @@ class SegmentInspector(LTracePlugin):
             f"file:///{(getResourcePath('manual') / 'Modules/Quantification/segment_inspector.html').as_posix()}"
         )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
+        self.setHelpUrl("Volumes/Segmentation/SegmentInspector.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/SegmentInspector.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/SegmentInspector.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/Segmentation/SegmentInspector/SegmentInspector.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -326,6 +330,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
 
     def cleanup(self):
         super().cleanup()
+        self.modeWidgets[widgets.BatchInputWidget.MODE_NAME].onDirSelected = None
         self.removeObservers()
         del self.logic
 
@@ -1121,7 +1126,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
             raise
         except Exception as e:
             helpers.removeTemporaryNodes(environment=self.tag)
-            print(repr(e))
+            logging.error(repr(e))
             raise
 
     def __callSelectedMethod(self, segmentationNode, segments, outputPrefix, **kwargs):
@@ -1261,7 +1266,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
             self.inspectorProcessStarted.emit()
             return self.cliNode
         except (RuntimeError, AttributeError) as e:
-            print(f"An error occurred: {e}")
+            logging.error(f"An error occurred: {e}")
 
     def __createVariablesOutputNode(
         self,
@@ -1452,7 +1457,6 @@ class SegmentInspectorLogic(LTracePluginLogic):
         try:
             if caller.GetStatusString() == "Completed":
                 if self.results_queue is not None:
-                    print("Sending results to queue")
                     self.results_queue.append(info)
 
                 self.createResultArtifacts(info, caller)
@@ -1474,7 +1478,6 @@ class SegmentInspectorLogic(LTracePluginLogic):
                 del self.cliNode
                 self.cliNode = None
 
-                print("ExecCmd CLI %s" % caller.GetStatusString())
                 helpers.removeTemporaryNodes(environment=self.tag)
                 self.inspector_process_finished.emit()
                 self.progressUpdate(1.0)

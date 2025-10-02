@@ -11,6 +11,7 @@ import slicer
 from ltrace.slicer.helpers import svgToQIcon
 from ltrace.slicer_utils import *
 from ltrace.slicer_utils import getResourcePath
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources", "Icons")
 CHARTS_ICON_PATH = os.path.join(RESOURCES_PATH, "Charts.png")
@@ -29,6 +30,9 @@ class CustomizedTables(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedTables.help()
+        self.setHelpUrl("Volumes/MoreTools/Tables.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/Tables.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/Tables.html", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):
@@ -86,7 +90,7 @@ class CustomizedTablesWidget(LTracePluginWidget):
         plotButton = plotLayoutItem.widget()
         plotButton.setVisible(False)
 
-        icon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Charts.svg")
+        icon = svgToQIcon(getResourcePath("Icons") / "svg" / "Charts.svg")
         self.chartsButton = qt.QToolButton()
         self.chartsButton.text = "Charts"
         self.chartsButton.icon = icon

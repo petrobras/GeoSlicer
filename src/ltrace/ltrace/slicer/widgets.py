@@ -936,9 +936,9 @@ class ShowHideButton(qt.QPushButton):
 
     def update(self):
         if self.checked:
-            self.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            self.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
         else:
-            self.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            self.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
 
     def isOpen(self):
         return self.checked == 1

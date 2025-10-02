@@ -34,7 +34,7 @@ class PixelSizeEditor(qt.QWidget):
         self.scaleSizePxLineEdit.textEdited.connect(lambda: self.__on_size_field_edited(self.FIELD_SCALE_SIZE_PX))
         self.scaleSizePxRuler = qt.QPushButton()
 
-        self.scaleSizePxRuler.setIcon(qt.QIcon(getResourcePath("Icons") / "AnnotationDistance.png"))
+        self.scaleSizePxRuler.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "AnnotationDistance.png"))
         self.scaleSizePxRuler.connect("clicked()", self.onScaleSizeRulerButtonClicked)
         self.scaleSizePxFrame = qt.QFrame()
         scaleSizePxLayout = qt.QHBoxLayout(self.scaleSizePxFrame)

@@ -343,6 +343,46 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             elif slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node):
                 self.delete_sequence_nodes(node)
 
+    def find_and_clone_items(self, items_list):
+        if items_list.GetNumberOfIds() == 0:
+            logging.warning("Custom clone called, but no items selected in the active view.")
+            return
+
+        subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        shLogic = slicer.modules.subjecthierarchy.logic()
+
+        for item in range(items_list.GetNumberOfIds()):
+            itemID = items_list.GetId(item)
+            originalNode = subject_hierarchy.GetItemDataNode(itemID)
+
+            clonedItemID = shLogic.CloneSubjectHierarchyItem(subject_hierarchy, itemID)
+
+            if not originalNode:
+                continue
+
+            clonedNode = subject_hierarchy.GetItemDataNode(clonedItemID)
+
+            if not clonedNode:
+                logging.warning("Could not perform custom clone. The copy is invalid.")
+                continue
+
+            # If it is a segmentation, copy also the reference image geometry
+            if isinstance(originalNode, slicer.vtkMRMLSegmentationNode):
+                role = "referenceImageGeometryRef"
+                refID = originalNode.GetNodeReferenceID(role)
+                if refID:
+                    clonedNode.SetNodeReferenceID(role, refID)
+            # If it is a table, copy all roles, except storage
+            if isinstance(originalNode, slicer.vtkMRMLTableNode):
+                roles = []
+                originalNode.GetNodeReferenceRoles(roles)
+                for role in roles:
+                    if role == "storage":
+                        continue
+                    refID = originalNode.GetNodeReferenceID(role)
+                    if refID:
+                        clonedNode.SetNodeReferenceID(role, refID)
+
     def create_well_model_node(self, node=None):
         plugin_handler_singleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
         subject_hierarchy_node = plugin_handler_singleton.subjectHierarchyNode()

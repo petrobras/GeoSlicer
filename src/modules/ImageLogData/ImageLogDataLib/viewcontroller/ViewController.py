@@ -41,8 +41,8 @@ class ViewControllerWidget(qt.QWidget):
 
         iconsRes = getResourcePath("Icons")
         settingsButtonIcon = qt.QIcon()
-        settingsButtonIcon.addFile(iconsRes / "PushPinIn.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.On)
-        settingsButtonIcon.addFile(iconsRes / "PushPinOut.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.Off)
+        settingsButtonIcon.addFile(iconsRes / "png" / "PushPinIn.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.On)
+        settingsButtonIcon.addFile(iconsRes / "png" / "PushPinOut.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.Off)
         settingsToolButton.setIcon(settingsButtonIcon)
         controllerBarLayout.addWidget(settingsToolButton)
 
@@ -76,7 +76,7 @@ class ViewControllerWidget(qt.QWidget):
 
         removeViewButton = qt.QPushButton()
         removeViewButton.setToolTip("Remove this view.")
-        removeViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        removeViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         removeViewButton.setIconSize(qt.QSize(12, 14))
         removeViewButton.clicked.connect(lambda arg, identifier=self.identifier: self.logic.removeView(identifier))
         controllerBarLayout.addWidget(removeViewButton)
@@ -143,7 +143,7 @@ class SliceViewControllerWidget(ViewControllerWidget):
         showHidePrimaryNodeButton = qt.QPushButton()
         showHidePrimaryNodeButton.setCheckable(True)
         showHidePrimaryNodeButton.setObjectName("showHidePrimaryNodeButton" + str(self.identifier))
-        showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+        showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
         showHidePrimaryNodeButton.setIconSize(qt.QSize(14, 14))
         showHidePrimaryNodeButton.setFixedWidth(30)
         showHidePrimaryNodeButton.clicked.connect(
@@ -185,7 +185,7 @@ class SliceViewControllerWidget(ViewControllerWidget):
         showHideSegmentationNodeButton.setCheckable(True)
         showHideSegmentationNodeButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
         showHideSegmentationNodeButton.setObjectName("showHideSegmentationNodeButton" + str(self.identifier))
-        showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+        showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
         showHideSegmentationNodeButton.setIconSize(qt.QSize(14, 14))
         showHideSegmentationNodeButton.setFixedWidth(30)
         showHideSegmentationNodeButton.clicked.connect(

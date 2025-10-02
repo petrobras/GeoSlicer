@@ -253,7 +253,7 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
             else "Pick spot in slice view to preview"
         )
         cancelIcon = slicer.app.style().standardIcon(qt.QStyle.SP_ArrowLeft)
-        markupIcon = qt.QIcon(":/Icons/MarkupsFiducialMouseModePlace.png")
+        markupIcon = qt.QIcon(":/Icons/png/MarkupsFiducialMouseModePlace.png")
         icon = cancelIcon if self.logic.previewEnabled else markupIcon
         self.togglePreviewButton.setIcon(icon)
         self.togglePreviewButton.enabled = self.inputVolumeComboBox.currentNode() is not None

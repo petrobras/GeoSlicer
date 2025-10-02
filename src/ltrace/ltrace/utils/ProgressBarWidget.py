@@ -91,12 +91,17 @@ class ProgressBarWidget(QWidget):
             self.sharedMem = None
 
 
-def main(iconPath, bgColor, fgColor):
+def main(iconPath: str, bgColor: str = "#323232", fgColor: str = "#FFFFFF"):
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setWindowIcon(QIcon(iconPath))
     widget = ProgressBarWidget()
     widget.setStyleSheet("QWidget {background-color: %s; color: %s;}" % (bgColor, fgColor))
+
+    center_y = app.primaryScreen().size().height() + widget.height() // 2
+    center_x = (app.primaryScreen().size().width() - widget.width() // 2) // 2
+    widget.move(center_x, center_y)
+
     widget.show()
     app.exec_()
 

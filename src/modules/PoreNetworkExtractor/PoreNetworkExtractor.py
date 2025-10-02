@@ -11,10 +11,13 @@ import qt
 import slicer
 import slicer.util
 import vtk
+import numpy as np
 
 import ltrace.pore_networks.functions as pn
 from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
 from ltrace.slicer import ui
+from ltrace.slicer.app import MANUAL_BASE_URL
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import (
@@ -49,8 +52,9 @@ class PoreNetworkExtractor(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/PNM/PNExtraction.html').as_posix()}"
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Volumes/PNM/PNExtraction.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/PNM/PNExtraction.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -163,12 +167,12 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.inputSelector.setToolTip(
             "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab)."
         )
-        manual_path = getResourcePath("manual") / "Modules" / "PNM"
+        manualPath = f"{MANUAL_BASE_URL}/Volumes/PNM/PNExtraction.html"
         inputSelectorHelp = HelpButton(
             "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab).\n\n"
             "- If a labelmap is selected, extraction will be single-scale;\n\n- If a scalar volume (porosity map) is selected, extraction will be multiscale (resolved + unresolved pores);"
             "\n\n-----\n[More]({path_to_manual})",
-            replacer=lambda x: x.format(path_to_manual=(manual_path / "PNExtraction.html").as_posix()),
+            replacer=lambda x: x.format(path_to_manual=manualPath),
         )
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.inputSelector)
@@ -347,9 +351,9 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         self.visualization = visualization
 
         self.inputNodeID = inputVolumeNode.GetID()
-        labelNodeID = None
+        self.labelNodeID = None
         if inputLabelMap:
-            labelNodeID = inputLabelMap.GetID()
+            self.labelNodeID = inputLabelMap.GetID()
 
         if inputVolumeNode.IsA("vtkMRMLLabelMapVolumeNode") and inputLabelMap is None:
             params["is_multiscale"] = False
@@ -368,18 +372,17 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         if localMode:
             cliParams = {"cwd": str(self.cwd)}
             cliParams["volume"] = self.inputNodeID
-            if labelNodeID:
-                cliParams["label"] = labelNodeID
+            if self.labelNodeID:
+                cliParams["label"] = self.labelNodeID
             with open(str(self.cwd / "params_dict.json"), "w") as file:
                 json.dump(params, file)
             self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
             self.progressBar.setCommandLineModuleNode(self.cliNode)
             self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
         else:
-            self.handler = PoreNetworkExtractorHandler(self.inputNodeID, labelNodeID, params)
-            success = slicer.modules.RemoteServiceInstance.cli.run(
-                self.handler, name="PoreNetworkExtractor", job_type="pnmextractor"
-            )
+            job_name = f"PNM Extract: {self.prefix}"
+            self.handler = PoreNetworkExtractorHandler(self.inputNodeID, self.labelNodeID, params)
+            success = slicer.modules.RemoteServiceInstance.cli.run(self.handler, name=job_name, job_type="pnmextractor")
             if success:
                 self.callback()
 
@@ -430,6 +433,18 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         df_pores = pd.read_pickle(str(self.cwd / "pores.pd"))
         df_throats = pd.read_pickle(str(self.cwd / "throats.pd"))
         df_network = pd.read_pickle(str(self.cwd / "network.pd"))
+        if os.path.isfile(str(self.cwd / "watershed.npy")):
+            array_watershed = np.load(str(self.cwd / "watershed.npy"))
+            output_watershed_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            output_watershed_volume.CreateDefaultDisplayNodes()
+            slicer.util.updateVolumeFromArray(output_watershed_volume, array_watershed)
+            output_watershed_volume.SetSpacing(inputNode.GetSpacing())
+            output_watershed_volume.SetOrigin(inputNode.GetOrigin())
+            v = vtk.vtkMatrix4x4()
+            inputNode.GetIJKToRASDirectionMatrix(v)
+            output_watershed_volume.SetIJKToRASDirectionMatrix(v)
+        else:
+            array_watershed = None
 
         throatOutputTable, poreOutputTable, networkOutputTable = self._create_tables("porespy")
 
@@ -448,6 +463,10 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
         poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
         poreOutputTable.SetAttribute("origin", f"{bounds[0]};{bounds[2]};{bounds[4]}")
+        if array_watershed is not None:
+            poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
+        else:
+            poreOutputTable.SetAttribute("watershed_node_id", self.labelNodeID)
 
         ### Move table nodes to hierarchy nodes ###
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -458,6 +477,8 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         folderTree.CreateItem(currentDir, poreOutputTable)
         folderTree.CreateItem(currentDir, throatOutputTable)
         folderTree.CreateItem(currentDir, networkOutputTable)
+        if array_watershed is not None:
+            folderTree.CreateItem(currentDir, output_watershed_volume)
 
         if self.visualization:
             self.results["model_nodes"] = self.visualize(poreOutputTable, throatOutputTable, inputNode)

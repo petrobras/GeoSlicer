@@ -1,13 +1,16 @@
 site_name: GeoSlicer Manual
 
 extra:
-  homepage: Overview/index.html
+  homepage: index.html
+  version:
+    provider: mike
 
 extra_css:
     - assets/extra.css
 
 theme:
   name: material
+  language: pt-BR
   custom_dir: theme
   logo: assets/logo.png
   favicon: assets/logo.ico
@@ -22,13 +25,19 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+  features:
+    - toc.follow
+    - toc.integrate
+    - navigation.tracking
 
 plugins:
     - search
-    - localsearch
+    - macros
     - include-markdown
-    - mermaid2
+    - mermaid2:
+        javascript: https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs 
     - tags
+    - site-urls
 
 use_directory_urls: false
 
@@ -38,12 +47,15 @@ markdown_extensions:
   - md_in_html
   - toc:
       toc_depth: 2
-  # Enables admonitions
   - admonition
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.critic
   - pymdownx.caret
   - pymdownx.keys
@@ -51,161 +63,97 @@ markdown_extensions:
   - pymdownx.tilde
   - pymdownx.tabbed:
       alternate_style: true
+
+validation:
+  links:
+    absolute_links: relative_to_docs
+    anchors: warn
+    unrecognized_links: warn
+
 extra_javascript:
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
-  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  # - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML
+
 nav:
-  - Visão Geral: "Overview/index.md"
+  - Visão Geral: "index.md"
   - Introdução:
-      - Instalação: "Getting_started/installation_guide.md"
-      - Interface do Usuário:
-          - Aplicação: "Getting_started/User_interface/application.md"
-          - Módulos: "Getting_started/User_interface/modules.md"
-#          - Layouts: "Getting_started/User_interface/layouts.md"
-      - Primeiros Passos: "Getting_started/first_steps.md"
-  - Visualizar Imagens:
-      - Introdução: "Data_loading/intro.md"
-      - Imagens Tomográficas (3D):
-          - Micro CT: "Data_loading/load_microct.md"
-          - Core CT: "Data_loading/load_corect.md"
-      - Lâminas (2D): "Data_loading/load_thin_section.md"
-      - Logs de Poço: "Data_loading/load_well_log.md"
-      - Imagens Grandes:  "Data_loading/load_bigimage.md"
-  - Transforms: "Transforms/transforms.md"
-  - Filtragem e Segmentação:
-      - Filtros: "Filtering_and_Segmentation/Filters/apply_filters.md"
-      - Segmentação:
-#            - Introdução: "Filtering_and_Segmentation/Segmentation/intro.md"
-            - Segmentação Manual:
-                - Segment Editor: "Filtering_and_Segmentation/Segmentation/Manual/manual_segmentation.md"
-                - Efeitos:
-                    - Primeiro Plano Inteligente: "Filtering_and_Segmentation/Segmentation/Manual/Effects/smart_foreground.md"
-            - Segmentação Automática (IA): "Filtering_and_Segmentation/Segmentation/Auto/auto_segmentation.md"
-#            - Segmentação Semiautomática: "Filtering_and_Segmentation/Segmentation/semiautomatic_segmentation.md"
-#            - Segmentação de Imagens Tomográficas: "Filtering_and_Segmentation/Segmentation/segmentation_microct.md"
-#            - Segmentação de Lâminas: "Filtering_and_Segmentation/Segmentation/segmentation_thin_section.md"
-#            - Segmentação de Logs de Poço: "Filtering_and_Segmentation/Segmentation/segmentation_well_log.md"
-  - Quantificação:
-      - Análise de Resultados: "Quantification/result_analysis.md"
-#      - Particionar Segmentação: "Quantification/partitioning.md"
-      - Identificar Instâncias no Log de Poço: "Quantification/instance_segmenter.md"
-  - Simulação:
-      - Microtom: "Simulation/microtom.md"
-      - Rede de Poros (PNM):
-          - Introdução: "Simulation/PNM/intro.md"
-          - Simulação Kabs: "Simulation/PNM/kabs.md"
-          - Simulação Krel: "Simulation/PNM/krel.md"
-          - Simulação MICP: "Simulation/PNM/micp.md"
-          - Geração de Relatórios: "Simulation/PNM/report.md"
-  - Execução Remota (HPC/Cluster):
-      - Introdução: "Remote_computing/intro.md"
-  - Módulos:
-      - Segment Editor: "Modules/Thin_section/SegmentEditor.md"
-      - Crop: "Modules/Thin_section/Crop.md"
-      - Export: "Modules/Thin_section/Export.md"
-      - Lâminas (2D):
-          - Auto Registration: "Modules/Thin_section/AutoRegistration.md"
-          - Fluxos:
-            - Fluxo PP: "Modules/Thin_section/Fluxo PP.md"
-            - Fluxo PP/PX: "Modules/Thin_section/Fluxo PP PX.md"
-            - Fluxo QEMSCAN: "Modules/Thin_section/Fluxo QEMSCAN.md"
-          - Image Tools: "Modules/Thin_section/ImageTools.md"
-          - Manual Registration: "Modules/Thin_section/Registration.md"
-          - Multiple Image Analysis: "Modules/Thin_section/MultipleImageAnalysis.md"
-          - Pore Stats: "Modules/Thin_section/PoreStats.md"
-          - Qemscan Loader: "Modules/Thin_section/QemscanLoader.md"
-          - Thin Section Loader: "Modules/Thin_section/Loader.md"
-#      - Logs de Poço: "Modules/Thin_section/AutoRegistration.md"
-#      - Imagens Massivas: "Modules/Thin_section/AutoRegistration.md"
-      - Quantificação:
-#          - Instance Segmenter: "Modules/Quantification/instance_segmenter.md"
-          - Segment Inspector: "Modules/Quantification/segment_inspector.md"
-          - Heterogeneity Index: "Modules/Quantification/heterogeneity_index.md"
-      - PNM:
-          - Pore Network Extraction: "Modules/PNM/PNExtraction.md"
-          - Pore Network Simulation: "Modules/PNM/PNSimulation.md"
-          - Cycles Visualization: "Modules/PNM/cycles.md"
-          - Krel EDA: "Modules/PNM/krelEDA.md"
-          - Production Prediction: "Modules/PNM/production.md"
-      - Multiscale:
-          - Introdução e Fluxos: "Modules/Multiscale/MultiscaleWorkflows.md"
-          - Geolog Integration: "Modules/Multiscale/GeologEnv.md"
-          - Multiscale Image Generation: "Modules/Multiscale/Multiscale.md"
-          - Multiscale Post Processing: "Modules/Multiscale/MultiscalePostProcessing.md"
-          - Image Log Inpaint: "Modules/Multiscale/ImageLogInpaint.md"
-          - Image Log Crop: "Modules/Multiscale/ImageLogCropVolume.md"
-      - Segmentação:
-          - Treinamento de Modelo: "Modules/Segmenter/Semiauto/semiauto.md"
-          - Modelos Pré-treinados (Micro CT): "Modules/Segmenter/Automatic/automatic_MicroCT.md"
-          - Modelos Pré-treinados (Thin Section): "Modules/Segmenter/Automatic/automatic_ThinSection.md"
-      - Image Log:
-          - Importar: "Data_loading/load_well_log.md"
-          - Image Log Crop: "Modules/ImageLog/ImageLogCropVolume/ImageLogCropVolume.md"
-          - Processamento:
-              - CLAHE (Contrast Limit Adaptive Histogram Equalization): "Modules/ImageLog/CLAHETool/CLAHETool.md"
-#  - Suporte:
-#      - Error Log: "Support_and_assistance/error_log.md"
-#      - Reportar Erros: "Support_and_assistance/log_bundle.md"
+      - Instalação: "GettingStarted/InstallationGuide.md"
+      - Primeiros Passos: "GettingStarted/FirstSteps.md"
+      - Aplicação: "GettingStarted/UserInterface/Application.md"
+      - Módulos: "GettingStarted/UserInterface/Modules.md"
+      - Carregando dados: "GettingStarted/DataLoading.md"
+      - Remote computing: "GettingStarted/RemoteComputing.md"
+  - Volumes:
+      - Introdução: "Volumes/Introduction.md"
+      - Carregamento: "Volumes/MicroCTImport/Import.md"
+      - Export: "Volumes/MicroCTExport/Export.md"
+      - Crop: "Volumes/Crop/Crop.md"
+      - Filtros: "Volumes/Filter/Filter.md"
+      - Resample: "Volumes/Resample/Resample.md"
+      - Segmentação: "Volumes/Segmentation/Segmentation.md"
+      - Microtom: "Volumes/Microtom/Microtom.md"
+      - Microporosidade: "Volumes/Microporosity/Microporosity.md"
+      - Modelling Flow: "Volumes/ModellingFlow/StreamlinedModelling.md"
+      - Registro: "Volumes/Register/Register.md"
+      - Rede de Poros: "Volumes/PNM/PNM.md"
+      - Multiscale: Volumes/Multiscale/Multiscale.md
+      - Big Image: "Volumes/BigImage/BigImage.md"
+      - More Tools: "Volumes/MoreTools/MoreTools.md"
+      - Import: "Volumes/Import/Import.md"
+  - Thin Section:
+      - Introdução: "ThinSection/Introduction.md"
+      - Thin Section Loader: "ThinSection/Loader/ThinSectionLoader.md"
+      - Qemscan Loader: "ThinSection/Loader/QemscanLoader.md"
+      - Cortes: "ThinSection/Crop/Crop.md"
+      - Filtros: "ThinSection/Filters/ImageTools.md"
+      - Registro: "ThinSection/Register/Register.md"
+      - Segmentação: "ThinSection/Segmentation/Segmentation.md"
+      - Thin Section Flows: "ThinSection/Flows/Flows.md"
+      - Multi-Image Analysis: "ThinSection/MultipleImageAnalysis/MultipleImageAnalysis.md"
+      - Export: "ThinSection/Export/Export.md"
+      - More Tools:  "ThinSection/MoreTools/MoreTools.md"
+      - Import: "ThinSection/Import/Import.md"
+  - Well Logs:
+      - Introdução: "ImageLog/Introduction.md"
+      - Import: "ImageLog/Import/Import.md"
+      - Unwrap: "ImageLog/Unwrap/Unwrap.md"
+      - Export: "ImageLog/Export/Export.md"
+      - Crop: "ImageLog/Crop.md"
+      - Processing: "ImageLog/Processing/Processing.md"
+      - Unwrap Registration: "ImageLog/UnwrapRegistration/UnwrapRegistration.md"
+      - Permeability Modeling: "ImageLog/PermeabilityModeling/PermeabilityModeling.md"
+      - Inpainting: "ImageLog/Inpainting/Inpainting.md"
+      - Segmentation: "ImageLog/Segmentation/Segmentation.md"
+      - More Tools: "ImageLog/MoreTools/MoreTools.md"
+  - Core:
+      - Introduction: "Core/Introduction.md"
+      - Multicore: "Core/Multicore.md"
+      - Core Photograph Loader: "Core/CorePhotographLoader.md"
+      - Crop: "Core/Crop.md"
+      - Transforms: "Core/MulticoreTransforms.md"
+      - Segmentation: "Core/Segmentation/Segmentation.md"
+      - Core Inpaint: "Core/CoreInpaint.md"
+      - Export: "Core/MulticoreExport.md"
+      - Fluxos: "Core/Flows.md"
+  - Multiscale:
+      - Introdução: "Multiscale/Introduction.md"
+      - Geolog Integration: "Multiscale/GeologIntegration/GeologEnv.md"
+      - Import Tools: "Multiscale/ImportTools/ImportTools.md"
+      - Export Tools: "Multiscale/ExportTools/ExportTools.md"
+      - Image Log Pre-processing: "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.md"
+      - Volumes Pre-processing: "Multiscale/VolumesPreProcessing/VolumesPreProcessing.md"
+      - Microtom: "Multiscale/Microtom/Microtom.md"
+      - Multiscale Image Generation: "Multiscale/MultiscaleImageGeneration/Multiscale.md"
+      - Multiscale Post-Processing: "Multiscale/MultiscalePostProcessing/MultiscalePostProcessing.md"
+      - Pore Network: "Multiscale/PNM/PNM.md"
+      - Volume Segmentation: "Multiscale/Segmentation/VolumeSegmentation.md"
+      - Image Log Segmentation: "Multiscale/Segmentation/ImageLogSegmentation.md"
+      - More Tools: "Multiscale/MoreTools/MoreTools.md"
+      - Fluxos: "Multiscale/Flows/Flows.md"
+  - Desenvolvimento:
+    - Compilando o GeoSlicer: "Desenvolvimento/BuildingGeoSlicer.md"
+    - Como Contribuir: "Desenvolvimento/HowToContribute.md"
+    - Documentação: "Desenvolvimento/Documentation.md"
 
-
-#  - Image Log:
-#    - Usabilidade: "Image Log/Usabilidade/usabilidade.md"
-#    - Instance Segmenter: "Image Log/Instance Segmenter/instance_segmenter.md"
-#  - Core CT:
-#    - Usabilidade: "Core CT/Usabilidade/usabilidade.md"
-#  - Micro CT:
-#    - Introdução: "Micro CT/MicroCT.md"
-#    - Módulos:
-#      - Open Rock: "Micro CT/Modulos/OpenRockData.md"
-#      - Streamlined Segmentation: "Micro CT/Modulos/StreamlinedSegmentation.md"
-#    - Polynomial Shading Correction: "Micro CT/Polynomial Shading Correction/polynomial_shading_correction.md"
-#    - Gradient Anisotropic Diffusion: "Micro CT/Gradient Anisotropic Diffusion/gradient_anisotropic_diffusion.md"
-#  - PNM:
-#    - Introdução: "PNM/Introdução/Introdução.md"
-#    - Ações:
-#      - Simulação Kabs: "PNM/Ações/kabs.md"
-#      - Simulação Krel: "PNM/Ações/krel.md"
-#      - Simulação MICP: "PNM/Ações/micp.md"
-#      - Geração de relatórios: "PNM/Ações/report.md"
-#    - Módulos:
-#      - Pore Network Extraction:  "Modules/PNM/PNExtraction.md"
-#      - Pore Network Simulation:  "Modules/PNM/PNSimulation.md"
-#      - Cycles Visualization: "Modules/PNM/cycles.md"
-#      - Krel EDA: "Modules/PNM/krelEDA.md"
-#      - Production Prediction: "Modules/PNM/production.md"
-#  - Thin Section:
-#    - Introdução: "Thin Section/thinsection.md"
-#    - Ações:
-#      - Executar Fluxos: "Thin Section/Ações/Fluxos.md"
-#      - Importar Imagem: "Thin Section/Ações/ImportarImagem.md"
-#      - Transformar Imagem: "Thin Section/Ações/TransformarImagem.md"
-#      - Segmentar Imagem: "Thin Section/Ações/SegmentarImagem.md"
-#      - Analisar Imagem: "Thin Section/Ações/AnalisarImagem.md"
-#      - Exportar Resultados: "Thin Section/Ações/ExportarResultados.md"
-#    - Módulos:
-#      - Auto Registration: "Modules/Thin_section/AutoRegistration.md"
-#      - Crop: "Modules/Thin_section/Crop.md"
-#      - Editor de Segmentação: "Modules/Thin_section/SegmentEditor.md"
-#      - Export: "Modules/Thin_section/Export.md"
-#      - Fluxos:
-#        - Fluxo PP: "Modules/Thin_section/Fluxo PP.md"
-#        - Fluxo PP/PX: "Modules/Thin_section/Fluxo PP PX.md"
-#        - Fluxo QEMSCAN: "Modules/Thin_section/Fluxo QEMSCAN.md"
-#      - Image Tools: "Modules/Thin_section/ImageTools.md"
-#      - Manual Registration: "Modules/Thin_section/Registration.md"
-#      - Multiple Image Analysis: "Modules/Thin_section/MultipleImageAnalysis.md"
-#      - Pore Stats: "Modules/Thin_section/PoreStats.md"
-#      - Qemscan Loader: "Modules/Thin_section/QemscanLoader.md"
-#      - Segment Inspector: "Modules/Thin_section/SegmentInspector.md"
-#      - Thin Section Loader: "Modules/Thin_section/Loader.md"
-#
-#  - Segmentação:
-#    - Treinamento de Modelo: "Segmenter/Semiauto/semiauto.md"
-#    - Modelos Pré-treinados (Micro CT): "Segmenter/Automatic/automatic_microCT.md"
-#    - Modelos Pré-treinados (Thin Section): "Segmenter/Automatic/automatic_thinSection.md"
-#    - Inspector:
-#      - Estudos de porosidade: "Inspector/Watershed/estudos_de_porosidade.md"
-#  - Outros:
-#    - Fluxos: "Outros/fluxos.md"
-
-
+not_in_nav: |
+  Pages/*

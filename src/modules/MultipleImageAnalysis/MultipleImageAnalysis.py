@@ -37,7 +37,7 @@ class MultipleImageAnalysis(LTracePlugin):
         self.parent.categories = ["Tools", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = f"file:///{Path(helpers.get_scripted_modules_path() + '/Resources/manual/Thin%20Section/Modulos/MultipleImageAnalysis.html').as_posix()}"
+        self.setHelpUrl("ThinSection/MultipleImageAnalysis/MultipleImageAnalysis.html")
 
     @classmethod
     def readme_path(cls):

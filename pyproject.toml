@@ -36,7 +36,7 @@ exclude = "tools/resources/*|src/submodules/*|env|venv|.eggs/*"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-v"
+addopts = "-v --cov=. --cov-report=html"
 testpaths = [
     "tests/unit",
 ]

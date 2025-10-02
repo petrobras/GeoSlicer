@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import convert_to_global_registry, global_unit_registry as ureg
 from ltrace.cli_progress import RunCLIWithProgressBar
 
@@ -28,6 +29,8 @@ class CoreImagesImport(LTracePlugin):
         )
         self.final_depth = 0 * ureg.meter
         self.cores = []
+        self.setHelpUrl("Core/Multicore.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/ImportTools/Multicore.html", NodeEnvironment.MULTISCALE)
 
     def setup(self):
         pass

@@ -6,6 +6,7 @@ import numpy as np
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer import widgets
 from ltrace.slicer.helpers import createTemporaryVolumeNode, highlight_error
+from ltrace.slicer.node_attributes import NodeEnvironment
 from pathlib import Path
 from Libs.patchmatch import PatchMatch
 
@@ -24,7 +25,8 @@ class CoreInpaint(LTracePlugin):
         self.parent.title = "Core Inpaint"
         self.parent.categories = ["Core", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = CoreInpaint.help()
+        self.setHelpUrl("Core/CoreInpaint.html", NodeEnvironment.CORE)
+        self.setHelpUrl("ImageLog/Inpainting/CoreInpaint/CoreInpaint.html", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):

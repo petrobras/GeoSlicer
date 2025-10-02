@@ -11,6 +11,7 @@ from threading import Thread
 from dlisio import dlis as dlisio
 from ltrace.slicer_utils import *
 from ltrace.slicer.image_log.import_widget import WellLogImportWidget
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.ImageLogImportTest import ImageLogImportTest
@@ -29,7 +30,8 @@ class ImageLogImport(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.acknowledgementText = """"""
-        self.set_manual_path("Data_loading/load_well_log.html")
+        self.setHelpUrl("ImageLog/Import/Import.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Multiscale/ImportTools/ImageLogImport.html", NodeEnvironment.MULTISCALE)
 
 
 class ImageLogImportWidget(LTracePluginWidget):

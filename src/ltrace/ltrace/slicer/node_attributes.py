@@ -77,6 +77,14 @@ class NodeTemporarity(NodeAttributeValue):
     FALSE = "false"
 
 
+class CorrelatedNodeAttributes(NodeAttributeValue):
+    """Define type of correlatedNode and its reference ID"""
+
+    CORRELATED_NODE_TYPE = "correlated_node_type"
+    PROPORTION_NODE = "proportions_node"
+    REFERENCE_NODE_ID = "reference_node_id"
+
+
 class TableDataOrientation(NodeAttributeValue):
     """Define which orientation the data from a table node is."""
 

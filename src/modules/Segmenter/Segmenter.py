@@ -165,8 +165,9 @@ class Segmenter(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Filtering_and_Segmentation/Segmentation/auto_segmentation.html').as_posix()}"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
+        self.setHelpUrl("Volumes/Segmentation/MicroCTSegmenter.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/ThinSectionSegmenter.html", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):
@@ -349,22 +350,26 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.createClassifierRadio = qt.QRadioButton("Model Training")
         self.createClassifierRadio.objectName = "Create Classifier Radio"
-        manual_path = getResourcePath("manual") / "Modules" / "Segmenter"
+        if getCurrentEnvironment() == NodeEnvironment.THIN_SECTION:
+            manualUrl = "Volumes/Segmentation/MicroCTSegmenter.html"
+        else:
+            manualUrl = "ThinSection/Segmentation/ThinSectionSegmenter.html"
+
         createClassifierHelpButton = HelpButton(
             "### Model Training\n\nTrain a model from scratch using a partially annotated image as input. "
             "The model is then used to fully segment the image. This method is more flexible, "
             "as you can choose parameters, filters and annotation for a custom use case."
             "\n\n-----\n[More]({path_to_manual})",
-            replacer=lambda x: x.format(path_to_manual=(manual_path / "Semiauto" / "semiauto.html").as_posix()),
+            replacer=lambda x: x.format(path_to_manual=manualUrl),
         )
         self.loadClassifierRadio = qt.QRadioButton("Pre-trained Models")
         self.loadClassifierRadio.objectName = "Load Classifier Radio"
 
         def loadClassifierUrlReplacer(url):
             if getCurrentEnvironment() == NodeEnvironment.MICRO_CT:
-                return url.format(path_to_manual=(manual_path / "Automatic" / f"automatic_microCT.html").as_posix())
+                return url.format(path_to_manual=manualUrl)
 
-            return url.format(path_to_manual=(manual_path / "Automatic" / f"automatic_thinSection.html").as_posix())
+            return url.format(path_to_manual=manualUrl)
 
         self.loadClassifierHelpButton = HelpButton(
             "### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained "
@@ -1120,7 +1125,7 @@ def revertColorTable(invMap, destinationNode):
             segment.SetColor(color[:3])
             # segment.SetLabelValue(index)
         except Exception as e:
-            print(
+            logging.error(
                 f"Failed during segment {j} [id: {segmentation.GetNthSegmentID(j)}, name: {segment.GetName()}, label: {segment.GetLabelValue()}]"
             )
 
@@ -1485,7 +1490,7 @@ class SegmenterLogic(LogicBase):
                     slicer.util.errorDisplay(error)
 
             except Exception as e:
-                print("Handle errors on state: %s" % caller.GetStatusString())
+                logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
                 self.progressUpdate(0)
@@ -1493,7 +1498,6 @@ class SegmenterLogic(LogicBase):
 
         def onFinish():
             caller = cliQueue.get_current_node()
-            print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             self.progressUpdate(1.0)
@@ -1647,7 +1651,7 @@ class MonaiModelsLogic(LogicBase):
                 self.nodeCreated.emit(outNode.GetID())
 
             except Exception as e:
-                print("Handle errors on state: %s" % caller.GetStatusString())
+                logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
                 clearPattern("TMP_P*_ROCK_AREA*")
@@ -1656,7 +1660,6 @@ class MonaiModelsLogic(LogicBase):
 
         def onFinish():
             caller = cliQueue.get_current_node()
-            print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             clearPattern("TMP_P*_ROCK_AREA*")
@@ -1882,7 +1885,7 @@ class BayesianInferenceLogic(LogicBase):
                 self.nodeCreated.emit(outNode.GetID())
 
             except Exception as e:
-                print("Handle errors on state: %s" % caller.GetStatusString())
+                logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
                 clearPattern("TMP_P*_ROCK_AREA*")
@@ -1891,7 +1894,6 @@ class BayesianInferenceLogic(LogicBase):
 
         def onFinish():
             caller = cliQueue.get_current_node()
-            print("ExecCmd CLI %s" % caller.GetStatusString())
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             clearPattern("TMP_P*_ROCK_AREA*")
@@ -1964,11 +1966,12 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
         self.delFilterButton.enabled = True
         self.delFilterButton.connect("clicked(bool)", self.delFilter)
 
-        manualPath = getResourcePath("manual") / "Modules" / "Segmenter" / "Semiauto" / "semiauto.html"
-        self.addFeatureHelpButton = HelpButton(
-            "",
-            url=f"file:///{manualPath.as_posix()}",
-        )
+        if getCurrentEnvironment() == NodeEnvironment.THIN_SECTION:
+            manualUrl = "Volumes/Segmentation/MicroCTSegmenter.html"
+        else:
+            manualUrl = "ThinSection/Segmentation/ThinSectionSegmenter.html"
+
+        self.addFeatureHelpButton = HelpButton("", url=manualUrl)
 
         hboxLayout = qt.QHBoxLayout()
         hboxLayout.addWidget(self.customFilterInput)

@@ -36,6 +36,9 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
         super().__init__(node=node, event=event)
 
     def _afterLoad(self) -> None:
+        if self._event == TriggerEvent.NONE:
+            return
+
         self._loadDataFromImageFile()
 
     def _afterSave(self) -> None:
@@ -71,7 +74,7 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
             # Update attribute
             self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, destinationSourceImageFilePath.as_posix())
 
-        # Reload data from the image to maintaing node's data updated. Only if its was triggered by a save event.
+        # Reload data from the image to maintaing node's data updated. Only if its was triggered by a 'save' event.
         if self._event != TriggerEvent.SAVE_AS:
             self._loadDataFromImageFile()
 
@@ -160,7 +163,7 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
             imageFileInProjectPath = Path(storageNode.GetFileName()).parent / imageFilePath.name
             if not imageFileInProjectPath.is_file():
                 logging.error(
-                    f"Failed to load {self._node.GetName()} node. The image's file is missing: {imageFileInProjectPath.as_posix()}"
+                    f"Failed to load '{self._node.GetName()}' node. The image's file is missing: {imageFileInProjectPath.as_posix()}"
                 )
                 return
 
@@ -169,7 +172,7 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
 
         if not imageFilePath.is_file():
             logging.error(
-                f"Failed to load {self._node.GetName()} node. The image's file is missing: {imageFilePath.as_posix()}"
+                f"Failed to load '{self._node.GetName()}' node. The image's file is missing: {imageFilePath.as_posix()}"
             )
             return
 

@@ -18,20 +18,13 @@ def replace_content(path, words_to_replace: dict):
 
 
 def get_modules_directory_path():
-    match = re.search(r"(\S+slicerltrace)\S+", __file__)
-    if not match:
-        raise RuntimeError(
-            "Couldn't find the slicerltrace module's directory. Please, use the script from inside the slicerltrace tools directory."
-        )
-
-    path_string = match.group(1)
-    return Path(path_string)
+    return Path(__file__).parent.parent
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="LTrace Extension Starter Kit.")
-    parser.add_argument("-n", "--name", default="", type=str, help="The modules' name. Example: 'New Module'")
+    parser.add_argument("-n", "--name", default="", type=str, help="The modules' name. Example: 'NewModule'")
     parser.add_argument(
         "-t",
         "--title",

@@ -13,11 +13,12 @@ import numpy as np
 import pandas as pd
 import slicer
 from ltrace.pore_networks.functions import geo2pnf
-from ltrace.pore_networks.functions import is_multiscale_geo
+from ltrace.pore_networks.processing.two_phase.two_phase_simulation import TwoPhaseSimulation
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
 from ltrace.remote.utils import argstring
 from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.slicer.node_attributes import TableType
 
 
 class PoreNetworkSimulationHandler:
@@ -25,11 +26,14 @@ class PoreNetworkSimulationHandler:
     JOBS_LOCAL_PATH = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\servicos\\LTRACE\\GEOSLICER\\jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
-    def __init__(self, pore_table_node_id, params, prefix) -> None:
+    def __init__(self, pore_table_node_id, params, prefix, simulation_intervals=None, job_dir_name=None) -> None:
         self.pore_table_node_id = pore_table_node_id
         self.params = params
         self.prefix = prefix
         self.slurm_job_ids = []
+        self.job_map = {}  # Maps job_id to simulation interval
+        self.simulation_intervals = simulation_intervals  # Optional: specific intervals to run
+        self.job_dir_name = job_dir_name  # Store job_dir_name for reuse
 
         self.job_remote_path = None
         self.job_local_path = None
@@ -54,58 +58,77 @@ class PoreNetworkSimulationHandler:
 
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
-            job_dir_name = JobManager.dirname(caller.jobs[uid])
-            self.job_remote_path = self.JOBS_REMOTE_PATH / job_dir_name
-            self.job_local_path = self.JOBS_LOCAL_PATH / job_dir_name
-            self.temp_path = self.JOBS_REMOTE_PATH / job_dir_name / "temp"
+            # Use provided job_dir_name or generate a new one
+            retried_job = self.job_dir_name is not None
+            self.job_dir_name = self.job_dir_name or JobManager.dirname(caller.jobs[uid])
+            self.job_remote_path = self.JOBS_REMOTE_PATH / self.job_dir_name
+            self.job_local_path = self.JOBS_LOCAL_PATH / self.job_dir_name
+            self.temp_path = self.JOBS_REMOTE_PATH / self.job_dir_name / "temp"
+            self.params_to_save = self.params.copy()
 
-            client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
-            client.run_command(f"mkdir {self.job_remote_path}/temp")
+            # Only create directories and write JSON files if job_dir_name was not provided
+            if not retried_job:
+                client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
+                client.run_command(f"mkdir {self.job_remote_path}/temp")
 
-            subresolution_function = self.params["subresolution function"]
-            del self.params["subresolution function"]
-            del self.params["subresolution function call"]
+                statoil_dict = geo2pnf(
+                    slicer.mrmlScene.GetNodeByID(self.pore_table_node_id),
+                    self.params["subresolution function"],
+                    axis=self.params["direction"],
+                    subres_shape_factor=self.params["subres_shape_factor"],
+                    subres_porositymodifier=self.params["subres_porositymodifier"],
+                )
 
-            pore_table_node = slicer.mrmlScene.GetNodeByID(self.pore_table_node_id)
+                with (self.job_local_path / "statoil_dict.json").open("w") as file:
+                    json.dump(statoil_dict, file)
 
-            statoil_dict = geo2pnf(
-                pore_table_node,
-                subresolution_function,
-                subres_shape_factor=self.params["subres_shape_factor"],
-                subres_porositymodifier=self.params["subres_porositymodifier"],
-            )
-
-            with (self.job_local_path / "statoil_dict.json").open("w") as file:
-                json.dump(statoil_dict, file)
-
-            with (self.job_local_path / "params_dict.json").open("w") as file:
-                json.dump(self.params, file)
+            del self.params_to_save["subresolution function"]
+            del self.params_to_save["subresolution function call"]
+            if not retried_job:
+                with (self.job_local_path / "params_dict.json").open("w") as file:
+                    json.dump(self.params_to_save, file)
 
             self.cli_params = {
                 "model": "TwoPhaseSensibilityTest",
                 "cwd": str(self.job_remote_path),
                 "tempDir": str(self.temp_path),
-                "isMultiScale": int(is_multiscale_geo(pore_table_node)),
-                "returnparameterfile": str(self.temp_path / "returnparameterfile.txt"),
             }
 
             caller.set_state(uid, "DEPLOYING", 10, message="Configuration done. Starting job deployment.")
             caller.schedule(uid, "START")
         except Exception:
             traceback.print_exc()
+            caller.set_state(
+                uid,
+                "FAILED",
+                100,
+                message="Failed to deploy job.",
+                end_time=datetime.now().timestamp(),
+            )
 
     def start(self, caller: JobManager, uid: str, client: Any = None):
         ts_start = datetime.now().timestamp()
         try:
-            n_sims = self.get_number_of_simulations()
-            n_jobs = self.params["n_jobs"]
-            n_jobs = max(1, min(n_jobs, n_sims))
-            simulations_per_job = n_sims // n_jobs
-            remainder = n_sims % n_jobs
+            if self.simulation_intervals:
+                intervals = self.simulation_intervals
+            else:
+                n_sims = self.get_number_of_simulations()
+                n_jobs = self.params["n_jobs"]
+                n_jobs = max(1, min(n_jobs, n_sims))
+                simulations_per_job = n_sims // n_jobs
+                remainder = n_sims % n_jobs
+                intervals = [
+                    {
+                        "start_sim": i * simulations_per_job + min(i, remainder),
+                        "end_sim": (i + 1) * simulations_per_job + min(i + 1, remainder) - 1,
+                    }
+                    for i in range(n_jobs)
+                ]
 
-            for i in range(n_jobs):
-                start_sim = i * simulations_per_job + min(i, remainder)
-                end_sim = (i + 1) * simulations_per_job + min(i + 1, remainder) - 1
+            self.job_map = {}
+            for interval in intervals:
+                start_sim = interval["start_sim"]
+                end_sim = interval["end_sim"]
                 cli_params = self.cli_params.copy()
                 cli_params["simInterval"] = f"{start_sim}:{end_sim}"
 
@@ -122,17 +145,20 @@ class PoreNetworkSimulationHandler:
                         uid, "FAILED", 100, message=f"Failed to match job id for interval [{start_sim}, {end_sim}]"
                     )
                     return
-                self.slurm_job_ids.append(match.group(1))
+                job_id = match.group(1)
+                self.slurm_job_ids.append(job_id)
+                self.job_map[job_id] = {"start_sim": start_sim, "end_sim": end_sim}
 
             details = {
                 "pore_table_node_id": self.pore_table_node_id,
-                "params": self.params,
+                "params": self.params_to_save,
                 "prefix": self.prefix,
                 "job_remote_path": str(self.job_remote_path),
                 "job_local_path": str(self.job_local_path),
                 "slurm_job_ids": self.slurm_job_ids,
-                "n_sims": n_sims,
-                "n_jobs": n_jobs,
+                "job_map": {job_id: self.job_map[job_id] for job_id in self.slurm_job_ids},
+                "n_sims": self.get_number_of_simulations(),
+                "n_jobs": len(self.slurm_job_ids),
                 "command": full_cmd,
                 "cli_params": self.cli_params,
             }
@@ -140,7 +166,7 @@ class PoreNetworkSimulationHandler:
                 uid,
                 "PENDING",
                 10,
-                message=f"{n_jobs} jobs submitted for {n_sims} simulations.",
+                message=f"{len(self.slurm_job_ids)} jobs submitted for simulation intervals.",
                 start_time=ts_start,
                 details=details,
             )
@@ -160,27 +186,88 @@ class PoreNetworkSimulationHandler:
     def progress(self, caller: JobManager, uid: str, client: Any = None):
         try:
             job_status = slurm_utils.sacct(client, self.slurm_job_ids)
-            if slurm_utils.all_done(job_status):
-                caller.set_state(
-                    uid,
-                    "COMPLETED",
-                    100,
-                    message="All jobs completed.",
-                    end_time=datetime.now().timestamp(),
-                )
-            else:
-                # Aggregate progress from each job output file
-                total_progress = 0
-                for job_id in self.slurm_job_ids:
-                    slurm_out = self.job_local_path / f"slurm-{job_id}.out"
-                    total_progress += self.read_last_progress(slurm_out)
-                avg_progress = max(total_progress / len(self.slurm_job_ids), 10)
 
-                caller.set_state(uid, "RUNNING", avg_progress)
-                caller.schedule(uid, "PROGRESS")
+            # Gather latest progress for each job
+            successful_job_ids = []
+            total_progress = 0
+            count = 0
+            job_progress_map = {}
+            for job_id in self.slurm_job_ids:
+                slurm_out = self.job_local_path / f"slurm-{job_id}.out"
+                progress_pct = self.read_last_progress(slurm_out)
+                job_progress_map[job_id] = progress_pct
+                if progress_pct == 100:
+                    successful_job_ids.append(job_id)
+                total_progress += progress_pct
+                count += 1
+
+            # Only consider completion when Slurm reports all jobs are done
+            if slurm_utils.all_done(job_status):
+                details = {
+                    "successful_job_ids": successful_job_ids,
+                    "job_progress": job_progress_map,
+                    "job_map": self.job_map,
+                }
+                if len(successful_job_ids) == len(self.slurm_job_ids):
+                    # All jobs succeeded
+                    caller.set_state(
+                        uid,
+                        "COMPLETED",
+                        100,
+                        message=f"All {len(successful_job_ids)} job(s) reached 100%.",
+                        end_time=datetime.now().timestamp(),
+                        details=details,
+                    )
+                elif len(successful_job_ids) == 0:
+                    # All jobs failed
+                    failed_job_ids = self.slurm_job_ids
+                    failed_str = ", ".join(failed_job_ids)
+                    caller.set_state(
+                        uid,
+                        "FAILED",
+                        100,
+                        message=f"All {len(self.slurm_job_ids)} jobs failed. Failed jobs: {failed_str}.",
+                        end_time=datetime.now().timestamp(),
+                        details=details,
+                    )
+                else:
+                    # Some jobs failed, but mark as COMPLETED to allow collect to handle
+                    failed_job_ids = [jid for jid in self.slurm_job_ids if jid not in successful_job_ids]
+                    failed_str = ", ".join(failed_job_ids)
+                    caller.set_state(
+                        uid,
+                        "COMPLETED",
+                        100,
+                        message=f"Only {len(successful_job_ids)} out of {len(self.slurm_job_ids)} jobs completed successfully. Failed jobs: {failed_str}.",
+                        end_time=datetime.now().timestamp(),
+                        details=details,
+                    )
+                caller.persist(uid)
+                return
+
+            # Not all done yet -> report aggregated running progress and reschedule
+            avg_progress = max(total_progress / count, 10) if count > 0 else 10
+            caller.set_state(uid, "RUNNING", avg_progress)
+            caller.schedule(uid, "PROGRESS")
+
         except Exception as e:
             traceback.print_exc()
             logging.debug(f"Error in progress: {repr(e)}")
+
+    def read_last_progress(self, slurm_out_file_path):
+        last_progress = 0.1
+        try:
+            with slurm_out_file_path.open("r") as f:
+                for line in f:
+                    match = re.search(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>", line)
+                    if match:
+                        last_progress = float(match.group(1))
+        except FileNotFoundError:
+            return 10
+        except Exception:
+            logging.exception(f"Error reading slurm out file {slurm_out_file_path}")
+            return 10
+        return last_progress * 100
 
     def cancel(self, caller: JobManager, uid: str, client: Any = None):
         try:
@@ -206,6 +293,31 @@ class PoreNetworkSimulationHandler:
                 shutil.rmtree(local_path, ignore_errors=True)
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
+        details = caller.jobs[uid].details
+        successful_job_ids = details.get("successful_job_ids", [])
+        n_total = details.get("n_jobs", len(self.slurm_job_ids))
+
+        if len(successful_job_ids) < n_total:
+            failed_job_ids = [jid for jid in details["slurm_job_ids"] if jid not in successful_job_ids]
+            failed_intervals = [details["job_map"][jid] for jid in failed_job_ids]
+            failed_str = ", ".join(failed_job_ids)
+            message = f"Only {len(successful_job_ids)} out of {n_total} jobs completed successfully. Failed jobs: {failed_str}.\n\nDo you want to start a new job to retry the failed simulation intervals?"
+            if slicer.util.confirmYesNoDisplay(message):
+                # Create a new job for failed intervals, reusing the same job_dir_name
+                new_handler = PoreNetworkSimulationHandler(
+                    pore_table_node_id=self.pore_table_node_id,
+                    params=self.params.copy(),
+                    prefix=f"{self.prefix}_retry",
+                    simulation_intervals=failed_intervals,
+                    job_dir_name=self.job_dir_name,  # Reuse the original job_dir_name
+                )
+                job_name = f"PNM Two-phase: {self.prefix}_retry"
+                success = slicer.modules.RemoteServiceInstance.cli.run(
+                    new_handler, name=job_name, job_type="pnmsimulation"
+                )
+                return  # Do not collect yet
+
+        # Proceed with collecting results if all jobs succeeded or user declined retry
         pore_table_node = slicer.mrmlScene.GetNodeByID(self.pore_table_node_id)
         folder_tree = slicer.mrmlScene.GetSubjectHierarchyNode()
         if pore_table_node:
@@ -217,6 +329,14 @@ class PoreNetworkSimulationHandler:
         table_dir = folder_tree.CreateFolderItem(root_dir, "Tables")
         folder_tree.SetItemExpanded(root_dir, False)
         folder_tree.SetItemExpanded(table_dir, False)
+
+        # Reload updated params
+        with (self.job_local_path / "params_dict.json").open("r") as file:
+            params = json.load(file)
+        parameters_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
+        parameters_node.SetText(json.dumps(params, indent=4))
+        parameters_node.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
+        folder_tree.CreateItem(root_dir, parameters_node)
 
         def load_and_concat(pattern):
             files = list(self.job_local_path.glob(pattern))
@@ -304,22 +424,5 @@ class PoreNetworkSimulationHandler:
             krel_table_node.SetAttribute(f"cycle_table_{cycle}_id", cycle_table_node.GetID())
             folder_tree.CreateItem(table_dir, cycle_table_node)
 
-    def read_last_progress(self, slurm_out_file_path):
-        last_progress = 0.1
-        try:
-            with slurm_out_file_path.open("r") as f:
-                for line in f:
-                    match = re.search(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>", line)
-                    if match:
-                        last_progress = float(match.group(1))
-        except FileNotFoundError:
-            return 0.1
-
-        return last_progress * 100
-
     def get_number_of_simulations(self):
-        num_tests = 1
-        for key, value in self.params.items():
-            if type(value) == list or type(value) == tuple:
-                num_tests *= len(value)
-        return num_tests
+        return len(TwoPhaseSimulation.get_params_list(TwoPhaseSimulation.expand_params(self.params)))

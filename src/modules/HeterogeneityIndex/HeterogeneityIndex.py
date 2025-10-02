@@ -21,7 +21,7 @@ class HeterogeneityIndex(LTracePlugin):
         self.parent.title = "Heterogeneity Index"
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.set_manual_path("Modules/Quantification/heterogeneity_index.html")
+        self.setHelpUrl("ImageLog/Processing/HeterogeneityIndex/HeterogeneityIndex.html")
 
     @classmethod
     def readme_path(cls):

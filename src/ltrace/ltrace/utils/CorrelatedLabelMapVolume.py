@@ -1,5 +1,6 @@
 from abc import ABC
 from ltrace.slicer import helpers
+from ltrace.slicer.node_attributes import CorrelatedNodeAttributes
 
 import vtk, slicer
 import numpy as np
@@ -136,6 +137,10 @@ class ProportionLabelMapVolume(CorrelatedLabelMapVolume):
             if self._labelMapVolumeNodeId is None:
                 labelMapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
                 self._labelMapVolumeNodeId = labelMapVolumeNode.GetID()
+                labelMapVolumeNode.SetAttribute(
+                    CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value, CorrelatedNodeAttributes.PROPORTION_NODE.value
+                )
+                labelMapVolumeNode.SetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value, referenceNode.GetID())
 
             seg = referenceNode.GetSegmentation()
             empty = seg.GetNumberOfSegments() == 0
@@ -160,6 +165,10 @@ class ProportionLabelMapVolume(CorrelatedLabelMapVolume):
 
         if labelMapVolumeNode is None:
             return
+
+        if self._name != f"{self.referenceNode.GetName()}_Proportions":
+            self._name = f"{self.referenceNode.GetName()}_Proportions"
+            labelMapVolumeNode.SetName(self._name)
 
         if self._name.replace(" ", ""):
             labelMapVolumeNode.SetName(self._name)

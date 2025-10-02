@@ -9,7 +9,6 @@ from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from Methods.permeability import Permeability
 from Methods.microporosity import MicroPorosity
-from Methods.saturated_porosity import SaturatedPorosity
 from Methods.output_info import OutputInfo
 
 try:
@@ -28,6 +27,7 @@ class SegmentationModelling(LTracePlugin):
         self.parent.categories = ["Segmentation", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = SegmentationModelling.help()
+        self.setHelpUrl("Volumes/Microporosity/PorosityFromSegmentation.html")
 
     @classmethod
     def readme_path(cls):
@@ -48,18 +48,14 @@ class SegmentationModellingWidget(LTracePluginWidget):
         self.method_selector.selector.objectName = "Methods ComboBox"
         micro_porosity_widget = MicroPorosity(controller=self)
         permeability_widget = Permeability()
-        saturated_porosity_widget = SaturatedPorosity(controller=self)
 
         # Add method widgets to the method selector
         self.method_selector.addWidget(micro_porosity_widget)
         self.method_selector.addWidget(permeability_widget)
-        self.method_selector.addWidget(saturated_porosity_widget)
 
         self.micro_porosity_widget = micro_porosity_widget
         self.permeability_widget = permeability_widget
-        self.saturated_porosity_widget = saturated_porosity_widget
         self.micro_porosity_widget.signal_quality_control_changed.connect(self.__handle_reset_output)
-        self.saturated_porosity_widget.signal_quality_control_changed.connect(self.__handle_reset_output)
 
         methods_collapsible_button = ctk.ctkCollapsibleButton()
         methods_collapsible_button.text = "Methods"
@@ -82,7 +78,7 @@ class SegmentationModellingWidget(LTracePluginWidget):
             inputWidget.onMainSelectedSignal.connect(self.__on_input_selected)
             inputWidget.onSoiSelectedSignal.connect(self.__on_soi_selected)
             inputWidget.onReferenceSelectedSignal.connect(self.__on_reference_selected)
-            inputWidget.segmentsOff()
+            # inputWidget.segmentsOff()
 
         self.inputWidget = self.method_selector.currentWidget().inputWidget
         inputs_layout = qt.QVBoxLayout(inputs_collapsible_button)
@@ -191,12 +187,8 @@ class SegmentationModellingWidget(LTracePluginWidget):
 
     def __update_apply_button_state(self):
         isPermeability = self.method_selector.currentWidget().DISPLAY_NAME == Permeability.DISPLAY_NAME
-        isSatPorosity = self.method_selector.currentWidget().DISPLAY_NAME == SaturatedPorosity.DISPLAY_NAME
         self.apply_button.setEnabled(
             self.output_prefix_lineedit.text.strip()
-            and (
-                self.method_selector.currentWidget().validateQC() if isSatPorosity else True
-            )  # ignore if not saturated porosity
             and self.inputWidget.referenceInput.currentNode() is not None
             and (self.inputWidget.mainInput.currentNode() is not None or isPermeability)
         )

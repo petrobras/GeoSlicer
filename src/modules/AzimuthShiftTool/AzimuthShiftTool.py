@@ -26,6 +26,7 @@ class AzimuthShiftTool(LTracePlugin):
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = AzimuthShiftTool.help()
+        self.setHelpUrl("ImageLog/Processing/AzimuthShift/AzimuthShift.html")
 
     @classmethod
     def readme_path(cls):

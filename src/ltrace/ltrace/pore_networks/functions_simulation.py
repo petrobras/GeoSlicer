@@ -539,7 +539,7 @@ def get_flow_rate(pn_pores, pn_throats):
         p0 = pn_throats["throat.conns_0"][throat]
         p1 = pn_throats["throat.conns_1"][throat]
         c = pn_throats["throat.conductance"][throat]
-        delta_p[throat] = np.abs(p0 - p1)
+        delta_p[throat] = pn_pores["pore.pressure"][p1] - pn_pores["pore.pressure"][p0]
         flow[throat] = delta_p[throat] * c
     pn_throats["throat.flow"] = flow
     pn_throats["throat.delta_p"] = delta_p

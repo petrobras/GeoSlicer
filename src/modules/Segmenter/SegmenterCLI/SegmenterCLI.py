@@ -21,13 +21,13 @@ import cv2
 from PIL import Image
 
 from skimage.filters import gaussian
-from scipy.ndimage import gaussian_filter, uniform_filter
+from scipy.ndimage import gaussian_filter
 from scipy import signal
 from sklearn.ensemble import RandomForestClassifier
 
 from ltrace import transforms
+import ltrace.algorithms.feature_extraction as fe
 from Minkowsky.minkowsky import minkowsky_filter, minkowsky_filter_2d
-from ltrace.algorithms.CorrelationDistance.CorrelationDistance import CorrelationDistance, interpolate_spline
 from ltrace.algorithms.gabor import get_gabor_kernels
 
 DEFAULT_SETTINGS = "settings.json"
@@ -156,22 +156,6 @@ def minkowsky(img, kernel_size, threshold):
     return minkowsky_filter_2d(binary, kernel_size) if is_2d else minkowsky_filter(binary, kernel_size)
 
 
-def winVar(img, wlen):
-    # Variance filter
-    img = img.astype(np.float32)
-    wlen = round(wlen)
-    wmean, wsqrmean = (cv2.boxFilter(x, -1, (wlen, wlen), borderType=cv2.BORDER_REFLECT) for x in (img, img * img))
-    return wsqrmean - wmean * wmean
-
-
-def winVar3d(img, wlen):
-    # Variance filter
-    img = img.astype(np.float32)
-    wlen = round(wlen)
-    wmean, wsqrmean = (uniform_filter(x, size=wlen, mode="reflect") for x in (img, img * img))
-    return wsqrmean - wmean * wmean
-
-
 def adjustbounds(volume, bounds):
     new_bounds = np.zeros(6)
     volume.GetRASBounds(new_bounds)
@@ -182,47 +166,16 @@ def adjustbounds(volume, bounds):
 
 
 def variogram(component_name, kernel_size, image, spacing, initial_progress_value, final_progress_value, report_file):
-    unit_size = kernel_size // 2
     try:
-        output_data, output_spacing = CorrelationDistance.calculate_correlation(
-            image,
-            spacing,
-            [kernel_size] * len(image.shape),
-            [unit_size] * len(image.shape),
-            initial_progress_value,
-            (final_progress_value + initial_progress_value) / 2,
-        )
+        mid_progress_value = (final_progress_value + initial_progress_value) / 2
+        output_padded_data = fe.variogram(image, spacing, kernel_size, initial_progress_value, mid_progress_value)
     except RuntimeError as e:
         with open(report_file, "w") as returnFile:
             returnFile.write("variogramerror={}".format(str(e)))
         return Component(component_name, image)
 
-    output_data = np.nan_to_num(output_data)
-    output_data, output_spacing = interpolate_spline(image.shape, spacing, output_data)
     progressUpdate(final_progress_value)
-    padding = np.array(image.shape) - np.array(output_data.shape)
-    pad_width = ()
-    for axis, margin in enumerate(padding):
-        if margin >= 0:
-            pad_width += ((0, margin),)
-        else:
-            output_data = np.delete(output_data, slice(0, abs(margin)), axis)
-            pad_width += ((0, 0),)
-    output_padded_data = np.pad(output_data, pad_width, mode="edge")
     return Component(component_name, output_padded_data)
-
-
-def rescale(filters, out_type=np.uint16):
-    """
-    Rescale filters by setting the quantile of 2% as
-    minimum and quantile of 98% as maximum.
-    """
-    fmin = np.quantile(filters, 0.02)
-    fmax = np.quantile(filters, 0.98)
-    max_value = np.iinfo(out_type).max
-    filters_quant = np.array((filters - fmin) * max_value / (fmax - fmin))
-    filters_quant = np.clip(filters_quant, 0, max_value)
-    return filters_quant.astype(out_type)
 
 
 class RGBImageTargets:
@@ -303,15 +256,15 @@ class RGBImageTargets:
                 print(f"gaussian with sigma={sigma} px")
                 for ch in range(3):
                     filters = gaussian(self.image[..., ch], sigma, preserve_range=True)
-                    yield Component(f"gaussian{i}_{ch}", rescale(filters))
+                    yield Component(f"gaussian{i}_{ch}", fe.rescale(filters))
                 filter_index += 1
                 progressUpdate(filter_index / (total_filters + 1))
 
         if "winvar" in custom_filters:
             for i, sigma in enumerate(custom_filters["winvar"]["sigma"]):
                 print(f"winvar with sigma={sigma} px")
-                filters = winVar(self.grayscale, sigma)
-                yield Component(f"winvar{i}", rescale(filters))
+                filters = fe.win_var(self.grayscale, sigma)
+                yield Component(f"winvar{i}", fe.rescale(filters))
             filter_index += 1
             progressUpdate(filter_index / (total_filters + 1))
 
@@ -324,7 +277,7 @@ class RGBImageTargets:
                     n_rotations = custom_filters["gabor"]["rotations"][0]
                     fimgs, final_size = gabor(self.image.mean(axis=2), sigma, lambd, n_rotations, size)
                     for fimg in fimgs:
-                        yield Component(f"gabor{component_index}", rescale(fimg))
+                        yield Component(f"gabor{component_index}", fe.rescale(fimg))
                         component_index += 1
                     filter_index += 1
                     progressUpdate(filter_index / (total_filters + 1))
@@ -343,7 +296,7 @@ class RGBImageTargets:
                     kernel_size += 1
                 for threshold in custom_filters["minkowsky"]["threshold"]:
                     print(f"minkowsky with kernel={kernel_size} and threshold={threshold}")
-                    fimg = minkowsky(rescale(self.grayscale), kernel_size, threshold)
+                    fimg = minkowsky(fe.rescale(self.grayscale), kernel_size, threshold)
 
                     for i in range(fimg.shape[-1]):
                         yield Component(f"minkowsky{component_index}", fimg[:, :, i])
@@ -412,7 +365,7 @@ class ScalarImageTargets:
         has_quantized = custom_filters.get("quantized", False)
 
         if has_raw or has_quantized:
-            yield Component("raw", rescale(np.array(self.image, copy=True)))
+            yield Component("raw", fe.rescale(np.array(self.image, copy=True)))
             filter_index += 1
             progressUpdate(filter_index / (total_filters + 1))
 
@@ -431,15 +384,15 @@ class ScalarImageTargets:
             for i, sigma in enumerate(custom_filters["gaussian"]["sigma"]):
                 print(f"gaussian with sigma={sigma} px")
                 filters = gaussian_filter(self.image, sigma)
-                yield Component(f"gaussian{i}", rescale(filters))
+                yield Component(f"gaussian{i}", fe.rescale(filters))
                 filter_index += 1
                 progressUpdate(filter_index / (total_filters + 1))
 
         if "winvar" in custom_filters:
             for i, sigma in enumerate(custom_filters["winvar"]["sigma"]):
                 print(f"winvar with sigma={sigma} px")
-                filters = winVar3d(self.image, sigma)
-                yield Component(f"winvar{i}", rescale(filters))
+                filters = fe.win_var_3d(self.image, sigma)
+                yield Component(f"winvar{i}", fe.rescale(filters))
                 filter_index += 1
                 progressUpdate(filter_index / (total_filters + 1))
 
@@ -452,7 +405,7 @@ class ScalarImageTargets:
                     n_rotations = custom_filters["gabor"]["rotations"][0]
                     fimgs, final_size = gabor(self.image, sigma, lambd, n_rotations, size)
                     for fimg in fimgs:
-                        yield Component(f"gabor{component_index}", rescale(fimg))
+                        yield Component(f"gabor{component_index}", fe.rescale(fimg))
                         component_index += 1
                     filter_index += 1
                     progressUpdate(filter_index / (total_filters + 1))
@@ -471,7 +424,7 @@ class ScalarImageTargets:
                     kernel_size += 1
                 for threshold in custom_filters["minkowsky"]["threshold"]:
                     print(f"minkowsky with kernel_size={kernel_size} and threshold={threshold}")
-                    fimg = minkowsky(rescale(self.image), kernel_size, threshold)
+                    fimg = minkowsky(fe.rescale(self.image), kernel_size, threshold)
 
                     if fimg.ndim == 4:
                         for i in range(fimg.shape[-1]):

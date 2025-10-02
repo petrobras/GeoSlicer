@@ -45,6 +45,7 @@ class Export(LTracePlugin):
         self.parent.hidden = True
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = Export.help()
+        self.setHelpUrl("ThinSection/Export/Export.md")
 
     @classmethod
     def readme_path(cls):
@@ -427,7 +428,6 @@ class ExportLogic(LTracePluginLogic):
             nodePath = Path("")
             if not p.ignoreDirectoryStructure:
                 nodePath = nodePath / getNodeDataPath(node).parent
-                print("NODE", nodePath)
             if (
                 type(node) is slicer.vtkMRMLVectorVolumeNode
                 and node.GetImageData().GetDimensions()[2] == 1  # if it's a vector volume representing a 2D image
@@ -663,7 +663,6 @@ class ExportLogic(LTracePluginLogic):
         array = slicer.util.arrayFromVolume(labelMapNode).copy()
 
         if 1 not in array.shape:  # if the label map is not 2D
-            print("Export 3D images to TIFF or PNG format is not supported yet.")
             return None
 
         arrayShape = np.array(array.shape)

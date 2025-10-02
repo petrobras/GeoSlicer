@@ -19,6 +19,7 @@ from ltrace.pore_networks.functions import (
     estimate_radius,
     estimate_pressure,
 )
+from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import (
     LTracePluginLogic,
     dataFrameToTableNode,
@@ -39,6 +40,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         self.results_node_id = None
 
     def run_mercury(self, inputTable, params, prefix, callback, wait=False):
+        self.inputTable = inputTable
         self.params = params
         self.params["save_tables"] = slicer_is_in_developer_mode()
         self.cwd = Path(slicer.util.tempDirectory())
@@ -62,19 +64,12 @@ class MercurySimulationLogic(LTracePluginLogic):
             "tempDir": self.temp_dir,
         }
 
-        folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
-        itemTreeId = folderTree.GetItemByDataNode(inputTable)
-        parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
-        self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{prefix} Mercury Injection Simulation")
-        folderTree.SetItemExpanded(self.rootDir, False)
-
         pore_network = geo2spy(inputTable)
 
         dict_file = open(str(self.cwd / "pore_network.dict"), "wb")
         pickle.dump(pore_network, dict_file)
         dict_file.close()
 
-        subresolution_function = self.params["subresolution function"]
         del self.params["subresolution function"]
         del self.params["subresolution function call"]
 
@@ -83,9 +78,6 @@ class MercurySimulationLogic(LTracePluginLogic):
             "y": float(inputTable.GetAttribute("y_size")) / 10,
             "z": float(inputTable.GetAttribute("z_size")) / 10,
         }  # values in cm
-
-        subres_params = {key: value for key, value in self.params.items() if key.startswith("subres_")}
-        save_parameters_to_table(subres_params, self.rootDir)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)
@@ -122,6 +114,17 @@ class MercurySimulationLogic(LTracePluginLogic):
             self.callback(True)
 
     def onFinish(self):
+        folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
+        itemTreeId = folderTree.GetItemByDataNode(self.inputTable)
+        parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
+        self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix} Mercury Injection Simulation")
+        folderTree.SetItemExpanded(self.rootDir, False)
+
+        parametersNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
+        parametersNode.SetText(json.dumps(self.params, indent=4))
+        parametersNode.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
+        folderTree.CreateItem(self.rootDir, parametersNode)
+
         pc = pd.read_pickle(str(self.cwd / "micpResults.pd"))
 
         with open(str(self.cwd / "return_net.dict"), "rb") as file:
@@ -130,8 +133,6 @@ class MercurySimulationLogic(LTracePluginLogic):
         delta_saturation = np.diff(pc.snwp, n=1, prepend=0)
         throat_radii = estimate_radius(pc.pc)
         micp_results = pd.DataFrame({"pc": pc.pc, "snwp": pc.snwp, "dsn": delta_saturation, "radii": throat_radii})
-
-        folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
 
         micpTableName = slicer.mrmlScene.GenerateUniqueName("MICP")
         micpTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", micpTableName)
@@ -209,6 +210,8 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         def create_histogram_data(data, bins):
             bins = np.sort(bins)
+            if bins.size < 2:
+                return np.array([]), np.array([])
             lbin = bins[0] - (bins[1] - bins[0]) / 2
             rbin = bins[-1] + (bins[-1] - bins[-2]) / 2
             bins = np.concatenate(([lbin], (bins[:-1] + bins[1:]) / 2, [rbin]))

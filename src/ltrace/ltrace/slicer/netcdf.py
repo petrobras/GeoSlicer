@@ -104,7 +104,7 @@ def get_dims(array: xr.DataArray) -> Tuple[str, str, str]:
     return x, y, z
 
 
-def get_spacing(array: xr.DataArray) -> List[int]:
+def get_spacing(array: xr.DataArray) -> List[float]:
     z, y, x = get_dims(array)
     spacing = [array[dim][1] - array[dim][0] if len(array[dim]) > 1 else 1 for dim in (x, y, z)]
     spacing = [val.data.item() if isinstance(val, xr.DataArray) else val for val in spacing]
@@ -112,7 +112,7 @@ def get_spacing(array: xr.DataArray) -> List[int]:
     return spacing
 
 
-def get_origin(array: xr.DataArray) -> List[int]:
+def get_origin(array: xr.DataArray) -> List[float]:
     z, y, x = get_dims(array)
     origin = [-array[x][0], -array[y][0], array[z][0]]
     origin = [val.data.item() if isinstance(val, xr.DataArray) else val for val in origin]
@@ -124,10 +124,9 @@ def get_dims(array: xr.DataArray) -> List[str]:
     return array.dims[:3]
 
 
-def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode) -> None:
+def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode, spacing: List[float]) -> None:
     ijk_to_ras = array.attrs.get("transform")
     origin = get_origin(array)
-    spacing = get_spacing(array)
     slicer.util.updateVolumeFromArray(node, array.data)
     node.SetOrigin(*origin)
     node.SetSpacing(*spacing)
@@ -294,13 +293,16 @@ def import_dataset(dataset, images="all"):
         is_labelmap = False if "type" not in array.attrs else array.attrs["type"] == "labelmap"
         ijk_to_ras = array.attrs.get("transform")
         single_coords = ijk_to_ras is None
+
+        # Get spacing before cropping in case some dimension is size 1
+        spacing = get_spacing(array)
         if single_coords:
             fill_value = 0 if has_labels else 255
             array = _crop_value(array, fill_value)
 
         if has_labels:
             label_map = createTemporaryVolumeNode(slicer.vtkMRMLLabelMapVolumeNode, name, uniqueName=False)
-            _array_to_node(array, label_map)
+            _array_to_node(array, label_map, spacing)
 
             color_table = nc_labels_to_color_node(array.labels, name)
             label_map.GetDisplayNode().SetAndObserveColorNodeID(color_table.GetID())
@@ -327,7 +329,7 @@ def import_dataset(dataset, images="all"):
         else:
             class_ = "vtkMRMLVectorVolumeNode" if "c" in array.dims else "vtkMRMLScalarVolumeNode"
             node = slicer.mrmlScene.AddNewNodeByClass(class_, name)
-            _array_to_node(array, node)
+            _array_to_node(array, node, spacing)
             first_scalar = first_scalar or node
 
         special_attrs = {"labels", "type", "reference", "transform"}
@@ -679,8 +681,8 @@ def exportNetcdf(
             # Transform interpolation does not work on dimensions with size 1
             for i in range(3):
                 if data_array.shape[i] == 1:
-                    output_to_input[i, :] = 0
-                    output_to_input[:, i] = 0
+                    output_to_input[i, :3] = 0
+                    output_to_input[:3, i] = 0
                     output_to_input[i, i] = 1
 
             identity = np.eye(output_to_input.shape[0])

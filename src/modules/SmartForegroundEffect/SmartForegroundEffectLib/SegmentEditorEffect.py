@@ -176,7 +176,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.refreshFragAnnotSegmentsButton = qt.QPushButton()
         self.refreshFragAnnotSegmentsButton.objectName = "Smart Foreground Annotation Segments Refresh Button"
         self.refreshFragAnnotSegmentsButton.clicked.connect(self.onAnnotationsSelected)
-        self.refreshFragAnnotSegmentsButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
+        self.refreshFragAnnotSegmentsButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Reset.png"))
         self.refreshFragAnnotSegmentsButton.setToolTip(
             "Refresh the list of available segments for the selected annotations."
         )

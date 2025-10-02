@@ -1,0 +1,3 @@
+# Versões do GeoSlicer
+
+O GeoSlicer é uma plataforma de rocha digital de [código aberto](https://github.com/petrobras/GeoSlicer), desenvolvida em colaboração por LTrace, Petrobras e Equinor. Embora a versão principal do GeoSlicer seja de código aberto, o projeto também contempla uma modalidade de desenvolvimento privada. Nessa versão, são criados módulos específicos e personalizados, fruto de parcerias com empresas que financiam e colaboram no desenvolvimento de ferramentas para uso exclusivo. Dessa forma, o GeoSlicer equilibra o benefício da colaboração aberta com a necessidade de inovação e exclusividade comercial."

@@ -866,9 +866,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 showHidePrimaryNodeButton.blockSignals(True)
                 if viewData.primaryNodeHidden:
                     showHidePrimaryNodeButton.setChecked(True)
-                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
                 else:
-                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+                    showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
                 showHidePrimaryNodeButton.blockSignals(False)
 
             primaryTableNodeColumnComboBox = viewControllerWidget.findChild(
@@ -970,9 +970,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 showHideSegmentationNodeButton.blockSignals(True)
                 if viewData.segmentationNodeHidden:
                     showHideSegmentationNodeButton.setChecked(True)
-                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
                 else:
-                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+                    showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
                 showHideSegmentationNodeButton.blockSignals(False)
 
     def populateProportionsNodeInterfaceItems(self):
@@ -998,9 +998,13 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     showHideProportionsNodeButton.blockSignals(True)
                     if viewData.proportionsNodeHidden:
                         showHideProportionsNodeButton.setChecked(True)
-                        showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+                        showHideProportionsNodeButton.setIcon(
+                            qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png")
+                        )
                     else:
-                        showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+                        showHideProportionsNodeButton.setIcon(
+                            qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png")
+                        )
                     showHideProportionsNodeButton.blockSignals(False)
 
     ########################################################################################################################################
@@ -1051,7 +1055,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         # Fit button
         fitButton = qt.QPushButton()
         fitButton.setObjectName("Fit All Button")
-        fitButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Fit.png"))
+        fitButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Fit.png"))
         fitButton.clicked.connect(self.fit)
         fitButton.setFixedWidth(25)
         fitButton.setToolTip("Reset the views to fit all data.")
@@ -1059,7 +1063,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         # Adjust to real aspect ratio button
         fitRealAspectRatio = qt.QPushButton()
         fitRealAspectRatio.setObjectName("Fit Real Button")
-        fitRealAspectRatio.setIcon(qt.QIcon(getResourcePath("Icons") / "FitRealAspectRatio.png"))
+        fitRealAspectRatio.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "FitRealAspectRatio.png"))
         fitRealAspectRatio.clicked.connect(lambda state: self.fitToAspectRatio())
         fitRealAspectRatio.setFixedWidth(25)
         fitRealAspectRatio.setToolTip("Adjust the views to their real aspect ratio.")
@@ -1067,7 +1071,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         # Add view button
         addViewButton = qt.QPushButton("Add view")
         addViewButton.setObjectName("Add view button")
-        addViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Add.png"))
+        addViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "png" / "Add.png"))
         addViewButton.clicked.connect(self.addViewClicked)
 
         # Mouse physical coordinates on Slice/Graphic view
@@ -1616,11 +1620,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QPushButton, "showHidePrimaryNodeButton" + str(identifier)
         )
         if showHidePrimaryNodeButton.checked:
-            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
             sliceCompositeNode.SetBackgroundOpacity(0)
             viewData.primaryNodeHidden = True
         else:
-            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
             sliceCompositeNode.SetBackgroundOpacity(1)
             viewData.primaryNodeHidden = False
 
@@ -1641,7 +1645,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QToolButton, "showHideSegmentationNodeButton" + str(identifier)
         )
         if showHideSegmentationNodeButton.checked:
-            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
             if segmentationNode is not None:
                 if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                     segmentationNode.GetDisplayNode().RemoveViewNodeID(viewId)
@@ -1649,7 +1653,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     sliceCompositeNode.SetLabelVolumeID(None)
             viewData.segmentationNodeHidden = True
         else:
-            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
             if segmentationNode is not None:
                 if type(segmentationNode) is slicer.vtkMRMLSegmentationNode:
                     segmentationNode.GetDisplayNode().AddViewNodeID(viewId)
@@ -1705,12 +1709,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             qt.QPushButton, "showHideProportionsNodeButton" + str(identifier)
         )
         if showHideProportionsNodeButton.checked:
-            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
             sliceCompositeNode.SetLabelVolumeID(None)
             viewData.proportionsNodeHidden = True
         else:
             proportionsNodeId = self.imageLogViewList[identifier].viewData.proportionsNodeId
-            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            showHideProportionsNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
             if proportionsNodeId is not None:
                 sliceCompositeNode.SetLabelVolumeID(proportionsNodeId)
             viewData.proportionsNodeHidden = False
@@ -1956,7 +1960,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         if not imageLogActionInMenu:
             self.imageLogLayoutViewAction = qt.QAction("ImageLog View")
-            self.imageLogLayoutViewAction.setIcon(qt.QIcon(getResourcePath("Icons") / "ImageLog.png"))
+            self.imageLogLayoutViewAction.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "ImageLog.png"))
             self.imageLogLayoutViewAction.triggered.connect(self.__onImagelogLayoutViewActionClicked)
 
             after3DOnlyActionIndex = next(

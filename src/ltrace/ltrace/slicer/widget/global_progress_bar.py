@@ -46,7 +46,7 @@ class GlobalProgressBar(qt.QWidget):
             self.toolButton = qt.QToolButton()
             self.toolButton.setToolTip("Return to the last CLI started.")
             self.toolButton.setEnabled(False)
-            icon = svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Open.svg")
+            icon = svgToQIcon(getResourcePath("Icons") / "svg" / "Open.svg")
             self.toolButton.setObjectName("GoBackButton")
             self.toolButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
             self.toolButton.setIcon(icon)

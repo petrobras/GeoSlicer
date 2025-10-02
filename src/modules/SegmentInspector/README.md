@@ -1,6 +1,6 @@
 ## Segment inspector
 
-For a more detailed discussion about the use of the watershed algorithm, please check the GeoSlicer [[manual]](lib/{base_version}/qt-scripted-modules/Resources/manual/Inspector/Watershed/estudos_de_porosidade.html).
+For a more detailed discussion about the use of the watershed algorithm, please check the GeoSlicer [manual](https://ltracegeo.github.io/GeoSlicerManual/latest/Volumes/Segmentation/SegmentInspector.html).
 
 This module provides several methods for analyse a segmented image. Particularly, Watershed and Island algorithms allow to fragment a segmentation in several partitions, or several segments. Usually it is applied to pore space segmentation to compute the metrics of each pore element.
 The input is a segmentation-node or labelmap volume, a region of interest (defined by a segmentation-node) and the master image/volume. The output is a labelmap where each partitions (pore element) is in a different color, a table with gobal parameters and table with the different metrics for each partition.

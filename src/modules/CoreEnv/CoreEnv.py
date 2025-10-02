@@ -62,7 +62,7 @@ class CoreEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         modules = self.getModuleManager().fetchByCategory(("Core",), intersectWith="Segmentation")
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Layers.svg"),
             "Segmentation",
             [
                 modules["CustomizedSegmentEditor"],

@@ -11,31 +11,11 @@
       <longflag>cwd</longflag>
     </string>
     <string>
-      <longflag>statoilDir</longflag>
-    </string>
-    <integer>
-      <longflag>maxSubprocesses</longflag>
-      <default>8</default>
-    </integer>
-    <string>
       <name>tempDir</name>
       <label>Temporary directory</label>
       <longflag>tempDir</longflag>
       <description><![CDATA[Temporary directory path]]></description>
       <default></default>
     </string>
-    <string>
-      <name>saturation_steps</name>
-      <label>Saturation steps</label>
-      <description><![CDATA[Saturation steps to cycles visualization. JSON format.]]></description>
-      <channel>output</channel>
-      <default></default>
-    </string>
-    <integer>
-      <name>isMultiScale</name>
-      <label>isMultiScale</label>
-      <longflag>isMultiScale</longflag>
-      <default>0</default>
-    </integer>
   </parameters>
 </executable>

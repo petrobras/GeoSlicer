@@ -49,6 +49,7 @@ from ltrace.slicer.undo import manager
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.status_panel import StatusPanel
 from ltrace.utils.Markup import MarkupFiducial, MarkupLine
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 # -*- extra imports -*-
 
@@ -68,11 +69,11 @@ class LabelMapEditor(LTracePlugin):
         self.parent.categories = ["Segmentation", "MicroCT", "Thin Section", "ImageLog", "Core"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = LabelMapEditor.help()
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = """
     Developed by LTrace Geophysics Solutions
 """
+        self.setHelpUrl("ThinSection/Segmentation/LabelMapEditor.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/LabelMapEditor.html", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):
@@ -342,7 +343,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
 
             edited_labelmap_node.SetHideFromEditors(False)
         except RuntimeError as e:
-            print(f"An error occurred: {e}")
+            logging.error(f"An error occurred: {e}")
 
     def on_cancel_saving_button_clicked(self):
         if self.cliNode is None:

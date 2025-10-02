@@ -67,7 +67,7 @@ class AppContext(LTracePlugin):
 
         self.__trackingManager = TrackingManager()
 
-        self.___projectManager = ProjectManager(folderIconPath=getResourcePath("Icons") / "ProjectIcon.ico")
+        self.___projectManager = ProjectManager(folderIconPath=getResourcePath("Icons") / "ico" / "ProjectIcon.ico")
 
         self.projectEventsLogic = ProjectEventsLogic(self.___projectManager)
 
@@ -179,7 +179,7 @@ class ModuleManager:
         toolModules = [self.availableModules[m] for m in tools]
 
         addMenuRaw(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Table.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Table.svg"),
             "More tools",
             toolModules,
             toolbar,
@@ -201,7 +201,7 @@ class ModuleManager:
                 toolModules.append(self.availableModules[m])
 
         addMenuRaw(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Database.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Database.svg"),
             "Import",
             toolModules,
             toolbar,

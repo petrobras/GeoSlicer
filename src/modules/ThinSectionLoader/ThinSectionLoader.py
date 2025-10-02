@@ -52,7 +52,7 @@ class ThinSectionLoader(LTracePlugin):
         self.parent.categories = ["Thin Section", "Loader"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Loader.html').as_posix()}"
+        self.setHelpUrl("ThinSection/Loader/Loader.html")
 
     @classmethod
     def readme_path(cls):
@@ -403,7 +403,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
                 try:
                     quantity = float(quantity)
                 except ValueError:
-                    print(f"Detected quantity '{quantity}' is not valid")
+                    logging.error(f"Detected quantity '{quantity}' is not valid")
                     return None
 
                 width = block_dict["width"]

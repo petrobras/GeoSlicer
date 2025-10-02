@@ -76,6 +76,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyButton = qt.QPushButton("Apply")
         self.applyButton.setFixedHeight(40)
         self.applyButton.connect("clicked()", self.onApply)
+        self.applyButton.objectName = "Expand Segments Apply Button"
         self.scriptedEffect.addOptionsWidget(self.applyButton)
 
         self.applyFullButton = qt.QPushButton("Apply to full volume")
@@ -102,6 +103,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
             segmentationNode, labelMapNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
         )
+        try:
+            array = slicer.util.arrayFromVolume(labelMapNode)
+        except AttributeError:  # Array is empty
+            slicer.util.errorDisplay(
+                "Failed to apply the effect. The segmentation node doesn't contain any filled segments."
+            )
+            slicer.mrmlScene.RemoveNode(labelMapNode)
+            return
 
         # Invisible segments will not be expanded
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()

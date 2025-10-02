@@ -204,7 +204,7 @@ class ScreenshotWidget(qt.QDialog):
         addTextButton.clicked.connect(self.addText)
         removeTextButton.clicked.connect(self.removeText)
 
-        self.setWindowIcon(qt.QIcon(getResourcePath("Icons") / self.ICON))
+        self.setWindowIcon(qt.QIcon(getResourcePath("Icons") / "png" / self.ICON))
 
     def addText(self):
         input_text = self.input.text

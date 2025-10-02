@@ -5,6 +5,7 @@ import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
 import qt
 import slicer
+import vtk
 from distinctipy import distinctipy
 from slicer.util import VTKObservationMixin
 
@@ -33,9 +34,12 @@ class CustomizedSegmentEditor(LTracePlugin):
         self.parent.categories = ["Tools", "Segmentation", "Thin Section", "ImageLog", "Core", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/SegmentEditor.html').as_posix()}"
-        )
+
+        self.setHelpUrl("Volumes/Segmentation/SegmentEditor.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/SegmentEditor.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("ImageLog/Segmentation/Manual/SegmentEditor.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Core/Segmentation/SegmentEditor.html", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/Segmentation/Manual/SegmentEditor.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -49,6 +53,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.parameterSetNode = None
         self.editor = None
         self.__tag = None
+        self._lastEffectName = None
 
         self.color_effects = ["Color threshold"]
 
@@ -146,6 +151,31 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureColorSupport(color_support=color_support)
 
+    def hidePaintEffectOptions(self):
+        paintEffect = self.editor.effectByName("Paint")
+        if not paintEffect:
+            return
+
+        optionsFrame = paintEffect.optionsFrame()
+        if not optionsFrame:
+            return
+
+        all_checkboxes = optionsFrame.findChildren(qt.QCheckBox)
+        for checkbox in all_checkboxes:
+            if "smudge" in checkbox.text.lower():
+                checkbox.setVisible(False)
+
+    def onParameterNodeModified(self, caller=None, event=None):
+        if not self.parameterSetNode:
+            return
+
+        newEffectName = self.parameterSetNode.GetActiveEffectName()
+
+        if newEffectName != self._lastEffectName:
+            self._lastEffectName = newEffectName
+            self.parameterSetNode.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteAllSegments)
+            self.parameterSetNode.SetMaskMode(slicer.vtkMRMLSegmentEditorNode.OverwriteAllSegments)
+
     def configureEffectsForThinSectionEnvironment(self):
         self.selectParameterNodeByTag("ThinSectionEnv")
 
@@ -154,7 +184,6 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
                 "Paint",
                 "Draw",
                 "Erase",
-                "Grow from seeds",
                 "Margin",
                 "Smoothing",
                 "Scissors",
@@ -170,6 +199,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             + self.color_effects
         )
         self.editor.unorderedEffectsVisible = False
+        self.hidePaintEffectOptions()
 
     # WARNING this should be called only once at the initialization
     def configureEffects(self, color_support=False):
@@ -198,6 +228,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             effects.extend(self.color_effects)
         self.editor.setEffectNameOrder(effects)
         self.editor.unorderedEffectsVisible = False
+        self.hidePaintEffectOptions()
 
     def configureColorSupport(self, color_support=False):
         effects = self.editor.effectNameOrder()
@@ -246,8 +277,14 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             # nothing changed
             return
 
+        if self.parameterSetNode:
+            self.removeObserver(self.parameterSetNode, vtk.vtkCommand.ModifiedEvent, self.onParameterNodeModified)
+
         self.parameterSetNode = segmentEditorNode
         self.editor.setMRMLSegmentEditorNode(self.parameterSetNode)
+
+        if self.parameterSetNode:
+            self.addObserver(self.parameterSetNode, vtk.vtkCommand.ModifiedEvent, self.onParameterNodeModified)
 
     def enter(self) -> None:
         super().enter()

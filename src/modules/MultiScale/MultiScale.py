@@ -20,6 +20,7 @@ from ltrace.slicer import widgets
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.utils.ProgressBarProc import ProgressBarProc
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.MultiScaleTest import MultiScaleTest
@@ -49,7 +50,9 @@ class MultiScale(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.set_manual_path("Modules/Multiscale/Multiscale.html")
+
+        self.setHelpUrl("Multiscale/MultiscaleImageGeneration/Multiscale.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Multiscale/MultiscaleImageGeneration.html", NodeEnvironment.MICRO_CT)
 
     @classmethod
     def readme_path(cls):
@@ -156,7 +159,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.previewDimensionSpinBox.objectName = "previewDimensionSpinBox"
 
         self.previewButton = qt.QPushButton()
-        self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+        self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
         self.previewButton.setFixedWidth(30)
         self.previewButton.enabled = False
         self.previewButton.clicked.connect(self.onHardDataPreviewClick)
@@ -1071,7 +1074,7 @@ class MultiScaleWidget(LTracePluginWidget):
             if widget is not None:
                 widget.changePreviewButton(True)
             else:
-                self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+                self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
 
             self.isViewOn = True
 
@@ -1084,7 +1087,7 @@ class MultiScaleWidget(LTracePluginWidget):
             self.previewSegmentationNode.RemoveClosedSurfaceRepresentation()
             helpers.removeTemporaryNodes()
 
-            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
             self.resampleBoxTI.changePreviewButton(False)
             self.resampleBoxHD.changePreviewButton(False)
             self.resampleBoxMask.changePreviewButton(False)

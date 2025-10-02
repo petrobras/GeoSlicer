@@ -101,9 +101,19 @@
         "tools/docker",
         "docker-compose.yml",
         "docker-compose.gpu.yml",
-        "src/ltrace/ltrace/slicer/ai_models/pdefs.py"
+        "src/ltrace/ltrace/slicer/ai_models/pdefs.py",
+        "tools/delete_merged_branches.sh",
+        "tools/read_core_dump.sh",
+        "tools/bisect_bug_inspector.py",
+        ".git-blame-ignore-revs",
+        "tools/release/",
+        "src/ltrace/ltrace/slicer/bug_report/extended_bug_report_widget.py",
+        "src/ltrace/ltrace/slicer/bug_report/submit.py"
     ],
-
+    "LargeFilesClosedSourceHostOnly" : [
+        "tools/deploy/Assets/Tesseract-OCR.zip",
+        "tools/deploy/Assets/Tesseract-OCR.tar.xz"
+    ],
     "Patches" : {
         "win32": [["monai", "lib/Python/lib/site-packages", 2],
                   ["DataProbe", "lib/$slicer_dir/qt-scripted-modules", 0],

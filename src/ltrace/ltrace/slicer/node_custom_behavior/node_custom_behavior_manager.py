@@ -94,8 +94,6 @@ class NodeCustomBehaviorManager:
         if not self.__isValidBehaviorNode(callData):
             return
 
-        self.__triggerEvent = TriggerEvent.NODE_ADDED
-
         for customBehavior in self.__getNodeCustomBehaviorsByNode(callData):
             if not hasattr(customBehavior, "onNodeAdded"):
                 logging.error(
@@ -104,8 +102,6 @@ class NodeCustomBehaviorManager:
                 continue
 
             customBehavior.onNodeAdded(node=callData)
-
-        self.reset()
 
     @vtk.calldata_type(vtk.VTK_OBJECT)
     def __onNodeRemoved(self, caller: object, eventId: object, callData: vtk.vtkObject):
@@ -116,8 +112,6 @@ class NodeCustomBehaviorManager:
         if not self.__isValidBehaviorNode(callData):
             return
 
-        self.__triggerEvent = TriggerEvent.NODE_REMOVED
-
         for customBehavior in self.__getNodeCustomBehaviorsByNode(callData):
             if not hasattr(customBehavior, "onNodeRemoved"):
                 logging.error(
@@ -126,8 +120,6 @@ class NodeCustomBehaviorManager:
                 continue
 
             customBehavior.onNodeRemoved(node=callData)
-
-        self.reset()
 
     def __isValidBehaviorNode(self, node):
         return not issubclass(

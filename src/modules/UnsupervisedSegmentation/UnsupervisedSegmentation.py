@@ -30,6 +30,7 @@ class UnsupervisedSegmentation(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = UnsupervisedSegmentation.help()
+        self.setHelpUrl("ThinSection/Segmentation/UnsupervisedSegmentation.html")
 
     @classmethod
     def readme_path(cls):

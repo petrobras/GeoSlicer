@@ -2,7 +2,7 @@ import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
 import slicer
 import qt
-import distinctipy
+from distinctipy import distinctipy
 
 
 def createSimplifiedSegmentEditor():

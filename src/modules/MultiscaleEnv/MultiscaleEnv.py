@@ -20,6 +20,7 @@ class MultiscaleEnv(LTracePlugin):
         self.parent.title = "Multiscale Environment"
         self.parent.categories = ["Environment", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
+        self.parent.hidden = True
 
         self.environment = MultiscaleEnvLogic()
 
@@ -73,9 +74,9 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             elif isinstance(module, tuple):
                 name, modules = module
                 iconName = name.replace(" ", "").replace("-", "")
-                iconPath = getResourcePath("Icons") / "IconSet-dark" / f"{iconName}.svg"
+                iconPath = getResourcePath("Icons") / "svg" / f"{iconName}.svg"
                 if not iconPath.exists():
-                    iconPath = getResourcePath("Icons") / "IconSet-svg" / f"{name}.svg"
+                    iconPath = getResourcePath("Icons") / "svg" / f"{name}.svg"
                 addMenu(
                     svgToQIcon(iconPath),
                     name,
@@ -121,7 +122,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             ]
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Layers.svg"),
             f"{name} Segmentation",
             segmentationModules,
             self.modulesToolbar,
@@ -159,7 +160,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
 
         if not imageLogActionInMenu:
             self.imageLogLayoutViewAction = qt.QAction(imageLogActionText)
-            self.imageLogLayoutViewAction.setIcon(qt.QIcon(getResourcePath("Icons") / "ImageLog.png"))
+            self.imageLogLayoutViewAction.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "ImageLog.png"))
             self.imageLogLayoutViewAction.triggered.connect(self.__onImagelogLayoutViewActionClicked)
 
             after3DOnlyActionIndex = next(

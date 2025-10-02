@@ -24,7 +24,7 @@ class CustomizedCurvatureAnisotropicDiffusion(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = CustomizedCurvatureAnisotropicDiffusion.help()
+        self.setHelpUrl("Volumes/Filter/GradientAnisotropicDiffusion/GradientAnisotropicDiffusion.html")
 
     @classmethod
     def readme_path(cls):
@@ -200,9 +200,6 @@ class CustomizedCurvatureAnisotropicDiffusionLogic(LTracePluginLogic):
     def apply(self, p):
         # Removing old cli node if it exists
         slicer.mrmlScene.RemoveNode(self.cliNode)
-
-        print("Filtering start time: " + str(datetime.datetime.now()))
-
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         inputVolumeItemParent = subjectHierarchyNode.GetItemParent(
             subjectHierarchyNode.GetItemByDataNode(p.inputVolume)
@@ -239,7 +236,7 @@ class CustomizedCurvatureAnisotropicDiffusionLogic(LTracePluginLogic):
             copy_display(self.input_volume, self.outputVolume)
 
             if status == "Completed":
-                print("Filtering end time: " + str(datetime.datetime.now()))
+                pass
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputVolume)
             else:

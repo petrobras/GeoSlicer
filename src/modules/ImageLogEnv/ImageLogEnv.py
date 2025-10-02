@@ -22,6 +22,7 @@ class ImageLogEnv(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ""
+        self.parent.hidden = True
 
         self.environment = ImageLogEnvLogic()
 
@@ -62,7 +63,7 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             processingModules.insert(0, relatedModules["Eccentricity"])
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Spiral.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Spiral.svg"),
             "Processing",
             processingModules,
             self.modulesToolbar,
@@ -82,7 +83,7 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             relatedModules["CoreInpaint"],
         ]
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "PaintBrush.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "PaintBrush.svg"),
             "Inpainting",
             inpaintModules,
             self.modulesToolbar,
@@ -101,7 +102,7 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         modules = self.getModuleManager().fetchByCategory(("ImageLog",), intersectWith="Segmentation")
 
         addMenu(
-            svgToQIcon(getResourcePath("Icons") / "IconSet-dark" / "Layers.svg"),
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Layers.svg"),
             "Segmentation",
             [
                 modules["ImageLogSegmentEditor"],

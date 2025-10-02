@@ -112,19 +112,19 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         parametersFormLayout.addRow(" ", None)
 
         self.applyButton = qt.QPushButton("Apply")
-        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Apply.png"))
+        self.applyButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Apply.png"))
         self.applyButton.setToolTip("Apply the current changes. These changes can be undone, unless you click Save.")
         self.applyButton.enabled = False
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
 
         self.cancelButton = qt.QPushButton("Cancel")
-        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Cancel.png"))
+        self.cancelButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         self.cancelButton.setToolTip("Cancel the current changes.")
         self.cancelButton.enabled = False
         self.cancelButton.clicked.connect(self.onCancelButtonClicked)
 
         self.undoButton = qt.QPushButton("Undo")
-        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Undo.png"))
+        self.undoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Undo.png"))
         self.undoButton.setToolTip(
             "Undo the applied changes. The earliest undo is where the volume was loaded or saved."
         )
@@ -132,7 +132,7 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         self.undoButton.clicked.connect(self.onUndoButtonClicked)
 
         self.redoButton = qt.QPushButton("Redo")
-        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Redo.png"))
+        self.redoButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Redo.png"))
         self.redoButton.setToolTip("Redo the applied changes.")
         self.redoButton.enabled = False
         self.redoButton.clicked.connect(self.onRedoButtonClicked)
@@ -145,13 +145,13 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         formLayout.addRow(buttonsHBoxLayout)
 
         self.saveButton = qt.QPushButton("Save")
-        self.saveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Save.png"))
+        self.saveButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Save.png"))
         self.saveButton.setToolTip("Save the applied changes. This action cannot be undone.")
         self.saveButton.enabled = False
         self.saveButton.clicked.connect(self.onSaveButtonClicked)
 
         self.resetButton = qt.QPushButton("Reset")
-        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "Reset.png"))
+        self.resetButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Reset.png"))
         self.resetButton.setToolTip("Reset the applied changes to the last saved state.")
         self.resetButton.enabled = False
         self.resetButton.clicked.connect(self.onResetButtonClicked)

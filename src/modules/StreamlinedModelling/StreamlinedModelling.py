@@ -155,7 +155,7 @@ class StreamlinedModelling(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = StreamlinedModelling.help()
+        self.setHelpUrl("Volumes/ModellingFlow/StreamlinedModelling.html")
 
     @classmethod
     def readme_path(cls):
@@ -306,7 +306,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
                 display.SetSegmentVisibility("Macroporosity", False)
                 display.SetSegmentVisibility("Microporosity", True)
                 display.SetSegmentVisibility("Reference Solid", False)
-                display.SetSegmentVisibility("High Attenuation", False)
+                display.SetSegmentVisibility("Solid", False)
 
                 self.boundaryRemovalEffect.initialize()
                 self.boundaryRemovalEffect.initializeButton.parent().visible = False
@@ -823,3 +823,4 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.expandSegmentsEffect.applyFinishedCallback = lambda: None
         self.multiFinishedTimer.stop()
         self.multiFinishedTimer.timeout.disconnect()
+        ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)

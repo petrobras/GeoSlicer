@@ -6,6 +6,7 @@ from collections import namedtuple
 from pathlib import Path
 from dataclasses import dataclass
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import SLICER_LENGTH_UNIT
 from ltrace.slicer import helpers as lsh
 from functools import partial
@@ -47,6 +48,8 @@ class CustomResampleScalarVolume(LTracePlugin):
         self.parent.helpText = CustomResampleScalarVolume.help()
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = ""
+        self.setHelpUrl("Volumes/Resample/Resample.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/VolumesPreProcessing/Resample.html", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

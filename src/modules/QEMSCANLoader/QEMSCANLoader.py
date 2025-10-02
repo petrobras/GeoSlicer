@@ -35,7 +35,7 @@ class QEMSCANLoader(LTracePlugin):
         self.parent.categories = ["Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.set_manual_path("Modules/Thin_section/QemscanLoader.html")
+        self.setHelpUrl("ThinSection/Loader/QemscanLoader.html")
 
     @classmethod
     def readme_path(cls):
@@ -250,7 +250,6 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
                 self.fillMissingCheckBox.isChecked(),
                 float(self.imageSpacingLineEdit.text) * ureg.millimeter,
             )
-            print(loadParameters)
             self.logic.load(path, loadParameters)
             self.pathWidget.currentPath = Path(path).parent.resolve()
         except LoadInfo as e:

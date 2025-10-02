@@ -8,6 +8,7 @@ import shutil
 import traceback
 import psutil
 import pandas as pd
+import subprocess
 
 from dataclasses import dataclass
 from ltrace.constants import SaveStatus
@@ -84,6 +85,10 @@ class ProjectManager(qt.QObject):
         self.__startSaveEventObserver = None
         self.__endSaveEventObserver = None
         ApplicationObservables().applicationLoadFinished.connect(self.__setup)
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        ApplicationObservables().applicationLoadFinished.disconnect(self.__setup)
 
     def __setup(self):
         self.__customBehaviorNodeManager = NodeCustomBehaviorManager()
@@ -534,12 +539,15 @@ class ProjectManager(qt.QObject):
             configFileName = "desktop.ini"
             header = "[.ShellClassInfo]"
 
+            def run_cmd(cmd):
+                return subprocess.run(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
+
             def post_setup(configFile):
                 # Add attributes to the config file (Mandatory)
-                os.system('attrib +h +s "{}"'.format(configFile))
+                run_cmd(["attrib", "+h", "+s", configFile])
 
                 # Add attributes to the directory (Mandatory)
-                os.system('attrib +r "{}"'.format(os.path.dirname(configFile)))
+                run_cmd(["attrib", "+r", os.path.dirname(configFile)])
 
         elif platform == "posix":  # Linux
             iconParameterLabel = "Icon"

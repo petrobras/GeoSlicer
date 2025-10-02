@@ -1,3 +1,4 @@
+import json
 import re
 
 import pandas as pd
@@ -9,21 +10,7 @@ from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
 
 
 def parameter_node_to_dict(parameterNode):
-    df = dataframeFromTable(parameterNode)
-    parameter_name_list = zip(list(df["Parameter name"]), list(df["Start"]), list(df["Stop"]), list(df["Steps"]))
-    parameters_dict = {}
-    parameter_parser = KrelParameterParser()
-    for parameter_name, start, stop, steps in parameter_name_list:
-        parameter = parameter_parser.get_input_name(parameter_name)
-        if parameter is None:
-            continue
-
-        if parameter not in parameters_dict:
-            parameters_dict[parameter] = {}
-        parameters_dict[parameter]["start"] = start
-        parameters_dict[parameter]["stop"] = stop
-        parameters_dict[parameter]["steps"] = steps
-
+    parameters_dict = json.loads(parameterNode.GetText())
     return parameters_dict
 
 

@@ -1,112 +1,44 @@
-{
-  "MUSA-105": "Introduced a measurement selector for island and watershed methods in the ImageLog Instance Segmenter and added two new measurements. Improved module naming consistency and ensured unique output names.",
-  "MUSA-59": "Enhanced the multiscale module by adding an execution time label, hiding progress bar labels, and improving the casing in time labels.",
-  "MUSA-61": "Updated the MicroCT export module to export all nodes of a sequence and added a test case.",
-  "MUSA-66": "Enhanced the ImageLog graphic view by supporting dual-axis plots, improving interface layout, and fixing issues related to secondary plots and segmentation options.",
-  "MUSA-70": "Modified simulation grid input to limit decimals and round automatic values using regex.",
-  "MUSA-72": "Optimized labelmap results by casting to integers to save memory and prevent type errors.",
-  "MUSA-73": "Added export functionality for ImageLog graphs with screenshots. Fixed related tests and addressed review suggestions.",
-  "MUSA-75": "Improved handling of null values in DLISImportWidget, integrating lasio null_policy and adding various fixes and usability enhancements.",
-  "MUSA-76": "Renamed DLISImport module to ImageLogImport and removed redundant code and classes.",
-  "MUSA-88": "Added a modal progress bar for LAS export to enhance user feedback.",
-  "MUSA-96": "Improved DLIS file writing by correctly including unit and well name metadata. Updated tests accordingly.",
-  "MUSA-97": "Refined scalar input handling in hard data widget, improved discrete simulation functionality, and addressed various bugs.",
-  "PL-1448": "Updated the 'About' dialog for GeoSlicer.",
-  "PL-2164": "Work in progress: Added size estimation methods for multiple data types to avoid underestimating final file sizes.",
-  "PL-2200": "Prevented unnecessary window opening when using pytesseract.",
-  "PL-2211": "Added adaptive timeout functionality for two-phase simulations.",
-  "PL-2247": "Integrated the py_pore_flow submodule, improving simulation options, adding animations, and refining parameter handling.",
-  "PL-2248": "Added trackers for slider widgets to improve user interaction.",
-  "PL-2323": "Updated py_pore_flow submodule for compatibility improvements.",
-  "PL-2325": "Improved handling of contact angle distributions in simulations, fixing layout and data duplication issues.",
-  "PL-2333": "Updated py_pore_flow submodule to include the latest changes.",
-  "PL-2418": "Added integration tests to handle crashes related to empty segmentation nodes in project loading.",
-  "PL-2448": "Removed outdated MICP module and reduced code duplication.",
-  "PL-2455": "Enhanced VTU visualization with better parametrization, improved performance, and additional options for scaling and normalization.",
-  "PL-2488": "Fixed display issues in integration test widgets for better failure case handling.",
-  "PL-2492": "Improved manual registration in the Thin Section module.",
-  "PL-2496": "Enabled project management using zip files in PNM Report.",
-  "PL-2498": "Added support for deployment options with 'disable-archiving' flags.",
-  "PL-2499": "Refactored PNMReport module, enhancing modularity, fixing bugs, and improving project management features.",
-  "PL-2500": "Improved visualization of PNFlow CA distributions and fixed related parameter handling issues.",
-  "PL-2503": "Implemented mouse scroll observers for better navigation in Image Log views.",
-  "PL-2504": "Fixed issues in spiral filters and ColorBarWidget in ImageLog, improving usability and styling.",
-  "PL-2508": "Excluded PNM_Reports from license checks and updated dependencies.",
-  "PL-2508B": "Updated Python libraries and dependencies, fixing Bayesian inference issues.",
-  "PL-2510": "Enhanced reporting in Streamlit, including subresolution modeling and improved visualization options.",
-  "PL-2513": "Set maximum width for directory selector widget for improved layout.",
-  "PL-2518": "Added scrollable area to the right-side explorer tab for better usability.",
-  "PL-2521": "Introduced a search feature in the integration test widget, preserving user queries.",
-  "PL-2524": "Improved filtered node combobox setup to avoid duplicates and added related tests.",
-  "PL-2526": "Resolved a crash issue when right-clicking on rulers in the Thin Section loader.",
-  "PL-2528": "Added a cancel button to the inspector for improved user control.",
-  "PL-2529": "Expanded PNM Manual with new help buttons and documentation for multiple modules.",
-  "PL-2531": "Refined PNM data visualization, fixing issues with mean curve display and improving test coverage.",
-  "PL-2533": "Refactored legacy export functionalities for improved maintainability.",
-  "PL-2536": "Work in progress: Implemented new UI for MicroCT environment.",
-  "PL-2537": "Updated Core environment to align with the new UI pattern and fixed related issues.",
-  "PL-2538": "Transitioned ImageLog Environment to the new interface, fixing crashes and improving widget functionality.",
-  "PL-2539": "Added documentation for new interface buttons and key Thin Section module features.",
-  "PL-2543": "Standardized Run and Cancel buttons across Thin Section modules.",
-  "PL-2544": "Integrated pyflowsolver submodule for enhanced flow calculations.",
-  "PL-2547": "Improved visualization and legend handling in Production module plots.",
-  "PL-2549": "Fixed crossplot window display issues.",
-  "PL-2550": "Introduced new styles for improved UI consistency.",
-  "PL-2553": "Updated default left menu settings and improved menu visibility.",
-  "PL-2555": "Fixed issue with exit event filter to ensure proper event handling.",
-  "PL-2557": "Removed unused attributes, updated UI elements, and added application version and memory tooltips.",
-  "PL-2558": "Reordered segmentation options for improved user experience.",
-  "PL-2559": "Fixed tool button behavior to open menu on click.",
-  "PL-2563": "Disabled double-click event for all table columns except the first.",
-  "PL-2564": "Resolved overlapping widgets in the color picker dialog.",
-  "PL-2566:": "Made the Instance Segmenter visible again.",
-  "PL-2569": "Updated Thin Section icons to match application theme and added icons for fuzzy search.",
-  "PL-2570": "Added icons for segmentation, register, and import menus.",
-  "PL-2571": "Adjusted minor menu details.",
-  "PL-2573": "Added missing GeoSlicer icon and optimized About window size for Windows.",
-  "PL-2574": "Disabled docking features in the module panel.",
-  "PL-2575": "Moved initial data loader launch to a later application event.",
-  "PL-2576": "Synchronized segmentation widget with combo box and fixed related tests.",
-  "PL-2581": "Improved tooltip for smoothing effect.",
-  "PL-2584": "Replaced progress bar implementation for better event handling.",
-  "PL-2585": "Fixed introduction text in manual thin section.",
-  "PL-2586": "Corrected flow details in thin section module.",
-  "PL-2587": "Resolved issues in transition plot.",
-  "PL-2589": "Added escape shortcut to cancel window level operation.",
-  "PL-2591": "Improved error messages for segmentation and added related tests.",
-  "PL-2592": "Disabled default computation of basic petro properties in inspector.",
-  "PL-2595:": "Implemented CLI queue for rock area processing and updated related workflows.",
-  "PL-2597:": "Optimized tqdm usage in spurious removal to prevent interface blocking.",
-  "PL-2598": "Fixed and tested chunk overlap issues in thin section instance segmenter.",
-  "PL-2599": "Updated LabelStatistics2D usage in Thin Section Instance Editor.",
-  "PL-2601": "Resolved module environment logic issues and removed unused patches.",
-  "PL-2603": "Improved conditional logic for importing VTU files.",
-  "PL-2610": "Fixed PoreStats compatibility issues on Linux.",
-  "PL-2611": "Corrected kabs results orientation and adapted tests.",
-  "PL-2612": "Fixed save and exit behaviors and addressed user cancellation scenarios.",
-  "PL-2613": "Implemented tracking for project save/load/close events.",
-  "PL-2614": "Enhanced project size estimation to prevent corruption and added tests.",
-  "PL-2615": "Improved 'Recent' feature and adjusted root directory paths.",
-  "PL-2618": "Removed unused modules from the project.",
-  "PL-2625": "Fixed issues in Big Image modules and applied code formatting.",
-  "PL-2627": "Improved project saving behavior and test execution on Windows.",
-  "PL-2629": "Resolved issues with the smoothing effect implementation.",
-  "PL-2630": "Fixed and tested Thin Section Loader functionalities.",
-  "PL-2632": "Added multiscale environment and updated segmentation options.",
-  "PL-2633": "Refined plugin management and git environment variables.",
-  "PL-2634": "Improved real-time raw loader and style checkboxes.",
-  "PL-2637": "Addressed core inpaint test issues and improved project data type handling.",
-  "PL-2639": "Enhanced environment selector and module toolbar functionality.",
-  "PL-2641": "Updated krel EDA plots and improved correlation plot display logic.",
-  "PL-2644": "Prevented random appearance of image log view.",
-  "PL-2645": "Standardized icons and module names, improved Multiscale environment.",
-  "PL-2649": "Fixed bugs in modeling flow functionality.",
-  "PL-2650": "Added references to Digital Rocks Data.",
-  "PL-2651": "Introduced auto-close timer for configuration message box.",
-  "PL-2654": "Improved input handling and scene reset logic in hierarchy volume input.",
-  "PL-2655": "Fixed toolbar visibility and explorer panel switching issues.",
-  "PL-2658": "Disabled light theme, added error log menu, and fixed onboarding window.",
-  "PL-2659": "Fixed issues in GeoSlicer Remote and thumbnail downloader.",
-  "PL-2661": "Resolved 'Recent project' menu usage issues.",
-  "free": "Implemented and fixed various features, UI elements, and workflows in the project."
-}
+# Highlights:
+- Added a supervised MicroCT (MCT) segmentation module with real-time preview capabilities (PL-2843)
+- Introduced the CLAHE (Contrast Limited Adaptive Histogram Equalization) tool for image processing (MUSA-122)
+- Enhanced the Image Log Export Widget to support exporting proportions labelmap with segmentation (MUSA-130)
+- Improved ROI visibility and usability by simplifying the UI and refining range sliders for Image Log cropping (MUSA-125)
+
+# New features:
+- Added a supervised MicroCT (MCT) segmentation module with real-time preview capabilities (PL-2843)
+- Added new visualizations for Kabs (PL-2898)
+- Added the CLAHE (Contrast Limited Adaptive Histogram Equalization) tool (MUSA-122)
+- Added a bug report upload feature to the service desk for closed-source versions (PL-2857)
+
+# Improvements:
+- Enhanced the Image Log Export Widget to support exporting proportions labelmap with segmentation and improved identification of proportions labelmaps (MUSA-130)
+- Improved the clone action for nodes to preserve properties and reference nodes, including role references for tables (PL-2914)
+- Failed remote jobs can now be restarted when attempting to collect results, with retries occurring in the same directory (PL-2864)
+- Adjusted shape factor calculation (PL-2910)
+- Reset masking section when effects change (PL-2913)
+- Implemented a new parameters architecture for local simulations and enabled parameter node creation after collecting remote execution results. Parameters are now saved after simulation, and the load button in subscale parameters was reintroduced (PL-2904)
+- Added the option to load NetCDF files in the data source panel (PL-2901)
+- Improved handling of failed extractor jobs and partially failed simulation jobs. Enhanced method and prefix display for Pore Network Model (PNM) remote jobs (PL-2892)
+- Centered the modal progress bar (PL-2857)
+- Updated the node custom behavior feature (PL-2850)
+- Renamed the 'Volumes Crop' module to 'Crop' (PL-2868)
+- Improved ROI visibility and usability by simplifying the UI with `ctkRangeSlider` for Image Log cropping (MUSA-125)
+- Improved modeling by adding new labels, handling numbers greater than int32_max, and increasing processing speed
+- Adjusted segmentation visualization to show segment colors directly
+
+# Bug fixes:
+- Fixed an issue with member access during module panel updates (PL-2920)
+- Fixed bugs related to Kabs, Krel, and MICP calculations (PL-2918)
+- Fixed missing parameter, log step, two-phase cancel, and number of simulations bugs in the simulation workflow (PL-2904)
+- Fixed an issue with importing LabelMapVolume from CSV files (MUSA-134)
+- Fixed issues with `keep_temporary` and `timeout_enabled` checkboxes, and corrected snapshot selection visibility and behavior (PL-2895)
+- Fixed an error during DLIS export caused by a variable with an incorrect name (MUSA-133)
+- Addressed several bugs found during integration tests (PL-2850)
+- Addressed issues related to memory leaks, stability, and errors during scene closing or segmentation restarts (PL-2843)
+- Fixed buggy behavior in spinboxes and UI glitches related to range slider and ROI interaction (MUSA-125)
+
+# Removed:
+- Removed the 'Color smudge' option (PL-2913)
+- Removed Tesseract from the repository for open-source versions (PL-2868)
+- Removed the "Grow from seeds" option from the Thin Section environment (PL-1972)
+- Removed deprecated functionalities from the saturation module

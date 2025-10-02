@@ -20,7 +20,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
     METHOD = "microporosity"
     DISPLAY_NAME = "Porosity Map from Segmentation"
 
-    SEGMENT_TYPES = ("High Attenuation", "Reference Solid", "Macroporosity", "Microporosity")
+    SEGMENT_TYPES = ("Ignore", "High Attenuation", "Solid", "Reference Solid", "Macroporosity", "Microporosity")
 
     def __init__(self, controller=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -31,7 +31,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
         self.outputInfo = OutputInfo()
         self.outputInfo.name = "Total porosity:"
         self.outputInfo.tooltip = "Total porosity (micro + macro)"
-        self.inputWidget = widgets.SingleShotInputWidget()
+        self.inputWidget = widgets.SingleShotInputWidget(checkable=False)
         self.inputWidget.objectName = f"{self.DISPLAY_NAME} Single Shot Input Widget"
         self.progress_bar = LocalProgressBar()
 
@@ -40,11 +40,11 @@ class MicroPorosity(widgets.BaseSettingsWidget):
         layout = qt.QVBoxLayout(self)
         layout.addWidget(self.inputWidget)
 
-        self.backgroundPorosityNumberInput = ui.numberParam((0.0, 1.0), value=0, step=0.01, decimals=2)
-        self.backgroundPorosityNumberInput.setToolTip('"Solid" phase in fact corresponds to some background porosity.')
-        self.backgroundPorosityNumberInput.objectName = "Microporosity Input Number"
-        # layout.addRow('Solid background Porosity: ', self.backgroundPorosityNumberInput)
-        self.backgroundPorosityNumberInput.visible = False  # instead, hide it
+        # self.backgroundPorosityNumberInput = ui.numberParam((0.0, 1.0), value=0, step=0.01, decimals=2)
+        # self.backgroundPorosityNumberInput.setToolTip('"Solid" phase in fact corresponds to some background porosity.')
+        # self.backgroundPorosityNumberInput.objectName = "Microporosity Input Number"
+        # # layout.addRow('Solid background Porosity: ', self.backgroundPorosityNumberInput)
+        # self.backgroundPorosityNumberInput.visible = False  # instead, hide it
 
         self.comboBoard = qt.QVBoxLayout()
         self.comboBoard.setContentsMargins(0, 0, 0, 0)
@@ -122,7 +122,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
         return labels
 
     def toJson(self):
-        bgPorosity = self.backgroundPorosityNumberInput.value
+        # bgPorosity = self.backgroundPorosityNumberInput.value
         labels = self.getLabelsDict()
         microporosityLowerLimit = None
         microporosityUpperLimit = None
@@ -132,7 +132,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
 
         return dict(
             labels=labels,
-            intrinsic_porosity=bgPorosity,
+            intrinsic_porosity=0,
             method=self.METHOD,
             microporosityLowerLimit=microporosityLowerLimit,
             microporosityUpperLimit=microporosityUpperLimit,
@@ -496,11 +496,16 @@ class MicroPorosityLogic(qt.QObject):
                 if totalPorosity:
                     self.signalTotalPorosityComputed.emit(totalPorosity)
 
+            nodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
+            for node in nodes:
+                node.GetDisplayNode().SetVisibility(False)
+
             if doReturnVolume:
                 helpers.makeTemporaryNodePermanent(outputVolumeNode, show=True)
                 helpers.makeTemporaryNodePermanent(outputReportNode, show=True)
+                slicer.util.setSliceViewerLayers(background=outputVolumeNode, foreground=None, label=None, fit=True)
             else:
-                slicer.util.setSliceViewerLayers(background=info.inputNode, fit=True)
+                slicer.util.setSliceViewerLayers(background=info.inputNode, foreground=None, label=None, fit=True)
 
         helpers.removeTemporaryNodes(environment=self.__class__.__name__)
         self.__resetCliNodes()

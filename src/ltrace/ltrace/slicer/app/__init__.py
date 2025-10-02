@@ -8,6 +8,8 @@ import os
 
 from datetime import datetime
 
+MANUAL_BASE_URL = "https://ltracegeo.github.io/GeoSlicerManual/latest/"
+
 
 def parseApplicationVersion(data: Dict) -> str:
     geoslicerVersion = data["GEOSLICER_VERSION"]
@@ -59,7 +61,6 @@ def tryDetectProjectDataType():
     for i in reversed(range(children.GetNumberOfIds())):
         child = children.GetId(i)
         name = sceneTree.GetItemName(child)
-        print("name", name)
         if "Thin Section" in name:
             return "Thin Section"
         elif "Micro CT" in name:

@@ -263,7 +263,7 @@ def save_project(project_path: Union[str, Path], timeout_ms=300000, properties=N
         shutil.rmtree(project_path, onerror=make_directory_writable)
 
     status = False
-    with WatchSignal(signal=slicer.mrmlScene.EndImportEvent, timeout_ms=timeout_ms):
+    with WatchSignal(signal=slicer.mrmlScene.EndSaveEvent, timeout_ms=timeout_ms):
         status = ProjectManager().saveAs(project_path.parent, properties=properties) == SaveStatus.SUCCEED
 
     return status

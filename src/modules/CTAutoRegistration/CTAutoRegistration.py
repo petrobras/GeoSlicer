@@ -32,6 +32,7 @@ class CTAutoRegistration(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CTAutoRegistration.help()
+        self.setHelpUrl("Volumes/Register/Register.html")
 
     @classmethod
     def readme_path(cls):
@@ -318,7 +319,6 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
         self.callback = callback
 
     def downsampleVolume(self, volume, downsamplingFactor):
-        print("Downsampling " + volume.GetName())
         downsampledVolume = self.cloneVolumeProperties(volume, volume.GetName() + " - Downsampled")
         downsampledVolume.HideFromEditorsOn()
         triggerNodeModified(downsampledVolume)
@@ -331,9 +331,6 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
     def register(self, p):
         # Removing old cli node if it exists
         slicer.mrmlScene.RemoveNode(self.cliNode)
-
-        print("CT Auto Registration start time: " + str(datetime.datetime.now()))
-
         self.resample = p.resample
         self.originalFixedVolume = p.fixedVolume
         self.fixedVolume = p.fixedVolume
@@ -516,7 +513,6 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
                 triggerNodeModified(self.outputLinearTransform)
 
                 slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
-                print("CT Auto Registration end time: " + str(datetime.datetime.now()))
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputVolume)
                 slicer.mrmlScene.RemoveNode(self.outputLinearTransform)

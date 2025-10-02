@@ -50,16 +50,16 @@ class ResampleBox(qt.QGroupBox):
             resampleLayout.addRow(f"{dimension}:", lineLayout)
 
         self.previewButton = qt.QPushButton("PREVIEW ")
-        self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+        self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
         self.previewButton.setLayoutDirection(qt.Qt.RightToLeft)
         self.previewButton.clicked.connect(self.generatePreview)
         resampleLayout.addWidget(self.previewButton)
 
     def changePreviewButton(self, state) -> None:
         if state:
-            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeOpen.png"))
+            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
         else:
-            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "EyeClosed.png"))
+            self.previewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
 
     def getResampleSpacings(self) -> list:
         return [self.gridSpacing[0], self.gridSpacing[1], self.gridSpacing[2]]

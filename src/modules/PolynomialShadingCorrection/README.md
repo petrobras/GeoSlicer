@@ -1,6 +1,6 @@
 ## Polynomial Shading Correction
 
-_GeoSlicer_ module to apply shading correction on micro CT images. For a more detailed discussion about the method, please check the GeoSlicer [[manual]](lib/{base_version}/qt-scripted-modules/Resources/manual/Micro CT/Polynomial Shading Correction/polynomial_shading_correction.html).
+_GeoSlicer_ module to apply shading correction on micro CT images. For a more detailed discussion about the method, please check the GeoSlicer [manual](https://ltracegeo.github.io/GeoSlicerManual/latest/Volumes/Filter/PolynomialShadingCorrection/PolynomialShadingCorrection.html).
 
 To use this module, follow the steps bellow:
 

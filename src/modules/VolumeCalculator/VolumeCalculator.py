@@ -11,6 +11,7 @@ import slicer
 
 from ltrace.slicer.helpers import tryGetNode, tryGetNodes, reset_style_on_valid_text, highlight_error
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.transforms import resample_if_needed
 
 # Checks if closed source code is available
@@ -33,6 +34,9 @@ class VolumeCalculator(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = VolumeCalculator.help()
+        self.setHelpUrl("Volumes/MoreTools/VolumeCalculator.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/VolumeCalculator.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/VolumeCalculator.html", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):
