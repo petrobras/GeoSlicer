@@ -176,16 +176,27 @@ def KabsREV(args, params):
 
             pores_df, throats_df, network_df, _ = extract_result
 
+            if pores_df.empty:
+                continue
+
             pore_network = dfs2spy(pores_df, throats_df)
 
-            bounds = [0, 0, 0, 0, 0, 0]
-            # volume.GetBounds(bounds)  # In millimeters
-            params["sizes"] = {
-                "x": scale[0] * cropped_volume.shape[0],
-                "y": scale[1] * cropped_volume.shape[1],
-                "z": scale[2] * cropped_volume.shape[2],
+            x_size = scale[0] * cropped_volume.shape[0]
+            y_size = scale[1] * cropped_volume.shape[1]
+            z_size = scale[2] * cropped_volume.shape[2]
+
+            params["scalar_volume_data"] = {}
+            params["scalar_volume_data"]["sizes"] = {
+                "x": x_size,
+                "y": y_size,
+                "z": z_size,
             }  # In mm
-            sizes_product = params["sizes"]["x"] * params["sizes"]["y"] * params["sizes"]["z"]
+            params["scalar_volume_data"]["spacing"] = {
+                "x": scale[0],
+                "y": scale[1],
+                "z": scale[2],
+            }
+            sizes_product = x_size * y_size * z_size
             subres_func = set_subres_model(pore_network, params)
 
             volume_porosity = 100 * network_df["network.input_volume_porosity"][0]
@@ -216,7 +227,7 @@ def KabsREV(args, params):
                 if perm == 0:
                     continue
 
-                length = 0.1 * params["sizes"][in_faces[2 - inlet][0]]  # cm
+                length = 0.1 * params["scalar_volume_data"]["sizes"][in_faces[2 - inlet][0]]  # cm
                 flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
                 mu = params["fluid_viscosity"]  # Pa*s
                 deltaP = params["pressure_drop"]  # Pa

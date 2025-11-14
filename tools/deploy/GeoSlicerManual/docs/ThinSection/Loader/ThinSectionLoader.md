@@ -1,4 +1,4 @@
 ---
 icon: ThinSectionLoader
 ---
-{% include-markdown "Pages/ThinSectionLoader.md" %}
+{{ include_markdown("ThinSectionLoader") }}

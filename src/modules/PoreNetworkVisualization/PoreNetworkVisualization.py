@@ -44,7 +44,7 @@ class PoreNetworkVisualization(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/PNM/cycles.html")
+        self.setHelpUrl("Volumes/PNM/PNM.html#cycles-visualization")
 
     @classmethod
     def readme_path(cls):
@@ -128,6 +128,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.speedSlider.maximum = 100
         self.speedSlider.value = 3
         self.speedSlider.setToolTip("Set animation speed.")
+        self.speedSlider.objectName = "Speed Slider"
         parametersFormLayout.addRow("Animation speed (fps)", self.speedSlider)
 
         # saturation threshold slider
@@ -405,8 +406,9 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
     def onShowZeroLogCheck(self, status):
         self.onChangeModel()
 
-    def animationSetup(self, status):
+    def animationSetup(self, status=False):
         if self.runAnimationCheck.isChecked():
+            self.timer.stop()
             self.timer.start(1000 / self.speedSlider.value)
         else:
             self.timer.stop()

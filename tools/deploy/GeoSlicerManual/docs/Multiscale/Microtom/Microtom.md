@@ -2,6 +2,6 @@
 icon: MicrotomRemote
 ---
 
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
 
-{% include-markdown "Pages/Microtom.md" %}
+{{ include_markdown("Microtom") }}

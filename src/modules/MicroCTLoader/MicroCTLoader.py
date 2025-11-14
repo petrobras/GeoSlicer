@@ -26,7 +26,7 @@ class MicroCTLoader(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.setHelpUrl("Volumes/MicroCTImport/Import.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/ImportTools/MicroCTImport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ImportTools/ImportTools.html#microct-import", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

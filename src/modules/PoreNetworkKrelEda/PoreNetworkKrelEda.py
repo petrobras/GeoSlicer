@@ -59,7 +59,7 @@ class PoreNetworkKrelEda(LTracePlugin):
         self.parent.title = "PNM Krel EDA"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("Volumes/PNM/krelEDA.html")
+        self.setHelpUrl("Volumes/PNM/PNM.html#krel-eda")
 
     @classmethod
     def readme_path(cls):

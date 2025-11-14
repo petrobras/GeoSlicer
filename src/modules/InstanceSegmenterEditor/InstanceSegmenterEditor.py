@@ -39,7 +39,7 @@ class InstanceSegmenterEditor(LTracePlugin):
         self.parent.categories = ["Segmentation", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("ImageLog/Segmentation/InstanceSegmenterEditor/InstanceSegmenterEditor.html")
+        self.setHelpUrl("ImageLog/Segmentation/Segmentation.html#instance-segmenter-editor")
 
     @classmethod
     def readme_path(cls):

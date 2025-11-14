@@ -14,7 +14,7 @@ class HistogramInDepthPlotWidgetModel(QtCore.QObject):
         super().__init__(widget, *args, **kwargs)
         self.__widget = widget
         self.__graphDataList = list()
-        self.__plotScale = "linear"
+        self.__plotScale = PlotScaleXAxisAttribute.LINEAR_SCALE.value
 
         self.destroyed.connect(lambda: self.__onDestroyed())
 

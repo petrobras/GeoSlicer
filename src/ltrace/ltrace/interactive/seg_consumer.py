@@ -3,6 +3,7 @@ import sys
 import time
 import numpy as np
 import json
+import psutil
 import ltrace.algorithms.feature_extraction as fe
 from scipy.ndimage import gaussian_filter
 from sklearn.ensemble import RandomForestClassifier
@@ -204,15 +205,20 @@ def _handle_task(task_params, paths, model, features, original_shape):
     return model
 
 
-def run_consumer(data_dir: str):
+def run_consumer(data_dir: str, parent_pid: int):
     paths = InterprocessPaths(Path(data_dir))
     print(f"[{os.getpid()}] Consumer process started. Monitoring directory: {data_dir}", flush=True)
+    print(f"[{os.getpid()}] Monitoring parent process with PID: {parent_pid}", flush=True)
 
     features = _get_initial_features(paths)
     original_shape = features.shape[1:]
     model = None
 
     while True:
+        if not psutil.pid_exists(parent_pid):
+            print(f"[{os.getpid()}] Parent process {parent_pid} not found. Exiting.", flush=True)
+            break
+
         try:
             task_file = paths.task
             if not task_file.exists():
@@ -241,10 +247,11 @@ def run_consumer(data_dir: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Real-time segmentation consumer process.")
     parser.add_argument("--data-dir", type=str, required=True, help="Path to the directory for exchanging data.")
+    parser.add_argument("--parent-pid", type=int, required=True, help="PID of the parent process to monitor.")
     args = parser.parse_args()
 
     try:
-        run_consumer(args.data_dir)
+        run_consumer(args.data_dir, args.parent_pid)
     except Exception as e:
         import traceback
 

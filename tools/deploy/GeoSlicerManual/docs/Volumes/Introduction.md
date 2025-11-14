@@ -2,4 +2,4 @@
 icon: Introduction
 ---
 
-{% include-markdown "Pages/MicroCTIntroduction.md" %}
+{{ include_markdown("MicroCTIntroduction") }}

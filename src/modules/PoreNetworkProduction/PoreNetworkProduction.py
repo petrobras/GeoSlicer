@@ -45,7 +45,7 @@ class PoreNetworkProduction(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/PNM/production.html")
+        self.setHelpUrl("Volumes/PNM/PNM.html#production-prediction")
 
     @classmethod
     def readme_path(cls):

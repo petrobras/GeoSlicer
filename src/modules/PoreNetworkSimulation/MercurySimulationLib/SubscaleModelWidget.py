@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import ctk
@@ -6,9 +7,11 @@ import slicer
 import ast
 
 import numpy as np
+from ltrace.pore_networks.functions_simulation import estimate_radius
 
 from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
 from ltrace.slicer import ui
+from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.ui import (
     hierarchyVolumeInput,
     DirOrFileWidget,
@@ -19,6 +22,7 @@ from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import dataframeFromTable, getResourcePath
 from ltrace.file_utils import read_csv
 from ltrace.pore_networks.subres_models import MODEL_DICT
+from ltrace.slicer.data_utils import dataFrameToTableNode
 
 
 class SubscaleModelWidget(qt.QWidget):
@@ -44,12 +48,11 @@ class SubscaleModelWidget(qt.QWidget):
         subscaleBox = qt.QGroupBox()
         subscaleBox.setTitle("Subscale properties      ")
         subscaleBox.setStyleSheet(style_sheet)
-        help_button = HelpButton(
-            f"### [Subscale properties](file:///{getResourcePath('manual')}/Simulation/PNM/intro.html#simulacao) section of GeoSlicer Manual."
-        )
-        help_button.setFixedSize(20, 20)
-        help_button.setParent(subscaleBox)
-        help_button.move(130, 0)
+        manualUrl = MANUAL_BASE_URL + "Volumes/PNM/PNM.html#simulation"
+        helpButton = HelpButton(f"### [Subscale properties]({manualUrl}) section of GeoSlicer Manual.")
+        helpButton.setFixedSize(20, 20)
+        helpButton.setParent(subscaleBox)
+        helpButton.move(130, 0)
 
         formLayout = qt.QFormLayout()
 
@@ -103,7 +106,7 @@ class SubscaleModelWidget(qt.QWidget):
         formLayout.addRow(hbox)
 
         ## parameters
-        porositymodifier_helpbutton = HelpButton(
+        porositymodifierHelpbutton = HelpButton(
             "Modifies subscale porosity.\n"
             "Values lower than 1 increase subscale porosity.\n"
             "Values higher than 1 decrease subscale porosity.\n"
@@ -117,13 +120,13 @@ class SubscaleModelWidget(qt.QWidget):
         self.porositymodifier_edit = floatParam(1.0)
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.porositymodifier_edit)
-        hbox.addWidget(porositymodifier_helpbutton)
+        hbox.addWidget(porositymodifierHelpbutton)
         formLayout.addRow(
             "Capillary porosity modifier",
             hbox,
         )
 
-        shapefactor_helpbutton = HelpButton(
+        shapefactorHelpbutton = HelpButton(
             "Defines Shape factor of subresolution capillary elements.\n"
             "Values must be between 0.01 and 0.09.\n"
             "Values under or equal to 0.04 result in triangular cross"
@@ -133,7 +136,7 @@ class SubscaleModelWidget(qt.QWidget):
         self.subresolution_shapefactor_edit = floatParam(0.040)
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.subresolution_shapefactor_edit)
-        hbox.addWidget(shapefactor_helpbutton)
+        hbox.addWidget(shapefactorHelpbutton)
         formLayout.addRow(
             "Capillary pore shape factor",
             hbox,
@@ -292,10 +295,20 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
 
+        hbox_top = qt.QHBoxLayout()
         instructions_labels = qt.QLabel(
-            "To import a pressure curve, first add it to the scene in File -> Advanced Add Data"
+            "Drag and drop a CSV file containing Pressure/Radius and Volume\n"
+            "Fraction, or use the button on the right to import from a SIRR file."
         )
-        import_layout.addWidget(instructions_labels)
+        hbox_top.addWidget(instructions_labels)
+
+        self.importSIRRButton = qt.QPushButton("Import SIRR")
+        self.importSIRRButton.setFixedWidth(150)
+        self.importSIRRButton.setToolTip("Import SIRR CSV file.")
+        self.importSIRRButton.clicked.connect(lambda: onImportSIRRClicked(self.throatRadiusSelector))
+        hbox_top.addWidget(self.importSIRRButton)
+
+        import_layout.addRow(hbox_top)
 
         self.throatRadiusSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
         self.throatRadiusSelector.setToolTip("Select input (optional)")
@@ -388,10 +401,20 @@ class PressureCurveWidget(qt.QWidget):
         self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
 
+        hbox_top = qt.QHBoxLayout()
         instructions_labels = qt.QLabel(
-            "To import a pressure curve, first add it to the scene in File -> Advanced Add Data"
+            "Drag and drop a CSV file containing Pressure/Radius and Volume\n"
+            "Fraction, or use the button on the right to import from a SIRR file."
         )
-        import_layout.addWidget(instructions_labels)
+        hbox_top.addWidget(instructions_labels)
+
+        self.importSIRRButton = qt.QPushButton("Import SIRR")
+        self.importSIRRButton.setFixedWidth(150)
+        self.importSIRRButton.setToolTip("Import SIRR CSV file.")
+        self.importSIRRButton.clicked.connect(lambda: onImportSIRRClicked(self.pressureCurveSelector))
+        hbox_top.addWidget(self.importSIRRButton)
+
+        import_layout.addRow(hbox_top)
 
         self.pressureCurveSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
         self.pressureCurveSelector.setToolTip("Select input (optional)")
@@ -586,3 +609,38 @@ class LeverettNewWidget(LeverettWidgetBase):
 
     def set_params(self, params):
         pass
+
+
+def onImportSIRRClicked(combo_widget):
+    file_path = qt.QFileDialog.getOpenFileName(None, "Select SIRR CSV file", "", "CSV files (*.csv)")
+    if not file_path:
+        return  # User canceled
+    importSIRR(file_path, combo_widget)
+
+
+def importSIRR(file_path, combo_widget):
+    try:
+        df = read_csv(Path(file_path))
+
+        df = df.drop(
+            columns=[
+                "σ pressão capilar(psi)",
+                "σ saturação de Hg (%)",
+                "Saturação de gás (%)",
+                "σ saturação de gás (%)",
+            ]
+        )
+
+        df = df.rename(columns={"Pressão capilar(psi)": "pc"})
+        df["pc"] = df["pc"] * 6894.75729  # convert psi → Pa
+
+        df = df.rename(columns={"Saturação de Hg (%)": "snwp"})
+        df["snwp"] = df["snwp"] / 100
+        df["dsn"] = np.diff(df["snwp"], n=1, prepend=0)
+        df["radii"] = estimate_radius(df["pc"])
+
+        tableNode = dataFrameToTableNode(df)
+        tableNode.SetName("SIRR imported MICP")
+        combo_widget.setCurrentNode(tableNode)  # Set the newly created table node in the combo widget
+    except Exception as e:
+        logging.error(f"Failed to import SIRR file: {e}")

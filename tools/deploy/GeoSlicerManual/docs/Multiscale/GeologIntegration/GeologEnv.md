@@ -2,4 +2,4 @@
 icon: GeologEnv
 ---
 
-{% include-markdown "Pages/GeologEnv.md"%}
+{{ include_markdown("GeologEnv") }}

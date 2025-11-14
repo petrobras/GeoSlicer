@@ -40,8 +40,10 @@ class ImageLogInpaint(LTracePlugin):
         self.parent.title = "Image Log Inpaint"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("ImageLog/Inpainting/ImageLogInpaint/ImageLogInpaint.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ImageLogPreProcessing/Inpaint/ImageLogInpaint.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/Inpainting/Inpainting.html#image-log-inpaint", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl(
+            "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.html#image-log-inpaint", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

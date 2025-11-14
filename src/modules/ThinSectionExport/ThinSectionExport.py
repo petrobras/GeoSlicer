@@ -27,7 +27,7 @@ class ThinSectionExport(LTracePlugin):
         self.parent.title = "Export"
         self.parent.categories = ["Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Export.html').as_posix()}"
+        self.setHelpUrl("ThinSection/Export/Export.html")
 
     @classmethod
     def readme_path(cls):

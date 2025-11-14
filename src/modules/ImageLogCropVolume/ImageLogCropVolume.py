@@ -28,7 +28,9 @@ class ImageLogCropVolume(LTracePlugin):
         self.parent.categories = ["ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("ImageLog/Crop.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Crop.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl(
+            "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.html#image-log-crop", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

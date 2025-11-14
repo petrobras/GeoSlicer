@@ -72,8 +72,8 @@ class LabelMapEditor(LTracePlugin):
         self.parent.acknowledgementText = """
     Developed by LTrace Geophysics Solutions
 """
-        self.setHelpUrl("ThinSection/Segmentation/LabelMapEditor.html", NodeEnvironment.THIN_SECTION)
-        self.setHelpUrl("Core/Segmentation/LabelMapEditor.html", NodeEnvironment.CORE)
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#labelmap-editor", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/Segmentation.html#labelmap-editor", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):

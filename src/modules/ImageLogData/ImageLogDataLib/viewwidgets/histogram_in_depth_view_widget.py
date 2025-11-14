@@ -10,9 +10,11 @@ from collections import namedtuple
 from ImageLogDataLib.view.View import PlotControlsEventFilter
 from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data, tryGetNode, hex2Rgb
 from ltrace.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
-from ltrace.slicer.node_attributes import PlotScaleXAxisAttribute
+from ltrace.slicer.node_attributes import PlotScaleXAxisAttribute, HistogramGraphType
 from Plots.HistogramInDepthPlot.HistogramInDepthPlotWidgetModel import HistogramInDepthPlotWidgetModel
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+
+from scipy.stats import gaussian_kde
 
 PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter"])
 
@@ -24,7 +26,7 @@ class HistogramInDepthViewWidget(BaseViewWidget):
 
         view_widget_layout = qt.QVBoxLayout(parent)
         view_widget_layout.setContentsMargins(0, 0, 0, 0)
-        self.curve_plot = PlotWidget()
+        self.curve_plot = PlotWidget(histogramType=primary_node.GetAttribute(HistogramGraphType.name()))
         self.curve_plot.setSamples(view_data.primaryTableNodeColumn)
         self.curve_plot._plotItem.setContentsMargins(-7, -7, -6, -6)
         self.curve_plot._plotItem.hideButtons()
@@ -114,7 +116,7 @@ class PlotWidget(QtWidgets.QWidget):
 
     signal_y_range_changed = QtCore.Signal(object, object)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, histogramType, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.__model = HistogramInDepthPlotWidgetModel(self)
@@ -122,6 +124,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.__color = "#000000"
         self.__plots = list()
         self.__graphicsLayoutWidget = None
+        self.__histogramType = histogramType
 
         self.setupUi()
 
@@ -175,6 +178,7 @@ class PlotWidget(QtWidgets.QWidget):
         """Wrapper method for inserting data into the widget"""
         self.__color = color
         self.__scaleHistogram = scaleHistogram
+
         return self.__model.appendData(dataNode)
 
     def setSamples(self, samples):
@@ -229,42 +233,14 @@ class PlotWidget(QtWidgets.QWidget):
             pen = pg.mkPen(colorRgb, width=0.01)
             maxDepth, minDepth = self.getDataRange()
 
-            scale_depth = self.get_scale(graph_data)
             scale_plot = self.__scaleHistogram
-            # Get x values
-            x = self._getXArray(graph_data)
-            if x.size == 0:
-                continue
 
-            # Get y values
-            if graph_data.data.get("X", None) is not None:
-                y_all = np.zeros((graph_data.data.df.shape[1] - 1, graph_data.data.df.shape[0]))
-                depth_hist = np.zeros(graph_data.data.df.shape[1] - 1)
-                i = 0
-                for pore, pore_data in graph_data.data.items():
-                    if pore == "X":
-                        continue
-                    y_all[i, :] = pore_data
-                    depth_hist[i] = float(pore) * scale_depth
-                    i += 1
-            else:
-                y_all = np.transpose(graph_data.data.df.values)
-                depth_hist = np.array(graph_data.data.df.columns) * scale_depth
-                nan_rows = np.any(np.isnan(y_all), axis=1)
-                y_all = y_all[~nan_rows]
-                depth_hist = depth_hist[~nan_rows]
-                ymax = np.max(y_all)
-                diff = np.max(np.diff(depth_hist))
-                y_all = (y_all / ymax) * diff * 5
+            x, y, depth_hist = self._getPlotData(graph_data)
+            y_scaled = -scale_plot * y + np.transpose(depth_hist)[:, np.newaxis]
 
-            # Apply sampling and plot
-            y_scaled = -scale_plot * y_all + np.transpose(depth_hist)[:, np.newaxis]
-            y_all = y_all[:: self.__samples, :]
-            y_scaled = y_scaled[:: self.__samples, :]
-            depth_hist = depth_hist[:: self.__samples]
             self._plotItem.plot(x, y_scaled, fillLevel=depth_hist, brush=brush, pen=pen)
             for i in range(y_scaled.shape[0]):
-                self.__curveIndexer.addCurve(x, y_scaled[i, :], y_all[i, :])
+                self.__curveIndexer.addCurve(x, y_scaled[i, :], y[i, :])
 
             # Apply plot customization
             if minDepth is None or maxDepth is None or x is None:
@@ -397,7 +373,10 @@ class PlotWidget(QtWidgets.QWidget):
     def _getXArray(self, graph_data):
         """Obtain an array for the X-axis based on the graph data type.
         If the graph data contains the key 'X', the function returns an array
-        corresponding to that key. Otherwise, it creates an array based on a logarithmic
+        corresponding to that key.
+        Else, if the internal histogram type is multi_histogram, this function returns
+        a linear spaced array for a given number of bins.
+        Otherwise, it creates an array based on a logarithmic
         time scale. The logarithmic time scale is calculated based on the number of bins
         and times in the website https://github.com/ruben-charles/NMR_log_visualization/tree/main
         Args:
@@ -407,6 +386,8 @@ class PlotWidget(QtWidgets.QWidget):
         """
         if graph_data.data.get("X", None) is not None:
             x = np.array(graph_data.data["X"])
+        elif self.__histogramType == HistogramGraphType.MULTI_HISTOGRAM.value:
+            x = self._instance_attributes_limits(graph_data.node)
         else:
             tmin = 0.3
             tmax = 3000
@@ -418,6 +399,52 @@ class PlotWidget(QtWidgets.QWidget):
             bins_time = 10**bins_log10time
             x = bins_time
         return x
+
+    def _getYValues(self, graph_data):
+        # Get y values
+        if graph_data.data.get("X", None) is not None:
+            y_all = np.zeros((graph_data.data.df.shape[1] - 1, graph_data.data.df.shape[0]))
+            depth_hist = np.zeros(graph_data.data.df.shape[1] - 1)
+            i = 0
+            for pore, pore_data in graph_data.data.items():
+                if pore == "X":
+                    continue
+                y_all[i, :] = pore_data
+                depth_hist[i] = float(pore) * self.get_scale(graph_data)
+                i += 1
+
+        else:
+            y_all = np.transpose(graph_data.data.df.values)
+            depth_hist = np.array(graph_data.data.df.columns) * self.get_scale(graph_data)
+            nan_rows = np.any(np.isnan(y_all), axis=1)
+            y_all = y_all[~nan_rows]
+            depth_hist = depth_hist[~nan_rows]
+
+            if self.__histogramType == HistogramGraphType.MULTI_HISTOGRAM.value:
+                if len(depth_hist) > 1:
+                    diff = np.min(np.diff(depth_hist))
+                else:
+                    referenceTable = tryGetNode(graph_data.node.GetNodeReferenceID("InstanceReportTable"))
+                    if referenceTable is not None:
+                        diff = depth_hist[0] - np.min(slicer.util.arrayFromTableColumn(referenceTable, "depth (m)"))
+                    else:
+                        ReferenceError(f"No instance report found for {graph_data.node.GetName()}")
+
+                y_all = (y_all / y_all.max(axis=1, keepdims=True)) * diff
+                y_all[np.isnan(y_all)] = 0
+            else:
+                ymax = np.max(y_all)
+                diff = np.max(np.diff(depth_hist))
+                y_all = (y_all / ymax) * diff * 5
+
+        return y_all, depth_hist
+
+    def _getPlotData(self, graph_data):
+        x = self._getXArray(graph_data)
+        y, depth_hist = self._getYValues(graph_data)
+        depth_hist = depth_hist[:: self.__samples]
+
+        return x, y, depth_hist
 
     def get_scale(self, graph_data):
         scale = 1.0
@@ -457,6 +484,21 @@ class PlotWidget(QtWidgets.QWidget):
         brush = kwargs.get("brush")
         plot = pg.PlotCurveItem(x=x, y=y, pxMode=pxMode, symbol=None, size=size, pen=pen, brush=brush)
         return plot
+
+    def _instance_attributes_limits(self, kdeTable):
+        if kdeTable.GetAttribute("Property") == "Circularity":
+            xGrid = np.linspace(0, 1, 200)
+        elif kdeTable.GetAttribute("Property") == "azimuth (°)":
+            xGrid = np.linspace(0, 360, 200)
+        else:
+            referenceTable = tryGetNode(kdeTable.GetNodeReferenceID("InstanceReportTable"))
+            if referenceTable is not None:
+                data = slicer.util.arrayFromTableColumn(referenceTable, kdeTable.GetAttribute("Property"))
+                xGrid = np.linspace(np.nanmin(data), np.nanmax(data), 200)
+            else:
+                raise ReferenceError(f"No instance report found for {kdeTable.GetName()}")
+
+        return xGrid
 
 
 class CurveIndexer:

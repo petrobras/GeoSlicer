@@ -23,7 +23,7 @@ class ImageLogUnwrapImport(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogUnwrapImport.help()
         self.setHelpUrl("ImageLog/Unwrap/Unwrap.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ImportTools/ImageLogUnwrap.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ImportTools/ImportTools.html#image-log-unwrap-import", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

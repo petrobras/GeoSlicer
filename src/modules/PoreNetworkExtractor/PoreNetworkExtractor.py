@@ -53,8 +53,8 @@ class PoreNetworkExtractor(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/PNM/PNExtraction.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/PNM/PNExtraction.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/PNM/PNM.html#extractor", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/PNM/PNM.html#extractor", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -167,7 +167,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.inputSelector.setToolTip(
             "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab)."
         )
-        manualPath = f"{MANUAL_BASE_URL}/Volumes/PNM/PNExtraction.html"
+        manualPath = f"{MANUAL_BASE_URL}Volumes/PNM/PNM.html#extractor"
         inputSelectorHelp = HelpButton(
             "Select a labelmap volume with individualized pores (generated in Segmentation → Segment Inspector) or a porosity map (generated in the Microporosity tab).\n\n"
             "- If a labelmap is selected, extraction will be single-scale;\n\n- If a scalar volume (porosity map) is selected, extraction will be multiscale (resolved + unresolved pores);"
@@ -227,8 +227,9 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.extractButton.objectName = "Apply Button"
         self.layout.addWidget(self.extractButton)
         self.warningsLabel = qt.QLabel("")
-        self.warningsLabel.setStyleSheet("QLabel { color: red; font: bold; background-color: black;}")
+        self.warningsLabel.setStyleSheet("QLabel { color: yellow;}")
         self.warningsLabel.setVisible(False)
+        self.warningsLabel.setWordWrap(True)
         self.layout.addWidget(self.warningsLabel)
 
         self.layout.addWidget(self.progressBar)
@@ -276,11 +277,8 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         input_node = self.inputSelector.currentNode()
 
         if input_node:
-            if not self.isValidPoreNode(input_node):
-                self.setWarning("Not a valid input node selected.")
-            else:
-                self.warningsLabel.setText("")
-                self.warningsLabel.setVisible(False)
+            eval_string = self.evalPoreNode(input_node)
+            self.setWarning(eval_string)
 
             self.outputPrefix.setText(input_node.GetName())
             if input_node.IsA("vtkMRMLLabelMapVolumeNode"):
@@ -288,6 +286,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
                 self.poresSelector.visible = False
                 self.poresSelectorHelp.visible = False
                 self.poresSelector.setCurrentNode(None)
+                self.extractButton.setEnabled(True)
                 for widget in self.paramsWidget.blurWidgets:
                     widget.visible = False
             else:
@@ -295,10 +294,32 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
                 self.poresSelector.visible = True
                 self.poresSelectorHelp.visible = True
                 self.poresSelector.setCurrentNode(None)
+                self.extractButton.setEnabled(True)
                 for widget in self.paramsWidget.blurWidgets:
                     widget.visible = True
         else:
             self.outputPrefix.setText("")
+
+    def evalPoreNode(self, node):
+        isLabelMap = node.IsA("vtkMRMLLabelMapVolumeNode")
+        vrange = node.GetImageData().GetScalarRange()
+        is_float = node.GetImageData().GetScalarType() in [vtk.VTK_FLOAT, vtk.VTK_DOUBLE]
+
+        if isLabelMap:
+            eval_string = "Input is a labeled pores image for single scale extraction."
+        else:
+            eval_string = "Input is a porosity map image for multiscale extraction."
+            if is_float and vrange[1] <= 1:
+                eval_string += " Values are float type interpreted as porosity ratio between 0 and 1."
+            elif is_float:
+                eval_string += " Values are float type interpreted as porosity percentage between 0 and 100."
+            else:
+                eval_string += " Values are int type interpreted as porosity percentage between 0 and 100."
+            if vrange[1] > 100:
+                eval_string += f" There are numbers over 100 detected ({vrange[1]}), intepreted as 100 porosity."
+            if vrange[0] < 0:
+                eval_string += f" There are negative numbers detected ({vrange[0]}), intepreted as 0 porosity."
+        return eval_string
 
     def isValidPoreNode(self, node):
         if node.IsA("vtkMRMLLabelMapVolumeNode"):
@@ -381,7 +402,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
         else:
             job_name = f"PNM Extract: {self.prefix}"
-            self.handler = PoreNetworkExtractorHandler(self.inputNodeID, self.labelNodeID, params)
+            self.handler = PoreNetworkExtractorHandler(self.onRemoteResult, self.inputNodeID, self.labelNodeID, params)
             success = slicer.modules.RemoteServiceInstance.cli.run(self.handler, name=job_name, job_type="pnmextractor")
             if success:
                 self.callback()
@@ -409,25 +430,32 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
 
             self.callback(True)
 
-    def _create_table(self, table_type):
-        table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
-        table.AddNodeReferenceID("PoresLabelMap", self.inputNodeID)
-        table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_{table_type}_table"))
-        table.SetAttribute("table_type", f"{table_type}_table")
-        table.SetAttribute("is_multiscale", "false")  # TODO check if needed, case positive, set it correctly
-        slicer.mrmlScene.AddNode(table)
-        return table
-
-    def _create_tables(self, algorithm_name):
-        poreOutputTable = self._create_table("pore")
-        throatOutputTable = self._create_table("throat")
-        networkOutputTable = self._create_table("network")
-        poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
-        edge_throats = "none" if (algorithm_name == "porespy") else "x"
-        poreOutputTable.SetAttribute("edge_throats", edge_throats)
-        return throatOutputTable, poreOutputTable, networkOutputTable
-
     def onFinish(self):
+        extraction_nodes_creator = ExtractionNodesCreator(
+            self.inputNodeID, self.labelNodeID, self.cwd, self.prefix, self.visualization
+        )
+        self.results = extraction_nodes_creator.create()
+
+    def onRemoteResult(self, inputNodeID, cwd, prefix):
+        extraction_nodes_creator = ExtractionNodesCreator(inputNodeID, None, cwd, prefix, False)
+        self.results = extraction_nodes_creator.create()
+
+
+class PoreNetworkExtractorError(RuntimeError):
+    pass
+
+
+class ExtractionNodesCreator:
+    def __init__(self, inputNodeID, labelNodeID, cwd, prefix, visualization):
+        self.inputNodeID = inputNodeID
+        self.labelNodeID = labelNodeID
+        self.cwd = cwd
+        self.prefix = prefix
+        self.visualization = visualization
+
+        self.results = {}
+
+    def create(self):
         inputNode = slicer.mrmlScene.GetNodeByID(self.inputNodeID)
 
         df_pores = pd.read_pickle(str(self.cwd / "pores.pd"))
@@ -446,7 +474,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         else:
             array_watershed = None
 
-        throatOutputTable, poreOutputTable, networkOutputTable = self._create_tables("porespy")
+        throatOutputTable, poreOutputTable, networkOutputTable = self.__create_tables("porespy")
 
         self.results["pore_table"] = poreOutputTable
         self.results["throat_table"] = throatOutputTable
@@ -459,10 +487,14 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         ### Include size infomation ###
         bounds = [0, 0, 0, 0, 0, 0]
         inputNode.GetBounds(bounds)  # In millimeters
+        spacing = inputNode.GetSpacing()
         poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
         poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
         poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
         poreOutputTable.SetAttribute("origin", f"{bounds[0]};{bounds[2]};{bounds[4]}")
+        poreOutputTable.SetAttribute("x_spacing", f"{spacing[0]}")
+        poreOutputTable.SetAttribute("y_spacing", f"{spacing[1]}")
+        poreOutputTable.SetAttribute("z_spacing", f"{spacing[2]}")
         if array_watershed is not None:
             poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
         else:
@@ -481,10 +513,30 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             folderTree.CreateItem(currentDir, output_watershed_volume)
 
         if self.visualization:
-            self.results["model_nodes"] = self.visualize(poreOutputTable, throatOutputTable, inputNode)
+            self.results["model_nodes"] = self.__visualize(poreOutputTable, throatOutputTable, inputNode)
 
-    def visualize(
-        self,
+        return self.results
+
+    def __create_tables(self, algorithm_name):
+        poreOutputTable = self.__create_table("pore")
+        throatOutputTable = self.__create_table("throat")
+        networkOutputTable = self.__create_table("network")
+        poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
+        edge_throats = "none" if (algorithm_name == "porespy") else "x"
+        poreOutputTable.SetAttribute("edge_throats", edge_throats)
+        return throatOutputTable, poreOutputTable, networkOutputTable
+
+    def __create_table(self, table_type):
+        table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
+        table.AddNodeReferenceID("PoresLabelMap", self.inputNodeID)
+        table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_{table_type}_table"))
+        table.SetAttribute("table_type", f"{table_type}_table")
+        table.SetAttribute("is_multiscale", "false")  # TODO check if needed, case positive, set it correctly
+        slicer.mrmlScene.AddNode(table)
+        return table
+
+    @staticmethod
+    def __visualize(
         poreOutputTable: slicer.vtkMRMLTableNode,
         throatOutputTable: slicer.vtkMRMLTableNode,
         inputVolume: slicer.vtkMRMLLabelMapVolumeNode,
@@ -494,7 +546,3 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             throatOutputTable,
             inputVolume,
         )
-
-
-class PoreNetworkExtractorError(RuntimeError):
-    pass

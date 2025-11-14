@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from ltrace.pore_networks.functions import geo2spy
+from ltrace.pore_networks.subres_models import get_scalar_volume_data
 from ltrace.slicer import data_utils as du
 from ltrace.slicer.helpers import LazyLoad
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
@@ -61,10 +62,7 @@ class ReportLogic(LTracePluginLogic):
 
     def set_subres_model(self, table_node, params):
         pore_network = geo2spy(table_node)
-        x_size = float(table_node.GetAttribute("x_size"))
-        y_size = float(table_node.GetAttribute("y_size"))
-        z_size = float(table_node.GetAttribute("z_size"))
-        volume = x_size * y_size * z_size
+        scalar_volume_data = get_scalar_volume_data(table_node)
 
         subres_model = params["subres_model_name"]
         subres_params = params["subres_params"]
@@ -75,7 +73,7 @@ class ReportLogic(LTracePluginLogic):
 
         subresolution_logic = self.logic_models[subres_model]
         subresolution_function = subresolution_logic().get_capillary_radius_function(
-            subres_params, pore_network, volume
+            subres_params, pore_network, scalar_volume_data
         )
 
         return subresolution_function

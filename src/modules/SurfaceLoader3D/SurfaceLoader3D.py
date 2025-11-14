@@ -41,8 +41,8 @@ The model must contain texture coordinates. Only a single texture file per model
 For more information, visit <a href='https://github.com/SlicerIGT/SlicerIGT/#user-documentation'>SlicerIGT project website</a>.
 """
         self.parent.acknowledgementText = """ """  # replace with organization, grant and thanks.
-        self.setHelpUrl("Volumes/Import/SurfaceLoader3D.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/Import/SurfaceLoader3D.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Volumes/Import/Import.html#3d-surface-loader", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Import/Import.html#3d-surface-loader", NodeEnvironment.THIN_SECTION)
 
 
 #

@@ -2,17 +2,17 @@ import os
 from pathlib import Path
 import re
 import logging
+import configparser
 
 import numpy as np
 import slicer
 import xarray as xr
 from ltrace.slicer import netcdf
-from ltrace.slicer_utils import *
 from ltrace.slicer import loader
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 from tifffile import TiffFile
 from natsort import natsorted
 
@@ -20,6 +20,18 @@ from natsort import natsorted
 ROOT_DATASET_DIRECTORY_NAME = "Micro CT"
 MICRO_CT_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg", ".nc", ".h5", ".hdf5"]
 SPACING_REGEX = re.compile(r"_(\d{5})nm")
+NETCDF_FILE_EXTENSIONS = [".nc", ".h5", ".hdf5"]
+
+
+def checkNetCdfFiles(path: Path, callback: Callable) -> List[slicer.vtkMRMLNode]:
+    if path.is_dir():
+        return netcdf.import_directory(path, callback)
+
+    if path.suffix not in NETCDF_FILE_EXTENSIONS:
+        logging.warning(f"Path '{path}' is not a NetCDF file.")
+        return []
+
+    return netcdf.import_file(path, callback)
 
 
 def load(
@@ -33,11 +45,10 @@ def load(
     loadAsSequence=False,
     baseName=None,
 ):
-    if path.suffix in (".nc", ".h5", ".hdf5"):
-        nodes = netcdf.import_file(path, callback)
-        # NetCDF already handles PCR
-        pcrNode = None
-    else:
+    nodes = checkNetCdfFiles(path, callback)
+    pcrNode = None
+
+    if not nodes:  # If no netCDF files were found, try to load the image files
         if path.is_file():
             singleFile = True
             pathBaseName = path.parent.name
@@ -290,7 +301,7 @@ def loadPCRAsTextNode(pcrFile):
 
         pcr = None
 
-        if pcrFile.suffix in (".nc", ".h5", ".hdf5"):
+        if pcrFile.suffix in NETCDF_FILE_EXTENSIONS:
             try:
                 with xr.open_dataset(pcrFile) as ds:
                     pcr = ds.attrs["pcr"]
@@ -349,3 +360,32 @@ def loadPCRAsTextNode(pcrFile):
 #
 #     except configparser.Error:
 #         return None
+
+
+class PCRNotFoundError(Exception):
+    """Custom exception for PCR not found errors."""
+
+    def __init__(self, nodeName: str):
+        super().__init__(f"No PCR data associated with the image node '{nodeName}'.")
+
+
+def pcrMinMaxFromTableNode(imageNode):
+    try:
+        pcrFile = imageNode.GetAttribute("PCR")
+        pcrDryTextNode = slicer.mrmlScene.GetNodeByID(pcrFile) if pcrFile else None
+        if not pcrDryTextNode:
+            raise PCRNotFoundError(imageNode.GetName())
+
+        pcrDry = pcrDryTextNode.GetText()
+        parser = configparser.ConfigParser()
+        parser.read_string(pcrDry)
+        _min = np.float32(parser.getfloat("VolumeData", "Min"))
+        _max = np.float32(parser.getfloat("VolumeData", "Max"))
+
+        return _min, _max
+    except PCRNotFoundError as e:
+        logging.warning(str(e))
+        raise
+    except Exception as e:
+        logging.warning(f"Failed to associate PCR data for Image: {imageNode.GetName()}. Error: {str(e)}")
+        raise

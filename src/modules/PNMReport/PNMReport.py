@@ -25,7 +25,7 @@ class PNMReport(LTracePlugin):
         self.parent.title = "PNMReport"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PNMReport.help()
+        self.setHelpUrl("Volumes/PNM/PNM.html#report-generation")
 
     @classmethod
     def readme_path(cls):

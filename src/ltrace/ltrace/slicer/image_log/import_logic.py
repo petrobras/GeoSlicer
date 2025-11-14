@@ -918,7 +918,13 @@ def get_loader(file_path, null_values=""):
         return DLISLoader(file_path, null_values)
     if ext == ".csv" or ext == ".pdf":
         return CSVLoader(file_path, null_values)
-    raise NotImplementedError(f'Handler for "{ext}" not implemented.')
+
+    if ext == ".mrml":
+        raise NotImplementedError(
+            "MRML project files must be loaded using GeoSlicer's load scene functionality. Go to menu File -> Load Scene."
+        )
+
+    raise NotImplementedError(f'Handler for "{ext}" not implemented. Aceppted formats are: .las, .dlis, .csv and .pdf')
 
 
 def load_volumes(curves, stepCallback, appFolder=None, nullValue=None, well_diameter_mm=310):

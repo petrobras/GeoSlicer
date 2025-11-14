@@ -136,8 +136,7 @@ def ui_InformUserAboutRestart(text):
     msg = qt.QMessageBox(slicer.util.mainWindow())
     msg.setText(f"{text} Geoslicer will restart itself in 10 seconds.")
     msg.setWindowTitle("Configuration finished")
-    restartTimer = qt.QTimer(msg)
-    restartTimer.singleShot(10000, msg.accept)
+    qt.QTimer.singleShot(10000, msg.accept)
     msg.exec_()
 
 
@@ -434,9 +433,14 @@ def setModulePanel():
 
     def handle(moduleName):
         try:
-            module = getattr(slicer.modules, f"{moduleName}Instance")
-            url = module.helpUrl if hasattr(module, "helpUrl") else MANUAL_BASE_URL
-            title = module.title() if hasattr(module, "title") else moduleName
+            if not hasattr(slicer.modules, f"{moduleName}Instance"):
+                title = moduleName
+                url = MANUAL_BASE_URL
+            else:
+                module = getattr(slicer.modules, f"{moduleName}Instance")
+                url = module.helpUrl if hasattr(module, "helpUrl") else MANUAL_BASE_URL
+                title = module.title() if hasattr(module, "title") else moduleName
+
             moduleHeader.update(title, url)
         except Exception as e:
             logging.error(f"Failed to update module header: {e}.\n{traceback.format_exc()}")

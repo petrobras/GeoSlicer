@@ -82,7 +82,7 @@ class ThinSectionInstanceEditor(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ThinSectionInstanceEditor.help()
-        self.setHelpUrl("ThinSection/Segmentation/ThinSectionInstanceEditor.html")
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#instance-editor")
 
     @classmethod
     def readme_path(cls):

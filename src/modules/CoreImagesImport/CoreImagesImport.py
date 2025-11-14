@@ -30,7 +30,7 @@ class CoreImagesImport(LTracePlugin):
         self.final_depth = 0 * ureg.meter
         self.cores = []
         self.setHelpUrl("Core/Multicore.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/ImportTools/Multicore.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ImportTools/ImportTools.html#multicore", NodeEnvironment.MULTISCALE)
 
     def setup(self):
         pass

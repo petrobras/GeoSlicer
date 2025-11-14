@@ -1,4 +1,4 @@
 ---
 icon: QEMSCANLoader
 ---
-{% include-markdown "Pages/ThinSectionQemscanLoader.md" %}
+{{ include_markdown("ThinSectionQemscanLoader") }}

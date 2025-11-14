@@ -1,6 +1,6 @@
 ---
 icon: MicroCTLoader
 ---
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
 
-{% include-markdown "Pages/MicroCTImport.md" %}
+{{ include_markdown("MicroCTImport") }}

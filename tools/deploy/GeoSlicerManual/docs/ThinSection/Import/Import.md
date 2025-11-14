@@ -1,11 +1,11 @@
 ---
 icon: Database
 ---
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
-{% include-markdown "Pages/BIAEPBrowser.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
+{{ include_markdown("BIAEPBrowser") }}
 ---
-{% include-markdown "Pages/OpenRockData.md" %}
+{{ include_markdown("OpenRockData") }}
 ---
-{% include-markdown "Pages/NetCDF.md" %}
+{{ include_markdown("NetCDF") }}
 ---
-{% include-markdown "Pages/SurfaceLoader3D.md" %}
+{{ include_markdown("SurfaceLoader3D") }}

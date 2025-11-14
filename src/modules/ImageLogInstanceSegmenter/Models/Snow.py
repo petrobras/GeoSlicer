@@ -40,6 +40,7 @@ class SnowWidget(ModelWidget):
             "sizeMinThreshold",
             "outputPrefix",
             "selectedMeasurements",
+            "includePreprocessing",
         ],
     )
 
@@ -93,6 +94,12 @@ class SnowWidget(ModelWidget):
         formLayout.addRow(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignLeft)
+
+        self.preprocessingCheckBox = qt.QCheckBox("Include Preprocessing")
+        self.preprocessingCheckBox.setToolTip("Check this to include a preprocessing step.")
+        self.preprocessingCheckBox.setChecked(True)
+        self.preprocessingCheckBox.objectName = "Snow Preprocessing CheckBox"
+        formLayout.addRow(self.preprocessingCheckBox)
 
         self.smooth_factor = qt.QDoubleSpinBox()
         self.smooth_factor.setRange(0, 10)
@@ -263,6 +270,7 @@ class SnowWidget(ModelWidget):
                 sizeMinThreshold=float(self.sizeMinThreshold.value),
                 outputPrefix=self.outputPrefixLineEdit.text,
                 selectedMeasurements=self.getSelectedMeasurements(),
+                includePreprocessing=self.preprocessingCheckBox.isChecked(),
             )
             self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
@@ -310,6 +318,7 @@ class SnowLogic(ModelLogic):
         self.minDistanceFilter = p.minDistanceFilter
         self.sizeMinThreshold = p.sizeMinThreshold
         self.selectedMeasurements = p.selectedMeasurements
+        self.includePreprocessing = p.includePreprocessing
         self.outputPrefix = p.outputPrefix
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.itemParent = shNode.GetItemParent(shNode.GetItemByDataNode(self.segmentationNode))
@@ -323,6 +332,7 @@ class SnowLogic(ModelLogic):
         shNode.SetItemParent(shNode.GetItemByDataNode(self.outputLabelMapNode), self.itemParent)
 
         params = {
+            "do_preprocessing": self.includePreprocessing,
             "method": "snow",
             "sigma": self.sigma,
             "d_min_filter": self.minDistanceFilter,

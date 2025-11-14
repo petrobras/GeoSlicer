@@ -1,8 +1,8 @@
 ---
 icon: Layers
 ---
-{% include-markdown "Pages/SegmentEditor.md" %}
+{{ include_markdown("SegmentEditor") }}
 ---
-{% include-markdown "Pages/ImageLogInstanceSegmenter.md" %}
+{{ include_markdown("ImageLogInstanceSegmenter") }}
 ---
-{% include-markdown "Pages/InstanceSegmenterEditor.md" %}
+{{ include_markdown("InstanceSegmenterEditor") }}

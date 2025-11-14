@@ -20,9 +20,7 @@ class PpFlow(LTracePlugin):
         self.parent.title = "PP Flow"
         self.parent.categories = ["Tools", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Fluxo%20PP.html').as_posix()}"
-        )
+        self.setHelpUrl("ThinSection/Flows/Flows.html#pp-flow")
 
     @classmethod
     def readme_path(cls):

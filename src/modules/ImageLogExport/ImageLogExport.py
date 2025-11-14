@@ -26,7 +26,7 @@ class ImageLogExport(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogExport.help()
         self.setHelpUrl("ImageLog/Export/Export.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ExportTools/ImageLogExport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ExportTools/ExportTools.html#imagelog-export", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

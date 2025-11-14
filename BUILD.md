@@ -55,8 +55,8 @@ GeoSlicer is built on top of a modified version of 3D Slicer called **GeoSlicerB
 
 -   **Download the pre-built binaries (Recommended)**: This is the easiest and fastest way to get started. You can download the pre-built binaries for your operating system from the links below:
     
-    *   [Windows amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/j3-M11OKFLGFcWJGYr4hUQnW8u4sFruUATaH2IcaoSp4f8PcRCisaQH6mH2rtGv0/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.2.2-2024-11-21-win-amd64.zip)
-    *   [Linux amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/jy3VVQsDEJb9lVRLUz-6Iu_FBwPpw8ooCPdHP9aXKfEJPvWrFPt2Gy2hxwSy3mnq/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.2.2-2024-11-21-linux-amd64.tar.gz)
+    *   [Windows amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/fTj1fha337JiQkTHVSJZzN1tNVvz7VFJ9mcfFlNpy6csjwIgIgy-KtH_h_PZoHhJ/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.7.1-2025-08-07-win-amd64.zip)
+    *   [Linux amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/wxxSabOwh2b69CV3EodNcWF3srseT-R6D-5aUFTlv-KBqGNhKyF_eeV86WWhTR3O/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.7.1-2025-08-07-linux-amd64.tar.gz)
 -   **Build from source**: If you need to make changes to the base application, you can build GeoSlicerBase from the source by cloning the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories.
 
 ## 3. Deployment

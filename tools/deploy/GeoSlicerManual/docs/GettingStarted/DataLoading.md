@@ -2,4 +2,4 @@
 icon: DataLoading
 ---
 
-{% include-markdown "Pages/DataLoading.md" %}
+{{ include_markdown("DataLoading") }}

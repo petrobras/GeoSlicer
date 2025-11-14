@@ -1,7 +1,6 @@
 from ltrace.slicer.helpers import (
     arrayFromSegmentBinaryLabelmap,
     clearPattern,
-    get_scripted_modules_path,
     validateSourceVolume,
 )
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
@@ -71,13 +70,12 @@ class ThinSectionInstanceSegmenterWidget(qt.QWidget):
         widget.text = "Detector"
         layout = qt.QVBoxLayout(widget)
 
-        scripted_modules_path = get_scripted_modules_path()
-
         self.classifierInput = TrainedModelSelector(["TexturalStructures"])
         self.classifierInput.objectName = "Thin Section Instance Segmenter Model ComboBox"
 
+        manualUrl = MANUAL_BASE_URL + "ThinSection/Segmentation/Segmentation.html#instance-editor"
         classifierInputHelpButton = HelpButton(
-            f"### Instance Segmentation Inference\n\n The frameworks provided here can support different types of models. Select one of then from the list.\n\n-----\n More information available at [Geoslicer Manual]({MANUAL_BASE_URL}ThinSection/Segmentation/ThinSectionSegmenter.html)"
+            f"### Instance Segmentation Inference\n\n The frameworks provided here can support different types of models. Select one of then from the list.\n\n-----\n More information available at [Geoslicer Manual]({manualUrl})"
         )
 
         hbox = qt.QHBoxLayout(widget)

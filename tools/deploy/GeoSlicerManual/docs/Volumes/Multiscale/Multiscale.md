@@ -1,6 +1,6 @@
 ---
 icon: Multiscale
 ---
-{% include-markdown "Pages/Multiscale.md" %}
+{{ include_markdown("Multiscale") }}
 ---
-{% include-markdown "Pages/MultiscalePostProcessing.md" %}
+{{ include_markdown("MultiscalePostProcessing") }}

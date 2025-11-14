@@ -1,6 +1,6 @@
 ---
 icon: Microporosity
 ---
-{% include-markdown "Pages/PorosityFromSaturation.md" %}
----
-{% include-markdown "Pages/PorosityFromSegmentation.md" %}
+<!-- {{ include_markdown("PorosityFromSaturation") }}
+--- -->
+{{ include_markdown("PorosityFromSegmentation") }}

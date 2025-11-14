@@ -105,6 +105,7 @@ class PoreNetworkSimulationHandler:
                 message="Failed to deploy job.",
                 end_time=datetime.now().timestamp(),
             )
+            caller.persist(uid)
 
     def start(self, caller: JobManager, uid: str, client: Any = None):
         ts_start = datetime.now().timestamp()
@@ -144,6 +145,7 @@ class PoreNetworkSimulationHandler:
                     caller.set_state(
                         uid, "FAILED", 100, message=f"Failed to match job id for interval [{start_sim}, {end_sim}]"
                     )
+                    caller.persist(uid)
                     return
                 job_id = match.group(1)
                 self.slurm_job_ids.append(job_id)
@@ -170,7 +172,6 @@ class PoreNetworkSimulationHandler:
                 start_time=ts_start,
                 details=details,
             )
-            caller.persist(uid)
             caller.schedule(uid, "PROGRESS")
         except Exception:
             traceback.print_exc()
@@ -182,6 +183,7 @@ class PoreNetworkSimulationHandler:
                 end_time=datetime.now().timestamp(),
                 message="Execution failed to start jobs on cluster.",
             )
+            caller.persist(uid)
 
     def progress(self, caller: JobManager, uid: str, client: Any = None):
         try:
@@ -252,7 +254,14 @@ class PoreNetworkSimulationHandler:
 
         except Exception as e:
             traceback.print_exc()
-            logging.debug(f"Error in progress: {repr(e)}")
+            caller.set_state(
+                uid,
+                "FAILED",
+                100,
+                message=f"Exception in progress: {repr(e)}",
+                end_time=datetime.now().timestamp(),
+            )
+            caller.persist(uid)
 
     def read_last_progress(self, slurm_out_file_path):
         last_progress = 0.1
@@ -297,7 +306,7 @@ class PoreNetworkSimulationHandler:
         successful_job_ids = details.get("successful_job_ids", [])
         n_total = details.get("n_jobs", len(self.slurm_job_ids))
 
-        if len(successful_job_ids) < n_total:
+        if caller.jobs[uid].status == "COMPLETED" and len(successful_job_ids) < n_total:
             failed_job_ids = [jid for jid in details["slurm_job_ids"] if jid not in successful_job_ids]
             failed_intervals = [details["job_map"][jid] for jid in failed_job_ids]
             failed_str = ", ".join(failed_job_ids)
@@ -313,9 +322,15 @@ class PoreNetworkSimulationHandler:
                 )
                 job_name = f"PNM Two-phase: {self.prefix}_retry"
                 success = slicer.modules.RemoteServiceInstance.cli.run(
-                    new_handler, name=job_name, job_type="pnmsimulation"
+                    new_handler, name=job_name, job_type="pnmsimulation", polling_enabled=True
                 )
                 return  # Do not collect yet
+
+        # Check if krelResults files exist before proceeding
+        krel_files = list(self.job_local_path.glob("krelResults*"))
+        if not krel_files:
+            slicer.util.infoDisplay("No results yet to be collected. Wait some more time before trying again.")
+            return
 
         # Proceed with collecting results if all jobs succeeded or user declined retry
         pore_table_node = slicer.mrmlScene.GetNodeByID(self.pore_table_node_id)

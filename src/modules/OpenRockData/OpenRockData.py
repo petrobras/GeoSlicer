@@ -30,8 +30,8 @@ class OpenRockData(LTracePlugin):
         self.parent.title = "Digital Rocks Portal"
         self.parent.categories = ["Tools", "OpenRockData", "MicroCT", "Thin Section", "Image Log", "Core", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("Volumes/Import/OpenRockData.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/Import/OpenRockData.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Volumes/Import/Import.html#open-data-rocks", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Import/Import.html#open-data-rocks", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):

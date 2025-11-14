@@ -1,8 +1,8 @@
 ---
 icon: ThinSectionFlows
 ---
-{% include-markdown "Pages/FluxoPP.md" %}
+{{ include_markdown("FluxoPP") }}
 ---
-{% include-markdown "Pages/FluxoPPPX.md" %}
+{{ include_markdown("FluxoPPPX") }}
 ---
-{% include-markdown "Pages/FluxoQEMSCAN.md" %}
+{{ include_markdown("FluxoQEMSCAN") }}

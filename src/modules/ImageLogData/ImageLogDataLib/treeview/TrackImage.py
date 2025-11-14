@@ -6,7 +6,6 @@ from ltrace.lmath.filtering import DistributionFilter
 from ltrace.slicer.helpers import getVolumeNullValue
 from ltrace.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
 from ltrace.slicer.node_attributes import ColorMapSelectable
-from ltrace.slicer_utils import slicer_is_in_developer_mode
 
 
 class TrackImageWidget(qt.QWidget):
@@ -22,54 +21,58 @@ class TrackImageWidget(qt.QWidget):
     def setup(self):
         contentsFrameLayout = qt.QFormLayout(self)
         contentsFrameLayout.setLabelAlignment(qt.Qt.AlignRight)
-        contentsFrameLayout.setContentsMargins(0, 0, 0, 0)
+        contentsFrameLayout.setContentsMargins(4, 4, 4, 4)
 
         self.scalarVolumeDisplayWidget = slicer.qSlicerScalarVolumeDisplayWidget()
         self.scalarVolumeDisplayWidget.setMRMLScene(slicer.mrmlScene)
 
-        if slicer_is_in_developer_mode():
-            devModeBox = qt.QGroupBox("Developer mode")
-            devModeForm = qt.QFormLayout()
+        dimModeBox = qt.QGroupBox("Dimensions")
+        dimModeForm = qt.QFormLayout()
 
-            initialDepthHBoxLayout = qt.QHBoxLayout()
-            self.initialDepthLineEdit = qt.QLineEdit()
-            self.initialDepthLineEdit.setReadOnly(True)
-            self.finalDepthLineEdit = qt.QLineEdit()
-            self.finalDepthLineEdit.setReadOnly(True)
-            initialDepthHBoxLayout.addWidget(self.initialDepthLineEdit)
-            initialDepthHBoxLayout.addWidget(self.finalDepthLineEdit)
-            devModeForm.addRow("Depth range (m):", initialDepthHBoxLayout)
+        headerHBox = qt.QHBoxLayout()
+        headerHBox.addWidget(qt.QLabel("Start"))
+        headerHBox.addWidget(qt.QLabel("End"))
+        dimModeForm.addRow("Property", headerHBox)
 
-            imageDimensionsMetersHBoxLayout = qt.QHBoxLayout()
-            self.imageDimensionsMeters1LineEdit = qt.QLineEdit()
-            self.imageDimensionsMeters1LineEdit.setReadOnly(True)
-            self.imageDimensionsMeters3LineEdit = qt.QLineEdit()
-            self.imageDimensionsMeters3LineEdit.setReadOnly(True)
-            imageDimensionsMetersHBoxLayout.addWidget(self.imageDimensionsMeters1LineEdit)
-            imageDimensionsMetersHBoxLayout.addWidget(self.imageDimensionsMeters3LineEdit)
-            devModeForm.addRow("Perimeter/Length (m):", imageDimensionsMetersHBoxLayout)
+        initialDepthHBoxLayout = qt.QHBoxLayout()
+        self.initialDepthLineEdit = qt.QLineEdit()
+        self.initialDepthLineEdit.setReadOnly(True)
+        self.finalDepthLineEdit = qt.QLineEdit()
+        self.finalDepthLineEdit.setReadOnly(True)
+        initialDepthHBoxLayout.addWidget(self.initialDepthLineEdit)
+        initialDepthHBoxLayout.addWidget(self.finalDepthLineEdit)
+        dimModeForm.addRow("Depth range (m):", initialDepthHBoxLayout)
 
-            imageDimensionsPixelsHBoxLayout = qt.QHBoxLayout()
-            self.imageDimensionsPixels1LineEdit = qt.QLineEdit()
-            self.imageDimensionsPixels1LineEdit.setReadOnly(True)
-            self.imageDimensionsPixels3LineEdit = qt.QLineEdit()
-            self.imageDimensionsPixels3LineEdit.setReadOnly(True)
-            imageDimensionsPixelsHBoxLayout.addWidget(self.imageDimensionsPixels1LineEdit)
-            imageDimensionsPixelsHBoxLayout.addWidget(self.imageDimensionsPixels3LineEdit)
-            devModeForm.addRow("Perimeter/Length (pixels):", imageDimensionsPixelsHBoxLayout)
+        imageDimensionsMetersHBoxLayout = qt.QHBoxLayout()
+        self.imageDimensionsMeters1LineEdit = qt.QLineEdit()
+        self.imageDimensionsMeters1LineEdit.setReadOnly(True)
+        self.imageDimensionsMeters3LineEdit = qt.QLineEdit()
+        self.imageDimensionsMeters3LineEdit.setReadOnly(True)
+        imageDimensionsMetersHBoxLayout.addWidget(self.imageDimensionsMeters1LineEdit)
+        imageDimensionsMetersHBoxLayout.addWidget(self.imageDimensionsMeters3LineEdit)
+        dimModeForm.addRow("Perimeter/Length (m):", imageDimensionsMetersHBoxLayout)
 
-            spacingHBoxLayout = qt.QHBoxLayout()
-            self.imageSpacing1LineEdit = qt.QLineEdit()
-            self.imageSpacing1LineEdit.setReadOnly(True)
-            self.imageSpacing3LineEdit = qt.QLineEdit()
-            self.imageSpacing3LineEdit.setReadOnly(True)
-            spacingHBoxLayout.addWidget(self.imageSpacing1LineEdit)
-            spacingHBoxLayout.addWidget(self.imageSpacing3LineEdit)
-            devModeForm.addRow("Pixel size (mm):", spacingHBoxLayout)
+        imageDimensionsPixelsHBoxLayout = qt.QHBoxLayout()
+        self.imageDimensionsPixels1LineEdit = qt.QLineEdit()
+        self.imageDimensionsPixels1LineEdit.setReadOnly(True)
+        self.imageDimensionsPixels3LineEdit = qt.QLineEdit()
+        self.imageDimensionsPixels3LineEdit.setReadOnly(True)
+        imageDimensionsPixelsHBoxLayout.addWidget(self.imageDimensionsPixels1LineEdit)
+        imageDimensionsPixelsHBoxLayout.addWidget(self.imageDimensionsPixels3LineEdit)
+        dimModeForm.addRow("Perimeter/Length (pixels):", imageDimensionsPixelsHBoxLayout)
 
-            devModeBox.setLayout(devModeForm)
-            contentsFrameLayout.addRow(devModeBox)
-            contentsFrameLayout.addRow(" ", None)
+        spacingHBoxLayout = qt.QHBoxLayout()
+        self.imageSpacing1LineEdit = qt.QLineEdit()
+        self.imageSpacing1LineEdit.setReadOnly(True)
+        self.imageSpacing3LineEdit = qt.QLineEdit()
+        self.imageSpacing3LineEdit.setReadOnly(True)
+        spacingHBoxLayout.addWidget(self.imageSpacing1LineEdit)
+        spacingHBoxLayout.addWidget(self.imageSpacing3LineEdit)
+        dimModeForm.addRow("Pixel size (mm):", spacingHBoxLayout)
+
+        dimModeBox.setLayout(dimModeForm)
+        contentsFrameLayout.addRow(dimModeBox)
+        contentsFrameLayout.addRow(" ", None)
 
         self.interpolateCheckBox = self.scalarVolumeDisplayWidget.findChild(qt.QCheckBox, "InterpolateCheckbox")
         contentsFrameLayout.addRow("Interpolate:", self.interpolateCheckBox)
@@ -130,15 +133,15 @@ class TrackImageWidget(qt.QWidget):
         bounds = np.zeros(6)
         self.node.GetBounds(bounds)
         depthRange = -1 * np.array([bounds[5], bounds[4]]) / 1000
-        if slicer_is_in_developer_mode():
-            self.initialDepthLineEdit.text = np.around(depthRange[0], 3)
-            self.finalDepthLineEdit.text = np.around(depthRange[1], 3)
-            self.imageSpacing1LineEdit.text = np.around(spacing[0], 3)
-            self.imageSpacing3LineEdit.text = np.around(spacing[2], 3)
-            self.imageDimensionsPixels1LineEdit.text = imageDimensionsPixels[0]
-            self.imageDimensionsPixels3LineEdit.text = imageDimensionsPixels[2]
-            self.imageDimensionsMeters1LineEdit.text = np.around(imageDimensionsMeters[0], 3)
-            self.imageDimensionsMeters3LineEdit.text = np.around(imageDimensionsMeters[2], 3)
+
+        self.initialDepthLineEdit.text = np.around(depthRange[0], 3)
+        self.finalDepthLineEdit.text = np.around(depthRange[1], 3)
+        self.imageSpacing1LineEdit.text = np.around(spacing[0], 3)
+        self.imageSpacing3LineEdit.text = np.around(spacing[2], 3)
+        self.imageDimensionsPixels1LineEdit.text = imageDimensionsPixels[0]
+        self.imageDimensionsPixels3LineEdit.text = imageDimensionsPixels[2]
+        self.imageDimensionsMeters1LineEdit.text = np.around(imageDimensionsMeters[0], 3)
+        self.imageDimensionsMeters3LineEdit.text = np.around(imageDimensionsMeters[2], 3)
 
         node_id = self.node.GetID()
         node_is_uninitialized = node_id not in self.initializedNodes

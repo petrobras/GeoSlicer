@@ -24,8 +24,8 @@ class NetCDF(LTracePlugin):
         self.parent.title = "NetCDF"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("Volumes/MoreTools/NetCDF/Introduction.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/MoreTools/NetCDF/Introduction.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#netcdf", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/MoreTools/MoreTools.html#netcdf", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):

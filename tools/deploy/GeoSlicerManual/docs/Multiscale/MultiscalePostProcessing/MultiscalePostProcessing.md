@@ -2,4 +2,4 @@
 icon: MultiScalePostProcessing
 ---
 
-{% include-markdown "Pages/MultiscalePostProcessing.md"%}
+{{ include_markdown("MultiscalePostProcessing") }}

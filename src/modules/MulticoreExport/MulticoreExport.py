@@ -37,7 +37,7 @@ class MulticoreExport(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("Core/MulticoreExport.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/ExportTools/MulticoreExport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ExportTools/ExportTools.html#multicore-export", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

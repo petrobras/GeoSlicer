@@ -9,6 +9,7 @@ from ltrace.pore_networks.functions import is_multiscale_geo
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
 from ltrace.slicer import ui, helpers
+from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import getResourcePath, slicer_is_in_developer_mode
 import ltrace.slicer.widget.simulation as simulation_widgets
@@ -161,12 +162,11 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         # Fluid Properties
         fluidPropertiesBox = qt.QGroupBox()
         fluidPropertiesBox.setTitle("Fluid properties      ")
-        help_button = HelpButton(
-            f"### [Fluid properties](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#fluid-properties) section of GeoSlicer Manual."
-        )
-        help_button.setFixedSize(20, 20)
-        help_button.setParent(fluidPropertiesBox)
-        help_button.move(103, 0)
+        manualUrl = MANUAL_BASE_URL + "Volumes/PNM/PNM.html#fluid-properties"
+        helpButton = HelpButton(f"### [Fluid properties]({manualUrl}) section of GeoSlicer Manual.")
+        helpButton.setFixedSize(20, 20)
+        helpButton.setParent(fluidPropertiesBox)
+        helpButton.move(103, 0)
 
         fluidPropertiesLayout = qt.QFormLayout(fluidPropertiesBox)
         fluidPropertiesLayout.setContentsMargins(11, 9, 11, 5)
@@ -203,12 +203,11 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.contactAngleBox.setTitle("Contact angle options      ")
         self.contactAngleLayout = qt.QFormLayout(self.contactAngleBox)
         self.contactAngleLayout.setContentsMargins(11, 9, 11, 5)
-        help_button = HelpButton(
-            f"### [Contact angle options](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#contact-angle-options) section of GeoSlicer Manual."
-        )
-        help_button.setFixedSize(20, 20)
-        help_button.setParent(self.contactAngleBox)
-        help_button.move(142, 0)
+        manualUrl = MANUAL_BASE_URL + "Volumes/PNM/PNM.html#contact-angle-options"
+        helpButton = HelpButton(f"### [Contact angle options]({manualUrl}) section of GeoSlicer Manual.")
+        helpButton.setFixedSize(20, 20)
+        helpButton.setParent(self.contactAngleBox)
+        helpButton.move(142, 0)
         layout.addRow(self.contactAngleBox)
 
         for layout_name, display_string in (
@@ -247,12 +246,11 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.simulationOptionsBox.setTitle("Simulation options      ")
         self.simulationOptionsLayout = qt.QFormLayout(self.simulationOptionsBox)
         self.simulationOptionsLayout.setContentsMargins(11, 9, 11, 5)
-        help_button = HelpButton(
-            f"### [Simulation options](file:///{getResourcePath('manual')}/Modules/PNM/PNSimulation.html#simulation-options) section of GeoSlicer Manual."
-        )
-        help_button.setFixedSize(20, 20)
-        help_button.setParent(self.simulationOptionsBox)
-        help_button.move(122, 0)
+        manualUrl = MANUAL_BASE_URL + "Volumes/PNM/PNM.html#simulation-options"
+        helpButton = HelpButton(f"### [Simulation options]({manualUrl}) section of GeoSlicer Manual.")
+        helpButton.setFixedSize(20, 20)
+        helpButton.setParent(self.simulationOptionsBox)
+        helpButton.move(122, 0)
         layout.addRow(self.simulationOptionsBox)
         for layout_name, display_string in (
             ("cycle_1", "Drainage"),
@@ -558,9 +556,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         selectedNode = self.parameterInputWidget.currentNode()
         if selectedNode:
             parameters_dict = parameter_node_to_dict(selectedNode)
-            print(parameters_dict)
             for name, widget in self.widgets.items():
-                print(name, name in parameters_dict)
                 if name in parameters_dict:
                     if isinstance(widget, simulation_widgets.MultistepEditWidget):
                         values = parameters_dict[name]

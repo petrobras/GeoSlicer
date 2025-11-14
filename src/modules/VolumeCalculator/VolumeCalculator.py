@@ -34,9 +34,9 @@ class VolumeCalculator(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = VolumeCalculator.help()
-        self.setHelpUrl("Volumes/MoreTools/VolumeCalculator.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/MoreTools/VolumeCalculator.html", NodeEnvironment.MULTISCALE)
-        self.setHelpUrl("ImageLog/MoreTools/VolumeCalculator.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#volume-calculator", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/MoreTools.html#volume-calculator", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/MoreTools.html#volume-calculator", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):

@@ -23,6 +23,7 @@ from ltrace.algorithms.common import (
     points_are_below_plane,
 )
 from ltrace.pore_networks.functions import is_multiscale_geo, geo2pnf, geo2spy
+from ltrace.pore_networks.subres_models import get_scalar_volume_data
 from ltrace.pore_networks.vtk_utils import (
     create_flow_model,
     create_permeability_sphere,
@@ -155,11 +156,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         del self.params["subresolution function"]
         del self.params["subresolution function call"]
 
-        self.params["sizes"] = {
-            "x": float(inputTable.GetAttribute("x_size")) / 10,
-            "y": float(inputTable.GetAttribute("y_size")) / 10,
-            "z": float(inputTable.GetAttribute("z_size")) / 10,
-        }  # values in cm
+        self.params["scalar_volume_data"] = get_scalar_volume_data(inputTable)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)

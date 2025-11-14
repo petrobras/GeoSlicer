@@ -1,8 +1,8 @@
 ---
 icon: VolumesPreProcessing
 ---
-{% include-markdown "Pages/CustomizedCropVolume.md" %}
+{{ include_markdown("CustomizedCropVolume") }}
 ---
-{% include-markdown "Pages/CustomResampleScalarVolume.md" %}
+{{ include_markdown("CustomResampleScalarVolume") }}
 ---
-{% include-markdown "Pages/MicroCTFlowApplyFilters.md" %}
+{{ include_markdown("Filter") }}

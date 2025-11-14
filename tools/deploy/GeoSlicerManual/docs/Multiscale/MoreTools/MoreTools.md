@@ -2,10 +2,10 @@
 icon: Table
 ---
 # More Tools
-{% include-markdown "Pages/VolumeCalculator.md" %}
+{{ include_markdown("VolumeCalculator") }}
 ---
-{% include-markdown "Pages/TableFilter.md" %}
+{{ include_markdown("TableFilter") }}
 ---
-{% include-markdown "Pages/Tables.md" %}
+{{ include_markdown("Tables") }}
 ---
-{% include-markdown "Pages/Charts.md" %}
+{{ include_markdown("Charts") }}

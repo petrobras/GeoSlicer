@@ -118,7 +118,10 @@ class AIModelsPathModel:
         for path in self.paths:
             path = Path(path)
 
-            for subdir in path.rglob("*"):
+            directories = [path for path in path.rglob("*") if path.is_dir()]
+            directories.append(path if path.is_dir() else path.parent)
+
+            for subdir in directories:
                 if not subdir.is_dir():
                     continue
 

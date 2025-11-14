@@ -14,6 +14,7 @@ from ltrace.pore_networks.functions import (
     geo2spy,
     estimate_pressure,
 )
+from ltrace.pore_networks.subres_models import get_scalar_volume_data
 from ltrace.file_utils import read_csv
 from ltrace.slicer import ui
 from ltrace.slicer.ui import (
@@ -130,14 +131,11 @@ class MercurySimulationWidget(qt.QFrame):
 
     def getFunction(self, pore_node):
         pore_network = geo2spy(pore_node)
-        x_size = float(pore_node.GetAttribute("x_size"))
-        y_size = float(pore_node.GetAttribute("y_size"))
-        z_size = float(pore_node.GetAttribute("z_size"))
-        volume = x_size * y_size * z_size
+        scalar_volume_data = get_scalar_volume_data(pore_node)
 
         model = self.subscaleModelWidget.microscale_model_dropdown.currentText
         capillary_function = self.subscaleModelWidget.parameter_widgets[model].get_subradius_function(
-            pore_network, volume
+            pore_network, scalar_volume_data
         )
         return lambda x: capillary_function(x)
 

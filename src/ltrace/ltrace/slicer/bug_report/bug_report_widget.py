@@ -6,6 +6,13 @@ from ltrace.slicer.bug_report.bug_report_model import BugReportModel
 from pathlib import Path
 
 
+DESCRIPTION_INSTRUCTION = """Please provide a detailed description of the bug, including:
+- Steps to reproduce the issue.
+- What you expected to happen.
+- What actually happened.
+- Any error messages you encountered."""
+
+
 class BugReportDialog(qt.QDialog):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -13,6 +20,7 @@ class BugReportDialog(qt.QDialog):
         self.setMinimumSize(600, 400)
 
         self.errorDescriptionTextEdit = qt.QPlainTextEdit()
+        self.errorDescriptionTextEdit.setPlaceholderText(DESCRIPTION_INSTRUCTION)
 
         self.reportDirectoryButton = ctk.ctkDirectoryButton()
         self.reportDirectoryButton.caption = "Select a directory to save the report"

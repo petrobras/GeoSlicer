@@ -28,6 +28,7 @@ from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.status_panel import StatusPanel
 from pathlib import Path
 from scipy.optimize import curve_fit
@@ -94,7 +95,10 @@ class PolynomialShadingCorrection(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = PolynomialShadingCorrection.help()
+        self.setHelpUrl("Volumes/Filter/Filter.html#polynomial-shading-correction", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#shading-correction", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

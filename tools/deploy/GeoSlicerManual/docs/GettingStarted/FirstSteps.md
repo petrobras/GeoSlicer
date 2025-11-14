@@ -2,4 +2,4 @@
 icon: FirstSteps
 ---
 
-{% include-markdown "Pages/FirstSteps.md" %}
+{{ include_markdown("FirstSteps") }}

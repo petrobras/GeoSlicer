@@ -418,7 +418,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         Args:
             interval_ms (int, optional): The maximum duration in milliseconds. Defaults to 1000 ms.
         """
-        self.__timeout_timer = qt.QTimer(slicer.modules.AppContextInstance.mainWindow)
+        self.__timeout_timer = qt.QTimer(self)
         self.__timeout_timer.setSingleShot(True)
         self.__timeout_timer.timeout.connect(self.__on_timeout)
         self.__timeout_timer.setInterval(interval_ms)
@@ -430,6 +430,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             return
 
         self.__timeout_timer.stop()
+        self.__timeout_timer.deleteLater()
         self.__timeout_timer = None
 
     def __on_timeout(self) -> None:

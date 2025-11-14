@@ -41,8 +41,8 @@ class PoreNetworkSimulation(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/PNM/PNSimulation.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/PNM/PNSimulation.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/PNM/PNM.html#simulation", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/PNM/PNM.html#simulation", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -240,7 +240,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             self.handler = PoreNetworkSimulationHandler(pore_table_node.GetID(), params, self.outputPrefix.text)
             job_name = f"PNM Two-phase: {self.outputPrefix.text}"
             success = slicer.modules.RemoteServiceInstance.cli.run(
-                self.handler, name=job_name, job_type="pnmsimulation"
+                self.handler, name=job_name, job_type="pnmsimulation", polling_enabled=True
             )
             if success:
                 self.showJobs()

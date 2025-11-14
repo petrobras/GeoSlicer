@@ -2,4 +2,4 @@
 icon: Multicore 
 ---
 
-{% include-markdown "Pages/Multicore.md"%}
+{{ include_markdown("Multicore") }}

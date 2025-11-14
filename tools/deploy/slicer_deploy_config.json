@@ -87,6 +87,7 @@
         "src/modules/MicrotomRemote/Libs/microtom/microtom/variograma_phi.py",
         "src/modules/BIAEPBrowser/",
         "src/modules/RockGen/",
+        "src/ltrace/ltrace/algorithms/pspsmgen.py",
         "src/ltrace/ltrace/assets/private/",
         "tests/",
         "src/modules/TestsModule/",
@@ -121,13 +122,15 @@
                   ["h5pyd", "lib/Python/lib/site-packages", 0],
                   ["pytesseract", "lib/Python/lib/site-packages", 0],
                   ["mpslib", "lib/Python/lib/site-packages", 0],
-                  ["pygments", "lib/Python/lib/site-packages", 0]],
+                  ["pygments", "lib/Python/lib/site-packages", 0],
+                  ["AbstractScriptedSegmentEditorAutoCompleteEffect", "lib/$slicer_dir/qt-scripted-modules", 0]],
         "linux": [["monai", "lib/Python/lib/python3.9/site-packages", 2],
                   ["DataProbe", "lib/$slicer_dir/qt-scripted-modules", 0],
                   ["SampleData", "lib/$slicer_dir/qt-scripted-modules", 0],
                   ["h5pyd", "lib/Python/lib/python3.9/site-packages", 0],
                   ["pytesseract", "lib/Python/lib/python3.9/site-packages", 0],
                   ["mpslib", "lib/Python/lib/python3.9/site-packages", 0],
-                  ["pygments", "lib/Python/lib/python3.9/site-packages", 0]]
+                  ["pygments", "lib/Python/lib/python3.9/site-packages", 0],
+                  ["AbstractScriptedSegmentEditorAutoCompleteEffect", "lib/$slicer_dir/qt-scripted-modules", 0]]
     }
 }

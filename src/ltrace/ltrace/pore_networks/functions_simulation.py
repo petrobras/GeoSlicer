@@ -277,7 +277,6 @@ def set_subresolution_conductance(
 
     sub_network["throat.cross_sectional_area"] = np.pi * sub_network["throat.cap_radius"] ** 2
     sub_network["throat.volume"] = sub_network["throat.total_length"] * sub_network["throat.cross_sectional_area"]
-    sub_network["throat.volume"] *= 0
     sub_network["pore.volume"] *= sub_network["pore.subresolution_porosity"]
 
     if save_tables:

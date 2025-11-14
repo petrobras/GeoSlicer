@@ -2327,6 +2327,7 @@ class WatchSignal:
             return
 
         self.timer.stop()
+        self.timer.deleteLater()
         self.timer = None
 
     def __enter__(self) -> None:
@@ -2680,3 +2681,9 @@ def displayScaleFactor():
 def isValidEmail(email: str) -> bool:
     pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
     return re.match(pattern, email) is not None
+
+
+def getReferenceNode(segmentatioNode):
+    return segmentatioNode.GetNodeReferenceID("referenceVolume") or segmentatioNode.GetNodeReferenceID(
+        "referenceImageGeometryRef"
+    )

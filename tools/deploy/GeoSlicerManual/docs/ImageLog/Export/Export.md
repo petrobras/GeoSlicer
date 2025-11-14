@@ -2,6 +2,6 @@
 icon: ImageLogExport
 ---
 
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
 
-{% include-markdown "Pages/ImageLogExport.md" %}
+{{ include_markdown("ImageLogExport") }}

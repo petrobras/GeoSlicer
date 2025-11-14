@@ -37,7 +37,7 @@ class BigImage(LTracePlugin):
         self.parent.title = "Large Image Loader (beta)"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("Volumes/BigImage/LoadBigImage.html")
+        self.setHelpUrl("Volumes/BigImage/BigImage.html")
 
     @classmethod
     def readme_path(cls):

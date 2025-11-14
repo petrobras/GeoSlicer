@@ -1,0 +1,70 @@
+--- a/SegmentEditorEffects/AbstractScriptedSegmentEditorAutoCompleteEffect.py
++++ b/SegmentEditorEffects/AbstractScriptedSegmentEditorAutoCompleteEffect.py
+@@ -52,7 +52,7 @@ class AbstractScriptedSegmentEditorAutoCompleteEffect(AbstractScriptedSegmentEdi
+ 
+         # Wait this much after the last modified event before starting aut-update:
+         autoUpdateDelaySec = 1.0
+-        self.delayedAutoUpdateTimer = qt.QTimer()
++        self.delayedAutoUpdateTimer = qt.QTimer(scriptedEffect.optionsFrame())
+         self.delayedAutoUpdateTimer.setSingleShot(True)
+         self.delayedAutoUpdateTimer.interval = autoUpdateDelaySec * 1000
+         self.delayedAutoUpdateTimer.connect("timeout()", self.onPreview)
+@@ -63,7 +63,6 @@ class AbstractScriptedSegmentEditorAutoCompleteEffect(AbstractScriptedSegmentEdi
+         self.previewComputationInProgress = False
+ 
+     def __del__(self):
+-        self.delayedAutoUpdateTimer.stop()
+         self.observeSegmentation(False)
+ 
+     def cleanup(self):
+@@ -73,8 +72,15 @@ class AbstractScriptedSegmentEditorAutoCompleteEffect(AbstractScriptedSegmentEdi
+         # the object alive. For more details, see the parent class
+         # cleanup() docstring or the following issue:
+         # https://github.com/Slicer/Slicer/issues/7392
++        self.delayedAutoUpdateTimer.stop()
+         self.delayedAutoUpdateTimer.disconnect("timeout()", self.onPreview)
+ 
++        if self.observedSegmentation:
++            for tag in self.segmentationNodeObserverTags:
++                self.observedSegmentation.RemoveObserver(tag)
++            self.segmentationNodeObserverTags = []
++            self.observedSegmentation = None
++
+     @staticmethod
+     def isBackgroundLabelmap(labelmapOrientedImageData, label=None):
+         if labelmapOrientedImageData is None:
+@@ -209,19 +215,23 @@ class AbstractScriptedSegmentEditorAutoCompleteEffect(AbstractScriptedSegmentEdi
+     def observeSegmentation(self, observationEnabled):
+         import vtkSegmentationCorePython as vtkSegmentationCore
+ 
+-        parameterSetNode = self.scriptedEffect.parameterSetNode()
+-        segmentationNode = None
+-        if parameterSetNode:
+-            segmentationNode = parameterSetNode.GetSegmentationNode()
++        try:
++            parameterSetNode = self.scriptedEffect.parameterSetNode()
++            segmentationNode = None
++            if parameterSetNode:
++                segmentationNode = parameterSetNode.GetSegmentationNode()
+ 
+-        segmentation = None
+-        if segmentationNode:
+-            segmentation = segmentationNode.GetSegmentation()
++            segmentation = None
++            if segmentationNode:
++                segmentation = segmentationNode.GetSegmentation()
++
++            if observationEnabled and self.observedSegmentation == segmentation:
++                return
++            if not observationEnabled and not self.observedSegmentation:
++                return
++        except ValueError:
++            return  # related objects were deleted
+ 
+-        if observationEnabled and self.observedSegmentation == segmentation:
+-            return
+-        if not observationEnabled and not self.observedSegmentation:
+-            return
+         # Need to update the observer
+         # Remove old observer
+         if self.observedSegmentation:

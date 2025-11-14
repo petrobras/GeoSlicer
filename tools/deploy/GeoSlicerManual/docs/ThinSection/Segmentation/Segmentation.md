@@ -1,23 +1,23 @@
 ---
 icon: Layers
 ---
-{% include-markdown "Pages/SegmentEditor.md" %}
+{{ include_markdown("SegmentEditor") }}
 ---
-{% include-markdown "Pages/ThinSectionSegmenter.md" %}
+{{ include_markdown("ThinSectionSegmenter") }}
 ---
-{% include-markdown "Pages/SegmentInspector.md" %}
+{{ include_markdown("SegmentInspector") }}
 ---
-{% include-markdown "Pages/ThinSectionInstanceEditor.md" %}
+{{ include_markdown("ThinSectionInstanceEditor") }}
 ---
-{% include-markdown "Pages/LabelMapEditor.md" %}
+{{ include_markdown("LabelMapEditor") }}
 ---
-{% include-markdown "Pages/PoreStats.md" %}
+{{ include_markdown("PoreStats") }}
 ---
-{% include-markdown "Pages/UnsupervisedSegmentation.md" %}
+{{ include_markdown("UnsupervisedSegmentation") }}
 ---
 # Fluxos
-{% include-markdown "Pages/ThinSectionFlowManualSegmentation.md" %}
+{{ include_markdown("ThinSectionFlowManualSegmentation") }}
 ---
-{% include-markdown "Pages/ThinSectionFlowAutoSegmentation.md" %}
+{{ include_markdown("ThinSectionFlowAutoSegmentation") }}
 ---
-{% include-markdown "Pages/ThinSectionFlowSmartForeground.md" %}
+{{ include_markdown("ThinSectionFlowSmartForeground") }}

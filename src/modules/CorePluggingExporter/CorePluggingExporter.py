@@ -28,7 +28,7 @@ class CorePluggingExporter(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.acknowledgementText = ""
         self.setHelpUrl("Core/MulticoreExport.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/ExportTools/MulticoreExport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ExportTools/ExportTools.html#multicore-export", NodeEnvironment.MULTISCALE)
 
 
 #

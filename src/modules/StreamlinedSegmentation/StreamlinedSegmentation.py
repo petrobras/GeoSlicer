@@ -46,7 +46,7 @@ class StreamlinedSegmentation(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("Volumes/BigImage/StreamlinedSegmentation.html")
+        self.setHelpUrl("Volumes/BigImage/BigImage.html#virtual-segmentation-flow")
 
     @classmethod
     def readme_path(cls):

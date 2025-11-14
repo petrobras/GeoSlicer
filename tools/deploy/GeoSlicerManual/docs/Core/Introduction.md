@@ -2,4 +2,4 @@
 icon: Introduction
 ---
 
-{% include-markdown "Pages/CoreIntroduction.md"%}
+{{ include_markdown("CoreIntroduction") }}

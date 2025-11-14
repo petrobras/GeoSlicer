@@ -8,6 +8,7 @@ import numpy as np
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
 from ltrace.slicer.helpers import save_path
 from ltrace.slicer.netcdf import import_file
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 from importlib import reload
 from pathlib import Path
@@ -22,7 +23,8 @@ class NetCDFLoader(LTracePlugin):
         self.parent.title = "NetCDF Loader"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = NetCDFLoader.help()
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#netcdf-import", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/MoreTools/MoreTools.html#netcdf-import", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):

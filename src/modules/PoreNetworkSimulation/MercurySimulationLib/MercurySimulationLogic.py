@@ -19,6 +19,7 @@ from ltrace.pore_networks.functions import (
     estimate_radius,
     estimate_pressure,
 )
+from ltrace.pore_networks.subres_models import get_scalar_volume_data
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import (
     LTracePluginLogic,
@@ -73,11 +74,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         del self.params["subresolution function"]
         del self.params["subresolution function call"]
 
-        self.params["sizes"] = {
-            "x": float(inputTable.GetAttribute("x_size")) / 10,  ## TODO divide por 10?
-            "y": float(inputTable.GetAttribute("y_size")) / 10,
-            "z": float(inputTable.GetAttribute("z_size")) / 10,
-        }  # values in cm
+        self.params["scalar_volume_data"] = get_scalar_volume_data(inputTable)
 
         with open(str(self.cwd / "params_dict.json"), "w") as file:
             json.dump(self.params, file)

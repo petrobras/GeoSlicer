@@ -1,10 +1,10 @@
 ---
 icon: ExportTools
 ---
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
-{% include-markdown "Pages/ImageLogExport.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
+{{ include_markdown("ImageLogExport") }}
 ---
-{% include-markdown "Pages/MicroCTExport.md"%}
+{{ include_markdown("MicroCTExport") }}
 ---
-{% include-markdown "Pages/CoreExport.md"%}
+{{ include_markdown("CoreExport") }}
 

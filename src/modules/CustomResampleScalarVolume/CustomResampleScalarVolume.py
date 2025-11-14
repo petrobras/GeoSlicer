@@ -49,7 +49,9 @@ class CustomResampleScalarVolume(LTracePlugin):
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = ""
         self.setHelpUrl("Volumes/Resample/Resample.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Resample.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#resample", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

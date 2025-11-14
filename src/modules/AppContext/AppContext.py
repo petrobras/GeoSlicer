@@ -276,18 +276,17 @@ class ProjectEventsLogic:
             if fileDialog.exec():
                 paths = fileDialog.selectedFiles()
                 projectFilePath = paths[0]
-                if Path(projectFilePath).as_posix() == Path(slicer.mrmlScene.GetURL()).as_posix():
+                projectFilePath = Path(projectFilePath).resolve()
+                if projectFilePath == Path(slicer.mrmlScene.GetURL()):
                     return True
 
                 if not self.onCloseScene():
                     return False
 
-                status = self.__projectManager.load(projectFilePath)
+                status, errorMessage = self.__projectManager.load(projectFilePath)
                 if not status:
-                    slicer.util.errorDisplay(
-                        "An error occurred while loading the project. Please check the GeoSlicer log file.",
-                        "Failed to load project",
-                    )
+                    slicer.util.errorDisplay(errorMessage)
+                    return False
                 self.setupRecentlyLoadedMenu()
                 return True
             return False
@@ -441,12 +440,9 @@ class ProjectEventsLogic:
         if not self.onCloseScene():
             return
 
-        status = self.__projectManager.load(fileName)
+        status, errorMessage = self.__projectManager.load(fileName)
         if not status:
-            slicer.util.errorDisplay(
-                "An error occurred while loading the project. Please check the GeoSlicer log file.",
-                "Failed to load project",
-            )
+            slicer.util.errorDisplay(errorMessage)
         self.setupRecentlyLoadedMenu()
 
     def setupRecentlyLoadedMenu(self) -> None:
@@ -460,7 +456,7 @@ class ProjectEventsLogic:
                 continue
 
             try:
-                if action.text and Path(action.text).suffix != ".mrml":
+                if action.text and not action.text.endswith(".mrml"):
                     recentMenu.removeAction(action)
                     continue
 

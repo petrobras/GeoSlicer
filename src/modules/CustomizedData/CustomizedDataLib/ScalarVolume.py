@@ -1,3 +1,5 @@
+import typing
+
 import ctk
 import qt
 import slicer
@@ -114,12 +116,16 @@ class ScalarVolumeWidget(qt.QWidget):
 
         self.renderIn3DCheckBox = qt.QCheckBox("Render in 3D")
         self.renderIn3DCheckBox.stateChanged.connect(
-            lambda state: setVolumeVisibilityIn3D(self.node, state == qt.Qt.Checked) if self.node else None
+            lambda state: self.__storeState(
+                "renderIn3D", state == qt.Qt.Checked, lambda s: setVolumeVisibilityIn3D(self.node, s)
+            )
         )
 
         self.slicesIn3DCheckBox = qt.QCheckBox("Slices in 3D")
         self.slicesIn3DCheckBox.stateChanged.connect(
-            lambda state: setSlicesVisibilityIn3D(self.node, state == qt.Qt.Checked) if self.node else None
+            lambda state: self.__storeState(
+                "slicesIn3D", state == qt.Qt.Checked, lambda s: setSlicesVisibilityIn3D(self.node, s)
+            )
         )
 
         checkBoxLayout.addWidget(self.renderIn3DCheckBox, 1)
@@ -187,36 +193,54 @@ class ScalarVolumeWidget(qt.QWidget):
             self.histogramFrame.view_leeway = 0.05
             contentsFrameLayout.addRow(self.histogramFrame)
 
+    def __storeState(self, key: str, state: typing.Any, action: typing.Callable) -> None:
+        if self.node is None:
+            return
+
+        # The "!" prefix is used to indicate that these attributes are not standard MRML attributes neither
+        # are they used by the MRML scene. They are used to store the state of the widget for the current session.
+        self.node.SetAttribute(f"!Data[ScalarVolume].{key}", str(state))
+        action(state)
+
     def setNode(self, node, hideTable=False):
-        self.node = node
-        if self.isLabelMap:
-            if hideTable:
-                self.labelsTableWidget.set_labelmap_node(None)
-                self.labelsTableWidget.visible = False
+        try:
+            self.node = node
+
+            if self.isLabelMap:
+                if hideTable:
+                    self.labelsTableWidget.set_labelmap_node(None)
+                    self.labelsTableWidget.visible = False
+                else:
+                    self.labelsTableWidget.set_labelmap_node(node)
+                    self.labelsTableWidget.visible = True
             else:
-                self.labelsTableWidget.set_labelmap_node(node)
-                self.labelsTableWidget.visible = True
+                previousAutoWindowLevel = self.windowLevelWidget.autoWindowLevel
+                self.windowLevelWidget.setAutoWindowLevel(previousAutoWindowLevel)
 
-        else:
-            previousAutoWindowLevel = self.windowLevelWidget.autoWindowLevel
-            self.windowLevelWidget.setAutoWindowLevel(previousAutoWindowLevel)
-        self.node = node
-        self.activeVolumeNodeSelector.setCurrentNode(node)
-        self.renderIn3DCheckBox.setChecked(getVolumeVisibilityIn3D(node))
-        with BlockSignals(self.slicesIn3DCheckBox):
-            self.slicesIn3DCheckBox.setChecked(getSlicesVisibilityIn3D(node))
+            shouldRenderIn3D = node.GetAttribute("!Data[ScalarVolume].renderIn3D") == "True"
+            shouldShowSlicesIn3D = node.GetAttribute("!Data[ScalarVolume].slicesIn3D") == "True"
 
-        browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node)
-        if browser_node:
-            self.browserID = browser_node.GetID()
-        else:
+            self.activeVolumeNodeSelector.setCurrentNode(node)
+            self.renderIn3DCheckBox.setChecked(shouldRenderIn3D)
+            with BlockSignals(self.slicesIn3DCheckBox):
+                self.slicesIn3DCheckBox.setChecked(shouldShowSlicesIn3D)
+
+            browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node)
+            if browser_node:
+                self.browserID = browser_node.GetID()
+            else:
+                self.browserID = None
+
+            self.update()
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to set node: {e}")
+            self.node = None
             self.browserID = None
-
-        self.update()
 
     def update(self):
         if self.node is None:
             return
+
         spacing = self.node.GetSpacing()
         self.imageSpacing1LineEdit.text = f"{spacing[0]:.10g}"
         self.imageSpacing2LineEdit.text = f"{spacing[1]:.10g}"

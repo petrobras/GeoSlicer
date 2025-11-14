@@ -55,9 +55,9 @@ class Charts(LTracePlugin):
         self.parent.helpText = Charts.help()
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/MoreTools/Charts.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/MoreTools/Charts.html", NodeEnvironment.MULTISCALE)
-        self.setHelpUrl("ImageLog/MoreTools/Charts.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#charts", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/MoreTools.html#charts", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/MoreTools.html#charts", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):

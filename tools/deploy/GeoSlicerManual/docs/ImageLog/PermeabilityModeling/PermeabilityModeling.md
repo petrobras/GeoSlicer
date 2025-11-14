@@ -2,4 +2,4 @@
 icon: PermeabilityModeling
 ---
 
-{% include-markdown "Pages/PermeabilityModeling.md" %}
+{{ include_markdown("PermeabilityModeling") }}

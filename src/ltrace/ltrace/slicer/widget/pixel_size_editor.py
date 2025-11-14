@@ -186,10 +186,13 @@ class PixelSizeEditor(qt.QWidget):
         self._currentNodeId = node.GetID() if node is not None else None
 
         if node is not None:
+            if self._currentNodeObserver is not None:
+                self._currentNodeObserver.deleteLater()
+
             self._currentNodeObserver = NodeObserver(node, parent=self)
             self._currentNodeObserver.removedSignal.connect(self.onCurrentNodeRemoved)
 
-    def onCurrentNodeRemoved(self, node_observer: NodeObserver, node: slicer.vtkMRMLNode):
+    def onCurrentNodeRemoved(self, nodeObserver: NodeObserver, node: slicer.vtkMRMLNode):
         self._currentNodeId = None
-        del self._currentNodeObserver
+        self._currentNodeObserver.deleteLater()
         self._currentNodeObserver = None

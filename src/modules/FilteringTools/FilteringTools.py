@@ -3,15 +3,9 @@ from pathlib import Path
 
 import qt
 import slicer.util
-from ltrace.slicer_utils import *
-from ltrace.slicer import helpers
-from ltrace.slicer.node_attributes import NodeEnvironment
 
-from CustomizedCurvatureAnisotropicDiffusion import CustomizedCurvatureAnisotropicDiffusion
-from CustomizedGaussianBlurImageFilter import CustomizedGaussianBlurImageFilter
-from CustomizedGradientAnisotropicDiffusion import CustomizedGradientAnisotropicDiffusion
-from CustomizedMedianImageFilter import CustomizedMedianImageFilter
-from ShadingCorrection import ShadingCorrection
+from ltrace.slicer.node_attributes import NodeEnvironment
+from ltrace.slicer_utils import *
 
 
 class FilteringTools(LTracePlugin):
@@ -22,12 +16,14 @@ class FilteringTools(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Filter"
+        self.parent.title = "Filters"
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("Volumes/Filter/MicroCTFlowApplyFilters.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Filter.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Filter/Filter.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#filtering-tools", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):
@@ -64,6 +60,10 @@ class FilteringToolsWidget(LTracePluginWidget):
             (
                 "Median Image Filter",
                 slicer.modules.customizedmedianimagefilter.createNewWidgetRepresentation(),
+            ),
+            (
+                "Euclidean Distance Transform",
+                slicer.modules.euclideandistancetransform.createNewWidgetRepresentation(),
             ),
             (
                 "Simple Filters",

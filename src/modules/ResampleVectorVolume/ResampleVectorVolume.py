@@ -32,7 +32,9 @@ class ResampleVectorVolume(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.setHelpUrl("Volumes/Resample/Resample.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Resample.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#resample", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

@@ -26,7 +26,7 @@ class CoreInpaint(LTracePlugin):
         self.parent.categories = ["Core", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("Core/CoreInpaint.html", NodeEnvironment.CORE)
-        self.setHelpUrl("ImageLog/Inpainting/CoreInpaint/CoreInpaint.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("ImageLog/Inpainting/Inpainting.html#core-inpaint", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):

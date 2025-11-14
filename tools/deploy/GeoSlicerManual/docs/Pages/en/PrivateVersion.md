@@ -1,0 +1,3 @@
+# GeoSlicer Versions
+
+GeoSlicer is an [open-source](https://github.com/petrobras/GeoSlicer) digital rock platform, developed in collaboration by LTrace, Petrobras, and Equinor. Although the main version of GeoSlicer is open-source, the project also includes a private development modality. In this version, specific and customized modules are created, resulting from partnerships with companies that finance and collaborate in the development of tools for exclusive use. In this way, GeoSlicer balances the benefit of open collaboration with the need for innovation and commercial exclusivity.

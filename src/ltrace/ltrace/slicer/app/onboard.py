@@ -256,7 +256,7 @@ def loadEnvironment(toolbar, environmentInfo):
     groups = slicer.modules.AppContextInstance.modules.groups
     mainWindow = slicer.modules.AppContextInstance.mainWindow
     with ProgressBarProc() as pb:
-        windowModified = slicer.modules.AppContextInstance.mainWindow.isWindowModified()
+        windowModified = mainWindow.isWindowModified()
         related = groups[environmentInfo.category]
         loadModules(related, permanent=False, favorite=False)
 
@@ -273,7 +273,7 @@ def loadEnvironment(toolbar, environmentInfo):
             if slicer.util.toBool(sval):
                 widget = toolbar.widgetForAction(toolbar.actions()[0])
                 if widget.toolButtonStyle != qt.Qt.ToolButtonTextBesideIcon:
-                    mainToolBar = slicer.util.mainWindow().findChild(qt.QToolBar, "MainToolBar")
+                    mainToolBar = mainWindow.findChild(qt.QToolBar, "MainToolBar")
                     mainToolBar.actions()[0].trigger()
 
         except AttributeError as e:
@@ -284,12 +284,12 @@ def loadEnvironment(toolbar, environmentInfo):
 
         slicer.util.selectModule(environmentInfo.moduleName)
 
-        moduleSelectorToolbar = slicer.util.mainWindow().moduleSelector()
+        moduleSelectorToolbar = mainWindow.moduleSelector()
         envSelectorButton = moduleSelectorToolbar.findChild(qt.QToolButton, "environment Selector Menu")
         envSelectorButton.setText(environmentInfo.displayName)
         envSelectorButton.setIcon(qt.QIcon(environmentInfo.icon))
         envSelectorButton.setToolButtonStyle(qt.Qt.ToolButtonTextBesideIcon)
-        slicer.modules.AppContextInstance.mainWindow.setWindowModified(windowModified)
+        mainWindow.setWindowModified(windowModified)
 
 
 def loadEnvironmentByName(toolbar, displayName):

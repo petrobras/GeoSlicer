@@ -14,9 +14,7 @@ class QemscanFlow(LTracePlugin):
         self.parent.title = "QEMSCAN Flow"
         self.parent.categories = ["Tools", "Thin Section"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Thin_section/Fluxo%20QEMSCAN.html').as_posix()}"
-        )
+        self.setHelpUrl("ThinSection/Flows/Flows.html#qemscan-flow")
 
     @classmethod
     def readme_path(cls):

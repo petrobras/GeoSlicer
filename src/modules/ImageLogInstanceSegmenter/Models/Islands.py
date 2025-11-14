@@ -31,7 +31,14 @@ CLONED_COLUMNS = 40
 class IslandsWidget(ModelWidget):
     SegmentParameters = namedtuple(
         "SegmentParameters",
-        ["model", "segmentationNode", "sizeMinThreshold", "outputPrefix", "selectedMeasurements"],
+        [
+            "model",
+            "segmentationNode",
+            "sizeMinThreshold",
+            "outputPrefix",
+            "selectedMeasurements",
+            "includePreprocessing",
+        ],
     )
 
     def __init__(self, instanceSegmenterClass, instanceSegmenterWidget, *args, **kwargs):
@@ -81,6 +88,12 @@ class IslandsWidget(ModelWidget):
         formLayout.addRow(parametersCollapsibleButton)
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignLeft)
+
+        self.preprocessingCheckBox = qt.QCheckBox("Include Preprocessing")
+        self.preprocessingCheckBox.setToolTip("Check this to include a preprocessing step.")
+        self.preprocessingCheckBox.setChecked(True)
+        self.preprocessingCheckBox.objectName = "Islands Preprocessing CheckBox"
+        formLayout.addRow(self.preprocessingCheckBox)
 
         self.sizeMinThreshold = qt.QDoubleSpinBox()
         self.sizeMinThreshold.setRange(0, 10)
@@ -194,6 +207,7 @@ class IslandsWidget(ModelWidget):
                 sizeMinThreshold=float(self.sizeMinThreshold.value),
                 outputPrefix=self.outputPrefixLineEdit.text,
                 selectedMeasurements=self.getSelectedMeasurements(),
+                includePreprocessing=self.preprocessingCheckBox.isChecked(),
             )
             self.updateButtonsEnablement(running=True)
             self.logic.apply(segmentParameters)
@@ -239,6 +253,7 @@ class IslandsLogic(ModelLogic):
         self.segmentationNodeId = segmentationNode.GetID()
         self.sizeMinThreshold = p.sizeMinThreshold
         self.selectedMeasurements = p.selectedMeasurements
+        self.includePreprocessing = p.includePreprocessing
         self.outputPrefix = p.outputPrefix
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.itemParent = shNode.GetItemParent(shNode.GetItemByDataNode(segmentationNode))
@@ -254,6 +269,7 @@ class IslandsLogic(ModelLogic):
 
         params = {
             "method": "islands",
+            "do_preprocessing": self.includePreprocessing,
             "size_min_threshold": self.sizeMinThreshold,
             "direction": None,
         }

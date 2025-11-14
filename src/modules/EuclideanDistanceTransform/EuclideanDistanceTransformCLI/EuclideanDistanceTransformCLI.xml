@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>Euclidean Distance Transform</title>
+  <description>Computes the Euclidean Distance Transform of a binary image.</description>
+  <contributor>LTrace Team</contributor>
+  <parameters>
+    <image type="label">
+      <name>inputVolume</name>
+      <longflag>inputVolume</longflag>
+      <label>Input Volume</label>
+      <channel>input</channel>
+      <index>0</index>
+      <description>Input binary volume.</description>
+    </image>
+    <image type="scalar">
+      <name>outputVolume</name>
+      <longflag>outputVolume</longflag>
+      <label>Output Volume</label>
+      <channel>output</channel>
+      <index>1</index>
+      <description>Output distance map volume.</description>
+    </image>
+  </parameters>
+</executable>

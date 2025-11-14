@@ -2,4 +2,4 @@
 icon: Multiscale
 ---
 
-{% include-markdown "Pages/Multiscale.md" %}
+{{ include_markdown("Multiscale") }}

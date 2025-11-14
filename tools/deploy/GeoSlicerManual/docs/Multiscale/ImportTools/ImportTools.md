@@ -1,12 +1,12 @@
 ---
 icon: ImportTools
 ---
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
-{% include-markdown "Pages/ImageLogImport.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
+{{ include_markdown("ImageLogImport") }}
 ---
-{% include-markdown "Pages/ImageLogUnwrap.md" %}
+{{ include_markdown("ImageLogUnwrap") }}
 ---
-{% include-markdown "Pages/MicroCTImport.md" %}
+{{ include_markdown("MicroCTImport") }}
 ---
-{% include-markdown "Pages/Multicore.md"%}
+{{ include_markdown("Multicore") }}
 

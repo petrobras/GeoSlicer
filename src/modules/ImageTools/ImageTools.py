@@ -270,6 +270,12 @@ class ImageToolsWidget(LTracePluginWidget):
                 currentNode = helpers.clone_volume(
                     node, name=f"{node.GetName()}_Processed", as_temporary=True, hidden=True, uniqueName=True
                 )
+                if self.__referenceNodeObserver is not None:
+                    self.__referenceNodeObserver.deleteLater()
+
+                if self.__currentNodeObserver is not None:
+                    self.__currentNodeObserver.deleteLater()
+
                 self.__referenceNodeObserver = NodeObserver(node, parent=self.parent)
                 self.__referenceNodeObserver.removedSignal.connect(self.onNodeRemoved)
                 self.__currentNodeObserver = NodeObserver(currentNode, parent=self.parent)
@@ -278,11 +284,11 @@ class ImageToolsWidget(LTracePluginWidget):
             else:
                 currentNode = None
                 if self.__referenceNodeObserver is not None:
-                    del self.__referenceNodeObserver
+                    self.__referenceNodeObserver.deleteLater()
                     self.__referenceNodeObserver = None
 
                 if self.__currentNodeObserver is not None:
-                    del self.__currentNodeObserver
+                    self.__currentNodeObserver.deleteLater()
                     self.__currentNodeObserver = None
 
             self.toolComboBox.blockSignals(True)
@@ -472,11 +478,11 @@ class ImageToolsWidget(LTracePluginWidget):
         workingNode = self.currentNode
 
         if self.__currentNodeObserver is not None:
-            del self.__currentNodeObserver
+            self.__currentNodeObserver.deleteLater()
             self.__currentNodeObserver = None
 
         if self.__referenceNodeObserver is not None:
-            del self.__referenceNodeObserver
+            self.__referenceNodeObserver.deleteLater()
             self.__referenceNodeObserver = None
 
         if removeNode and workingNode is not None:

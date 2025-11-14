@@ -2,4 +2,4 @@
 icon: StreamlinedModelling
 ---
 
-{% include-markdown "Pages/StreamlinedModelling.md" %}
+{{ include_markdown("StreamlinedModelling") }}

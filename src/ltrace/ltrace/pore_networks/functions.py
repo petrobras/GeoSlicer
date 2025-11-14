@@ -301,12 +301,6 @@ def geo2pnf(
     y = float(geo_pore.GetAttribute("y_size")) * scale_factor
     z = float(geo_pore.GetAttribute("z_size")) * scale_factor
 
-    pnf["link1"][0] = f"{n_throats}"
-
-    x = float(geo_pore.GetAttribute("x_size")) * scale_factor
-    y = float(geo_pore.GetAttribute("y_size")) * scale_factor
-    z = float(geo_pore.GetAttribute("z_size")) * scale_factor
-
     pnf["node1"] = [f"{n_pores} {x} {y} {z}",]
     pnf["node2"] = []
     pnf["node3"] = []

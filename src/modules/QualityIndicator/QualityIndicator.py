@@ -35,7 +35,7 @@ class QualityIndicator(LTracePlugin):
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = QualityIndicator.help()
+        self.setHelpUrl("ImageLog/Processing/Processing.html#quality-indicator")
 
     @classmethod
     def readme_path(cls):

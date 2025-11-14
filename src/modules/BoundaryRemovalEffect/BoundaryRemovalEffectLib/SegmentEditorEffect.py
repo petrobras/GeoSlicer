@@ -103,18 +103,18 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             except Exception as error:
                 logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
-        try:
-            segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-            segmentation = segmentationNode.GetSegmentation()
+        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+        if segmentationNode is not None:
+            try:
+                segmentation = segmentationNode.GetSegmentation()
+                self.restoreSegments()
 
-            self.restoreSegments()
-
-            segmentIDs = vtk.vtkStringArray()
-            segmentation.GetSegmentIDs(segmentIDs)
-            for index in range(segmentIDs.GetNumberOfValues()):
-                segmentationNode.GetDisplayNode().SetSegmentVisibility(segmentIDs.GetValue(index), True)
-        except Exception as error:
-            logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
+                segmentIDs = vtk.vtkStringArray()
+                segmentation.GetSegmentIDs(segmentIDs)
+                for index in range(segmentIDs.GetNumberOfValues()):
+                    segmentationNode.GetDisplayNode().SetSegmentVisibility(segmentIDs.GetValue(index), True)
+            except Exception as error:
+                logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
 
         # Set views opacity back to normal
         nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")

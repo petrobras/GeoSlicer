@@ -9,6 +9,7 @@ import ctk
 import qt
 import slicer
 from ltrace.slicer.helpers import copy_display
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
 from ltrace.slicer import helpers
@@ -57,6 +58,11 @@ class CustomizedGradientAnisotropicDiffusion(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedGradientAnisotropicDiffusion.help()
+        self.setHelpUrl("Volumes/Filter/Filter.html#gradient-anisotropic-diffusion", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#gradient-anisotropic-diffusion",
+            NodeEnvironment.MULTISCALE,
+        )
 
     @classmethod
     def readme_path(cls):

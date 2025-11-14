@@ -22,6 +22,10 @@ class InteractiveSegmenterWidget(LTracePluginWidget):
     def exit(self):
         self.interactive_segmenter_frame.cleanup()
 
+    def cleanup(self):
+        super().cleanup()
+        self.exit()
+
 
 class InteractiveSegmenter(LTracePlugin):
     SETTING_KEY = "InteractiveSegmenter"
@@ -33,3 +37,4 @@ class InteractiveSegmenter(LTracePlugin):
         self.parent.categories = ["MicroCT", "Segmentation"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ""
+        self.setHelpUrl("Volumes/Segmentation/Segmentation.html#interactive-segmenter")

@@ -2,4 +2,4 @@
 icon: Introduction
 ---
 
-{% include-markdown "Pages/MultiscaleIntroduction.md"%}
+{{ include_markdown("MultiscaleIntroduction") }}

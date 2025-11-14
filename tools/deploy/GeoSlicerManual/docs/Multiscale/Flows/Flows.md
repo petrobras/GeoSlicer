@@ -1,14 +1,14 @@
 ---
 icon: WorkFlow
 ---
-{% include-markdown "Pages/MultiscaleFlowGeologEnv.md" %}
+{{ include_markdown("MultiscaleFlowGeologEnv") }}
 ---
-{% include-markdown "Pages/MultiscaleFlowImageLogCropVolume.md" %}
+{{ include_markdown("MultiscaleFlowImageLogCropVolume") }}
 ---
-{% include-markdown "Pages/MultiscaleFlowImageLogInpaint.md" %}
+{{ include_markdown("MultiscaleFlowImageLogInpaint") }}
 ---
-{% include-markdown "Pages/MultiscaleFlowMultiscale.md" %}
+{{ include_markdown("MultiscaleFlowMultiscale") }}
 ---
-{% include-markdown "Pages/MultiscaleFlowMultiscalePostProcessing.md" %}
+{{ include_markdown("MultiscaleFlowMultiscalePostProcessing") }}
 ---
-{% include-markdown "Pages/MultiscaleFlowMultiscaleWorkflows.md" %}
+{{ include_markdown("MultiscaleFlowMultiscaleWorkflows") }}

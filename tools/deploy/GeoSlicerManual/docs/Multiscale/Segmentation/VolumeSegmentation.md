@@ -1,8 +1,8 @@
 ---
 icon: Layers
 ---
-{% include-markdown "Pages/SegmentEditor.md" %}
+{{ include_markdown("SegmentEditor") }}
 ---
-{% include-markdown "Pages/MicroCTSegmenter.md" %}
+{{ include_markdown("MicroCTSegmenter") }}
 ---
-{% include-markdown "Pages/SegmentInspector.md" %}
+{{ include_markdown("SegmentInspector") }}

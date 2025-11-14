@@ -28,7 +28,7 @@ from ltrace.slicer.helpers import (
 )
 from ltrace.utils.callback import Callback
 from scipy import ndimage
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from ltrace.slicer.data_utils import dataFrameToTableNode, tableNodeToDataFrame
 
 MIN_CHUNKING_SIZE_BYTES = 2**33  # 8 GiB
@@ -260,6 +260,92 @@ def _create_text_nodes_for_attrs(attrs_dict: dict, base_name: str) -> dict:
         text_nodes[...] = text_node  # Use a non-string key to indicate small attributes
 
     return text_nodes
+
+
+def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
+    """Handles opening of netcdf files from a directory.
+        Some datasets might contain data with different dimension labels, causing the function 'open_mfdataset' to fail when concatenating by a single defined dimension label.
+        This function will open all files in the directory and concatenate the data arrays, each one with its dimension label, garanteeing the correct concatenation.
+        The Z-Axis is preferred to be concatenated.
+
+    Args:
+        path (Union[Path, str]): Path to directory containing netcdf files.
+
+    Returns:
+        list[xr.Dataset]: List of datasets.
+    """
+    if isinstance(path, str):
+        path = Path(path)
+
+    files = sorted(list(path.glob("*.nc")))
+    if not files:
+        return []
+
+    # Get available data arrays
+    var_to_files = defaultdict(list)
+    all_vars = set()
+    for f in files:
+        with xr.open_dataset(f) as ds:
+            for var_name in ds.data_vars:
+                var_to_files[var_name].append(f)
+                all_vars.add(var_name)
+
+    # For each data array, load it from all files and concatenate.
+    final_datasets = []
+    for var_name in sorted(list(all_vars)):
+        files_with_var = var_to_files[var_name]
+
+        if not files_with_var:
+            continue
+
+        if len(files_with_var) == 1:
+            with xr.open_dataset(files_with_var[0]) as ds:
+                final_datasets.append(ds[[var_name]])
+            continue
+
+        # Define the which dimension to concatenate ('z' is preferred)
+        concat_dim = None
+        with xr.open_dataset(files_with_var[0]) as ds:
+            first_da = ds[var_name]
+            if "z" in first_da.dims:
+                concat_dim = "z"
+            elif first_da.dims:
+                concat_dim = first_da.dims[0]
+
+        if concat_dim:
+            try:
+                # Use open_mfdataset for memory efficiency
+                def select_var_preprocess(ds):
+                    """Preprocess function for open_mfdataset to select the data array."""
+                    return ds[[var_name]]
+
+                combined_ds = xr.open_mfdataset(
+                    files_with_var,
+                    preprocess=select_var_preprocess,
+                    concat_dim=concat_dim,
+                    combine="nested",
+                    chunks=256,
+                )
+                final_datasets.append(combined_ds)
+
+            except Exception as e:
+                logging.warning(
+                    f"Could not concatenate variable '{var_name}': {e}. Loading files for this data array separately."
+                )
+                # Fallback with default open_dataset
+                for f in files_with_var:
+                    with xr.open_dataset(f) as ds:
+                        final_datasets.append(ds[[var_name]])
+        else:
+            # No dimension to concatenate, just add them separately.
+            logging.warning(
+                f"No concatenation dimension found for '{var_name}'. Loading files for this data array separately."
+            )
+            for f in files_with_var:
+                with xr.open_dataset(f) as ds:
+                    final_datasets.append(ds[[var_name]])
+
+    return final_datasets
 
 
 def import_dataset(dataset, images="all"):
@@ -753,17 +839,54 @@ def exportNetcdf(
 
 
 def import_file(path: Path, callback=lambda *args, **kwargs: None, images="all"):
-    """Imports an h5 or nc file."""
+    """Imports an h5 or nc file.
+
+    Args:
+        path (Path): the path to the file.
+        callback (_type_, optional): a callback function. Defaults to lambda function returning None.
+        images (str, optional): which images to import. Defaults to "all".
+
+    Returns:
+        list[slicer.vtkMRMLNode]: a list of the nodes related to the netcdf data.
+    """
+    dataset = xr.open_dataset(path)
+    return _handle_dataset(dataset, path, callback, images)
+
+
+def import_directory(path: Path, callback=lambda *args, **kwargs: None, images="all"):
+    """Imports data from multiple netcdf files in a directory.
+
+    Args:
+        path (Path): the path to the file.
+        callback (_type_, optional): a callback function. Defaults to lambda function returning None.
+        images (str, optional): which images to import. Defaults to "all".
+
+    Returns:
+        list[slicer.vtkMRMLNode]: a list of the nodes related to the netcdf data.
+    """
+    dataset_list = _open_dataset_from_directory(path)
+    netCdfNodes = []
+    for dataset in dataset_list:
+        nodes = _handle_dataset(dataset, path, callback, images)
+        netCdfNodes.extend(nodes)
+
+    return netCdfNodes
+
+
+def _handle_dataset(dataset, path, callback, images):
     pixel_sizes = None
     if path.suffix in (".h5", ".hdf5"):
         pixel_sizes = extract_pixel_sizes_from_hdf5(path)
 
-    dataset = xr.open_dataset(path)
     dataset_name = path.with_suffix("").name
-
     sh = slicer.mrmlScene.GetSubjectHierarchyNode()
     scene_id = sh.GetSceneItemID()
-    current_dir = sh.CreateFolderItem(scene_id, dataset_name)
+
+    if sh.GetItemByName(dataset_name):
+        current_dir = sh.GetItemByName(dataset_name)
+    else:
+        current_dir = sh.CreateFolderItem(scene_id, dataset_name)
+
     sh.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
 
     nodes = []

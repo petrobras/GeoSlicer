@@ -1,0 +1,3 @@
+## BIAEP Browser
+
+This module is used to access and download samples from Petrobras' BIAEP database. After logging in with their credentials, the user has access to data organized by well. By adding the chosen wells to a selection list, it is possible to observe, for example, all samples that contain a certain type of data, such as: photos, microtomography, tomography, slides, or image profile. The module also features an interactive interface with a preview of the samples, and when deciding which data to import, the user can download them for analysis.

@@ -5,6 +5,7 @@ import ctk
 import qt
 import slicer
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 
 class ImageLogSegmentEditor(LTracePlugin):
@@ -20,6 +21,10 @@ class ImageLogSegmentEditor(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ImageLogSegmentEditor.help()
+        self.setHelpUrl("ImageLog/Segmentation/Segmentation.html#manual-segmentation", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl(
+            "Multiscale/Segmentation/ImageLogSegmentation.html#manual-segmentation", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

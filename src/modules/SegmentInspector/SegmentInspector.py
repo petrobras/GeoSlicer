@@ -71,10 +71,10 @@ class SegmentInspector(LTracePlugin):
             f"file:///{(getResourcePath('manual') / 'Modules/Quantification/segment_inspector.html').as_posix()}"
         )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
-        self.setHelpUrl("Volumes/Segmentation/SegmentInspector.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/Segmentation/SegmentInspector.html", NodeEnvironment.THIN_SECTION)
-        self.setHelpUrl("Core/Segmentation/SegmentInspector.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/Segmentation/SegmentInspector/SegmentInspector.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Segmentation/Segmentation.html#segment-inspector", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#segment-inspector", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/Segmentation.html#segment-inspector", NodeEnvironment.CORE)
+        self.setHelpUrl("Multiscale/Segmentation/VolumeSegmentation.html#segment-inspector", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -163,6 +163,12 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         widget.text = "Parameters"
 
         formLayout = qt.QFormLayout(widget)
+
+        self.preprocessingCheckBox = qt.QCheckBox("Include Preprocessing")
+        self.preprocessingCheckBox.setToolTip("Check this to include a preprocessing step.")
+        self.preprocessingCheckBox.setChecked(True)
+        self.preprocessingCheckBox.objectName = "Preprocessing CheckBox"
+        formLayout.addRow(self.preprocessingCheckBox)
 
         self.methodSelector = ui.StackedSelector(text="Methods:")
         oswsw = OSWatershedSettingsWidget(
@@ -371,6 +377,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
 
             params = self.methodSelector.currentWidget().toJson()
             params["is_pore"] = self.poreRadioBtn.isChecked()
+            params["do_preprocessing"] = self.preprocessingCheckBox.isChecked()
 
             cli = self.logic.runSelectedMethod(
                 segmentationNode,
@@ -612,6 +619,14 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
         self.minDistWarning.setStyleSheet("QLabel {color: red;}")
         self.minDistWarning.setVisible(False)
 
+        self.calculateCoordinationNumberCheckBox = qt.QCheckBox("Calculate Coordination Number")
+        self.calculateCoordinationNumberCheckBox.setToolTip(
+            "Calculate the coordination number for each segment. This can be slow."
+        )
+        self.calculateCoordinationNumberCheckBox.setChecked(False)
+        self.calculateCoordinationNumberCheckBox.objectName = "CoordinationNumberCheckBox"
+        advancedFormLayout.addRow(self.calculateCoordinationNumberCheckBox)
+
         self.orientationInput = ui.volumeInput(hasNone=True, nodeTypes=["vtkMRMLMarkupsLineNode"])
         self.orientationInput.addEnabled = False
         self.orientationInput.removeEnabled = False
@@ -673,6 +688,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
             "direction": self.orientationInput.currentNode(),
             "generate_throat_analysis": self.throatAnalysisCheckBox.isChecked(),
             "voxel_size": 1.0 if self.showPxOnly else None,
+            "calculate_coordination_number": self.calculateCoordinationNumberCheckBox.isChecked(),
         }
 
     def fromJson(self, json):
@@ -681,6 +697,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
         self.sizeFilterThreshold.value = json["size_min_threshold"]
         self.orientationInput.setCurrentNode(json["direction"])
         self.throatAnalysisCheckBox.setChecked(json["generate_throat_analysis"])
+        self.calculateCoordinationNumberCheckBox.setChecked(json.get("calculate_coordination_number", False))
 
     def onReferenceChanged(self, node, selected):
         self.__currentReferenceNodeId = node.GetID() if node is not None else None
@@ -758,6 +775,13 @@ class IslandsSettingsWidget(BaseSettingsWidget):
         self.orientationInput.addEnabled = False
         self.orientationInput.removeEnabled = False
 
+        self.calculateCoordinationNumberCheckBox = qt.QCheckBox("Calculate Coordination Number")
+        self.calculateCoordinationNumberCheckBox.setToolTip(
+            "Calculate the coordination number for each segment. This can be slow."
+        )
+        self.calculateCoordinationNumberCheckBox.setChecked(False)
+        advancedFormLayout.addRow(self.calculateCoordinationNumberCheckBox)
+
         advancedFormLayout.addRow("Orientation Line: ", self.orientationInput)
 
         formLayout.addRow("Size Filter (mm): ", sizeFilterBox)
@@ -777,11 +801,13 @@ class IslandsSettingsWidget(BaseSettingsWidget):
             "method": self.METHOD,
             "size_min_threshold": float(self.sizeFilterThreshold.value),
             "direction": self.orientationInput.currentNode(),
+            "calculate_coordination_number": self.calculateCoordinationNumberCheckBox.isChecked(),
         }
 
     def fromJson(self, json):
         self.sizeFilterThreshold.value = json["size_min_threshold"]
         self.orientationInput.setCurrentNode(json["direction"])
+        self.calculateCoordinationNumberCheckBox.setChecked(json.get("calculate_coordination_number", False))
 
     def validatePrerequisites(self):
         return True
@@ -820,6 +846,13 @@ class MedialSurfaceSettingsWidget(BaseSettingsWidget):
         formLayout.addRow("Smooth Filter Sigma (mm): ", smoothFilterSigmaBox)
         formLayout.addRow("Number of processes: ", numProcessesBox)
 
+        self.calculateCoordinationNumberCheckBox = qt.QCheckBox("Calculate Coordination Number")
+        self.calculateCoordinationNumberCheckBox.setToolTip(
+            "Calculate the coordination number for each segment. This can be slow."
+        )
+        self.calculateCoordinationNumberCheckBox.setChecked(False)
+        formLayout.addRow(self.calculateCoordinationNumberCheckBox)
+
         self.smoothFilterSigma.valueChanged.connect(
             lambda v, w=self.smoothFilterSigmaPixelLabel: self._onPixelArgumentChanged(v, w)
         )
@@ -835,6 +868,7 @@ class MedialSurfaceSettingsWidget(BaseSettingsWidget):
             "method": self.METHOD,
             "smooth_filter_sigma": smoothFilterSigma,
             "num_processes": self.numProcesses.value,
+            "calculate_coordination_number": self.calculateCoordinationNumberCheckBox.isChecked(),
         }
 
     def validatePrerequisites(self):
@@ -957,6 +991,13 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.tblabel.setToolTip(ThresholdBackgroundTooltip)
         advancedFormLayout.addRow(self.tblabel, ThresholdBackgroundBox)
 
+        self.calculateCoordinationNumberCheckBox = qt.QCheckBox("Calculate Coordination Number")
+        self.calculateCoordinationNumberCheckBox.setToolTip(
+            "Calculate the coordination number for each segment. This can be slow."
+        )
+        self.calculateCoordinationNumberCheckBox.setChecked(False)
+        advancedFormLayout.addRow(self.calculateCoordinationNumberCheckBox)
+
         formLayout.addRow(advancedSection)
 
     def _onPixelArgumentChanged(self, value, labelWidget):
@@ -989,6 +1030,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
             "split_threshold": float(self.ThresholdSplit.value),
             "generate_throat_analysis": self.throatAnalysisCheckBox.isChecked(),
             "voxel_size": 1.0 if self.showPxOnly else None,
+            "calculate_coordination_number": self.calculateCoordinationNumberCheckBox.isChecked(),
         }
 
     def fromJson(self, json):
@@ -998,6 +1040,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.ThresholdBackground.value = json["background_threshold"]
         self.ThresholdSplit.value = json["split_threshold"]
         self.throatAnalysisCheckBox.setChecked(json["generate_throat_analysis"])
+        self.calculateCoordinationNumberCheckBox.setChecked(json.get("calculate_coordination_number", False))
 
     def onReferenceChanged(self, node, selected):
         self.__currentReferenceNodeId = node.GetID() if node is not None else None

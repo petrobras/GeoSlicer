@@ -27,8 +27,11 @@ class CustomizedGaussianBlurImageFilter(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = CustomizedGaussianBlurImageFilter.help()
-        self.setHelpUrl("Volumes/Filter/MicroCTFlowApplyFilters.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Filter.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Filter/Filter.html#gaussian-blur-image-filter", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#gaussian-blur-image-filter",
+            NodeEnvironment.MULTISCALE,
+        )
 
     @classmethod
     def readme_path(cls):

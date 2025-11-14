@@ -27,7 +27,7 @@ class UnwrapRegistration(LTracePlugin):
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.parent.helpText = UnwrapRegistration.help()
+        self.setHelpUrl("ImageLog/UnwrapRegistration/UnwrapRegistration.html")
 
     @classmethod
     def readme_path(cls):

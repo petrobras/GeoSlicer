@@ -15,12 +15,21 @@ class TooManyAuthAttempts(Exception):
 
 
 class JobExecutor:
-    def __init__(self, uid: str, task_handler: Callable, host: Host, name: str = None, job_type: str = None):
+    def __init__(
+        self,
+        uid: str,
+        task_handler: Callable,
+        host: Host,
+        name: str = None,
+        job_type: str = None,
+        polling_enabled: bool = False,
+    ):
         self.uid = uid
         self.job_type = job_type
         self.task_handler = task_handler
         self.host = host
         self.name = name or uid
+        self.polling_enabled = polling_enabled
         self.progress = 0.0
         self.status = "PENDING"
         self.start_time: float = None

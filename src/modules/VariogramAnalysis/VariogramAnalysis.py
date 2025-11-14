@@ -57,7 +57,7 @@ class VariogramAnalysis(LTracePlugin):
         self.parent.helpText = """
     Performs manual separation and agglutination of labeled objects
 """
-        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#variogram-analysis")
         self.parent.acknowledgementText = """
     Developed by LTrace Geophysics Solutions
 """

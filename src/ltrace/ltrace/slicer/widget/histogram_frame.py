@@ -296,9 +296,10 @@ class DisplayNodeHistogramFrame(HistogramFrame):
         observed_display_node = volume_node.GetDisplayNode()
         if observed_display_node is None:
             return
+
         if self.observer:
             self.observer.clear()
-            del self.observer
+            self.observer.deleteLater()
 
         self.observer = NodeObserver(node=observed_display_node, parent=self)
         self.observer.modifiedSignal.connect(self.__on_scene_modified)

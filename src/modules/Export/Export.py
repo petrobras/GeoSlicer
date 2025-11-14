@@ -45,7 +45,7 @@ class Export(LTracePlugin):
         self.parent.hidden = True
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = Export.help()
-        self.setHelpUrl("ThinSection/Export/Export.md")
+        self.setHelpUrl("ThinSection/Export/Export.html")
 
     @classmethod
     def readme_path(cls):

@@ -11,6 +11,7 @@ from pathlib import Path
 from ltrace.slicer.helpers import save_path
 
 from ltrace.slicer import netcdf
+from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.utils.callback import Callback
 
 
@@ -62,7 +63,8 @@ class NetCDFExport(LTracePlugin):
         self.parent.title = "NetCDF Export"
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = NetCDFExport.help()
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#netcdf-export", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/MoreTools/MoreTools.html#netcdf-export", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):

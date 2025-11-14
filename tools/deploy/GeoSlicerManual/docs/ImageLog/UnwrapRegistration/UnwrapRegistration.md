@@ -2,4 +2,4 @@
 icon: UnwrapRegistration
 ---
 
-{% include-markdown "Pages/ImageLogUnwrapRegistration.md" %}
+{{ include_markdown("ImageLogUnwrapRegistration") }}

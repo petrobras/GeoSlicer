@@ -1,15 +1,17 @@
 ---
 icon: Eccentricity
 ---
-{% include-markdown "Pages/PrivateFeaturesNote.md" %}
-{% include-markdown "Pages/Eccentricity.md" %}
+{{ include_markdown("PrivateFeaturesNote") }}
+{{ include_markdown("Eccentricity") }}
 ---
-{% include-markdown "Pages/SpiralFilter.md" %}
+{{ include_markdown("SpiralFilter") }}
 ---
-{% include-markdown "Pages/QualityIndicator.md" %}
+{{ include_markdown("QualityIndicator") }}
 ---
-{% include-markdown "Pages/HeterogeneityIndex.md" %}
+{{ include_markdown("HeterogeneityIndex") }}
 ---
-{% include-markdown "Pages/AzimuthShift.md" %}
+{{ include_markdown("AzimuthShift") }}
 ---
-{% include-markdown "Pages/CLAHETool.md" %}
+{{ include_markdown("CLAHETool") }}
+---
+{{ include_markdown("InstanceKDE") }}

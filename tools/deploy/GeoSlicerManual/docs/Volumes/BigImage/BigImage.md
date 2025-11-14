@@ -1,15 +1,15 @@
 ---
 icon: BigImage
 ---
-{% include-markdown "Pages/PrivateModuleNote.md" %}
-{% include-markdown "Pages/LoadBigImage.md" %}
+{{ include_markdown("PrivateModuleNote") }}
+{{ include_markdown("LoadBigImage") }}
 ---
-{% include-markdown "Pages/PolynomialShadingCorrectionBigImage.md" %}
+{{ include_markdown("PolynomialShadingCorrectionBigImage") }}
 ---
-{% include-markdown "Pages/BoundaryRemovalBigImage.md" %}
+{{ include_markdown("BoundaryRemovalBigImage") }}
 ---
-{% include-markdown "Pages/ExpandSegmentsBigImage.md" %}
+{{ include_markdown("ExpandSegmentsBigImage") }}
 ---
-{% include-markdown "Pages/MultipleThresholdBigImage.md" %}
+{{ include_markdown("MultipleThresholdBigImage") }}
 ---
-{% include-markdown "Pages/StreamlinedSegmentation.md" %}
+{{ include_markdown("StreamlinedSegmentation") }}

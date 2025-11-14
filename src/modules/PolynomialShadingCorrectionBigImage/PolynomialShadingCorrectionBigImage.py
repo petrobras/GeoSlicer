@@ -52,7 +52,7 @@ class PolynomialShadingCorrectionBigImage(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = PolynomialShadingCorrectionBigImage.help()
-        self.setHelpUrl("Volumes/BigImage/PolynomialShadingCorrection.html")
+        self.setHelpUrl("Volumes/BigImage/BigImage.html#polynomial-shading-correction")
 
     @classmethod
     def readme_path(cls: LTracePlugin) -> None:

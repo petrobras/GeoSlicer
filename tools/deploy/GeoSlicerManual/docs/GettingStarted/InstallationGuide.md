@@ -2,4 +2,4 @@
 icon: InstallationGuide
 ---
 
-{% include-markdown "Pages/InstallationGuide.md" %}
+{{ include_markdown("InstallationGuide") }}

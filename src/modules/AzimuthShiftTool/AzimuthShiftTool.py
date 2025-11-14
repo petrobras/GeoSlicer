@@ -4,7 +4,7 @@ import qt
 import slicer
 
 from ltrace.slicer import helpers
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
+from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
@@ -26,7 +26,10 @@ class AzimuthShiftTool(LTracePlugin):
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = AzimuthShiftTool.help()
-        self.setHelpUrl("ImageLog/Processing/AzimuthShift/AzimuthShift.html")
+        self.setHelpUrl("ImageLog/Processing/Processing.html#azimuth-shift", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl(
+            "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.html#azimuth-shift", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

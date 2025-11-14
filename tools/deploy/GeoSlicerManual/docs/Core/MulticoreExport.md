@@ -2,4 +2,4 @@
 icon: MulticoreExport
 ---
 
-{% include-markdown "Pages/CoreExport.md"%}
+{{ include_markdown("CoreExport") }}

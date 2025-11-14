@@ -107,8 +107,6 @@ def fetchModulesFrom(path, depth=1, name="LTrace"):
 def mapByCategory(modules):
     groupedModulesByCategories = {}
     for module in modules:
-        if module.key == "CustomizedGradientAnisotropicDiffusion":
-            pass
         for category in module.categories:
             if category not in groupedModulesByCategories:
                 groupedModulesByCategories[category] = []

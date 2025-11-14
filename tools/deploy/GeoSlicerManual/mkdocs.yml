@@ -1,6 +1,14 @@
 site_name: GeoSlicer Manual
 
 extra:
+  material_alternate: true
+  alternate:
+    - name: Português
+      link: /pt/
+      lang: pt
+    - name: English
+      link: /en/
+      lang: en
   homepage: index.html
   version:
     provider: mike
@@ -10,7 +18,6 @@ extra_css:
 
 theme:
   name: material
-  language: pt-BR
   custom_dir: theme
   logo: assets/logo.png
   favicon: assets/logo.ico
@@ -31,13 +38,38 @@ theme:
     - navigation.tracking
 
 plugins:
-    - search
-    - macros
-    - include-markdown
-    - mermaid2:
-        javascript: https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs 
-    - tags
-    - site-urls
+  - search
+  - i18n:
+      fallback_to_default: true
+      reconfigure_material: true
+      docs_structure: folder
+      languages:
+        - locale: pt
+          name: Português
+          build: true
+          nav_translations:
+            Overview: Visão Geral
+            Introduction: Introdução
+            Installation: Instalação
+            First Steps: Primeiros Passos
+            Application: Aplicação
+            Modules: Módulos
+            Loading Data: Carregando dados
+            Remote computing: Computação Remota
+            Development: Desenvolvimento
+            How To Contribute: Como Contribuir
+            Documentation: Documentação
+            Building GeoSlicer: Compilando o GeoSlicer
+        - locale: en
+          name: English
+          default: true
+          build: true
+  - macros
+  - include-markdown
+  - mermaid2:
+      javascript: https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs 
+  - tags
+  - site-urls
 
 use_directory_urls: false
 
@@ -72,49 +104,48 @@ validation:
 
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-  # - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML
 
 nav:
-  - Visão Geral: "index.md"
-  - Introdução:
-      - Instalação: "GettingStarted/InstallationGuide.md"
-      - Primeiros Passos: "GettingStarted/FirstSteps.md"
-      - Aplicação: "GettingStarted/UserInterface/Application.md"
-      - Módulos: "GettingStarted/UserInterface/Modules.md"
-      - Carregando dados: "GettingStarted/DataLoading.md"
+  - Overview: "index.md"
+  - Introduction:
+      - Installation: "GettingStarted/InstallationGuide.md"
+      - First Steps: "GettingStarted/FirstSteps.md"
+      - Application: "GettingStarted/UserInterface/Application.md"
+      - Modules: "GettingStarted/UserInterface/Modules.md"
+      - Loading Data: "GettingStarted/DataLoading.md"
       - Remote computing: "GettingStarted/RemoteComputing.md"
   - Volumes:
-      - Introdução: "Volumes/Introduction.md"
-      - Carregamento: "Volumes/MicroCTImport/Import.md"
-      - Export: "Volumes/MicroCTExport/Export.md"
+      - Introduction: "Volumes/Introduction.md"
+      - MicroCT Import: "Volumes/MicroCTImport/Import.md"
+      - MicroCT Export: "Volumes/MicroCTExport/Export.md"
       - Crop: "Volumes/Crop/Crop.md"
-      - Filtros: "Volumes/Filter/Filter.md"
+      - Filter: "Volumes/Filter/Filter.md"
       - Resample: "Volumes/Resample/Resample.md"
-      - Segmentação: "Volumes/Segmentation/Segmentation.md"
+      - Segmentation: "Volumes/Segmentation/Segmentation.md"
       - Microtom: "Volumes/Microtom/Microtom.md"
-      - Microporosidade: "Volumes/Microporosity/Microporosity.md"
+      - Microporosity: "Volumes/Microporosity/Microporosity.md"
       - Modelling Flow: "Volumes/ModellingFlow/StreamlinedModelling.md"
-      - Registro: "Volumes/Register/Register.md"
-      - Rede de Poros: "Volumes/PNM/PNM.md"
+      - Register: "Volumes/Register/Register.md"
+      - Pore Network: "Volumes/PNM/PNM.md"
       - Multiscale: Volumes/Multiscale/Multiscale.md
       - Big Image: "Volumes/BigImage/BigImage.md"
       - More Tools: "Volumes/MoreTools/MoreTools.md"
       - Import: "Volumes/Import/Import.md"
   - Thin Section:
-      - Introdução: "ThinSection/Introduction.md"
+      - Introduction: "ThinSection/Introduction.md"
       - Thin Section Loader: "ThinSection/Loader/ThinSectionLoader.md"
-      - Qemscan Loader: "ThinSection/Loader/QemscanLoader.md"
-      - Cortes: "ThinSection/Crop/Crop.md"
-      - Filtros: "ThinSection/Filters/ImageTools.md"
-      - Registro: "ThinSection/Register/Register.md"
-      - Segmentação: "ThinSection/Segmentation/Segmentation.md"
+      - QEMSCAN Loader: "ThinSection/Loader/QemscanLoader.md"
+      - Crop: "ThinSection/Crop/Crop.md"
+      - Filters: "ThinSection/Filters/ImageTools.md"
+      - Register: "ThinSection/Register/Register.md"
+      - Segmentation: "ThinSection/Segmentation/Segmentation.md"
       - Thin Section Flows: "ThinSection/Flows/Flows.md"
       - Multi-Image Analysis: "ThinSection/MultipleImageAnalysis/MultipleImageAnalysis.md"
       - Export: "ThinSection/Export/Export.md"
       - More Tools:  "ThinSection/MoreTools/MoreTools.md"
       - Import: "ThinSection/Import/Import.md"
   - Well Logs:
-      - Introdução: "ImageLog/Introduction.md"
+      - Introduction: "ImageLog/Introduction.md"
       - Import: "ImageLog/Import/Import.md"
       - Unwrap: "ImageLog/Unwrap/Unwrap.md"
       - Export: "ImageLog/Export/Export.md"
@@ -130,13 +161,14 @@ nav:
       - Multicore: "Core/Multicore.md"
       - Core Photograph Loader: "Core/CorePhotographLoader.md"
       - Crop: "Core/Crop.md"
-      - Transforms: "Core/MulticoreTransforms.md"
+      - Multicore Transforms: "Core/MulticoreTransforms.md"
       - Segmentation: "Core/Segmentation/Segmentation.md"
       - Core Inpaint: "Core/CoreInpaint.md"
       - Export: "Core/MulticoreExport.md"
+      - Multicore Export: "Core/MulticoreExport.md"
       - Fluxos: "Core/Flows.md"
   - Multiscale:
-      - Introdução: "Multiscale/Introduction.md"
+      - Introduction: "Multiscale/Introduction.md"
       - Geolog Integration: "Multiscale/GeologIntegration/GeologEnv.md"
       - Import Tools: "Multiscale/ImportTools/ImportTools.md"
       - Export Tools: "Multiscale/ExportTools/ExportTools.md"
@@ -149,11 +181,11 @@ nav:
       - Volume Segmentation: "Multiscale/Segmentation/VolumeSegmentation.md"
       - Image Log Segmentation: "Multiscale/Segmentation/ImageLogSegmentation.md"
       - More Tools: "Multiscale/MoreTools/MoreTools.md"
-      - Fluxos: "Multiscale/Flows/Flows.md"
-  - Desenvolvimento:
-    - Compilando o GeoSlicer: "Desenvolvimento/BuildingGeoSlicer.md"
-    - Como Contribuir: "Desenvolvimento/HowToContribute.md"
-    - Documentação: "Desenvolvimento/Documentation.md"
+      - Flows: "Multiscale/Flows/Flows.md"
+  - Development:
+    - Building GeoSlicer: "Development/BuildingGeoSlicer.md"
+    - How To Contribute: "Development/HowToContribute.md"
+    - Documentation: "Development/Documentation.md"
 
 not_in_nav: |
   Pages/*

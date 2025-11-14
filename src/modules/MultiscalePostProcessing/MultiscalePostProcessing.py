@@ -30,7 +30,7 @@ class MultiscalePostProcessing(LTracePlugin):
         self.parent.categories = ["MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("Multiscale/MultiscalePostProcessing/MultiscalePostProcessing.html", NodeEnvironment.MULTISCALE)
-        self.setHelpUrl("Volumes/Multiscale/MultiscalePostProcessing.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Volumes/Multiscale/Multiscale.html#post-processing", NodeEnvironment.MICRO_CT)
 
     @classmethod
     def readme_path(cls):

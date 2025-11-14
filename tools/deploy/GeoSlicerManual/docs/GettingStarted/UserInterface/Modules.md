@@ -2,4 +2,4 @@
 icon: UserInterfaceModules
 ---
 
-{% include-markdown "Pages/UserInterfaceModules.md" %}
+{{ include_markdown("UserInterfaceModules") }}

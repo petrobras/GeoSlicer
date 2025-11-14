@@ -26,10 +26,10 @@ class CustomizedMedianImageFilter(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("Volumes/Filter/MicroCTFlowApplyFilters.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/VolumesPreProcessing/Filter.html", NodeEnvironment.MULTISCALE)
-
-        self.parent.helpText = CustomizedMedianImageFilter.help()
+        self.setHelpUrl("Volumes/Filter/Filter.html#median-image-filter", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#median-image-filter", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

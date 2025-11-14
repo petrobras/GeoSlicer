@@ -233,6 +233,7 @@ def check_for_message_box(
         check()
 
     timer.stop()
+    timer.deleteLater()
     timer = None
 
     if result[0] is False:

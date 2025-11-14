@@ -1,8 +1,10 @@
+from abc import ABC, abstractmethod
 import numpy as np
 import scipy as sp
 
 HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
 HG_CONTACT_ANGLE = 140  # º
+MINIMUM_THROAT_RADIUS = 1e-8
 
 
 def estimate_radius(capilary_pressure):
@@ -22,7 +24,7 @@ class FixedRadiusLogic:
         pass
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
         for required_param in cls.required_params:
             params[required_param]
 
@@ -41,7 +43,7 @@ class TruncatedGaussianLogic:
         pass
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
         for required_param in cls.required_params:
             params[required_param]
 
@@ -53,20 +55,94 @@ class TruncatedGaussianLogic:
         return lambda _: sp.stats.truncnorm.rvs(a, b, size=1)[0] * scale + loc
 
     @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, volume):
+    def get_capillary_pressure_function(cls, params, pore_network, scalar_volume_data):
         for required_param in cls.required_params:
             params[required_param]
 
         pressure_func = cls.get_capillary_radius_function(
             params,
             pore_network,
-            volume,
+            scalar_volume_data,
         )
 
         return lambda _: estimate_pressure(pressure_func(None))
 
 
-class LeverettOldLogic:
+class ModelBase(ABC):
+    @staticmethod
+    def _create_radius_function(porosity_cdf, pressure_cdf):
+        def radius_function(phi):
+            phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
+            estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
+            return estimate_radius(estimated_pressure)
+
+        return radius_function
+
+    @classmethod
+    def _get_cumulative_dist_function(cls, x, y):
+        cumulative_y = np.zeros(x.size)
+        for i in range(1, x.size):
+            area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
+            cumulative_y[i] = cumulative_y[i - 1] + area
+        cumulative_y /= cumulative_y[-1]
+        return {"x": x, "y": cumulative_y}
+
+    @classmethod
+    def _get_cumulative_dist_points(cls, points):
+        cumulative_y = np.zeros(99)
+        cumulative_x = np.zeros(99)
+        hist, hist_edges = np.histogram(points, 99)
+        cumulative_x[0] = hist_edges[0]
+        for i in range(99):
+            area = (hist[i]) * (hist_edges[i + 1] - hist_edges[i])
+            cumulative_x[i] = hist_edges[i]
+            cumulative_y[i] = cumulative_y[i - 1] + area
+        cumulative_y /= cumulative_y[-1]
+        return {"x": cumulative_x, "y": cumulative_y}
+
+
+class LeverettBase(ModelBase):
+    @classmethod
+    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
+        for required_param in cls.required_params:
+            params[required_param]
+
+        size_x_cm = scalar_volume_data["size"]["x"] / 10
+        size_y_cm = scalar_volume_data["size"]["y"] / 10
+        size_z_cm = scalar_volume_data["size"]["z"] / 10
+        volume = size_x_cm * size_y_cm * size_z_cm
+
+        total_pore_volume = pore_network["pore.region_volume"].sum()
+        porosity = total_pore_volume / volume
+        Pc = cls.get_pc(params, porosity)
+
+        radii = pore_network["throat.equivalent_diameter"] / 2
+        resolved_throats = np.logical_and(
+            pore_network["throat.phases"][:, 0],
+            pore_network["throat.phases"][:, 1],
+        )
+        resolved_radii = radii[resolved_throats]
+        smallest_radii = resolved_radii.min()
+        highest_pc = estimate_pressure(smallest_radii)
+        highest_pc_index = Pc >= highest_pc
+        if highest_pc_index.sum() == 0:
+            return lambda _: highest_pc
+
+        porosity_cdf = cls._get_cumulative_dist_points(pore_network["throat.subresolution_porosity"])
+        pressure_cdf = cls._get_cumulative_dist_function(
+            Pc[highest_pc_index],
+            params["Sw"][highest_pc_index],
+        )
+
+        return ModelBase._create_radius_function(porosity_cdf, pressure_cdf)
+
+    @classmethod
+    @abstractmethod
+    def get_pc(cls, params, porosity):
+        pass
+
+
+class LeverettOldLogic(LeverettBase):
     required_params = ("J", "Sw", "corey_a", "corey_b", "model")
     models = {
         "k = a * phi ** b": lambda a, b, phi: a * phi**b,
@@ -76,155 +152,49 @@ class LeverettOldLogic:
         pass
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, volume):
-        for required_param in cls.required_params:
-            params[required_param]
-
-        total_pore_volume = pore_network["pore.region_volume"].sum()
-        porosity = total_pore_volume / volume
+    def get_pc(cls, params, porosity):
         corey = cls.models[params["model"]](params["corey_a"], params["corey_b"], porosity)
         Pc = (params["J"] / 2) * estimate_pressure(np.sqrt(corey / porosity))
-
-        radii = pore_network["throat.equivalent_diameter"] / 2
-        resolved_throats = np.logical_and(
-            pore_network["throat.phases"][:, 0],
-            pore_network["throat.phases"][:, 1],
-        )
-        resolved_radii = radii[resolved_throats]
-        smallest_radii = resolved_radii.min()
-        highest_pc = estimate_pressure(smallest_radii)
-        highest_pc_index = Pc >= highest_pc
-        if highest_pc_index.sum() == 0:
-            return lambda _: highest_pc
-
-        porosity_cdf = cls._get_cumulative_dist_points(pore_network["throat.subresolution_porosity"])
-        pressure_cdf = cls._get_cumulative_dist_function(
-            Pc[highest_pc_index],
-            params["Sw"][highest_pc_index],
-        )
-
-        def radius_function(phi):
-            phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
-            estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimate_radius(estimated_pressure)
-
-        return radius_function
-
-    @classmethod
-    def _get_cumulative_dist_function(cls, x, y):
-        cumulative_y = np.zeros(x.size)
-        for i in range(1, x.size):
-            area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": x, "y": cumulative_y}
-
-    @classmethod
-    def _get_cumulative_dist_points(cls, points):
-        cumulative_y = np.zeros(99)
-        cumulative_x = np.zeros(99)
-        hist, hist_edges = np.histogram(points, 99)
-        cumulative_x[0] = hist_edges[0]
-        for i in range(99):
-            area = (hist[i]) * (hist_edges[i + 1] - hist_edges[i])
-            cumulative_x[i] = hist_edges[i]
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": cumulative_x, "y": cumulative_y}
+        return Pc
 
 
-class LeverettNewLogic:
+class LeverettNewLogic(LeverettBase):
     required_params = ("J", "Sw", "permeability")
 
     def __init__(self):
         pass
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, volume):
-        for required_param in cls.required_params:
-            params[required_param]
-
-        total_pore_volume = pore_network["pore.region_volume"].sum()
-        porosity = total_pore_volume / volume
+    def get_pc(cls, params, porosity):
         Pc = (params["J"] / 2) * estimate_pressure(params["permeability"] / porosity)
-
-        radii = pore_network["throat.equivalent_diameter"] / 2
-        resolved_throats = np.logical_and(
-            pore_network["throat.phases"][:, 0],
-            pore_network["throat.phases"][:, 1],
-        )
-        resolved_radii = radii[resolved_throats]
-        smallest_radii = resolved_radii.min()
-        highest_pc = estimate_pressure(smallest_radii)
-        highest_pc_index = Pc >= highest_pc
-        if highest_pc_index.sum() == 0:
-            return lambda _: highest_pc
-
-        porosity_cdf = cls._get_cumulative_dist_points(pore_network["throat.subresolution_porosity"])
-        pressure_cdf = cls._get_cumulative_dist_function(
-            Pc[highest_pc_index],
-            params["Sw"][highest_pc_index],
-        )
-
-        def radius_function(phi):
-            phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
-            estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimate_radius(estimated_pressure)
-
-        return radius_function
-
-    @classmethod
-    def _get_cumulative_dist_function(cls, x, y):
-        cumulative_y = np.zeros(x.size)
-        for i in range(1, x.size):
-            area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": x, "y": cumulative_y}
-
-    @classmethod
-    def _get_cumulative_dist_points(cls, points):
-        cumulative_y = np.zeros(99)
-        cumulative_x = np.zeros(99)
-        hist, hist_edges = np.histogram(points, 99)
-        cumulative_x[0] = hist_edges[0]
-        for i in range(99):
-            area = (hist[i]) * (hist_edges[i + 1] - hist_edges[i])
-            cumulative_x[i] = hist_edges[i]
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": cumulative_x, "y": cumulative_y}
+        return Pc
 
 
-class PressureCurveLogic:
+class PressureCurveLogic(ModelBase):
     required_params = ("throat radii", "capillary pressure", "dsn", "smallest_radii_multiplier")
 
     def __init__(self):
         pass
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, volume):
+    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
         for required_param in cls.required_params:
             params[required_param]
-        pnm_radii = pore_network["throat.equivalent_diameter"] / 2
-
-        resolved_throats = np.logical_and(
-            pore_network["throat.phases"][:, 0] != 2,
-            pore_network["throat.phases"][:, 1] != 2,
-        )
-        resolved_radii = pnm_radii[resolved_throats]
-        if resolved_radii.size == 0:
-            return lambda _: None
-
-        smallest_resolved_radii = resolved_radii.min()
 
         if params["throat radii"] is not None:
-            subresolution_radii_bool_index = np.logical_and(
-                params["throat radii"] > 1e-8,
-                params["throat radii"] <= params["smallest_radii_multiplier"] * smallest_resolved_radii,
+            smallest_radii = min(
+                scalar_volume_data["spacing"]["x"],
+                scalar_volume_data["spacing"]["y"],
+                scalar_volume_data["spacing"]["z"],
             )
+
+            subresolution_radii_bool_index = np.logical_and(
+                params["throat radii"] > MINIMUM_THROAT_RADIUS,
+                params["throat radii"] <= params["smallest_radii_multiplier"] * smallest_radii,
+            )
+
             if subresolution_radii_bool_index.sum() == 0:
-                return lambda _: smallest_resolved_radii / 2
+                return lambda _: smallest_radii / 2
             elif subresolution_radii_bool_index.sum() == 1:
                 return lambda _: params["throat radii"][subresolution_radii_bool_index][0]
 
@@ -241,34 +211,7 @@ class PressureCurveLogic:
             Fvol,
         )
 
-        def radius_function(phi):
-            phi_position = np.interp(phi, porosity_cdf["x"], porosity_cdf["y"])
-            estimated_pressure = np.interp(phi_position, pressure_cdf["y"], pressure_cdf["x"])
-            return estimate_radius(estimated_pressure)
-
-        return radius_function
-
-    @classmethod
-    def _get_cumulative_dist_function(cls, x, y):
-        cumulative_y = np.zeros(x.size)
-        for i in range(1, x.size):
-            area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": x, "y": cumulative_y}
-
-    @classmethod
-    def _get_cumulative_dist_points(cls, points):
-        cumulative_y = np.zeros(99)
-        cumulative_x = np.zeros(99)
-        hist, hist_edges = np.histogram(points, 99)
-        cumulative_x[0] = hist_edges[0]
-        for i in range(99):
-            area = (hist[i]) * (hist_edges[i + 1] - hist_edges[i])
-            cumulative_x[i] = hist_edges[i]
-            cumulative_y[i] = cumulative_y[i - 1] + area
-        cumulative_y /= cumulative_y[-1]
-        return {"x": cumulative_x, "y": cumulative_y}
+        return ModelBase._create_radius_function(porosity_cdf, pressure_cdf)
 
 
 MODEL_DICT = {
@@ -282,10 +225,7 @@ MODEL_DICT = {
 
 
 def set_subres_model(pore_network, params):
-    x_size = params["sizes"]["x"]
-    y_size = params["sizes"]["y"]
-    z_size = params["sizes"]["z"]
-    volume = x_size * y_size * z_size
+    scalar_volume_data = params["scalar_volume_data"]
 
     subres_model = params["subres_model_name"]
     subres_params = params["subres_params"]
@@ -295,6 +235,32 @@ def set_subres_model(pore_network, params):
             i: np.asarray(subres_params[i]) if subres_params[i] is not None else None for i in subres_params.keys()
         }
 
-    subresolution_function = MODEL_DICT[subres_model].get_capillary_radius_function(subres_params, pore_network, volume)
+    subresolution_function = MODEL_DICT[subres_model].get_capillary_radius_function(
+        subres_params, pore_network, scalar_volume_data
+    )
 
     return subresolution_function
+
+
+def get_scalar_volume_data(pore_table_node):
+    x_size = float(pore_table_node.GetAttribute("x_size"))
+    y_size = float(pore_table_node.GetAttribute("y_size"))
+    z_size = float(pore_table_node.GetAttribute("z_size"))
+    x_spacing = float(pore_table_node.GetAttribute("x_spacing"))
+    y_spacing = float(pore_table_node.GetAttribute("y_spacing"))
+    z_spacing = float(pore_table_node.GetAttribute("z_spacing"))
+
+    scalar_volume_data = {
+        "size": {
+            "x": x_size,
+            "y": y_size,
+            "z": z_size,
+        },
+        "spacing": {
+            "x": x_spacing,
+            "y": y_spacing,
+            "z": z_spacing,
+        },
+    }
+
+    return scalar_volume_data

@@ -31,7 +31,7 @@ class PoreNetworkKabsREV(LTracePlugin):
         self.parent.categories = ["MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = PoreNetworkKabsREV.help()
-        self.setHelpUrl("Volumes/PNM/KabsREV.html")
+        self.setHelpUrl("Volumes/PNM/PNM.html#kabs-rev")
 
     @classmethod
     def readme_path(cls):
@@ -189,9 +189,7 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
         shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: subres_params[i].tolist() if subres_params[i] is not None else None for i in subres_params.keys()
-            }
+            subres_params = {i: v.tolist() if hasattr(v, "tolist") else v for i, v in subres_params.items()}
 
         params = {
             "subres_porositymodifier": subres_porositymodifier,

@@ -1,3 +1,4 @@
+import logging
 import textwrap
 from functools import reduce
 from pathlib import Path
@@ -9,6 +10,7 @@ import slicer
 from natsort import natsorted
 
 from ltrace.slicer.helpers import getSegmentList, createLabelmapInput
+from ltrace.slicer.microct import loadPCRAsTextNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 
 
@@ -889,3 +891,25 @@ def LineSeparatorWithText(text):
     layout.addWidget(lineAfter)
 
     return linetagged
+
+
+def pcrFromFile(targetNode):
+    """Open a dialog to select a PCR file, load it as table node and
+    return t
+    """
+    fileDialog = qt.QFileDialog()
+    fileDialog.setFileMode(qt.QFileDialog.ExistingFile)
+    fileDialog.setNameFilters(["PCR Files (*.pcr)", "Text Files (*.txt)", "All Files (*)"])
+    fileDialog.setDirectory(slicer.app.temporaryPath)
+    fileDialog.setWindowTitle(f"Select PCR File for {targetNode.GetName()}")
+    fileDialog.setModal(True)
+    if fileDialog.exec_() == qt.QFileDialog.Accepted:
+        try:
+            filePath = fileDialog.selectedFiles()[0]
+            tableNode = loadPCRAsTextNode(Path(filePath))  # loadPCRInfoIfExist(Path(filePath).parent)
+            return tableNode
+        except Exception as e:
+            logging.error(f"Internal failure: {repr(e)}")
+            raise RuntimeError("Failed to load PCR file")
+
+    raise ValueError("No file selected")

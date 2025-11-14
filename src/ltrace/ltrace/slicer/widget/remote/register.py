@@ -109,7 +109,6 @@ class RegisterWidget(qt.QWidget):
             print(info)
             self.protocolComboBox.addItem(info.cls.protocol_name, info.cls)
 
-        self.protocolComboBox.model().sort(0)
         self.protocolComboBox.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
         self.protocolComboBox.currentIndexChanged.connect(self._onProtocolChanged)
         layout.addRow("Connect to: ", self.protocolComboBox)

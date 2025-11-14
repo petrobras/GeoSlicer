@@ -29,8 +29,10 @@ class CLAHETool(LTracePlugin):
         self.parent.title = "CLAHE Tool"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("ImageLog/Processing/CLAHETool/CLAHETool.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ImageLogPreProcessing/CLAHETool/CLAHETool.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/Processing/Processing.html#clahe-tool", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl(
+            "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.html#clahe-tool", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

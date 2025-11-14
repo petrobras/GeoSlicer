@@ -1,5 +1,4 @@
 ---
 icon: Introduction
 ---
-
-{% include-markdown "Pages/ThinSectionIntroduction.md" %}
+{{ include_markdown("ThinSectionIntroduction") }}

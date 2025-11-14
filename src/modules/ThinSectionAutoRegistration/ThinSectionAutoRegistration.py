@@ -40,7 +40,7 @@ class ThinSectionAutoRegistration(LTracePlugin):
         self.parent.categories = ["Registration", "Thin Section"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("ThinSection/Register/AutoRegistration.html")
+        self.setHelpUrl("ThinSection/Register/Register.html#automatic-registration")
 
     @classmethod
     def readme_path(cls):

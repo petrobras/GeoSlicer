@@ -19,7 +19,7 @@ from ltrace.slicer.node_custom_behavior.defs import TriggerEvent
 from ltrace.slicer.node_observer import NodeObserver
 from pathlib import Path
 from pathvalidate import is_valid_filename
-from typing import List, Union
+from typing import List, Tuple, Union
 from humanize import naturalsize
 
 DEFAULT_PROPERTIES = {"useCompression": 0}
@@ -389,19 +389,28 @@ class ProjectManager(qt.QObject):
 
         return True
 
-    def load(self, projectFilePath: Union[str, Path], internalCall: bool = False) -> bool:
-        """Handle custom load scene operation."""
+    def load(self, projectFilePath: Union[str, Path], internalCall: bool = False) -> Tuple[bool, str]:
+        """Handle custom load scene operation.
+
+        Args:
+            projectFilePath (Union[str, Path]): the scene filepath (.mrml).
+            internalCall (bool, optional): If True, the function is called internally. Defaults to False.
+
+        Returns:
+            Tuple[bool, str]: a tuple with a boolean representing the success of the operation and an error message if any
+        """
         if isinstance(projectFilePath, str):
             projectFilePath = Path(projectFilePath)
 
         projectFilePath = projectFilePath.resolve()
+        errorMessage = ""
 
         if projectFilePath.as_posix() == Path(slicer.mrmlScene.GetURL()).as_posix():
-            return True
+            return True, errorMessage
 
         if not projectFilePath.exists():
-            logging.error(f"Cannot load project from '{projectFilePath.as_posix()}'. File does not exist.")
-            return False
+            errorMessage = f"Cannot load project from '{projectFilePath.as_posix()}'. File does not exist."
+            return False, errorMessage
 
         if not internalCall:
             self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.LOAD
@@ -415,18 +424,21 @@ class ProjectManager(qt.QObject):
         try:
             slicer.util.loadScene(projectFilePath.as_posix())
         except Exception as error:
-            logging.error(f"A problem occured during the 'Load Scene' process: {error}\n{traceback.format_exc()}")
+            logging.error(f"A problem occured during the 'Load Scene' process: {error}")
+            errorMessage = f"A problem occured during the 'Load Scene' process:\n...\n{str(error)[-1000:]}...\nCheck the log for more details."
             status = False
+            self.close()
 
         if not internalCall:
             self.__resumeModifiedObserver(False)
 
         self.__setProjectModified(False)
 
-        return status
+        return status, errorMessage
 
     def close(self) -> None:
         """Wrapper method to close the project."""
+        self.__clearNodeObservers()
         slicer.mrmlScene.Clear(0)
         slicer.mrmlScene.SetURL("")
         self.__setProjectModified(False)
@@ -484,19 +496,19 @@ class ProjectManager(qt.QObject):
 
         self.__nodeObservers.append(observer)
 
-    def __onObservedNodeRemoved(self, node_observer: NodeObserver, node: slicer.vtkMRMLNode) -> None:
+    def __onObservedNodeRemoved(self, nodeObserver: NodeObserver, node: slicer.vtkMRMLNode) -> None:
         """Handle when a node being observed is removed from the scene."""
-        if node_observer not in self.__nodeObservers:
+        if nodeObserver not in self.__nodeObservers:
             return
 
-        self.__nodeObservers.remove(node_observer)
-        del node_observer
+        self.__nodeObservers.remove(nodeObserver)
+        nodeObserver.deleteLater()
 
     def __clearNodeObservers(self) -> None:
         """Clear the node observer's list and remove the observer handlers from each one."""
-        for node_observer in self.__nodeObservers[:]:
-            node_observer.clear()
-            del node_observer
+        for nodeObserver in self.__nodeObservers[:]:
+            nodeObserver.clear()
+            nodeObserver.deleteLater()
 
         self.__nodeObservers.clear()
 

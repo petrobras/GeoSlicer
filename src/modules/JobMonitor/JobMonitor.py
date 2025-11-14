@@ -196,6 +196,9 @@ class JobListItemWidget(qt.QWidget):
         if job.status == "COMPLETED":
             self.allowLoadData = True
             self.allowRestart = not self.allowLoadData
+        elif job.status == "RUNNING" and job.polling_enabled:
+            self.allowLoadData = True
+            self.allowRestart = not self.allowLoadData
         elif job.status == "IDLE" or job.status == "NOT CONNECTED" or job.status == "GHOST":
             self.allowLoadData = False
             self.allowRestart = not self.allowLoadData
@@ -544,6 +547,8 @@ class JobMonitorLogic(LTracePluginLogic):
 
     def loadResults(self, job):
         if job.status == "COMPLETED":
+            job.process("COLLECT", JobManager, JobManager.connections)
+        elif job.status == "RUNNING" and job.polling_enabled:
             job.process("COLLECT", JobManager, JobManager.connections)
         elif job.status == "IDLE":
             slicer.modules.RemoteServiceInstance.cli.resume(job)

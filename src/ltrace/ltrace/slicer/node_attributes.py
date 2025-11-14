@@ -113,6 +113,14 @@ class TableType(NodeAttributeValue):
         return "table_type"
 
 
+class HistogramGraphType(NodeAttributeValue):
+    """Define type of histogram graph to show when table node is HISTOGRAM_IN_DEPTH"""
+
+    IN_DEPTH = "in_depth"
+    NMR = "nmr"
+    MULTI_HISTOGRAM = "multi_histogram"
+
+
 class TableDataTypeAttribute(NodeAttributeValue):
     """Define which data type the data from a table node is."""
 

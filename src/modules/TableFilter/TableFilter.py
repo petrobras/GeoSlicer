@@ -154,9 +154,9 @@ class TableFilter(LTracePlugin):
         self.parent.helpText = ""
         self.parent.helpText += TableFilter.help()
         self.parent.acknowledgementText = ""
-        self.setHelpUrl("Volumes/MoreTools/TableFilter.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/MoreTools/TableFilter.html", NodeEnvironment.MULTISCALE)
-        self.setHelpUrl("ImageLog/MoreTools/TableFilter.html", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl("Volumes/MoreTools/MoreTools.html#tables", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Multiscale/MoreTools/MoreTools.html#tables", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/MoreTools/MoreTools.html#tables", NodeEnvironment.IMAGE_LOG)
 
     @classmethod
     def readme_path(cls):

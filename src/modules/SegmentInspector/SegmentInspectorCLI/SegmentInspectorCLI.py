@@ -269,13 +269,13 @@ def main(args):
     if ("all" in products or "partitions" in products) and params.get("method") is not None:
         if np.any(shape == 1):
             im_mod = im.squeeze()
-            if params.get("method") != "medial surface":
+            if params.get("do_preprocessing", False):
                 mask = im_mod > 0
                 spim.binary_closing(im_mod, output=im_mod)
                 spim.binary_dilation(im_mod, output=im_mod, mask=mask)
                 im_mod = np.pad(im_mod[1:-1, 1:-1], 1, mode="edge")
         else:
-            if params.get("method") != "medial surface":
+            if params.get("do_preprocessing", False):
                 im_mod = spim.binary_closing(im)
                 spim.binary_dilation(im_mod, output=im_mod, mask=im > 0)
                 im_mod = np.pad(im_mod[1:-1, 1:-1, 1:-1], 1, mode="edge")
@@ -328,11 +328,24 @@ def main(args):
         number_of_partitions = result.regions.max()
         if "all" in products or "report" in products:
             is_pore = params.get("is_pore", True)
+            calculate_coordination_number = params.get("calculate_coordination_number", False)
             if result.regions.ndim == 2:
                 directionVector = params.get("direction", None)
-                operator = LabelStatistics2D(result.regions, spacing, directionVector, is_pore, size_min_threshold)
+                operator = LabelStatistics2D(
+                    result.regions, spacing, directionVector, is_pore, size_min_threshold, calculate_coordination_number
+                )
             else:
-                operator = LabelStatistics3D(result.regions, spacing, is_pore, size_min_threshold)
+                ras_to_ijk_matrix_vtk = vtk.vtkMatrix4x4()
+                labelVolumeNode.GetRASToIJKMatrix(ras_to_ijk_matrix_vtk)
+                ras_to_ijk_matrix_list = [[ras_to_ijk_matrix_vtk.GetElement(i, j) for j in range(4)] for i in range(4)]
+                operator = LabelStatistics3D(
+                    result.regions,
+                    spacing,
+                    is_pore,
+                    size_min_threshold,
+                    ras_to_ijk_transform=ras_to_ijk_matrix_list,
+                    calculate_coordination_number=calculate_coordination_number,
+                )
 
             df, nlabels = calculate_statistics_on_segments(
                 result.regions,

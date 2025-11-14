@@ -2,4 +2,4 @@
 icon: Crop
 ---
 
-{% include-markdown "Pages/CustomizedCropVolume.md" %}
+{{ include_markdown("CustomizedCropVolume") }}

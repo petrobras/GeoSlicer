@@ -2,4 +2,4 @@
 icon: UserInterfaceApplication
 ---
 
-{% include-markdown "Pages/UserInterfaceApplication.md" %}
+{{ include_markdown("UserInterfaceApplication") }}

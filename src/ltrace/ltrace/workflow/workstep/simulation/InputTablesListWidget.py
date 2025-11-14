@@ -18,6 +18,7 @@ from MercurySimulationLib.SubscaleModelWidget import (
 )
 from ltrace.slicer_utils import dataFrameToTableNode, dataframeFromTable
 from ltrace.pore_networks.functions import geo2spy
+from ltrace.pore_networks.subres_models import get_scalar_volume_data
 
 import numpy as np
 import pandas as pd
@@ -33,10 +34,7 @@ logic_models = {
 
 def set_subres_model_and_params(table_node, idx, params, pressure_tables):
     pore_network = geo2spy(table_node)
-    x_size = float(table_node.GetAttribute("x_size"))
-    y_size = float(table_node.GetAttribute("y_size"))
-    z_size = float(table_node.GetAttribute("z_size"))
-    volume = x_size * y_size * z_size
+    scalar_volume_data = get_scalar_volume_data(table_node)
 
     subres_model = params["subres_model_name"]
     subres_params = params["subres_params"]
@@ -45,7 +43,7 @@ def set_subres_model_and_params(table_node, idx, params, pressure_tables):
         subres_params = set_pressure_table_model(pressure_tables, subres_model, subres_params, idx)
 
     subresolution_function = logic_models[subres_model].get_capillary_pressure_function(
-        subres_params, pore_network, volume
+        subres_params, pore_network, scalar_volume_data
     )
 
     return subresolution_function

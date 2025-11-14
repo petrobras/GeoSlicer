@@ -2,4 +2,4 @@
 icon: ThinSectionExport
 ---
 
-{% include-markdown "Pages/ThinSectionExport.md" %}
+{{ include_markdown("ThinSectionExport") }}

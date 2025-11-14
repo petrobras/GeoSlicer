@@ -166,8 +166,8 @@ class Segmenter(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
-        self.setHelpUrl("Volumes/Segmentation/MicroCTSegmenter.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/Segmentation/ThinSectionSegmenter.html", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Volumes/Segmentation/Segmentation.html#ai-segmenter", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#ai-segmenter", NodeEnvironment.THIN_SECTION)
 
     @classmethod
     def readme_path(cls):
@@ -242,6 +242,7 @@ class SegmenterWidget(LTracePluginWidget):
         )
 
         self._initWidgetsStates()
+        self.__updateHelpButtonText()
 
     def _exchangeLayout(self):
         self.instanceSegmenterLayout = (
@@ -350,46 +351,20 @@ class SegmenterWidget(LTracePluginWidget):
 
         self.createClassifierRadio = qt.QRadioButton("Model Training")
         self.createClassifierRadio.objectName = "Create Classifier Radio"
-        if getCurrentEnvironment() == NodeEnvironment.THIN_SECTION:
-            manualUrl = "Volumes/Segmentation/MicroCTSegmenter.html"
-        else:
-            manualUrl = "ThinSection/Segmentation/ThinSectionSegmenter.html"
 
-        createClassifierHelpButton = HelpButton(
-            "### Model Training\n\nTrain a model from scratch using a partially annotated image as input. "
-            "The model is then used to fully segment the image. This method is more flexible, "
-            "as you can choose parameters, filters and annotation for a custom use case."
-            "\n\n-----\n[More]({path_to_manual})",
-            replacer=lambda x: x.format(path_to_manual=manualUrl),
-        )
+        self.createClassifierHelpButton = HelpButton()
+
         self.loadClassifierRadio = qt.QRadioButton("Pre-trained Models")
         self.loadClassifierRadio.objectName = "Load Classifier Radio"
-
-        def loadClassifierUrlReplacer(url):
-            if getCurrentEnvironment() == NodeEnvironment.MICRO_CT:
-                return url.format(path_to_manual=manualUrl)
-
-            return url.format(path_to_manual=manualUrl)
-
-        self.loadClassifierHelpButton = HelpButton(
-            "### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained "
-            "for a specific use case and only requires an image as input. Select a model to view its information."
-            "\n\n-----\n[More]({path_to_manual})",
-            replacer=loadClassifierUrlReplacer,
-        )
+        self.loadClassifierHelpButton = HelpButton()
 
         self.userClassifierRadio = qt.QRadioButton("User Custom Pre-trained Models")
         self.userClassifierRadio.objectName = "User Classifier Radio"
-        self.userClassifierHelpButton = HelpButton(
-            "### User Custom Pre-trained Models\n\nUse a model that was previously trained using the 'Model Training' "
-            "option. Input image must have the same number of channels that was used in training."
-            "\n\n-----\n[More]({path_to_manual})",
-            replacer=lambda x: x.format(path_to_manual=(manual_path / "Semiauto" / "semiauto.html").as_posix()),
-        )
+        self.userClassifierHelpButton = HelpButton()
 
         hbox = qt.QHBoxLayout(widget)
         hbox.addWidget(self.createClassifierRadio)
-        hbox.addWidget(createClassifierHelpButton)
+        hbox.addWidget(self.createClassifierHelpButton)
         layout.addLayout(hbox)
 
         hbox = qt.QHBoxLayout(widget)
@@ -543,16 +518,16 @@ class SegmenterWidget(LTracePluginWidget):
             pixel = int(np.round(float(v) / pixelSize_mm))
             widget.setText(f"  {pixel} pixels")
 
-        rf_widget = RandomForestSettingsWidget(radiusInput=ui.FeedbackNumberParam(onChange=_onPixelArgumentChanged))
-        self.methodSelector.addWidget(rf_widget)
-        node_input = self.inputsSelector.referenceInput
-        rf_widget.setImageInput(node_input)
+        self.rfWidget = RandomForestSettingsWidget(radiusInput=ui.FeedbackNumberParam(onChange=_onPixelArgumentChanged))
+        self.methodSelector.addWidget(self.rfWidget)
+        nodeInput = self.inputsSelector.referenceInput
+        self.rfWidget.setImageInput(nodeInput)
 
-        self.bayes_widget = BayesianInferenceSettingsWidget(
+        self.bayesWidget = BayesianInferenceSettingsWidget(
             radiusInput=ui.FeedbackNumberParam(onChange=_onPixelArgumentChanged)
         )
-        self.methodSelector.addWidget(self.bayes_widget)
-        self.bayes_widget.setImageInput(node_input)
+        self.methodSelector.addWidget(self.bayesWidget)
+        self.bayesWidget.setImageInput(nodeInput)
 
         self.methodSelector.selector.objectName = "Methods ComboBox"
         self.methodSelector.currentWidgetChanged.connect(self._updateWidgetsVisibility)
@@ -671,6 +646,27 @@ class SegmenterWidget(LTracePluginWidget):
 
         self._showExclusiveSections()
         self._updateWidgetsVisibility()
+        self.__updateHelpButtonText()
+
+    def __updateHelpButtonText(self):
+        manualUrl = slicer.modules.SegmenterInstance.helpUrl
+        self.createClassifierHelpButton.message = (
+            "### Model Training\n\nTrain a model from scratch using a partially annotated image as input. "
+            "The model is then used to fully segment the image. This method is more flexible, "
+            "as you can choose parameters, filters and annotation for a custom use case."
+            f"\n\n-----\n[More]({manualUrl})"
+        )
+        self.loadClassifierHelpButton.message = (
+            "### Pre-trained Models\n\nSegment using a pre-trained model. Each model was extensively trained "
+            "for a specific use case and only requires an image as input. Select a model to view its information."
+            f"\n\n-----\n[More]({manualUrl})"
+        )
+        self.userClassifierHelpButton.message = (
+            "### User Custom Pre-trained Models\n\nUse a model that was previously trained using the 'Model Training' "
+            "option. Input image must have the same number of channels that was used in training."
+            f"\n\n-----\n[More]({manualUrl})"
+        )
+        self.rfWidget.addFeatureHelpButton.updateLink(manualUrl)
 
     def _resetToggledModelType(self):
         for modelTypeRadioButton in self.modelTypeRadioGroup.buttons():
@@ -860,7 +856,7 @@ class SegmenterWidget(LTracePluginWidget):
             self.methodSelector.widget(i).onReferenceChanged(node, False)
             self.methodSelector.widget(i).setPixelSizeAndMinSide(spacing, minSide)
 
-        self.bayes_widget.setImageInput(node)
+        self.bayesWidget.setImageInput(node)
 
     def _onPxSelected(self):
         self.pxForCleaningInput.setCurrentNode(self.pxInputCombobox.currentNode())
@@ -1966,11 +1962,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
         self.delFilterButton.enabled = True
         self.delFilterButton.connect("clicked(bool)", self.delFilter)
 
-        if getCurrentEnvironment() == NodeEnvironment.THIN_SECTION:
-            manualUrl = "Volumes/Segmentation/MicroCTSegmenter.html"
-        else:
-            manualUrl = "ThinSection/Segmentation/ThinSectionSegmenter.html"
-
+        manualUrl = slicer.modules.SegmenterInstance.helpUrl
         self.addFeatureHelpButton = HelpButton("", url=manualUrl)
 
         hboxLayout = qt.QHBoxLayout()

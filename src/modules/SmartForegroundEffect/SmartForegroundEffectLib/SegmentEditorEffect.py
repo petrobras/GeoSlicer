@@ -527,7 +527,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
             self.setApplyButtonEnablement()
         except Exception as error:
-            print(traceback.format_exc())
             logging.debug(f"Error: {error}.\n{traceback.format_exc()}")
             slicer.util.errorDisplay(f"Failed to apply the effect.\nError: {error}")
             onFinish()

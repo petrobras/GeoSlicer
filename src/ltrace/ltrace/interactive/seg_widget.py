@@ -53,9 +53,7 @@ def _copy_segment_names_and_colors(source_segmentation, target_segmentation):
     source_ids = source.GetSegmentIDs()
     target_ids = target.GetSegmentIDs()
 
-    n = min(len(source_ids), len(target_ids))
-
-    for source_id in source_ids[:n]:
+    for source_id in source_ids:
         source_segment = source.GetSegment(source_id)
         label_value = source_segment.GetLabelValue()
         for target_id in target_ids:
@@ -287,8 +285,10 @@ class RealTimeSegLogic:
         self.preview_slice = Slice(PREVIEW_SLICE)
 
         self.annotation_slice.set_bg(self.source_volume_node)
-        self.annotation_slice.fit()
         self.preview_slice.set_bg(self.source_volume_node)
+        slicer.app.processEvents(1000)
+
+        self.annotation_slice.fit()
         self.preview_slice.fit()
 
         self.preview_slice.link()
@@ -314,6 +314,8 @@ class RealTimeSegLogic:
             seg_consumer.__file__,
             "--data-dir",
             self.paths.base_dir.resolve().as_posix(),
+            "--parent-pid",
+            str(os.getpid()),
         ]
 
         logging.debug(f"Starting consumer process with command: {' '.join(command)}")
@@ -524,18 +526,27 @@ class RealTimeSegLogic:
                     n_total_segments = self.result_segmentation_node.GetSegmentation().GetNumberOfSegments()
 
                     segmentation = self.result_segmentation_node.GetSegmentation()
-                    to_remove = []
-                    for i in range(n_existing_segments):
-                        j = i + n_existing_segments
-                        if j > n_total_segments - 1:
-                            break
 
-                        segment_a = segmentation.GetNthSegmentID(i)
-                        segment_b = segmentation.GetNthSegmentID(j)
-                        self.add_segment_to_segment(self.result_segmentation_node, segment_a, segment_b)
-                        to_remove.append(segment_b)
-                    for segment_id in to_remove:
-                        segmentation.RemoveSegment(segment_id)
+                    result_segments_by_label = {}
+                    for i in range(n_existing_segments, n_total_segments):
+                        segment_id = segmentation.GetNthSegmentID(i)
+                        segment = segmentation.GetSegment(segment_id)
+                        label_value = segment.GetLabelValue()
+                        assert label_value not in result_segments_by_label
+                        result_segments_by_label[label_value] = segment_id
+
+                    for i in range(n_existing_segments):
+                        source_segment_id = segmentation.GetNthSegmentID(i)
+                        label_value = segmentation.GetSegment(source_segment_id).GetLabelValue()
+                        target_segment_id = result_segments_by_label.get(label_value, None)
+                        if target_segment_id is not None:
+                            self.add_segment_to_segment(
+                                self.result_segmentation_node, source_segment_id, target_segment_id
+                            )
+                            segmentation.RemoveSegment(target_segment_id)
+                            logging.debug(f"Merged label {label_value}.")
+                        else:
+                            logging.debug(f"No result segment found for label {label_value}; skipping merge.")
 
                     self.calculated_extents.append(extents)
                     _copy_segment_names_and_colors(self.annotation_node, self.result_segmentation_node)
@@ -546,7 +557,13 @@ class RealTimeSegLogic:
                 if self.main_loop_timer:
                     self.main_loop_timer.stop()
                 if self.on_full_segmentation_complete_callback:
-                    self.on_full_segmentation_complete_callback(self.result_segmentation_node)
+                    result_node = self.result_segmentation_node
+                    result_node.SaveWithSceneOn()
+
+                    # Don't delete later
+                    self.result_segmentation_node = None
+
+                    self.on_full_segmentation_complete_callback(result_node)
                 return
 
         except Exception as e:
@@ -555,25 +572,18 @@ class RealTimeSegLogic:
 
     def _setup_result_node(self):
         self.result_segmentation_node = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLSegmentationNode", "SegmentationResult"
+            "vtkMRMLSegmentationNode", "SegmentationPreview"
         )
+        self.result_segmentation_node.SaveWithSceneOff()
         self._setup_segmentation_display(self.result_segmentation_node, self.preview_slice.node.GetID())
 
         helpers.setSourceVolume(self.result_segmentation_node, self.source_volume_node)
         self.tmp_labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "TemporaryResult")
-
-        colors = [
-            (1.0, 0.0, 0.0),  # Red
-            (0.0, 1.0, 1.0),  # Cyan
-            (0.0, 0.0, 1.0),  # Blue
-            (1.0, 1.0, 0.0),  # Yellow
-        ]
-        color_table = helpers.create_color_table("Preview_Color_Table", colors, add_background=True)
-        self.tmp_labelmap_node.CreateDefaultDisplayNodes()
-        self.tmp_labelmap_node.GetDisplayNode().SetAndObserveColorNodeID(color_table.GetID())
+        self.tmp_labelmap_node.HideFromEditorsOn()
+        self.tmp_labelmap_node.SaveWithSceneOff()
         self.tmp_labelmap_node.CopyOrientation(self.source_volume_node)
 
-        logging.debug(f"Created/updated result node: {self.result_segmentation_node.GetName()}")
+        logging.debug(f"Created result node: {self.result_segmentation_node.GetName()}")
 
     def _cleanup(self):
         if self.tmp_labelmap_node and slicer.mrmlScene.IsNodePresent(self.tmp_labelmap_node):
@@ -583,6 +593,10 @@ class RealTimeSegLogic:
         if self.segmentEditorNode and slicer.mrmlScene.IsNodePresent(self.segmentEditorNode):
             slicer.mrmlScene.RemoveNode(self.segmentEditorNode)
             self.segmentEditorNode = None
+
+        if self.result_segmentation_node and slicer.mrmlScene.IsNodePresent(self.result_segmentation_node):
+            slicer.mrmlScene.RemoveNode(self.result_segmentation_node)
+            self.result_segmentation_node = None
 
         if self.segmentEditorWidget:
             self.segmentEditorWidget.setMRMLScene(None)
@@ -624,6 +638,25 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._state = None
 
         layout = qt.QVBoxLayout(self)
+
+        self._resumeSegFrame = qt.QGroupBox()
+        resumeSegLayout = qt.QVBoxLayout(self._resumeSegFrame)
+        resumeSegLayout.addSpacing(20)
+        self._resumeSegLabel = qt.QLabel("View layout changed. Would you like to resume annotation?")
+        self._resumeSegLabel.setAlignment(qt.Qt.AlignCenter)
+        resumeSegLayout.addWidget(self._resumeSegLabel)
+        resumeSegLayout.addSpacing(10)
+        self._resumeSegButton = qt.QPushButton("Resume Annotation")
+        self._resumeSegButton.setFixedHeight(40)
+        self._resumeSegButton.toolTip = "Resume annotating with a real-time preview of the result."
+        self._resumeSegButton.setProperty("class", "actionButtonBackground")
+        resumeSegLayout.addWidget(self._resumeSegButton)
+        resumeSegLayout.addSpacing(20)
+
+        self._resumeSegButton.clicked.connect(self._onResumeSegButtonClicked)
+        self._resumeSegFrame.visible = False
+
+        layout.addWidget(self._resumeSegFrame)
 
         self._inputSection = ctk.ctkCollapsibleButton()
         self._inputSection.collapsed = False
@@ -745,15 +778,16 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._mainLoopTimer = qt.QTimer(self)
         self._progressTimer = qt.QTimer(self)
 
-        self._scene_close_observer = slicer.mrmlScene.AddObserver(
-            slicer.mrmlScene.StartCloseEvent, lambda *args: self._stopSegmentation()
-        )
+        self._sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self._onCloseEvent)
+
+    def _onCloseEvent(self, *args, **kwargs):
+        self._stopSegmentation()
 
     def cleanup(self):
         if self._state and self._state.is_running():
             logging.debug("Module cleanup: Stopping segmentation process.")
             self._stopSegmentation()
-        slicer.mrmlScene.RemoveObserver(self._scene_close_observer)
+        slicer.mrmlScene.RemoveObserver(self._sceneCloseObserver)
 
     def _onInputNodeChanged(self, vtkId):
         is_running = self._state and self._state.is_running()
@@ -770,7 +804,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
             self._progressBar.setRange(0, 0) if show_progress else self._progressBar.setRange(0, 100)
 
     def _onFeatureProgressUpdate(self, progress, message):
-        self._statusLabel.setText(f"Calculating features: {message}")
+        self._statusLabel.setText(f"Calculating: {message}")
         self._progressBar.setRange(0, 100)
         self._progressBar.setValue(progress)
         self._progressBar.setVisible(True)
@@ -782,6 +816,17 @@ class InteractiveSegmenterFrame(qt.QFrame):
     def _onModelTrained(self, status):
         if self._state:
             self._applyButton.enabled = status
+
+    def _onResumeSegButtonClicked(self):
+        layoutManager = slicer.app.layoutManager()
+        self.previous_layout = layoutManager.layout
+        layoutManager.setLayout(SIDE_BY_SIDE_DUMB_LAYOUT_ID)
+
+    def _onLayoutChanged(self, layout):
+        if layout != SIDE_BY_SIDE_DUMB_LAYOUT_ID and self._state:
+            self._resumeSegFrame.visible = True
+        else:
+            self._resumeSegFrame.visible = False
 
     def _stopSegmentation(self):
         logging.debug("Stopping real-time segmentation process.")
@@ -797,7 +842,9 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self.outputSection.visible = False
 
         self._applyButton.enabled = False
+        self._resumeSegFrame.visible = False
         self._onStatusUpdate("Ready", show_progress=False)
+        slicer.app.layoutManager().layoutChanged.disconnect(self._onLayoutChanged)
 
     def _startSegmentation(self):
         source_node = self._inputSelector.currentNode()
@@ -856,6 +903,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
             self._annotationSection.visible = True
             self.outputSection.visible = True
+            slicer.app.layoutManager().layoutChanged.connect(self._onLayoutChanged)
         except Exception as e:
             slicer.util.errorDisplay(f"Failed to start segmentation process: {e}")
             self._stopSegmentation()
@@ -989,7 +1037,8 @@ class InteractiveSegmenterFrame(qt.QFrame):
         previewDisplayNode = final_result_node.GetNthDisplayNode(1)
         if previewDisplayNode:
             final_result_node.RemoveNthDisplayNodeID(1)
-            slicer.mrmlScene.RemoveNode(previewDisplayNode)
+            # Can't remove node, otherwise a crash occurs later in vtkMRMLSegmentationsDisplayableManager3D::ProcessMRMLNodesEvents
+            # slicer.mrmlScene.RemoveNode(previewDisplayNode)
         slicer.util.setSliceViewerLayers(background=input_node, fit=True)
         self._inputSection.enabled = True
         self._onStatusUpdate("Segmentation applied to full image.", show_progress=False)

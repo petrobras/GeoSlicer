@@ -21,6 +21,7 @@ from ltrace.slicer.helpers import (
 )
 from ltrace.slicer.widgets import InputState, PixelLabel, get_input_widget_color
 from ltrace.slicer_utils import *
+from ltrace.slicer.node_attributes import NodeEnvironment
 
 
 class ShadingCorrection(LTracePlugin):
@@ -36,6 +37,10 @@ class ShadingCorrection(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ShadingCorrection.help()
+        self.setHelpUrl("Volumes/Filter/Filter.html#shading-correction", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl(
+            "Multiscale/VolumesPreProcessing/VolumesPreProcessing.html#shading-correction", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

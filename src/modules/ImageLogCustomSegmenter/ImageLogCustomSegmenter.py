@@ -46,7 +46,6 @@ class ImageLogCustomSegmenterWidget(LTracePluginWidget):
                 try:
                     widget = getattr(self, widgetAttrName)
                     widget.enabled = False
-                    print(args)
                     func(self, *args, **kwargs)
                 except:
                     raise

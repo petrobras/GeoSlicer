@@ -52,7 +52,7 @@ class MultiScale(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysics Team"]
 
         self.setHelpUrl("Multiscale/MultiscaleImageGeneration/Multiscale.html", NodeEnvironment.MULTISCALE)
-        self.setHelpUrl("Volumes/Multiscale/MultiscaleImageGeneration.html", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("Volumes/Multiscale/Multiscale.html", NodeEnvironment.MICRO_CT)
 
     @classmethod
     def readme_path(cls):

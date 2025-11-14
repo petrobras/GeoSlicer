@@ -22,10 +22,12 @@ class PoreNetworkExtractorHandler:
     JOBS_LOCAL_PATH = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\servicos\\LTRACE\\GEOSLICER\\jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
-    def __init__(self, input_node_id, label_node_id, params) -> None:
+    def __init__(self, result_callback, input_node_id, label_node_id, params) -> None:
         self.input_node_id = input_node_id
         self.label_node_id = label_node_id
         self.params = params
+        self.result_callback = result_callback
+
         self.slurm_job_ids = []
 
         self.job_remote_path = None
@@ -96,6 +98,7 @@ class PoreNetworkExtractorHandler:
             match = self.JOB_ID_PATTERN.search(output["stdout"])
             if not match:
                 caller.set_state(uid, "FAILED", 100, message=f"Failed to match job id.")
+                caller.persist(uid)
                 return
             self.slurm_job_ids.append(match.group(1))
 
@@ -117,7 +120,6 @@ class PoreNetworkExtractorHandler:
                 start_time=ts_start,
                 details=details,
             )
-            caller.persist(uid)
             caller.schedule(uid, "PROGRESS")
         except Exception:
             traceback.print_exc()
@@ -129,6 +131,7 @@ class PoreNetworkExtractorHandler:
                 end_time=datetime.now().timestamp(),
                 message="Execution failed to start jobs on cluster.",
             )
+            caller.persist(uid)
 
     def progress(self, caller: JobManager, uid: str, client: Any = None):
         try:
@@ -153,11 +156,13 @@ class PoreNetworkExtractorHandler:
                         details={"failed_jobs": failed_jobs},
                         end_time=datetime.now().timestamp(),
                     )
+                    caller.persist(uid)
                     return
 
                 caller.set_state(
                     uid, "COMPLETED", 100, message="All jobs completed.", end_time=datetime.now().timestamp()
                 )
+                caller.persist(uid)
                 return
             else:
                 total_progress = 0
@@ -212,54 +217,10 @@ class PoreNetworkExtractorHandler:
                 shutil.rmtree(local_path, ignore_errors=True)
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
-        def _create_table(table_type):
-            table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
-            table.AddNodeReferenceID("PoresLabelMap", self.input_node_id)
-            table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.params['prefix']}_{table_type}_table"))
-            table.SetAttribute("table_type", f"{table_type}_table")
-            table.SetAttribute("is_multiscale", "false")  # TODO check if needed, case positive, set it correctly
-            slicer.mrmlScene.AddNode(table)
-            return table
-
-        def _create_tables(algorithm_name):
-            poreOutputTable = _create_table("pore")
-            throatOutputTable = _create_table("throat")
-            networkOutputTable = _create_table("network")
-            poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
-            edge_throats = "none" if (algorithm_name == "porespy") else "x"
-            poreOutputTable.SetAttribute("edge_throats", edge_throats)
-            return throatOutputTable, poreOutputTable, networkOutputTable
-
         inputNode = slicer.mrmlScene.GetNodeByID(self.input_node_id)
 
         if inputNode:
-            df_pores = pd.read_pickle(str(self.job_local_path / "pores.pd"))
-            df_throats = pd.read_pickle(str(self.job_local_path / "throats.pd"))
-            df_network = pd.read_pickle(str(self.job_local_path / "network.pd"))
-
-            throatOutputTable, poreOutputTable, networkOutputTable = _create_tables("porespy")
-
-            dataFrameToTableNode(df_pores, poreOutputTable)
-            dataFrameToTableNode(df_throats, throatOutputTable)
-            dataFrameToTableNode(df_network, networkOutputTable)
-
-            ### Include size infomation ###
-            bounds = [0, 0, 0, 0, 0, 0]
-            inputNode.GetBounds(bounds)  # In millimeters
-            poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
-            poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
-            poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
-            poreOutputTable.SetAttribute("origin", f"{bounds[0]};{bounds[2]};{bounds[4]}")
-
-            ### Move table nodes to hierarchy nodes ###
-            folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            itemTreeId = folderTree.GetItemByDataNode(inputNode)
-            parentItemId = folderTree.GetItemParent(itemTreeId)
-            currentDir = folderTree.CreateFolderItem(parentItemId, f"{self.params['prefix']}_Pore_Network")
-
-            folderTree.CreateItem(currentDir, poreOutputTable)
-            folderTree.CreateItem(currentDir, throatOutputTable)
-            folderTree.CreateItem(currentDir, networkOutputTable)
+            self.result_callback(self.input_node_id, self.job_local_path, self.params["prefix"])
         else:
             slicer.util.infoDisplay(
                 f"Could not find the reference node with ID '{self.input_node_id}'. Load the scene that contains that node before collecting the job result."

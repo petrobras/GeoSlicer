@@ -90,51 +90,45 @@ class WellLogImportWidget(qt.QWidget):
 
         def onPathChanged(filepath):
             with ProgressBarProc() as progressBar:
-                progressBar.nextStep(5, "Loading metadata...")
-
-                progressBar.nextStep(80, "Setting context variables...")
-                nullvalues = set(self.nullValuesListText.text.split(","))
-
-                if self.nullValuesListText.text.split(",")[0]:
-                    nullvalues = set(map(float, nullvalues))
-                else:  # an empty nullValuesListText will give us a 1-element set ([""]). Reinitializing the set here
-                    nullvalues = set()
-
-                self.dataLoader = get_loader(filepath, nullvalues)
-
-                nullvalues.union(self.dataLoader.null_value)
-
-                if len(nullvalues):
-                    self.nullValuesListText.text = str(nullvalues)[1:-1]
-                else:
-                    self.nullValuesListText.text = ""
-
                 try:
+                    progressBar.nextStep(5, "Loading metadata...")
+
+                    progressBar.nextStep(80, "Setting context variables...")
+                    nullvalues = set(self.nullValuesListText.text.split(","))
+
+                    if self.nullValuesListText.text.split(",")[0]:
+                        nullvalues = set(map(float, nullvalues))
+                    else:  # an empty nullValuesListText will give us a 1-element set ([""]). Reinitializing the set here
+                        nullvalues = set()
+
+                    self.dataLoader = get_loader(filepath, nullvalues)
+
+                    nullvalues.union(self.dataLoader.null_value)
+
+                    if len(nullvalues):
+                        self.nullValuesListText.text = str(nullvalues)[1:-1]
+                    else:
+                        self.nullValuesListText.text = ""
+
                     progressBar.nextStep(90, "Showing metadata...")
                     well_name, metadata = self.dataLoader.load_metadata()
                     self.wellNameInput.text = well_name
                     if well_name is None:
                         return
                     self.tableView.setDatabase(metadata)
-                except LoaderError as e:
-                    slicer.util.infoDisplay(str(e))
+                except Exception as e:
+                    slicer.util.warningDisplay(str(e))
                     self.ioFileInputLineEdit.setCurrentPath("")
-                    progressBar.nextStep(100, "Error loading metadata.")
+                    progressBar.nextStep(100, "Loading completed with errors.")
                     return
 
-                progressBar.nextStep(100, "Finished loading metadata.")
+                progressBar.nextStep(100, "Loading completed.")
 
-            wellDiameterApplies = True
-            try:
-                wellDiameterApplies = self.dataLoader.loaded_as_image
-            except AttributeError:  # no loaded_as_image
-                pass
+            wellDiameterApplies = getattr(self.dataLoader, "loaded_as_image", True)
+
             self.wellDiameter.setVisible(wellDiameterApplies)
             wellDiameterLabel.setVisible(wellDiameterApplies)
-            if not wellDiameterApplies:
-                self.wellDiameter.setText("0")
-            else:
-                self.wellDiameter.setText("")
+            self.wellDiameter.setText("0" if not wellDiameterApplies else "")
 
         self.ioFileInputLineEdit.connect("currentPathChanged(QString)", onPathChanged)
 

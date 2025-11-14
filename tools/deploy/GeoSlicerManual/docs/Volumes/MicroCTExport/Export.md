@@ -2,4 +2,4 @@
 icon: MicroCTExport
 ---
 
-{% include-markdown "Pages/MicroCTExport.md" %}
+{{ include_markdown("MicroCTExport") }}

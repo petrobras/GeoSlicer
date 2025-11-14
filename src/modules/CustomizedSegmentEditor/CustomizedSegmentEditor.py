@@ -35,11 +35,12 @@ class CustomizedSegmentEditor(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
 
-        self.setHelpUrl("Volumes/Segmentation/SegmentEditor.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("ThinSection/Segmentation/SegmentEditor.html", NodeEnvironment.THIN_SECTION)
-        self.setHelpUrl("ImageLog/Segmentation/Manual/SegmentEditor.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Core/Segmentation/SegmentEditor.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/Segmentation/Manual/SegmentEditor.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Volumes/Segmentation/Segmentation.html#manual-segmentation", NodeEnvironment.MICRO_CT)
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#manual-segmentation", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/Segmentation.html#manual-segmentation", NodeEnvironment.CORE)
+        self.setHelpUrl(
+            "Multiscale/Segmentation/VolumeSegmentation.html#manual-segmentation", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

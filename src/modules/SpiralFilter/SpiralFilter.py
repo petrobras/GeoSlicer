@@ -35,8 +35,10 @@ class SpiralFilter(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = SpiralFilter.help()
-        self.setHelpUrl("ImageLog/Processing/SpiralFilter/SpiralFilter.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ImageLogPreProcessing/SpiralFilter/SpiralFilter.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("ImageLog/Processing/Processing.html#spiral-filter", NodeEnvironment.IMAGE_LOG)
+        self.setHelpUrl(
+            "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.html#spiral-filter", NodeEnvironment.MULTISCALE
+        )
 
     @classmethod
     def readme_path(cls):

@@ -2,4 +2,4 @@
 icon: MultipleImageAnalysis
 ---
 
-{% include-markdown "Pages/MultipleImageAnalysis.md" %}
+{{ include_markdown("MultipleImageAnalysis") }}

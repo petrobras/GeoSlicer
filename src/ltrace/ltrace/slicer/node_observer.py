@@ -75,14 +75,16 @@ class NodeObserver(qt.QObject):
     def clear(self):
         """Clears current object's data."""
         try:
-            self.children()
             self.modifiedSignal.disconnect()
             self.removedSignal.disconnect()
-        except ValueError:
+        except (ValueError, SystemError):
             # Object has been deleted
             pass
 
         for obj, tag in self.__observerHandlers:
+            if obj is None:
+                continue
+
             obj.RemoveObserver(tag)
 
         self.__observerHandlers.clear()

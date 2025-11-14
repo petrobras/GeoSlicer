@@ -1,23 +1,23 @@
 ---
 icon: PoreNetworkExtractor
 ---
-{% include-markdown "Pages/PoreNetworkExtractor.md" %}
+{{ include_markdown("PoreNetworkExtractor") }}
 ---
-{% include-markdown "Pages/PoreNetworkSimulation.md" %}
+{{ include_markdown("PoreNetworkSimulation") }}
 ---
-{% include-markdown "Pages/PoreNetworkKabsREV.md" %}
+{{ include_markdown("PoreNetworkKabsREV") }}
 ---
-{% include-markdown "Pages/PoreNetworkVisualization.md" %}
+{{ include_markdown("PoreNetworkVisualization") }}
 ---
-{% include-markdown "Pages/PoreNetworkKrelEda.md" %}
+{{ include_markdown("PoreNetworkKrelEda") }}
 ---
-{% include-markdown "Pages/PoreNetworkProduction.md" %}
+{{ include_markdown("PoreNetworkProduction") }}
 ---
 # Fluxos
-{% include-markdown "Pages/PNMFlowKabs.md" %}
+{{ include_markdown("PNMFlowKabs") }}
 ---
-{% include-markdown "Pages/PNMFlowKrel.md" %}
+{{ include_markdown("PNMFlowKrel") }}
 ---
-{% include-markdown "Pages/PNMFlowMicp.md" %}
+{{ include_markdown("PNMFlowMicp") }}
 ---
-{% include-markdown "Pages/PNMFlowReport.md" %}
+{{ include_markdown("PNMFlowReport") }}

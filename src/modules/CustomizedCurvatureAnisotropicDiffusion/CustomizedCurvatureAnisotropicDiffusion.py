@@ -24,7 +24,7 @@ class CustomizedCurvatureAnisotropicDiffusion(LTracePlugin):
         self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("Volumes/Filter/GradientAnisotropicDiffusion/GradientAnisotropicDiffusion.html")
+        self.setHelpUrl("Volumes/Filter/Filter.html#curvature-anisotropic-diffusion")
 
     @classmethod
     def readme_path(cls):

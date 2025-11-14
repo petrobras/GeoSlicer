@@ -1,6 +1,6 @@
 ---
 icon: PoreNetworkExtractor
 ---
-{% include-markdown "Pages/PoreNetworkSimulation.md"%}
+{{ include_markdown("PoreNetworkSimulation") }}
 ---
-{% include-markdown "Pages/PoreNetworkExtractor.md"%}
+{{ include_markdown("PoreNetworkExtractor") }}

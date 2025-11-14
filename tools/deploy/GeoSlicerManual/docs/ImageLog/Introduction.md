@@ -2,4 +2,4 @@
 icon: Introduction
 ---
 
-{% include-markdown "Pages/ImageLogIntroduction.md" %}
+{{ include_markdown("ImageLogIntroduction") }}

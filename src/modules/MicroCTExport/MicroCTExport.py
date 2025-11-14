@@ -40,7 +40,7 @@ class MicroCTExport(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = MicroCTExport.help()
         self.setHelpUrl("Volumes/MicroCTExport/Export.html", NodeEnvironment.MICRO_CT)
-        self.setHelpUrl("Multiscale/ExportTools/MicroCTExport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ExportTools/ExportTools.html#microct-export", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):
@@ -192,7 +192,6 @@ class MicroCTExportWidget(LTracePluginWidget):
 
         self.exportButton = qt.QPushButton("Export")
         self.exportButton.setFixedHeight(40)
-        self.exportButton.enabled = False
         self.exportButton.clicked.connect(self._onExportButtonClicked)
 
         self.layout.addWidget(self.exportButton)
@@ -223,13 +222,9 @@ class MicroCTExportWidget(LTracePluginWidget):
 
     def _updateInterface(self):
         imageDict = self._imageDict()
-        ready = self.logic.readyToExport(
-            imageDict, self.tableSelector.currentNode(), self.exportDirButton.directory, self.imageNameLineEdit.text
-        )
         showWarning = self.logic.shouldShowWarning(
             imageDict, self.formatComboBox.currentText, self.imageNameLineEdit.text
         )
-        self.exportButton.enabled = ready
         self.warningLabel.visible = showWarning
 
     def _setSegEnabled(self, enabled):
@@ -264,6 +259,26 @@ class MicroCTExportWidget(LTracePluginWidget):
         slicer.app.processEvents()
 
     def _onExportButtonClicked(self):
+        imageDict = self._imageDict()
+        outputDir = self.exportDirButton.directory
+        imageName = self.imageNameLineEdit.text
+        tableNode = self.tableSelector.currentNode()
+
+        if not Path(outputDir).resolve().absolute().is_dir():
+            slicer.util.errorDisplay(
+                f"Output directory '{outputDir}' does not exist or isn't reachable.\nPlease select a valid directory."
+            )
+            return
+
+        if not imageName:
+            slicer.util.errorDisplay("Please enter an image name.")
+            return
+
+        validImages = any(imageDict.values())
+        if not (tableNode or validImages):
+            slicer.util.errorDisplay("Please select an image or table to export.")
+            return
+
         self.progressBar.visible = True
         try:
             kwargs = {
@@ -432,12 +447,6 @@ class MicroCTExportLogic(LTracePluginLogic):
 
     def userDefinedImageName(self, imageName):
         self.suggestImageName = not imageName
-
-    @staticmethod
-    def readyToExport(imageDict, tableNode, outputDir, imageName):
-        validDir = Path(outputDir).is_dir()
-        validImages = imageName and any(imageDict.values())
-        return (tableNode or validImages) and validDir
 
     @staticmethod
     def shouldShowWarning(imageDict, imageFormat, imageName):

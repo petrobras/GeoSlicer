@@ -39,8 +39,8 @@ class PoreStats(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
-        self.setHelpUrl("ThinSection/Segmentation/PoreStats.html", NodeEnvironment.THIN_SECTION)
-        self.setHelpUrl("Core/Segmentation/PoreStats.html", NodeEnvironment.CORE)
+        self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#pore-stats", NodeEnvironment.THIN_SECTION)
+        self.setHelpUrl("Core/Segmentation/Segmentation.html#pore-stats", NodeEnvironment.CORE)
 
     @classmethod
     def readme_path(cls):

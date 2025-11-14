@@ -313,6 +313,8 @@ def general_pn_extract(
         Two table nodes describing the pore-network represented by multiphaseNode/watershedNode or False if method if not found or the pore-network
         properties could not be extracted.
     """
+    if label_array is not None and np.max(label_array) <= 0:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), label_array.astype(np.int32)
 
     if (label_array is None) and (is_multiscale is True):
         if type(watershed_blur) is dict:
@@ -367,7 +369,9 @@ def general_pn_extract(
         watershed_output = watershed_output.astype(np.int32)
 
     if not pn_properties:
-        return None
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), watershed_output
+    if is_multiscale is True and pn_properties["pore.subresolution_porosity"].max() <= 0.01:
+        pn_properties["pore.subresolution_porosity"] *= 100
     pn_properties = _porespy_postprocessing(
         pn_properties,
         watershed_image=(watershed_output if (watershed_output is not None) else label_array),
@@ -431,10 +435,14 @@ def multiscale_extraction(
 def _phases_from_porosity_map(porosity_map):
     W, H, D = porosity_map.shape
     phases = np.zeros((W, H, D), dtype=np.uint8)
+    if porosity_map.max() > 1:
+        porosity_threshold = 100
+    else:
+        porosity_threshold = 1
     for x in prange(W):
         for y in range(H):
             for z in range(D):
-                if porosity_map[x, y, z] == 100:
+                if porosity_map[x, y, z] >= porosity_threshold:
                     phases[x, y, z] = 1
                 elif porosity_map[x, y, z] > 0:
                     phases[x, y, z] = 2
@@ -499,8 +507,10 @@ def get_throat_areas_from_labelmap(labelmap, voxel_size):
 
 def is_contiguous(labelmap):
     unique_vals = np.unique(labelmap)
-    while unique_vals[0] <= 0:
+    while len(unique_vals) > 0 and unique_vals[0] <= 0:
         unique_vals = unique_vals[1:]
+    if not len(unique_vals):
+        return True
     if len(unique_vals) == unique_vals[-1]:
         return True
     elif len(unique_vals) < unique_vals[-1]:

@@ -2,4 +2,4 @@
 icon: Register
 ---
 
-{% include-markdown "Pages/MicroCTRegister.md" %}
+{{ include_markdown("MicroCTRegister") }}

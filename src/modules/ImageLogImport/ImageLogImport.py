@@ -31,7 +31,7 @@ class ImageLogImport(LTracePlugin):
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.acknowledgementText = """"""
         self.setHelpUrl("ImageLog/Import/Import.html", NodeEnvironment.IMAGE_LOG)
-        self.setHelpUrl("Multiscale/ImportTools/ImageLogImport.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ImportTools/ImportTools.html#imagelog-import", NodeEnvironment.MULTISCALE)
 
 
 class ImageLogImportWidget(LTracePluginWidget):

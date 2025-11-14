@@ -2,4 +2,4 @@
 icon: ImageLogUnwrapImport
 ---
 
-{% include-markdown "Pages/ImageLogUnwrap.md" %}
+{{ include_markdown("ImageLogUnwrap") }}

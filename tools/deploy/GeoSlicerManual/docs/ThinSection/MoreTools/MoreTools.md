@@ -2,8 +2,8 @@
 icon: Table
 ---
 # More Tools
-{% include-markdown "Pages/VolumeCalculator.md" %}
+{{ include_markdown("VolumeCalculator") }}
 ---
-{% include-markdown "Pages/NetCDF.md" %}
+{{ include_markdown("NetCDF") }}
 ---
-{% include-markdown "Pages/MoreToolsFlows.md" %}
+{{ include_markdown("MoreToolsFlows") }}

@@ -649,9 +649,19 @@ class LabelStatistics3D:
         "ellipsoid_area_over_ellipsoid_volume",
         "sphere_diameter_from_volume",
         "pore_size_class",
+        "coordination_number",
     )
 
-    def __init__(self, im, spacing, is_pore, size_filter=None, seed=None):
+    def __init__(
+        self,
+        im,
+        spacing,
+        is_pore,
+        size_filter=None,
+        seed=None,
+        ras_to_ijk_transform=None,
+        calculate_coordination_number=False,
+    ):
         self.im = im
         self.spacing = np.array(spacing, copy=True)
         self.voxel_size = np.prod(self.spacing)
@@ -659,11 +669,48 @@ class LabelStatistics3D:
         self.size_filter = size_filter
         self.rng = np.random.default_rng(seed or 251972032)
         self._space = max(self.spacing)
+        self.ras_to_ijk_transform = ras_to_ijk_transform
+        self.calculate_coordination_number = calculate_coordination_number
 
     def surfaceArea(self, crop):
         # Use marching cubes to obtain the surface mesh of these ellipsoids
         verts, faces, normals, values = measure.marching_cubes(crop, 0)
         return measure.mesh_surface_area(verts, faces)
+
+    def get_coordination_number(self, label):
+        segment_voxels = np.argwhere(self.im == label)
+
+        if segment_voxels.shape[0] == 0:
+            return 0
+
+        min_coords = np.min(segment_voxels, axis=0)
+        max_coords = np.max(segment_voxels, axis=0)
+
+        padding = 1
+
+        shape = self.im.shape
+
+        slices = tuple(
+            slice(max(0, min_c - padding), min(shape[i], max_c + padding + 1))
+            for i, (min_c, max_c) in enumerate(zip(min_coords, max_coords))
+        )
+
+        sub_image = self.im[slices]
+
+        sub_mask = sub_image == label
+
+        structure = np.ones((3, 3, 3), dtype=bool)
+        dilated_mask = sp.ndimage.binary_dilation(sub_mask, structure=structure, iterations=1)
+
+        boundary_mask = dilated_mask & ~sub_mask
+
+        neighbor_labels = sub_image[boundary_mask]
+
+        unique_labels = np.unique(neighbor_labels)
+        unique_labels = unique_labels[unique_labels != label]
+        unique_labels = unique_labels[unique_labels != 0]
+
+        return len(unique_labels)
 
     def __call__(self, label, pointsInRAS):
         voxelCount = len(pointsInRAS)
@@ -713,6 +760,10 @@ class LabelStatistics3D:
 
             intervals = PORE_SIZE_INTERVALS if self.is_pore else GRAIN_SIZE_INTERVALS
             pore_size_class = sizeClassification(feretMax, intervals)
+            if self.calculate_coordination_number:
+                coordination_number = self.get_coordination_number(label)
+            else:
+                coordination_number = np.nan
 
         except (sp.spatial.qhull.QhullError, TypeError, ValueError) as e:
             return None
@@ -730,6 +781,7 @@ class LabelStatistics3D:
             ellipsoid_area_over_ellipsoid_volume,
             sphere_diameter_from_volume,
             pore_size_class,
+            coordination_number,
         )
 
 
@@ -794,9 +846,10 @@ class LabelStatistics2D:
         "perimeter_over_area",
         "gamma",
         "pore_size_class",
+        "coordination_number",
     )
 
-    def __init__(self, im, spacing, direction, is_pore, size_filter=0):
+    def __init__(self, im, spacing, direction, is_pore, size_filter=0, calculate_coordination_number=False):
         self.im = im
         self.spacing = np.array(spacing, copy=True)
         self.voxel_size = np.prod(self.spacing)
@@ -804,6 +857,7 @@ class LabelStatistics2D:
         self.is_pore = is_pore
         self.size_filter = size_filter
         self.radius = min(self.spacing) * 1.75
+        self.calculate_coordination_number = calculate_coordination_number
 
         if self.direction and len(self.direction) > 0:
             self.__anglesFromReferenceDirection = calculateAnglesFromReferenceDirection
@@ -820,6 +874,41 @@ class LabelStatistics2D:
             return None
 
         return self.strict_calculate(label, pointsInRasBorder)
+
+    def get_coordination_number(self, label):
+        segment_pixels = np.argwhere(self.im == label)
+
+        if segment_pixels.shape[0] == 0:
+            return 0
+
+        min_coords = np.min(segment_pixels, axis=0)
+        max_coords = np.max(segment_pixels, axis=0)
+
+        padding = 1
+
+        shape = self.im.shape
+
+        slices = tuple(
+            slice(max(0, min_c - padding), min(shape[i], max_c + padding + 1))
+            for i, (min_c, max_c) in enumerate(zip(min_coords, max_coords))
+        )
+
+        sub_image = self.im[slices]
+
+        sub_mask = sub_image == label
+
+        structure = np.ones((3, 3), dtype=bool)
+        dilated_mask = sp.ndimage.binary_dilation(sub_mask, structure=structure, iterations=1)
+
+        boundary_mask = dilated_mask & ~sub_mask
+
+        neighbor_labels = sub_image[boundary_mask]
+
+        unique_labels = np.unique(neighbor_labels)
+        unique_labels = unique_labels[unique_labels != label]
+        unique_labels = unique_labels[unique_labels != 0]
+
+        return len(unique_labels)
 
     def strict_calculate(self, label, pointsInRasBorder):
         voxelCount = len(pointsInRasBorder)
@@ -845,6 +934,10 @@ class LabelStatistics2D:
 
             intervals = PORE_SIZE_INTERVALS if self.is_pore else GRAIN_SIZE_INTERVALS
             pore_size_class = sizeClassification(diameter, intervals)
+            if self.calculate_coordination_number:
+                coordination_number = self.get_coordination_number(label)
+            else:
+                coordination_number = np.nan
 
         except (sp.spatial.qhull.QhullError, TypeError, ValueError) as e:
             return None
@@ -868,6 +961,7 @@ class LabelStatistics2D:
             perimeter / area_mm,
             gamma,
             pore_size_class,
+            coordination_number,
         )
 
 
@@ -1204,7 +1298,7 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
             properties["area (m²)"] = np.round(markAreaInMeters, 8)
         except Exception as e:
             properties["area (m²)"] = np.nan
-            logging.warning("Area calculation failed.")
+            logging.warning(f"Area calculation failed. {e}")
 
     if GENERIC_PROPERTIES[1] in properties.keys():
         try:
@@ -1220,7 +1314,7 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
             properties["insc diam (mm)"] = diameter
         except Exception as e:
             properties["insc diam (mm)"] = np.nan
-            logging.warning("Diameter calculation failed.")
+            logging.warning(f"Diameter calculation failed. {e}")
 
     if GENERIC_PROPERTIES[2] in properties.keys():
         try:
@@ -1231,7 +1325,7 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
             properties["azimuth (°)"] = int(np.round(azimuth_in_degrees))
         except Exception as e:
             properties["azimuth (°)"] = np.nan
-            logging.warning("Azimuth calculation failed.")
+            logging.warning(f"Azimuth calculation failed. {e}")
 
     if GENERIC_PROPERTIES[3] in properties.keys():
         try:
@@ -1240,7 +1334,7 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
             properties[GENERIC_PROPERTIES[3]] = 4 * np.pi * countourArea / countourPerimeter**2
         except Exception as e:
             properties[GENERIC_PROPERTIES[3]] = np.nan
-            logging.warning("Circularity calculation failed.")
+            logging.warning(f"Circularity calculation failed. {e}")
 
     if GENERIC_PROPERTIES[4] in properties.keys():
         try:
@@ -1253,7 +1347,7 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
             properties[GENERIC_PROPERTIES[4]] = rescaledPerimeter / rescaledArea
         except Exception as e:
             properties[GENERIC_PROPERTIES[4]] = np.nan
-            logging.warning("Perimeter over Area calculation failed.")
+            logging.warning(f"Perimeter over Area calculation failed. {e}")
 
     return properties
 

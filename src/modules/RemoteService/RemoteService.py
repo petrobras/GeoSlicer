@@ -159,7 +159,7 @@ class RemoteServiceLogic:
 
         return target, client
 
-    def run(self, task_handler: Callable, name: str = None, job_type: str = None):
+    def run(self, task_handler: Callable, name: str = None, job_type: str = None, polling_enabled: bool = False):
         try:
             target, client_connected = self.initiateConnectionDialog()
 
@@ -168,7 +168,9 @@ class RemoteServiceLogic:
 
             uid = str(uuidlib.uuid4())
 
-            JobManager.manage(JobExecutor(uid, task_handler, target, name=name, job_type=job_type))
+            JobManager.manage(
+                JobExecutor(uid, task_handler, target, name=name, job_type=job_type, polling_enabled=polling_enabled)
+            )
 
             JobManager.schedule(uid, "DEPLOY")
 

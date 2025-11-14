@@ -339,3 +339,8 @@ QProgressBar[style="thin"]::chunk {
     background-color: #26C252; /* Grey progress color */
     border-radius: 4px;
 }
+
+qMRMLSegmentEditorWidget QToolButton:checked {
+    border: 2px solid #26C252;
+    padding: -2px;            /* Adjust padding to compensate for the border width */ 
+}

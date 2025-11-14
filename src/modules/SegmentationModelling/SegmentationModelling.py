@@ -27,7 +27,7 @@ class SegmentationModelling(LTracePlugin):
         self.parent.categories = ["Segmentation", "MicroCT"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = SegmentationModelling.help()
-        self.setHelpUrl("Volumes/Microporosity/PorosityFromSegmentation.html")
+        self.setHelpUrl("Volumes/Microporosity/Microporosity.html")
 
     @classmethod
     def readme_path(cls):

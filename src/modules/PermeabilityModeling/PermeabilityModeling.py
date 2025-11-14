@@ -40,7 +40,7 @@ class PermeabilityModeling(LTracePlugin):
         self.parent.title = "Permeability Modeling"
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = PermeabilityModeling.help()
+        self.setHelpUrl("ImageLog/PermeabilityModeling/PermeabilityModeling.html")
 
     @classmethod
     def readme_path(cls):

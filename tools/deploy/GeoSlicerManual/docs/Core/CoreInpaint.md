@@ -1,4 +1,4 @@
 ---
 icon: CoreInpaint
 ---
-{% include-markdown "Pages/CoreInpaint.md" %}
+{{ include_markdown("CoreInpaint") }}

@@ -2,4 +2,4 @@
 icon: ImageLogCropVolume
 ---
 
-{% include-markdown "Pages/ImageLogCropVolume.md"%}
+{{ include_markdown("ImageLogCropVolume") }}

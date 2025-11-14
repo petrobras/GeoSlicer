@@ -1,12 +1,12 @@
 ---
 icon: ImageLogPreProcessing
 ---
-{% include-markdown "Pages/ImageLogCropVolume.md"%}
+{{ include_markdown("ImageLogCropVolume") }}
 ---
-{% include-markdown "Pages/AzimuthShift.md"%}
+{{ include_markdown("AzimuthShift") }}
 ---
-{% include-markdown "Pages/SpiralFilter.md"%}
+{{ include_markdown("SpiralFilter") }}
 ---
-{% include-markdown "Pages/ImageLogInpaint.md"%}
+{{ include_markdown("ImageLogInpaint") }}
 ---
-{% include-markdown "Pages/CLAHETool.md"%}
+{{ include_markdown("CLAHETool") }}

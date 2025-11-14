@@ -99,6 +99,10 @@ class VectorVolumeWidget(qt.QWidget):
     def setNode(self, node):
         self.node = node
         self.pixelSizeEditor.currentNode = node
+        if self.nodeObserver is not None:
+            self.nodeObserver.clear()
+            self.nodeObserver.deleteLater()
+
         self.nodeObserver = NodeObserver(node=node, parent=self)
         self.nodeObserver.modifiedSignal.connect(
             self.update
@@ -136,7 +140,7 @@ class VectorVolumeWidget(qt.QWidget):
     def onNodeRemoved(self):
         if self.nodeObserver is not None:
             self.nodeObserver.clear()
-            del self.nodeObserver
+            self.nodeObserver.deleteLater()
             self.nodeObserver = None
 
         self.node = None

@@ -27,15 +27,10 @@ class VolumeNodeCustomBehavior(NodeCustomBehaviorBase):
         if node is None:
             return
 
-        timer = qt.QTimer()
-
         def onTimeout():
             self._onVolumeModified(node)
-            timer.timeout.disconnect(onTimeout)
 
-        timer.setSingleShot(True)
-        timer.timeout.connect(onTimeout)
-        timer.start(0)
+        qt.QTimer.singleShot(0, onTimeout)
 
     def _showSlicesIn3D(self) -> None:
         if slicer.mrmlScene.GetNumberOfNodesByClass("vtkMRMLScalarVolumeNode") == 0:

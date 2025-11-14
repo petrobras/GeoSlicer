@@ -1,9 +1,9 @@
 ---
 icon: ThinSectionRegistration
 ---
-{% include-markdown "Pages/ThinSectionRegistration.md" %}
+{{ include_markdown("ThinSectionRegistration") }}
 ---
-{% include-markdown "Pages/ThinSectionAutoRegistration.md" %}
+{{ include_markdown("ThinSectionAutoRegistration") }}
 ---
 # Flows
-{% include-markdown "Pages/ThinSectionFlowTransforms.md" %}
+{{ include_markdown("ThinSectionFlowTransforms") }}

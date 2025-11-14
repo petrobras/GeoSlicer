@@ -17,7 +17,7 @@ class MemoryUsageWidget(qt.QWidget):
         self.labelIcon = qt.QLabel()
         self.labelIcon.setPixmap(icon.pixmap(16, 16))
         self.memoryCounter = qt.QLabel("")
-        self.memoryUsedTimer = qt.QTimer()
+        self.memoryUsedTimer = qt.QTimer(self)
 
         layout.addWidget(self.labelIcon)
         layout.addWidget(self.memoryCounter)

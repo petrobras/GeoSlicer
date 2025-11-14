@@ -2,4 +2,4 @@
 icon: ImageTools
 ---
 
-{% include-markdown "Pages/ImageTools.md" %}
+{{ include_markdown("ImageTools") }}

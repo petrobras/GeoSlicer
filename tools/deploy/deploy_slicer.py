@@ -159,9 +159,9 @@ def generic_deploy(
         modules_to_add.extend(find_cli_source(modules_package_folder))
     else:
         if args.keep_tests:
-            discarded_patterns = ("*CLI*",)
+            discarded_patterns = ("*CLI",)
         else:
-            discarded_patterns = ("*CLI*", "*Test")
+            discarded_patterns = ("*CLI", "*Test")
         modules_to_add = list(
             copy_extensions(
                 slicer_dir,
@@ -728,7 +728,7 @@ def remove_closed_source_files(args):
         elif path.is_dir():
             if "submodules" in path.parent.name:
                 repository.git.submodule("deinit", "-f", path.resolve().as_posix())
-                repository.git.rm(path, r=True)
+                repository.git.rm(path, r=True, force=True)
                 repository.git.add(".gitmodules")
                 git_module_path = SLICERLTRACE_REPO_FOLDER / ".git" / "modules" / path.name
                 remove_directory_recursively(git_module_path)

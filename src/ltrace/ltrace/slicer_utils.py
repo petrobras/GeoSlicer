@@ -111,6 +111,7 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
 
     def setHelpUrl(self, relativePath: str, environment: NodeEnvironment = None) -> None:
         helpUrl = f"{MANUAL_BASE_URL}{relativePath}"
+        helpUrl = qt.QUrl(helpUrl)
 
         if self.__helpUrl.get("DEFAULT") is None:
             self.__helpUrl["DEFAULT"] = helpUrl

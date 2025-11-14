@@ -30,7 +30,7 @@ class HelpButton(qt.QToolButton):
         if not is_url(url):
             url = None
 
-        self.md_message = message
+        self.mdMessage = message
         self.url = url
         self.setStyleSheet("border : none;")
         self.setIcon(svgToQIcon(getResourcePath("Icons") / "svg" / "CircleHelp.svg"))
@@ -39,10 +39,18 @@ class HelpButton(qt.QToolButton):
         self.replacer = replacer
 
     def handleClick(self):
-        if self.md_message:
-            self.showFloatingMessage(self.md_message)
+        if self.mdMessage:
+            self.showFloatingMessage(self.mdMessage)
         else:
             self.handleLinkClick(self.url)
+
+    @property
+    def message(self) -> None:
+        return self.mdMessage
+
+    @message.setter
+    def message(self, message: str) -> None:
+        self.mdMessage = message
 
     def updateLink(self, helpURL: str) -> None:
         # check if it is a valid URI/URL

@@ -54,7 +54,7 @@ class Multicore(LTracePlugin):
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.setHelpUrl("Core/Multicore.html", NodeEnvironment.CORE)
-        self.setHelpUrl("Multiscale/ImportTools/Multicore.html", NodeEnvironment.MULTISCALE)
+        self.setHelpUrl("Multiscale/ImportTools/ImportTools.html#multicore", NodeEnvironment.MULTISCALE)
 
     @classmethod
     def readme_path(cls):

@@ -36,6 +36,10 @@ class DebounceCaller:
 
     def __del__(self):
         self.stop()
+        try:
+            self.timer.deleteLater()
+        except ValueError:  # Timer has been deleted
+            pass
 
     def emit(self, *args, **kwargs) -> None:
         self.__args = args

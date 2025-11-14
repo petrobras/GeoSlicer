@@ -52,7 +52,7 @@ class ThinSectionLoader(LTracePlugin):
         self.parent.categories = ["Thin Section", "Loader"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
-        self.setHelpUrl("ThinSection/Loader/Loader.html")
+        self.setHelpUrl("ThinSection/Loader/ThinSectionLoader.html")
 
     @classmethod
     def readme_path(cls):
@@ -319,6 +319,9 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
     def loadImage(self, file, p, baseName):
         self.cancel = False
         node = volume_from_image(str(file))
+        if self.nodeObserver is not None:
+            self.nodeObserver.deleteLater()
+
         self.nodeObserver = NodeObserver(node=node, parent=None)
         self.nodeObserver.removedSignal.connect(self.onNodeRemoved)
         self.nodeId = node.GetID()
@@ -544,7 +547,7 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
             return
 
         self.nodeObserver.clear()
-        del self.nodeObserver
+        self.nodeObserver.deleteLater()
         self.nodeObserver = None
 
 

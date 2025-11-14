@@ -773,7 +773,7 @@ class RawLoaderLogic:
 
         if self._currentNodeObserver is not None:
             self._currentNodeObserver.clear()
-            del self._currentNodeObserver
+            self._currentNodeObserver.deleteLater()
 
         self._currentNodeObserver = NodeObserver(node, parent=self)
         self._currentNodeObserver.removedSignal.connect(self.onCurrentNodeRemoved)
@@ -781,5 +781,5 @@ class RawLoaderLogic:
     def onCurrentNodeRemoved(self):
         self._currentNodeId = None
         self._currentNodeObserver.clear()
-        del self._currentNodeObserver
+        self._currentNodeObserver.deleteLater()
         self._currentNodeObserver = None
