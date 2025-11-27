@@ -43,15 +43,16 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
 
     def _afterSave(self) -> None:
         """Store image file used when the data was loaded for the first time."""
-        storageNode = self._node.GetStorageNode()
+        node = self._node
+        storageNode = node.GetStorageNode()
         if storageNode is None:
-            logging.error(f"Skipping custom behavior for node {self._node.GetName()} due missing its storage node.")
+            logging.error(f"Skipping custom behavior for node {node.GetName()} due missing its storage node.")
             return
 
-        sourceImageFilePath = self._node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
+        sourceImageFilePath = node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
         if sourceImageFilePath is None:
             logging.error(
-                f"Skipping custom behavior for node {self._node.GetName()} due missing its source image file path information."
+                f"Skipping custom behavior for node {node.GetName()} due missing its source image file path information."
             )
             return
 
@@ -72,7 +73,7 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
             ), "Source image file doesn't exists in the project directory."
 
             # Update attribute
-            self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, destinationSourceImageFilePath.as_posix())
+            node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, destinationSourceImageFilePath.as_posix())
 
         # Reload data from the image to maintaing node's data updated. Only if its was triggered by a 'save' event.
         if self._event != TriggerEvent.SAVE_AS:
@@ -83,17 +84,18 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
 
     def _beforeSave(self) -> None:
         """Save image file to a temporary directory and reset array from the node."""
-        storageNode = self._node.GetStorageNode()
+        node = self._node
+        storageNode = node.GetStorageNode()
         sourceFilePath = Path(storageNode.GetFileName()) if storageNode is not None else ""
         # Check if it is the first time saving the 'lossy' image node
         # When its the first time saving
-        sourceImageFilePath = self._node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
+        sourceImageFilePath = node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
         if not sourceImageFilePath and isImageFile(
             sourceFilePath
         ):  # First-time saving an usual volume node with lossy attributes
             destinationPath = self.__createTemporaryDirectory()
             sourceImageFilePath = destinationPath / sourceFilePath.name
-            self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
+            node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
         elif (
             sourceImageFilePath
             and sourceFilePath
@@ -102,15 +104,15 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
         ):  # Old lossy node during 'save as' event
             destinationPath = self.__createTemporaryDirectory()
             sourceImageFilePath = destinationPath / Path(sourceImageFilePath).name
-            self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
+            node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
         elif (
             storageNode is None
         ):  # and not sourceImageFilePath:  # Saving cloned volume node with lossless attribute but without source image attribute
             destinationPath = self.__createTemporaryDirectory()
             extension = Path(sourceImageFilePath).suffix if sourceImageFilePath else ".jpg"  # use jpg as default format
-            fileName = sanitize_filepath(f"{self._node.GetName()}{extension}")
+            fileName = sanitize_filepath(f"{node.GetName()}{extension}")
             sourceImageFilePath = destinationPath / fileName
-            self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
+            node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, sourceImageFilePath.as_posix())
         elif (
             storageNode is not None and not sourceImageFilePath and not isImageFile(sourceFilePath)
         ):  # No data available to create a lossy image node
@@ -118,14 +120,14 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
             return
 
         # Export current array to image file
-        self._exportImageWrapper(node=self._node, destinationImageFile=sourceImageFilePath)
+        self._exportImageWrapper(node=node, destinationImageFile=sourceImageFilePath)
 
         # Clear node's data to reduce nrrd file size.
-        array = slicer.util.arrayFromVolume(self._node)
+        array = slicer.util.arrayFromVolume(node)
         shape_tuple = (1,) * (array.ndim - 1) + (array.ndim - 1,)
         empty_array = np.empty(shape_tuple, dtype=array.dtype)
-        slicer.util.updateVolumeFromArray(self._node, empty_array)
-        self._node.Modified()
+        slicer.util.updateVolumeFromArray(node, empty_array)
+        node.Modified()
 
     def _exportImageWrapper(self, node: slicer.vtkMRMLNode, destinationImageFile: Union[str, Path]) -> None:
         if isinstance(destinationImageFile, str):
@@ -144,16 +146,17 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
 
     def _loadDataFromImageFile(self) -> None:
         self.updateNodeReference()
-        imageFilePath = self._node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
+        node = self._node
+        imageFilePath = node.GetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL)
         if imageFilePath is None:
             logging.error(
-                f"Skipping custom behavior for node {self._node.GetName()} due missing its source image file path information."
+                f"Skipping custom behavior for node {node.GetName()} due missing its source image file path information."
             )
             return
 
-        storageNode = self._node.GetStorageNode()
+        storageNode = node.GetStorageNode()
         if storageNode is None:
-            logging.error(f"Skipping custom behavior for node {self._node.GetName()} due missing its storage node.")
+            logging.error(f"Skipping custom behavior for node {node.GetName()} due missing its storage node.")
             return
 
         # Check if current source image information is stored in a temporary directory.
@@ -163,16 +166,16 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
             imageFileInProjectPath = Path(storageNode.GetFileName()).parent / imageFilePath.name
             if not imageFileInProjectPath.is_file():
                 logging.error(
-                    f"Failed to load '{self._node.GetName()}' node. The image's file is missing: {imageFileInProjectPath.as_posix()}"
+                    f"Failed to load '{node.GetName()}' node. The image's file is missing: {imageFileInProjectPath.as_posix()}"
                 )
                 return
 
             imageFilePath = imageFileInProjectPath
-            self._node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, imageFilePath.as_posix())
+            node.SetAttribute(SOURCE_IMAGE_ATTRIBUTE_LABEL, imageFilePath.as_posix())
 
         if not imageFilePath.is_file():
             logging.error(
-                f"Failed to load '{self._node.GetName()}' node. The image's file is missing: {imageFilePath.as_posix()}"
+                f"Failed to load '{node.GetName()}' node. The image's file is missing: {imageFilePath.as_posix()}"
             )
             return
 
@@ -181,17 +184,17 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
         tempVolumeNode.SetHideFromEditors(True)
 
         array = slicer.util.arrayFromVolume(tempVolumeNode)
-        slicer.util.updateVolumeFromArray(self._node, array)
-        displayNode = self._node.GetDisplayNode()
+        slicer.util.updateVolumeFromArray(node, array)
+        displayNode = node.GetDisplayNode()
         if displayNode is None:
-            self._node.CreateDefaultDisplayNodes()
+            node.CreateDefaultDisplayNodes()
 
-        self._node.GetDisplayNode().Copy(tempVolumeNode.GetDisplayNode())
+        node.GetDisplayNode().Copy(tempVolumeNode.GetDisplayNode())
 
         # Add image file to StorageNode to avoid problems with the future to remove unused project files.
         storageNode.AddFileName(imageFilePath.as_posix())
 
-        self._node.Modified()
+        node.Modified()
 
         # Remove temporary node
         slicer.mrmlScene.RemoveNode(tempVolumeNode)

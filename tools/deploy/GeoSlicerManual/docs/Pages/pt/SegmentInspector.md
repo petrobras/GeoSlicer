@@ -149,3 +149,20 @@ Digite um nome para ser usado como prefixo para o objeto de resultados (mapa de 
 * __Mesoporo muito grande__: classe = 5, max_feret entre 1 e 4 mm.
 * __Megaporo pequeno__: classe = 6, max_feret entre 4 e 32 mm.
 * __Megaporo grande__: classe = 7, max_feret maior que 32 mm.
+
+##### Definição das classes de grãos:
+
+* __Argila__: classe = 0, max_feret menor que 0,004mm.
+* __Silte muito fino__: classe = 1, max_feret entre 0,004 e 0,008 mm.
+* __Silte fino__: classe = 2, max_feret entre 0,008 e 0,016 mm.
+* __Silte médio__: classe = 3, max_feret entre 0,016 e 0,031 mm.
+* __Silte grosso__: classe = 4, max_feret entre 0,031 e 0,062 mm.
+* __Areia muito fina__: classe = 5, max_feret entre 0,062 e 0,125 mm.
+* __Areia fina__: classe = 6, max_feret entre 0,125 e 0,25 mm.
+* __Areia média__: classe = 7, max_feret entre 0,25 e 0,5 mm.
+* __Areia grossa__: classe = 8, max_feret entre 0,5 e 1 mm.
+* __Areia muito grossa__: classe = 9, max_feret entre 1 e 2 mm.
+* __Grânulo__: classe = 10, max_feret entre 2 e 4 mm.
+* __Seixo__: classe = 11, max_feret entre 4 e 64 mm.
+* __Bloco ou Calhau__: classe = 12, max_feret entre 64 e 256 mm.
+* __Matacão__: classe = 13, max_feret maior que 256 mm.

@@ -23,13 +23,13 @@ class NodeObserver(qt.QObject):
         self.__observerHandlers.append(
             (
                 node,
-                node.AddObserver("ModifiedEvent", self.__on_node_modified),
+                node.AddObserver("ModifiedEvent", self.__onNodeModified),
             )
         )
         self.__observerHandlers.append(
             (
                 slicer.mrmlScene,
-                slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__on_node_removed),
+                slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__onNodeRemoved),
             )
         )
         if node.IsA("vtkMRMLSegmentationNode"):
@@ -40,12 +40,11 @@ class NodeObserver(qt.QObject):
                 self.__observerHandlers.append(
                     (
                         node,
-                        node.AddObserver(eventType, self.__on_node_modified),
+                        node.AddObserver(eventType, self.__onNodeModified),
                     )
                 )
-        self.__signalModifiedDebouncer = DebounceCaller(
-            parent=self, callback=self.onModifiedSignalToBeTriggered, intervalMs=100
-        )
+        self.__signalModifiedDebouncer = DebounceCaller(parent=self, intervalMs=100)
+        self.__signalModifiedDebouncer.triggered.connect(self.onModifiedSignalToBeTriggered)
         self.destroyed.connect(self.__del__)
 
     def __del__(self):
@@ -55,12 +54,12 @@ class NodeObserver(qt.QObject):
     def node(self):
         return helpers.tryGetNode(self.__nodeId)
 
-    def __on_node_modified(self, caller, event):
+    def __onNodeModified(self, caller, event):
         """Handles node's modification."""
-        self.__signalModifiedDebouncer.emit(self, caller)
+        self.__signalModifiedDebouncer(self, caller)
 
     @vtk.calldata_type(vtk.VTK_OBJECT)
-    def __on_node_removed(self, caller, event, node):
+    def __onNodeRemoved(self, caller, event, node):
         """Handles node's removal."""
         if node is None or node.GetID() != self.__nodeId:
             return
@@ -91,8 +90,4 @@ class NodeObserver(qt.QObject):
         self.__nodeId = None
 
     def onModifiedSignalToBeTriggered(self, *args, **kwargs):
-        # TODO this code does not look right
-        if len(args) + len(kwargs) == 0:
-            self.modifiedSignal.emit(None, None)
-
         self.modifiedSignal.emit(*args, **kwargs)

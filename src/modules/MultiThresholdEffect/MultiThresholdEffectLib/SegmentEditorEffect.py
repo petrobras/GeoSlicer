@@ -50,9 +50,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.previewState = 0
         self.previewStep = 1
         self.previewSteps = 7
-        self.timer = qt.QTimer()
-        self.timer.connect("timeout()", self.preview)
-        self.timer.setParent(self.scriptedEffect.optionsFrame())
+        self.timer = qt.QTimer(self.scriptedEffect.optionsFrame())
+        self.timer.timeout.connect(self.preview)
         self.previewPipelines = {}
         self.setupPreviewDisplay()
         self.renderedLayout = None
@@ -64,10 +63,16 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyFinishedCallback = lambda: None
         self.applyAllSupported = True
         self.segmentationChangedDebounceCaller = DebounceCaller(
-            parent=self.scriptedEffect,
-            callback=self.onSegmentationChangedHandler,
+            parent=self.scriptedEffect.optionsFrame(),
             intervalMs=200,
         )
+        self.segmentationChangedDebounceCaller.triggered.connect(self.onSegmentationChangedHandler)
+
+    def cleanup(self):
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer.deleteLater()
+            self.timer = None
 
     def clone(self):
         import qSlicerSegmentationsEditorEffectsPythonQt as effects
@@ -674,7 +679,7 @@ the number of clusters equal to the number of segments added to the segmentation
     def onSegmentationNodeModified(self, caller, event) -> None:
         self.segmentationChangedDebounceCaller()
 
-    def onSegmentationChangedHandler(self) -> None:
+    def onSegmentationChangedHandler(self, *args, **kwargs) -> None:
         self.clearPreviewDisplay()
 
         self.colors = self.getColors()

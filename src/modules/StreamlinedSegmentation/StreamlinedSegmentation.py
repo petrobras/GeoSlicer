@@ -194,7 +194,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
 
         self.logic = StreamlinedSegmentationLogic(parent=self.parent)
         self.logic.processFinished.connect(self.onCLIFinished)
-        self.multiFinishedTimer = qt.QTimer()
+        self.multiFinishedTimer = qt.QTimer(self.parent)
         self.multiFinishedTimer.setSingleShot(True)
         self.multiFinishedTimer.setInterval(100)
 
@@ -497,16 +497,17 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         lazy.set_visibility(lazyOutputNode, True)
 
     def cleanup(self):
-        super().cleanup()
         self.removeObservers()
         self.multipleThresholdEffect.applyFinishedCallback = lambda: None
         self.boundaryRemovalEffect.applyFinishedCallback = lambda: None
         self.expandSegmentsEffect.applyFinishedCallback = lambda: None
         self.multiFinishedTimer.stop()
         self.multiFinishedTimer.timeout.disconnect()
+        self.multiFinishedTimer.deleteLater()
         self.segmentationNodeComboBox.setCurrentNode(None)
         self.sourceVolumeNodeComboBox.setCurrentNode(None)
         ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
+        super().cleanup()
 
 
 class StreamlinedSegmentationLogic(LTracePluginLogic):

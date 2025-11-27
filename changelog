@@ -1,51 +1,22 @@
-# Highlights:
-- Pore Network Model (PNM) simulation can now be executed on the cluster. (PL-2866)
-- A new module was added to the ImageLog environment for creating KDE (Kernel Density Estimation) tables and grouping instance segmenter results by depth and attribute for analysis. (MUSA-143)
-- MicroCT Loader now supports loading NetCDF files directly from a directory. (PL-2921)
-
 # New features:
-- A new module for calculating Euclidean Distance Transform (EDT) from segmentations was added. (PL-2946)
-- New capability to measure segment coordination in watershed algorithms, including an interface checkbox. (PL-2968)
+- Enabled float volumes as input on Microtom kabs.
+- Added native directional support for Kabs.
 
 # Improvements:
-- Bug Report widget now handles missing exceptions and provides a fallback message, with a description length limit for JIRA compatibility and placeholder instructions. (PL-2942)
-- Segmentation effect highlight updated for improved visibility when active. (PL-2972)
-- Improved user feedback and error logging when project loading fails. (PL-2950)
-- Subscale widget now supports SIRR import, with updated interface and instructions. (PL-2966)
-- Users can now resume annotation after changing the layout. (PL-2964)
-- Added a 'do_preprocessing' parameter to SegmentInspectorCLI and a 'Include Preprocessing' checkbox to SegmentInspector, Islands, and Snow widgets in InstanceSegmenter, allowing control over morphological operations. (PL-2953)
-- Added support for float pore maps with values between 0 and 1, and changed the warning color from red to yellow. (PL-2951)
-- Pore Network Model (PNM) Simulation manual updated with cluster execution information and figure numbering adjustments. (PL-2949)
-- Jobs can now be collected while in progress if configured to allow it. (PL-2866)
-- GeoSlicer manual updated to support internationalization (i18n), along with updated installation and development articles, translated Virtual Segmentation Flow charts, and updated ImageLogExport documentation translation. (PL-2883)
-- Implemented a simple query to check the connection with BIAEP. (PL-2930)
-- ImageLog dimensions are now always visible, with interface improvements in spacing and labels.
-- Thin Section environment help URL and category were set.
-- Documentation for Euclidean Distance Transform was added. (PL-2946)
-- Variogram Analysis documentation added and improved. (PL-2990)
-- Manual page for Interactive Segmenter added. (PL-2964)
-- Manual pages updated with information about coordination calculation. (PL-2968)
-- MicroCT Filters documentation improved. (PL-2965)
-- Improved object orientation of subres model classes and unified node creation with `ExtractionNodesCreator`. (PL-2925)
+- Restored enable state of input nodes after changes.
+- Changed the default value for Radius Resolution in microtom. (PL-3014)
+- Improved gradient diffusion. (PL-2900)
+- Adjusted flow rate calculations to incorporate pressure drop and viscosity as parameters. (PL-3006)
+- Ensured all fields and combo boxes in the AI segmenter reset correctly. (PL-3001)
+- Enhanced SIRR import interface and integrated it with MICP Visualization. (PL-2999)
+- Added documentation for grain classes to the GeoSlicer manual. (PL-2976)
 
 # Bug fixes:
-- Addressed an application crash that occurred when running SegmentInspector tests. (PL-2987)
-- Re-enabled the Pore Network Model (PNM) extract apply button. (PL-2988)
-- Restored the `throat.volume` property for use with OpenPNM. (PL-2986)
-- Improved plotting behavior for KDE module, including handling of single-line tables and single unique values. (MUSA-143)
-- Enhanced error and warning handling for the KDE module, with user-facing error messages for empty or single-depth report tables. (MUSA-143)
-- Addressed an issue where volumes sometimes did not fit the view. (PL-2964)
-- Corrected the subres parameter parser. (PL-2970)
-- Corrected the behavior of the MicroCT Export button. (PL-2948)
-- Addressed a traceback issue in the Pore Network Model (PNM) visualization module. (PL-2960)
-- Addressed tracebacks in KabsREV when the network is unavailable. (PL-2955)
-- Corrected an issue where parallelization was inadvertently disabled. (PL-2910)
-- Fixed one-phase simulations failing when no throats are resolved. (PL-2925)
-- KabsREV was updated to use the current `set_subres_model` parameters structure. (PL-2925)
-- Helper buttons now correctly use the provided help URL links. (PL-2883)
-- Addressed an invalid node reference issue during segment editor destruction. (PL-2927)
-- Fixed an issue related to module updates when interacting with original 3DSlicer modules. (PL-2927)
-- Corrected an issue where the AI Models widget failed to load models when a directory was selected. (PL-2912)
-- Fixed the order of remote protocol options. (PL-2930)
-- Addressed an issue preventing the loading of EuclideanDistanceTransform.py on Windows due to case-insensitivity. (PL-2946)
-- Fixed a bug during Volume loading environment caused by specific imports.
+- Fixed porosity label display on the modeling interface. (PL-3015)
+- Resolved temporary node cleanup and ensured view resets to the reference volume. (PL-3015)
+- Addressed memory leaks. (PL-2992)
+- Corrected hard data coordinates in `mpslib` to ensure they are within grid voxels and fixed hard data file reading by `mps`. (MUSA-148)
+- Fixed a translation error in the GeoSlicer manual. (PL-2976)
+
+# Removed:
+- Removed the porosity modifier from the user graphical interface. (PL-2999)

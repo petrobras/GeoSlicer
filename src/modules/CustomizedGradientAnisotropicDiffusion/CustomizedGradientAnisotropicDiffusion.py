@@ -101,10 +101,11 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
-        self.logic = CustomizedGradientAnisotropicDiffusionLogic(self.progressBar)
-        self.logic.filteringStarted.connect(lambda: self.updateApplyButton(enabled=False))
+        self.logic = CustomizedGradientAnisotropicDiffusionLogic(self.progressBar, parent=self.parent)
         self.logic.filteringStopped.connect(lambda: self.updateApplyButton(enabled=True))
         self.logic.filteringCompleted.connect(self.exit)
+        self.logic.previewFilteringStarted.connect(self.onPreviewFilteringStarted)
+        self.logic.previewFilteringCompleted.connect(self.onPreviewFilteringCompleted)
 
         frame = qt.QFrame()
         self.layout.addWidget(frame)
@@ -169,6 +170,14 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.iterationsSliderWidget.tracking = False
         parametersFormLayout.addRow("Iterations:", self.iterationsSliderWidget)
 
+        advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+        advancedCollapsibleButton.setText("Advanced")
+        advancedCollapsibleButton.flat = True
+        advancedCollapsibleButton.collapsed = True
+        parametersFormLayout.addRow(advancedCollapsibleButton)
+        advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+        advancedFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+
         self.timeStepSliderWidget = slicer.qMRMLSliderWidget()
         self.timeStepSliderWidget.maximum = 0.1
         self.timeStepSliderWidget.minimum = 0.0001
@@ -176,12 +185,22 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.timeStepSliderWidget.singleStep = 0.001
         self.timeStepSliderWidget.value = float(self.getTimeStep())
         self.timeStepSliderWidget.toolTip = """\
-            The time step depends on the dimensionality of the image. In Slicer the images are 3D and the default (.0625) time step will \
-            provide a stable solution.\
+            How much smoothing to apply at each iteration. Larger values require fewer iterations, but may cause artifacts. The default value of 0.0625 provides a stable solution for 3D images.
         """
         self.timeStepSliderWidget.valueChanged.connect(lambda _: self.onSettingsChanged())
         self.timeStepSliderWidget.tracking = False
-        parametersFormLayout.addRow("Time step:", self.timeStepSliderWidget)
+        advancedFormLayout.addRow("Time step:", self.timeStepSliderWidget)
+
+        self.previewSizeSliderWidget = slicer.qMRMLSliderWidget()
+        self.previewSizeSliderWidget.maximum = 1000
+        self.previewSizeSliderWidget.minimum = 50
+        self.previewSizeSliderWidget.decimals = 0
+        self.previewSizeSliderWidget.singleStep = 10
+        self.previewSizeSliderWidget.value = 120
+        self.previewSizeSliderWidget.toolTip = "Set the size of the preview window (in pixels)."
+        self.previewSizeSliderWidget.valueChanged.connect(self.onPreviewSizeChanged)
+        self.previewSizeSliderWidget.tracking = False
+        parametersFormLayout.addRow("Preview size:", self.previewSizeSliderWidget)
 
         self.togglePreviewButton = qt.QPushButton("Preview")
         self.togglePreviewButton.setFixedHeight(40)
@@ -189,6 +208,10 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.updatePreviewButton()
 
         parametersFormLayout.addWidget(self.togglePreviewButton)
+
+        self.previewStatusLabel = qt.QLabel("")
+        self.previewStatusLabel.setAlignment(qt.Qt.AlignRight)
+        parametersFormLayout.addWidget(self.previewStatusLabel)
 
         parametersFormLayout.addRow(" ", None)
 
@@ -230,7 +253,18 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
             self.markup.stop_picking()
             self.markup = None
 
+    def onPreviewFilteringStarted(self):
+        self.previewStatusLabel.setText("Updating preview...")
+
+    def onPreviewFilteringCompleted(self):
+        self.previewStatusLabel.setText("")
+
     def onFinishMarkup(self, markup, markupIndex):
+        if markupIndex < 0:
+            # Cancelled
+            self.updatePreviewButton()
+            return
+
         ijk = markup.get_ijk_point_position(markupIndex, volume=self.inputVolumeComboBox.currentNode())
         self.logic.center = tuple(ijk)
         self.logic.setInputSliceView(markup.last_slice_view_name)
@@ -252,11 +286,15 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.onSettingsChanged()
         self.updatePreviewButton()
 
+    def onPreviewSizeChanged(self, value):
+        self.logic.previewSize = int(value)
+        if self.logic.previewEnabled:
+            self.logic.setPreviewInput(self.inputVolumeComboBox.currentNode())
+            self.onSettingsChanged()
+
     def updatePreviewButton(self):
         self.togglePreviewButton.setText(
-            "Stop previewing and go back to previous layout"
-            if self.logic.previewEnabled
-            else "Pick spot in slice view to preview"
+            "Cancel preview" if self.logic.previewEnabled else "Pick spot in slice view to preview"
         )
         cancelIcon = slicer.app.style().standardIcon(qt.QStyle.SP_ArrowLeft)
         markupIcon = qt.QIcon(":/Icons/png/MarkupsFiducialMouseModePlace.png")
@@ -272,6 +310,16 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.togglePreviewButton.enabled = inputNode is not None
         self.logic.setPreviewInput(inputNode)
         self.onSettingsChanged()
+
+        if inputNode:
+            array = slicer.util.arrayFromVolume(inputNode)
+            max_dim = max(array.shape)
+            self.previewSizeSliderWidget.maximum = max_dim
+            if self.previewSizeSliderWidget.value > max_dim:
+                self.previewSizeSliderWidget.value = max_dim
+        else:
+            self.previewSizeSliderWidget.maximum = 1000  # Reset to default max if no input node
+            self.previewSizeSliderWidget.value = 120  # Reset to default value
 
         newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode != None else ""
         self.outputVolumeNameLineEdit.setText(newOutputName)
@@ -311,28 +359,29 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
 
     def cleanup(self):
         super().cleanup()
-        self.logic.filteringStarted.disconnect()
-        self.logic.filteringStopped.disconnect()
-        self.logic.filteringCompleted.disconnect()
 
 
 class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
     filteringStarted = qt.Signal()
     filteringStopped = qt.Signal()
     filteringCompleted = qt.Signal()
+    previewFilteringStarted = qt.Signal()
+    previewFilteringCompleted = qt.Signal()
 
-    PREVIEW_SIZE = 120
     PREVIEW_DEPTH = 5
 
-    PREVIEW_SIZES = {
-        "XY": (PREVIEW_SIZE, PREVIEW_SIZE, PREVIEW_DEPTH),
-        "YZ": (PREVIEW_DEPTH, PREVIEW_SIZE, PREVIEW_SIZE),
-        "XZ": (PREVIEW_SIZE, PREVIEW_DEPTH, PREVIEW_SIZE),
-    }
+    @property
+    def PREVIEW_SIZES(self):
+        return {
+            "XY": (self.previewSize, self.previewSize, self.PREVIEW_DEPTH),
+            "YZ": (self.PREVIEW_DEPTH, self.previewSize, self.previewSize),
+            "XZ": (self.previewSize, self.PREVIEW_DEPTH, self.previewSize),
+        }
+
     MEDICAL_PLANES = {"Axial": "XY", "Sagittal": "YZ", "Coronal": "XZ"}
 
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, progressBar, parent=None):
+        LTracePluginLogic.__init__(self, parent=parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.computingFilter = False
@@ -342,6 +391,7 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
         self.outputPreviewVolume = None
         self.center = None
         self.orientation = "XY"
+        self.previewSize = 120
 
     def togglePreview(self):
         self.previewEnabled = not self.previewEnabled
@@ -409,16 +459,23 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
         preview_size = self.PREVIEW_SIZES[self.orientation]
         slices = []
         for center_i, preview_i, array_i in zip(center, preview_size, reversed(array.shape)):
-            min_ = center_i - preview_i // 2
-            max_ = center_i + preview_i // 2
-            offset = -min_
-            if offset > 0:
-                min_ += offset
-                max_ += offset
-            offset = max_ - array_i
-            if offset > 0:
-                min_ -= offset
-                max_ -= offset
+            if preview_i >= array_i:
+                min_ = 0
+                max_ = array_i
+            else:
+                min_ = center_i - preview_i // 2
+                max_ = center_i + preview_i // 2
+
+                if max_ > array_i:
+                    offset = max_ - array_i
+                    min_ -= offset
+                    max_ -= offset
+
+                elif min_ < 0:
+                    offset = -min_
+                    min_ += offset
+                    max_ += offset
+
             slices.append(slice(min_, max_))
         slices = tuple(reversed(slices))
         slicer.util.updateVolumeFromArray(self.inputPreviewVolume, array[slices])
@@ -449,6 +506,7 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
             qt.QApplication.setOverrideCursor(qt.Qt.BusyCursor)
             self.outputVolume = self.outputPreviewVolume
             self.outputVolume.SetName("Updating preview, please wait...")
+            self.previewFilteringStarted.emit()
         else:
             self.outputVolume = slicer.mrmlScene.AddNewNodeByClass(p.inputVolume.GetClassName())
             self.outputVolume.SetName(p.outputVolumeName)
@@ -484,6 +542,7 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
             self.cliNode.RemoveAllObservers()
             self.cliNode = None
             self.outputPreviewVolume.SetName("Filter output preview")
+            self.previewFilteringCompleted.emit()
 
             layoutManager = slicer.app.layoutManager()
             widget1 = layoutManager.sliceWidget("SideBySideSlice1")

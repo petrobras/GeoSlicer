@@ -57,7 +57,7 @@ class PoreNetworkVisualization(LTracePlugin):
 class PoreNetworkVisualizationWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
-        self.timer = qt.QTimer()
+        self.timer = qt.QTimer(self.parent)
         self.active_table = None
         self.data_points = None
         self.sw_values = None
@@ -296,7 +296,8 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         super().cleanup()
         if self.timer:
             self.timer.stop()
-            del self.timer
+            self.timer.deleteLater()
+            self.timer = None
 
         del self.active_table
         del self.data_points

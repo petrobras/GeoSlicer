@@ -21,7 +21,7 @@ class TableNodeCustomBehavior(NodeCustomBehaviorBase):
         node.AddObserver("ModifiedEvent", self.__onNodeModified)
 
     def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
-        node.RemoveAllObservers()
+        pass
 
     def __onNodeModified(self, node: slicer.vtkMRMLNode, event) -> None:
         node.StorableModified()

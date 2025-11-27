@@ -1,5 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
+from ltrace.slicer import helpers
+
 import slicer
 import logging
 from .defs import TriggerEvent
@@ -33,8 +35,23 @@ class NodeCustomBehaviorBase:
     """
 
     def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
-        self._node = node
+        self.__nodeId = node.GetID() if node is not None else None
         self._event = event
+
+    @property
+    def _node(self) -> None:
+        return helpers.tryGetNode(self.__nodeId)
+
+    @_node.setter
+    def _node(self, node: slicer.vtkMRMLNode) -> None:
+        if node is None:
+            self.__nodeId = None
+            return
+
+        if node.GetID() == self.__nodeId:
+            return
+
+        self.__nodeId = node.GetID()
 
     @abstractmethod
     def _afterLoad(self) -> None:
@@ -95,12 +112,12 @@ class NodeCustomBehaviorBase:
 
     def updateNodeReference(self) -> None:
         """Update the node's object reference. It changes during node' saving/loading process."""
-        assert self._node is not None, "Node object is invalid."
+        assert self.__nodeId is not None, "Node object is invalid."
 
         # Update node reference
-        node = slicer.mrmlScene.GetNodeByID(self._node.GetID())
+        node = helpers.tryGetNode(self.__nodeId)
 
-        assert node is not None, f"Couldn't retrieve a new node reference for {self._node.GetName()}."
+        assert node is not None, f"Couldn't retrieve a new node reference for {node.GetName()}."
         self._node = node
 
     def isValid(self) -> bool:

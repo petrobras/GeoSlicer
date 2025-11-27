@@ -45,9 +45,18 @@ class Markup(qt.QObject):
         self.markups_node = createTemporaryNode(cls=self.TYPE_TO_SLICER_TYPE[self.type], name="markups_node")
         slicer.modules.AppContextInstance.mainWindow.installEventFilter(self)
 
+        self.destroyed.connect(self.__del__)
+
     def __del__(self):
         self.stop_picking()
         self.__reset_markups_node()
+        self.finish_callback = None
+        self.pick_criterion = None
+        self.finish_criterion = None
+        self.update_instruction = None
+        self.start_callback = None
+        self.cancel_callback = None
+        self.after_finish_callback = None
         selection_node = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
         selection_node.SetReferenceActivePlaceNodeID(None)
         slicer.mrmlScene.RemoveNode(self.markups_node)

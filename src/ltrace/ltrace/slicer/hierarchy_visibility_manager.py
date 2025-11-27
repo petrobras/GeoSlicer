@@ -1,3 +1,5 @@
+from ltrace.slicer.node_observer import NodeObserver
+
 import slicer
 
 
@@ -8,36 +10,51 @@ class HierarchyVisibilityManager:
     of the last visibility state of the node as a workaround.
     """
 
-    def __init__(self, display_node: slicer.vtkMRMLDisplayNode, get_displayable_node: callable):
+    def __init__(self, displayNode: slicer.vtkMRMLDisplayNode, getDisplayableNode: callable):
         # Set to false to trigger visibility change on first update
-        self.__last_visibility = False
-        self.__get_displayable_node = get_displayable_node
-        display_node.AddObserver("ModifiedEvent", self.__on_node_modified)
+        self.__lastVisibility = False
+        self.__getDisplayableNode = getDisplayableNode
+        self.__nodeObserver = NodeObserver(displayNode, parent=slicer.modules.AppContextInstance.mainWindow)
+        self.__nodeObserver.modifiedSignal.connect(self.__onNodeModified)
+        self.__nodeObserver.removedSignal.connect(self.__onNodeRemoved)
 
     @staticmethod
-    def __make_all_ancestors_visible(node):
+    def __makeAllAncestorsVisible(node):
         if node is None:
             return False
         sh = slicer.mrmlScene.GetSubjectHierarchyNode()
         id_ = sh.GetItemByDataNode(node)
         if id_ == 0:
             return False
-        plugin_handler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
-        folder_plugin = plugin_handler.pluginByName("Folder")
-        scene_id = sh.GetSceneItemID()
-        while (id_ := sh.GetItemParent(id_)) != scene_id:
+        pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        folderPlugin = pluginHandler.pluginByName("Folder")
+        sceneId = sh.GetSceneItemID()
+        while (id_ := sh.GetItemParent(id_)) != sceneId:
             node = sh.GetItemDataNode(id_)
             if isinstance(node, slicer.vtkMRMLFolderDisplayNode):
-                folder_plugin.setDisplayVisibility(id_, 1)
+                folderPlugin.setDisplayVisibility(id_, 1)
             sh.SetItemDisplayVisibility(id_, True)
         return True
 
-    def __on_node_modified(self, caller, event):
-        if self.__last_visibility:
-            self.__last_visibility = caller.GetVisibility()
+    def __onNodeModified(self, nodeObserver: NodeObserver, caller: slicer.vtkMRMLNode) -> None:
+        if self.__lastVisibility:
+            self.__lastVisibility = caller.GetVisibility()
         elif caller.GetVisibility():
-            status = self.__make_all_ancestors_visible(self.__get_displayable_node(caller))
+            if self.__getDisplayableNode is None:
+                return
+
+            status = self.__makeAllAncestorsVisible(self.__getDisplayableNode(caller))
             # First few calls for volume rendering are before it's set up, we
             # should skip these so the callback is triggered again later
             if status:
-                self.__last_visibility = caller.GetVisibility()
+                self.__lastVisibility = caller.GetVisibility()
+
+    def __onNodeRemoved(self) -> None:
+        if self.__nodeObserver is not None:
+            self.__nodeObserver.deleteLater()
+            self.__nodeObserver = None
+
+        del self.__getDisplayableNode
+        self.__getDisplayableNode = None
+
+        del self

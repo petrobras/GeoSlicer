@@ -42,22 +42,22 @@ class LitePorosityOutputWidget(qt.QFrame):
         return self.compute_porosity_button.isEnabled(), self.total_porosity_output.text
 
 
-def processSegmentation(targetNode, refNode, soiNode=None) -> Tuple[str, list]:
-
+def processSegmentation(targetNode, refNode, soiNode=None, tag=None) -> Tuple[str, list]:
     labelsNode, invmap = helpers.createLabelmapInput(
         segmentationNode=targetNode,
         name="segmentationMask_",
         referenceNode=refNode,
         soiNode=soiNode,
+        tag=tag,
     )
 
     return labelsNode, invmap
 
 
-def processVolume(targetNode, soiNode=None) -> str:
+def processVolume(targetNode, soiNode=None, tag=None) -> str:
     if soiNode is None:
         return targetNode
 
     nodeSOIName = targetNode.GetName() + "_Edition"
-    clonedNode = helpers.clone_volume(targetNode, nodeSOIName, copy_names=False, as_temporary=True)
+    clonedNode = helpers.clone_volume(targetNode, nodeSOIName, copy_names=False, as_temporary=True, tag=tag)
     return helpers.maskInputWithROI(clonedNode, soiNode)

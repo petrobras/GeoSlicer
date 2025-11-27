@@ -20,4 +20,4 @@ class SegmentationDisplayNodeCustomBehavior(NodeCustomBehaviorBase):
         HierarchyVisibilityManager(node, lambda _node: _node.GetDisplayableNode())
 
     def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
-        node.RemoveAllObservers()
+        pass

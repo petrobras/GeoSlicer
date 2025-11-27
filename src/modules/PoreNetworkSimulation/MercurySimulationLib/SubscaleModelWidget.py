@@ -6,6 +6,7 @@ import qt
 import slicer
 import ast
 
+import pandas as pd
 import numpy as np
 from ltrace.pore_networks.functions_simulation import estimate_radius
 
@@ -19,10 +20,11 @@ from ltrace.slicer.ui import (
 )
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import dataframeFromTable, getResourcePath
+from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
 from ltrace.file_utils import read_csv
 from ltrace.pore_networks.subres_models import MODEL_DICT
 from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.pore_networks.subres_models import normalize_psd
 
 
 class SubscaleModelWidget(qt.QWidget):
@@ -105,6 +107,11 @@ class SubscaleModelWidget(qt.QWidget):
 
         formLayout.addRow(hbox)
 
+        self.importSIRRButton = qt.QPushButton("Load SIRR results")
+        self.importSIRRButton.setToolTip("Import SIRR CSV file.")
+        self.importSIRRButton.clicked.connect(self._onImportSIRRClicked)
+        formLayout.addRow(self.importSIRRButton)
+
         ## parameters
         porositymodifierHelpbutton = HelpButton(
             "Modifies subscale porosity.\n"
@@ -121,10 +128,11 @@ class SubscaleModelWidget(qt.QWidget):
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.porositymodifier_edit)
         hbox.addWidget(porositymodifierHelpbutton)
-        formLayout.addRow(
-            "Capillary porosity modifier",
-            hbox,
-        )
+        if slicer_is_in_developer_mode():
+            formLayout.addRow(
+                "Capillary porosity modifier",
+                hbox,
+            )
 
         shapefactorHelpbutton = HelpButton(
             "Defines Shape factor of subresolution capillary elements.\n"
@@ -156,6 +164,11 @@ class SubscaleModelWidget(qt.QWidget):
 
         subscaleBox.setLayout(formLayout)
         layout.addRow(subscaleBox)
+
+    def _onImportSIRRClicked(self):
+        mercury_simulation_widget = self.parent()
+        sirr_input_selector = mercury_simulation_widget.getSirrSelector()
+        onImportSIRRClicked(self.parameter_widgets, sirr_input_selector)
 
     def _onUnresolvedModelChange(self, new_text):
         for widget in self.parameter_widgets.values():
@@ -295,21 +308,6 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
 
-        hbox_top = qt.QHBoxLayout()
-        instructions_labels = qt.QLabel(
-            "Drag and drop a CSV file containing Pressure/Radius and Volume\n"
-            "Fraction, or use the button on the right to import from a SIRR file."
-        )
-        hbox_top.addWidget(instructions_labels)
-
-        self.importSIRRButton = qt.QPushButton("Import SIRR")
-        self.importSIRRButton.setFixedWidth(150)
-        self.importSIRRButton.setToolTip("Import SIRR CSV file.")
-        self.importSIRRButton.clicked.connect(lambda: onImportSIRRClicked(self.throatRadiusSelector))
-        hbox_top.addWidget(self.importSIRRButton)
-
-        import_layout.addRow(hbox_top)
-
         self.throatRadiusSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
         self.throatRadiusSelector.setToolTip("Select input (optional)")
         self.throatRadiusSelector.clearSelection()
@@ -400,21 +398,6 @@ class PressureCurveWidget(qt.QWidget):
         super().__init__()
         self.logic = MODEL_DICT[self.STR]
         import_layout = qt.QFormLayout(self)
-
-        hbox_top = qt.QHBoxLayout()
-        instructions_labels = qt.QLabel(
-            "Drag and drop a CSV file containing Pressure/Radius and Volume\n"
-            "Fraction, or use the button on the right to import from a SIRR file."
-        )
-        hbox_top.addWidget(instructions_labels)
-
-        self.importSIRRButton = qt.QPushButton("Import SIRR")
-        self.importSIRRButton.setFixedWidth(150)
-        self.importSIRRButton.setToolTip("Import SIRR CSV file.")
-        self.importSIRRButton.clicked.connect(lambda: onImportSIRRClicked(self.pressureCurveSelector))
-        hbox_top.addWidget(self.importSIRRButton)
-
-        import_layout.addRow(hbox_top)
 
         self.pressureCurveSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
         self.pressureCurveSelector.setToolTip("Select input (optional)")
@@ -611,14 +594,14 @@ class LeverettNewWidget(LeverettWidgetBase):
         pass
 
 
-def onImportSIRRClicked(combo_widget):
+def onImportSIRRClicked(parameter_widgets, sirr_input_selector):
     file_path = qt.QFileDialog.getOpenFileName(None, "Select SIRR CSV file", "", "CSV files (*.csv)")
     if not file_path:
-        return  # User canceled
-    importSIRR(file_path, combo_widget)
+        return
+    importSIRR(file_path, parameter_widgets, sirr_input_selector)
 
 
-def importSIRR(file_path, combo_widget):
+def importSIRR(file_path, parameter_widgets, sirr_input_selector):
     try:
         df = read_csv(Path(file_path))
 
@@ -641,6 +624,32 @@ def importSIRR(file_path, combo_widget):
 
         tableNode = dataFrameToTableNode(df)
         tableNode.SetName("SIRR imported MICP")
-        combo_widget.setCurrentNode(tableNode)  # Set the newly created table node in the combo widget
+        tableNode.SetAttribute("table_type", "micp")
+
+        normalized_psd_x, normalized_psd_y = normalize_psd(df["pc"].to_numpy(), df["dsn"].to_numpy())
+        normalized_psd = pd.DataFrame({"pc": normalized_psd_y, "dsn": normalized_psd_x})
+        normPcTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Pressure")
+        normPcTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normPcTableName)
+        normPcTable.SetAttribute("table_type", "norm_pc")
+        norm_pc_table_id = normPcTable.GetID()
+        tableNode.SetAttribute("pc_table_id", norm_pc_table_id)
+        _ = dataFrameToTableNode(normalized_psd, normPcTable)
+
+        normalized_radii_x, normalized_radii_y = normalize_psd(df["radii"].to_numpy(), df["dsn"].to_numpy())
+        normalized_radius = pd.DataFrame({"radius": normalized_radii_y, "dsn": normalized_radii_x})
+        normRadTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Radius")
+        normRadTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normRadTableName)
+        normRadTable.SetAttribute("table_type", "norm_radius")
+        norm_radius_table_id = normRadTable.GetID()
+        tableNode.SetAttribute("radius_table_id", norm_radius_table_id)
+        _ = dataFrameToTableNode(normalized_radius, normRadTable)
+
+        if "Throat Radius Curve" in parameter_widgets:
+            parameter_widgets["Throat Radius Curve"].throatRadiusSelector.setCurrentNode(tableNode)
+
+        if "Pressure Curve" in parameter_widgets:
+            parameter_widgets["Pressure Curve"].pressureCurveSelector.setCurrentNode(tableNode)
+
+        sirr_input_selector.setCurrentNode(tableNode)
     except Exception as e:
         logging.error(f"Failed to import SIRR file: {e}")

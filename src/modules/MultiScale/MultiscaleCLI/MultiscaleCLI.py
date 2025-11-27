@@ -24,17 +24,20 @@ def MPS(args):
     temporaryPath = args.temporaryPath
     params = json.loads(args.params) if args.params is not None else {}
 
+    gridResolution = np.array(params["finalImageResolution"])
+
     mpslib = mps.mpslib(method="mps_genesim")
     mpslib.parameter_filename = os.path.join(temporaryPath, "mps.txt")
+    mpslib.par["origin"] = [0 - gridResolution[0] / 2.0, 0 - gridResolution[1] / 2.0, 0 - gridResolution[2] / 2.0]
     mpslib.par["ti_fnam"] = os.path.join(temporaryPath, "ti.dat")
     mpslib.par["out_folder"] = temporaryPath
     mpslib.par["simulation_grid_size"] = np.array(params["finalImageSize"])
-    mpslib.par["grid_cell_size"] = np.array(params["finalImageResolution"])
+    mpslib.par["grid_cell_size"] = gridResolution
     mpslib.par["n_cond"] = args.ncond
     mpslib.par["n_real"] = args.nreal
     mpslib.par["n_max_ite"] = args.iterations
     mpslib.par["rseed"] = args.rseed
-    mpslib.par["hard_data_fnam"] = os.path.join("hard.dat")
+    mpslib.par["hard_data_fnam"] = os.path.join(temporaryPath, "hard.dat")
     mpslib.par["mask_fnam"] = os.path.join(temporaryPath, "mask.dat")
     mpslib.par["colocate_dimension"] = args.colocateDimensions
     mpslib.par["max_search_radius"] = args.maxSearchRadius

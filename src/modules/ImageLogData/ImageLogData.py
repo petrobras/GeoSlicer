@@ -304,10 +304,10 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.segmentationOpacity = 0.5  # Maintains opacity value between all segmentation nodes
         self.nodeAboutToBeRemoved = False  # To avoid calling primaryNodeChanged function when a node is removed
         self.debug = False  # Set true to track some function calls origin
-        self.delayedAdjustViewsVisibleRegion = DebounceCaller(
-            self, intervalMs=self.REFRESH_DELAY, callback=self.adjustViewsVisibleRegion
-        )
-        self.__delayedRefreshViews = DebounceCaller(self, intervalMs=self.REFRESH_DELAY, callback=self.__refreshViews)
+        self.delayedAdjustViewsVisibleRegion = DebounceCaller(parent=self, intervalMs=self.REFRESH_DELAY)
+        self.delayedAdjustViewsVisibleRegion.triggered.connect(self.adjustViewsVisibleRegion)
+        self.__delayedRefreshViews = DebounceCaller(parent=self, intervalMs=self.REFRESH_DELAY)
+        self.__delayedRefreshViews.triggered.connect(self.__refreshViews)
 
         slicer.app.layoutManager().layoutChanged.connect(self.onSlicerLayoutChanged)
         self.__layoutViewOpen = False
@@ -374,7 +374,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             showHideProportionsNodeButton.click()
 
     def addGraphicViewData(self, viewData):
-        for node in slicer.mrmlScene.GetNodesByClass("vtkMRMLTableNode"):
+        nodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLTableNode")
+        nodes.UnRegister(slicer.mrmlScene)
+        for node in nodes:
             if node.GetName() == viewData["primaryTableNodeColumnList"][0]:
                 self.imageLogViewList.append(ImageLogView(node))
 
@@ -1023,7 +1025,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         self.__delayedRefreshViews()
 
-    def __refreshViews(self, source=None):
+    def __refreshViews(self, *args, **kwargs):
         """
         Refreshes all the views with the current data.
         Don't call this method directly. Use the 'refreshViews' method instead.
@@ -1354,6 +1356,9 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 segmentationNode = self.getNodeById(viewData.segmentationNodeId)
                 if segmentationNode is not None and viewData.segmentationNodeHidden == False:
                     displayNode = segmentationNode.GetDisplayNode()
+                    if displayNode is None:
+                        segmentationNode.CreateDefaultDisplayNodes()
+                        displayNode = segmentationNode.GetDisplayNode()
                     displayNode.AddViewNodeID(self.viewWidgets[identifier].sliceLogic().GetSliceNode().GetID())
 
     def segmentationNodeOrSourceVolumeNodeChanged(self, segmentationNode=None, sourceVolumeNode=None):
@@ -1442,7 +1447,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
     def getViewPrimaryNode(self, identifier):
         return self.getNodeById(self.imageLogViewList[identifier].viewData.primaryNodeId)
 
-    def adjustViewsVisibleRegion(self):
+    def adjustViewsVisibleRegion(self, *args, **kwargs):
         """
         Iterates through the viewDataList and sets currentRange to the full data if it is None, or set the corresponding view range to
         currentRange.

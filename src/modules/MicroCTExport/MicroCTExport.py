@@ -276,7 +276,7 @@ class MicroCTExportWidget(LTracePluginWidget):
 
         validImages = any(imageDict.values())
         if not (tableNode or validImages):
-            slicer.util.errorDisplay("Please select an image or table to export.")
+            slicer.util.errorDisplay("Please select an image or a table to export.")
             return
 
         self.progressBar.visible = True

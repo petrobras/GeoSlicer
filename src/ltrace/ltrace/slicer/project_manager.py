@@ -645,6 +645,7 @@ class ProjectManager(qt.QObject):
 
     def __getNodesToSave(self) -> List[slicer.vtkMRMLNode]:
         nodesCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLStorableNode")
+        nodesCollection.UnRegister(slicer.mrmlScene)
         nodesCount = nodesCollection.GetNumberOfItems()
         for idx in range(nodesCount):
             node = nodesCollection.GetItemAsObject(idx)

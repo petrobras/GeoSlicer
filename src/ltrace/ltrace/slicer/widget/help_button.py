@@ -31,7 +31,7 @@ class HelpButton(qt.QToolButton):
             url = None
 
         self.mdMessage = message
-        self.url = url
+        self.url = url.toString() if isinstance(url, qt.QUrl) else url
         self.setStyleSheet("border : none;")
         self.setIcon(svgToQIcon(getResourcePath("Icons") / "svg" / "CircleHelp.svg"))
         self.setIconSize(qt.QSize(18, 18))
@@ -54,6 +54,9 @@ class HelpButton(qt.QToolButton):
 
     def updateLink(self, helpURL: str) -> None:
         # check if it is a valid URI/URL
+        if isinstance(helpURL, qt.QUrl):
+            helpURL = helpURL.toString()
+
         if not is_url(helpURL):
             helpURL = MANUAL_BASE_URL
 

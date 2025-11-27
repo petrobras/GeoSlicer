@@ -195,9 +195,14 @@ class VisualizationWidget(pqWidget):
             checkBox.checked = True
 
     def cleanUp(self) -> None:
-        for timer in [self.rockTimer, self.flickerTimer]:
-            if timer is not None:
-                timer.stop()
-                del timer
+        if self.rockTimer is not None:
+            self.rockTimer.stop()
+            self.rockTimer.deleteLater()
+            self.rockTimer = None
+
+        if self.flickerTimer is not None:
+            self.flickerTimer.stop()
+            self.flickerTimer.deleteLater()
+            self.flickerTimer = None
 
         self.connections.clear()

@@ -66,18 +66,17 @@ def onePhase(args, params):
 
     ijktoras = params["ijktoras"]
 
-    # sizes = params["sizes"]
-    # sizes_product = sizes["x"] * sizes["y"] * sizes["z"]
-
-    boundingbox = {
-        "xmin": pore_network["pore.coords"][:, 0].min(),
-        "xmax": pore_network["pore.coords"][:, 0].max(),
-        "ymin": pore_network["pore.coords"][:, 1].min(),
-        "ymax": pore_network["pore.coords"][:, 1].max(),
-        "zmin": pore_network["pore.coords"][:, 2].min(),
-        "zmax": pore_network["pore.coords"][:, 2].max(),
-    }  # mm
-    bb_sizes = {i: 0.1 * (boundingbox[f"{i}max"] - boundingbox[f"{i}min"]) for i in "xyz"}  # cm
+    bb_sizes = {}
+    for axis_name, axis_i in (("x", 0), ("y", 1), ("z", 2)):
+        bb_sizes[axis_name] = 0.1 * (
+            (pore_network["pore.coords"][:, axis_i] + pore_network["pore.extended_diameter"] / 2).max()
+            - (pore_network["pore.coords"][:, axis_i] - pore_network["pore.extended_diameter"] / 2).min()
+        )  # cm
+    lengths = {}
+    for axis_name, axis_i in (("x", 0), ("y", 1), ("z", 2)):
+        lengths[axis_name] = 0.1 * (
+            pore_network["pore.coords"][:, axis_i].max() - pore_network["pore.coords"][:, axis_i].min()
+        )  # cm
     sizes_product = bb_sizes["x"] * bb_sizes["y"] * bb_sizes["z"]
 
     subres_func = set_subres_model(pore_network, params)
@@ -112,24 +111,24 @@ def onePhase(args, params):
             continue
         net = perm.project.network
 
-        flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
-
+        flow_rate = get_flow_rate(
+            pn_pores, pn_throats, viscosity=params["fluid_viscosity"], pressure_drop=params["pressure_drop"]
+        )  # mm^3/s
+        flow_rate *= 1e-3  # cm^3/s
         if in_face[0] == out_face[0]:
-            length = bb_sizes[in_faces[2 - inlet][0]]  # cm
+            length = lengths[in_faces[2 - inlet][0]]  # cm
             if params["cilindrical_sample"] and in_faces[2 - inlet][0] == "z":
                 area = (np.pi / 4.0) * sizes_product / length  # cm^2
             else:
-                area = sizes_product / length  # cm^2
+                area = sizes_product / bb_sizes[in_faces[2 - inlet][0]]  # cm^2
             mu = params["fluid_viscosity"]  # Pa*s
             deltaP = params["pressure_drop"]  # Pa
-            permeability = 0.01**2 * (flow_rate / area) * (mu * length / deltaP)  # m^2
+            permeability = (flow_rate / area) * (mu * length / deltaP)  # cm^2
         else:
             # Darcy permeability for pluridimensional flow is undefined
             permeability = 0
         flow_array[0, inlet] = flow_rate
-        # flow_array[outlet, 0] = flow_rate
-        permeability_array[0, inlet] = permeability * 1000 / 9.869233e-13  # Conversion factor from m^2 to milidarcy
-        # permeability_array[outlet, 0] = permeability * 1000 / 9.869233e-13  # Conversion factor from m^2 to milidarcy
+        permeability_array[0, inlet] = permeability * 1.01325e11  # Conversion factor from cm^2 to milidarcy
 
         if params["visualization"]:  # Create VTK models
             # throat_values = np.log10(perm.rate(throats=perm.network.throats("all"), mode="individual"))
@@ -275,7 +274,7 @@ def onePhaseMultiAngle(args, params):
             permeabilities.append((px, py, pz, 0))
             continue
 
-        flow_rate = get_flow_rate(pn_pores, pn_throats)  # cm^3/s
+        flow_rate = get_flow_rate(pn_pores, pn_throats, viscosity=0.001, pressure_drop=101325.0)  # cm^3/s
 
         permeability = flow_rate / (2 * bb_radius)  # return is Darcy
         permeabilities.append((px, py, pz, permeability))
@@ -446,9 +445,6 @@ def simulate_mercury(args, params):
         save_tables=params["save_tables"],
     )
 
-    with open(str(cwd / "net_flow_props.dict"), "wb") as file:
-        pickle.dump(sub_network, file)
-
     net = openpnm.io.network_from_porespy(sub_network)
 
     hg = openpnm.phase.Mercury(network=net, name="mercury")
@@ -469,13 +465,17 @@ def simulate_mercury(args, params):
     low = 0.80 * phase[mip.settings.throat_entry_pressure].min()
     pressures = np.logspace(np.log10(low), np.log10(hi), params["pressures"])
     pressures = np.array(pressures, ndmin=1)
+    sub_network["pore.invasion_pressure"] = np.zeros(net["pore.all"].size, dtype=np.float64)
+    sub_network["throat.invasion_pressure"] = np.zeros(net["throat.all"].size, dtype=np.float64)
     for i, p in enumerate(pressures):
         mip._run_special(p)
         pmask = mip["pore.invaded"] * (mip["pore.invasion_pressure"] == np.inf)
         mip["pore.invasion_pressure"][pmask] = p
+        sub_network["pore.invasion_pressure"][pmask] = p
         mip["pore.invasion_sequence"][pmask] = i
         tmask = mip["throat.invaded"] * (mip["throat.invasion_pressure"] == np.inf)
         mip["throat.invasion_pressure"][tmask] = p
+        sub_network["throat.invasion_pressure"][tmask] = p
         mip["throat.invasion_sequence"][tmask] = i
         progressUpdate(value=int(100 * i / pressures.size))
     # if np.any(mip["pore.bc.outlet"]):
@@ -485,6 +485,9 @@ def simulate_mercury(args, params):
 
     df = pd.DataFrame({"pc": pc.pc, "snwp": pc.snwp})
     writeDataFrame(df, cwd / "micpResults.pd")
+
+    with open(str(cwd / "net_flow_props.dict"), "wb") as file:
+        pickle.dump(sub_network, file)
 
     dict_file = open(str(cwd / "return_net.dict"), "wb")
     pickle.dump(net, dict_file)

@@ -771,15 +771,18 @@ class RawLoaderLogic:
         if node is None:
             return
 
-        if self._currentNodeObserver is not None:
-            self._currentNodeObserver.clear()
-            self._currentNodeObserver.deleteLater()
-
+        self._resetNodeObserver()
         self._currentNodeObserver = NodeObserver(node, parent=self)
         self._currentNodeObserver.removedSignal.connect(self.onCurrentNodeRemoved)
 
     def onCurrentNodeRemoved(self):
         self._currentNodeId = None
-        self._currentNodeObserver.clear()
+        self._resetNodeObserver()
+
+    def _resetNodeObserver(self) -> None:
+        if self._currentNodeObserver is None:
+            return
+
+        self._currentNodeObserver.removedSignal.disconnect(self.onCurrentNodeRemoved)
         self._currentNodeObserver.deleteLater()
         self._currentNodeObserver = None

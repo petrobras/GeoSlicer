@@ -471,7 +471,7 @@ def single_phase_permeability(
         darcy_solver.generate_preconditioner(preconditioner)
         x, error, iterations = darcy_solver.solve_pcg()
 
-        pressure = network_manager.get_pressure_list(x)
+        pressure = network_manager.get_pressure_list(x, pressure_drop=pressure_drop)
 
     elif solver == "pypardiso":
         conn = perm.network["throat.conns"].astype(np.int32)
@@ -492,7 +492,7 @@ def single_phase_permeability(
             )
         )
         x = spsolve(A_csr, b_array)
-        pressure = network_manager.get_pressure_list(x)
+        pressure = network_manager.get_pressure_list(x, pressure_drop=pressure_drop)
 
     project = perm.project
     pore_dict = {}
@@ -523,7 +523,7 @@ def single_phase_permeability(
     return (perm, pore_dict, throat_dict)
 
 
-def get_flow_rate(pn_pores, pn_throats):
+def get_flow_rate(pn_pores, pn_throats, viscosity, pressure_drop):
     inlet_flow_total = np.float64(0.0)
     outlet_flow_total = np.float64(0.0)
     inlets = pn_pores["pore.inlets"]
@@ -539,7 +539,7 @@ def get_flow_rate(pn_pores, pn_throats):
         p1 = pn_throats["throat.conns_1"][throat]
         c = pn_throats["throat.conductance"][throat]
         delta_p[throat] = pn_pores["pore.pressure"][p1] - pn_pores["pore.pressure"][p0]
-        flow[throat] = delta_p[throat] * c
+        flow[throat] = delta_p[throat] * c / viscosity
     pn_throats["throat.flow"] = flow
     pn_throats["throat.delta_p"] = delta_p
 
@@ -549,21 +549,21 @@ def get_flow_rate(pn_pores, pn_throats):
         p1 = pn_throats["throat.conns_1"][throat]
         c = pn_throats["throat.conductance"][throat]
         if inlets[p0] and (not border_pore[p1]):
-            inlet_flow_total += c * (np.float64(101325.0) - pn_pores["pore.pressure"][p1])
-            inlet_flow[throat] = c * (np.float64(101325.0) - pn_pores["pore.pressure"][p1])
+            inlet_flow_total += c * (np.float64(pressure_drop) - pn_pores["pore.pressure"][p1]) / viscosity
+            inlet_flow[throat] = c * (np.float64(pressure_drop) - pn_pores["pore.pressure"][p1]) / viscosity
         if inlets[p1] and (not border_pore[p0]):
-            inlet_flow_total += c * (np.float64(101325.0) - pn_pores["pore.pressure"][p0])
-            inlet_flow[throat] = c * (np.float64(101325.0) - pn_pores["pore.pressure"][p0])
+            inlet_flow_total += c * (np.float64(pressure_drop) - pn_pores["pore.pressure"][p0]) / viscosity
+            inlet_flow[throat] = c * (np.float64(pressure_drop) - pn_pores["pore.pressure"][p0]) / viscosity
         if outlets[p0] and (not border_pore[p1]):
-            outlet_flow_total += c * (pn_pores["pore.pressure"][p1])
-            outlet_flow[throat] = c * (pn_pores["pore.pressure"][p1])
+            outlet_flow_total += c * (pn_pores["pore.pressure"][p1]) / viscosity
+            outlet_flow[throat] = c * (pn_pores["pore.pressure"][p1]) / viscosity
         if outlets[p1] and (not border_pore[p0]):
-            outlet_flow_total += c * (pn_pores["pore.pressure"][p0])
-            outlet_flow[throat] = c * (pn_pores["pore.pressure"][p0])
+            outlet_flow_total += c * (pn_pores["pore.pressure"][p0]) / viscosity
+            outlet_flow[throat] = c * (pn_pores["pore.pressure"][p0]) / viscosity
 
     pn_throats["throat.outlet_flow"] = outlet_flow
     pn_throats["throat.inlet_flow"] = inlet_flow
     pn_throats["throat.flow"] = flow
 
-    flow_rate = (outlet_flow_total + inlet_flow_total) / 2
+    flow_rate = (outlet_flow_total + inlet_flow_total) / 2  # mm^3/s
     return flow_rate

@@ -9,6 +9,8 @@ import numpy as np
 import pyqtgraph as pg
 import qt
 import slicer
+
+from dataclasses import dataclass
 from ltrace.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from typing import Union
@@ -101,7 +103,18 @@ class CustomAxisItem(pg.AxisItem):
         self.callback()
 
 
-PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter", "view_box"])
+@dataclass
+class PlotInformation:
+    graph_data: NodeGraphData
+    x_parameter: Union[str, list[str]]
+    y_parameter: str
+    view_box: str
+
+    def __del__(self):
+        if self.graph_data is not None:
+            self.graph_data.deleteLater()
+
+
 PLOT_UPDATE_TIMER_INTERVAL_MS = 50
 PLOT_MINIMUM_HEIGHT = 200
 PRIMARY_VIEW_BOX = "primary"
@@ -245,7 +258,7 @@ class CurvePlot(QtWidgets.QWidget):
             self.plot_update_timer.deleteLater()
             self.plot_update_timer = None
 
-        self.plot_update_timer = QtCore.QTimer()
+        self.plot_update_timer = QtCore.QTimer(self)
         self.plot_update_timer.setSingleShot(True)
         self.plot_update_timer.timeout.connect(lambda: self.__handle_update_plot())
         self.plot_update_timer.setInterval(PLOT_UPDATE_TIMER_INTERVAL_MS)

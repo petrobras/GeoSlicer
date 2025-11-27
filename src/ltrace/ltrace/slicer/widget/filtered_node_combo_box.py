@@ -27,7 +27,9 @@ class FilteredNodeComboBox(qt.QComboBox):
         nodesToAdd = []
 
         for nodeType in self.nodeTypes:
-            nodesToAdd += slicer.mrmlScene.GetNodesByClass(nodeType)
+            nodes = slicer.mrmlScene.GetNodesByClass(nodeType)
+            nodes.UnRegister(slicer.mrmlScene)
+            nodesToAdd += nodes
 
         for node in nodesToAdd:
             # Avoid duplication of imagelog proportions node in current widget

@@ -138,11 +138,28 @@ Enter a name to be used as a prefix for the results object (labelmap where each 
 
 ##### Definition of pore classes:
 
-* __Micropore__: class = 0, max_feret less than 0.062 mm.
-* __Very small mesopore__: class = 1, max_feret between 0.062 and 0.125 mm.
-* __Small mesopore__: class = 2, max_feret between 0.125 and 0.25 mm.
-* __Medium mesopore__: class = 3, max_feret between 0.25 and 0.5 mm.
-* __Large mesopore__: class = 4, max_feret between 0.5 and 1 mm.
-* __Very large mesopore__: class = 5, max_feret between 1 and 4 mm.
-* __Small megapre__: class = 6, max_feret between 4 and 32 mm.
-* __Large megapre__: class = 7, max_feret greater than 32 mm.
+* __Microporo__: class = 0, max_feret less than 0.062 mm.
+* __Mesoporo muito pequeno__: class = 1, max_feret between 0.062 and 0.125 mm.
+* __Mesoporo pequeno__: class = 2, max_feret between 0.125 and 0.25 mm.
+* __Mesoporo médio__: class = 3, max_feret between 0.25 and 0.5 mm.
+* __Mesoporo grande__: class = 4, max_feret between 0.5 and 1 mm.
+* __Mesoporo muito grande__: class = 5, max_feret between 1 and 4 mm.
+* __Megaporo pequeno__: class = 6, max_feret between 4 and 32 mm.
+* __Megaporo grande__: class = 7, max_feret greater than 32 mm.
+
+##### Definition of grain classes:
+
+* __Argila__: class = 0, max_feret less than 0.004 mm.
+* __Silte muito fino__: class = 1, max_feret between 0.004 and 0.008 mm.
+* __Silte fino__: class = 2, max_feret between 0.008 and 0.016 mm.
+* __Silte médio__: class = 3, max_feret between 0.016 and 0.031 mm.
+* __Silte grosso__: class = 4, max_feret between 0.031 and 0.062 mm.
+* __Areia muito fina__: class = 5, max_feret between 0.062 and 0.125 mm.
+* __Areia fina__: class = 6, max_feret between 0.125 and 0.25 mm.
+* __Areia média__: class = 7, max_feret between 0.25 and 0.5 mm.
+* __Areia grossa__: class = 8, max_feret between 0.5 and 1 mm.
+* __Areia muito grossa__: class = 9, max_feret between 1 and 2 mm.
+* __Grânulo__: class = 10, max_feret between 2 and 4 mm.
+* __Seixo__: class = 11, max_feret between 4 and 64 mm.
+* __Bloco ou Calhau__: class = 12, max_feret between 64 and 256 mm.
+* __Matacão__: class = 13, max_feret greater than 256 mm.

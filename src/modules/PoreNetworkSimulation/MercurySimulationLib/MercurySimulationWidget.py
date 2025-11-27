@@ -61,17 +61,83 @@ class MercurySimulationWidget(qt.QFrame):
         self.micpSelector.showEmptyHierarchyItems = False
         self.micpSelector.addNodeAttributeIncludeFilter("table_type", "micp")
         self.micpSelector.currentItemChanged.connect(self.onChangeMicp)
-        labelWidget = qt.QLabel("Input Model Node: ")
-        micpFormLayout.addRow(labelWidget, self.micpSelector)
+        labelWidget = qt.QLabel("Simulation Results Node: ")
+
+        micpSelectorLayout = qt.QHBoxLayout()
+        micpSelectorLayout.addWidget(self.micpSelector)
+        self.toggleMicpButton = qt.QPushButton("Hide")
+        self.toggleMicpButton.setCheckable(True)
+        self.toggleMicpButton.setChecked(True)
+        self.toggleMicpButton.setToolTip("Toggle simulation plots visibility")
+        self.toggleMicpButton.toggled.connect(self.onToggleMicpPlots)
+        self.toggleMicpButton.setFixedWidth(50)
+        micpSelectorLayout.addWidget(self.toggleMicpButton)
+        micpFormLayout.addRow(labelWidget, micpSelectorLayout)
+
+        self.sirrSelector = hierarchyVolumeInput(nodeTypes=["vtkMRMLTableNode"])
+        self.sirrSelector.showEmptyHierarchyItems = False
+        self.sirrSelector.addNodeAttributeIncludeFilter("table_type", "micp")
+        self.sirrSelector.setToolTip("Select a SIRR imported MICP table node.")
+        self.sirrSelector.objectName = "SIRR Input Selector"
+        self.sirrSelector.currentItemChanged.connect(self.onChangeSirrMicp)
+        sirrLabelWidget = qt.QLabel("Reference Table Node: ")
+
+        sirrSelectorLayout = qt.QHBoxLayout()
+        sirrSelectorLayout.addWidget(self.sirrSelector)
+        self.toggleSirrButton = qt.QPushButton("Hide")
+        self.toggleSirrButton.setCheckable(True)
+        self.toggleSirrButton.setChecked(True)
+        self.toggleSirrButton.setToolTip("Toggle SIRR plots visibility")
+        self.toggleSirrButton.toggled.connect(self.onToggleSirrPlots)
+        self.toggleSirrButton.setFixedWidth(50)
+        sirrSelectorLayout.addWidget(self.toggleSirrButton)
+        micpFormLayout.addRow(sirrLabelWidget, sirrSelectorLayout)
 
         # plots
         pysideReportForm = shiboken2.wrapInstance(hash(micpFormLayout), pyside.QtWidgets.QFormLayout)
         self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
         self.subvolumeGraphicsLayout.setMinimumHeight(600)
         self.subvolumeGraphicsLayout.setMinimumWidth(100)
+
+        # SIRR Plots (Background)
         self.micpPlotItem = self.subvolumeGraphicsLayout.addPlot(
             row=1, col=1, rowspan=1, colspan=1, left="Pc", bottom="Shg"
         )
+        self.micpSirrSeries = self.micpPlotItem.plot(
+            name="micp_sirr",
+            pen=pg.mkPen((255, 100, 100), width=2, style=QtCore.Qt.DotLine),
+            symbol="t",
+            symbolPen=(255, 100, 100),
+            symbolSize=8,
+            symbolBrush=(255, 100, 100),
+        )
+        self.micpSirrSeries.getViewBox().invertX(True)
+
+        self.pcPlotItem = self.subvolumeGraphicsLayout.addPlot(
+            row=2, col=1, rowspan=1, colspan=1, left="dsn", bottom="Pc"
+        )
+        self.pcSirrSeries = self.pcPlotItem.plot(
+            name="pc_sirr",
+            pen=pg.mkPen((100, 200, 100), width=2, style=QtCore.Qt.DotLine),
+            symbol="t",
+            symbolPen=(100, 200, 100),
+            symbolSize=8,
+            symbolBrush=(100, 200, 100),
+        )
+
+        self.radiiPlotItem = self.subvolumeGraphicsLayout.addPlot(
+            row=3, col=1, rowspan=1, colspan=1, left="dsn", bottom="Radius"
+        )
+        self.radiiSirrSeries = self.radiiPlotItem.plot(
+            name="radii_sirr",
+            pen=pg.mkPen((150, 150, 255), width=2, style=QtCore.Qt.DotLine),
+            symbol="t",
+            symbolPen=(150, 150, 255),
+            symbolSize=8,
+            symbolBrush=(150, 150, 255),
+        )
+
+        # Simulation Plots (Foreground)
         self.micpSeries = self.micpPlotItem.plot(
             name="micp",
             pen=pg.mkPen("r", width=2, style=QtCore.Qt.DashLine),
@@ -79,10 +145,6 @@ class MercurySimulationWidget(qt.QFrame):
             symbolPen="r",
             symbolSize=8,
             symbolBrush="r",
-        )
-        self.micpSeries.getViewBox().invertX(True)
-        self.pcPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=2, col=1, rowspan=1, colspan=1, left="dsn", bottom="Pc"
         )
         self.pcSeries = self.pcPlotItem.plot(
             name="pc",
@@ -92,9 +154,6 @@ class MercurySimulationWidget(qt.QFrame):
             symbolSize=8,
             symbolBrush="g",
         )
-        self.radiiPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=3, col=1, rowspan=1, colspan=1, left="dsn", bottom="Radius"
-        )
         self.radiiSeries = self.radiiPlotItem.plot(
             name="radii",
             pen=pg.mkPen((50, 50, 255), width=2, style=QtCore.Qt.DashLine),
@@ -103,31 +162,98 @@ class MercurySimulationWidget(qt.QFrame):
             symbolSize=8,
             symbolBrush=(50, 50, 255),
         )
+
         self.micpPlotItem.addLegend()
         self.pcPlotItem.addLegend()
         self.radiiPlotItem.addLegend()
         pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
+    def getSirrSelector(self):
+        return self.sirrSelector
+
+    def onToggleMicpPlots(self, visible):
+        self.toggleMicpButton.setText("Hide" if visible else "Show")
+        if visible:
+            self.micpSeries.show()
+            self.pcSeries.show()
+            self.radiiSeries.show()
+        else:
+            self.micpSeries.hide()
+            self.pcSeries.hide()
+            self.radiiSeries.hide()
+
+    def onToggleSirrPlots(self, visible):
+        self.toggleSirrButton.setText("Hide" if visible else "Show")
+        if visible:
+            self.micpSirrSeries.show()
+            self.pcSirrSeries.show()
+            self.radiiSirrSeries.show()
+        else:
+            self.micpSirrSeries.hide()
+            self.pcSirrSeries.hide()
+            self.radiiSirrSeries.hide()
+
+    def onChangeSirrMicp(self):
+        sirr_table_node = self.sirrSelector.currentNode()
+        if not sirr_table_node:
+            self.micpSirrSeries.clear()
+            self.pcSirrSeries.clear()
+            self.radiiSirrSeries.clear()
+            return
+        pc_table_id = sirr_table_node.GetAttribute("pc_table_id")
+        radius_table_id = sirr_table_node.GetAttribute("radius_table_id")
+        pc_table = slicer.mrmlScene.GetNodeByID(pc_table_id)
+        radius_table = slicer.mrmlScene.GetNodeByID(radius_table_id)
+
+        pc_points_vtk_array = sirr_table_node.GetTable().GetColumnByName("pc")
+        self.second_pc_values = vtk_to_numpy(pc_points_vtk_array)
+        snwp_points_vtk_array = sirr_table_node.GetTable().GetColumnByName("snwp")
+        self.second_snwp_values = vtk_to_numpy(snwp_points_vtk_array)
+
+        pc_y_vtk_array = pc_table.GetTable().GetColumnByName("dsn")
+        self.second_pc_y_values = vtk_to_numpy(pc_y_vtk_array)
+        pc_x_vtk_array = pc_table.GetTable().GetColumnByName("pc")
+        self.second_pc_x_values = vtk_to_numpy(pc_x_vtk_array)
+
+        radius_y_vtk_array = radius_table.GetTable().GetColumnByName("dsn")
+        self.second_radius_y_values = vtk_to_numpy(radius_y_vtk_array)
+        radius_x_vtk_array = radius_table.GetTable().GetColumnByName("radius")
+        self.second_radius_x_values = vtk_to_numpy(radius_x_vtk_array)
+
+        self.micpSirrSeries.setData(self.second_snwp_values, self.second_pc_values)
+        self.pcSirrSeries.setData(self.second_pc_x_values[:-1], self.second_pc_y_values[:-1])
+        self.radiiSirrSeries.setData(self.second_radius_x_values[:-1], self.second_radius_y_values[:-1])
+
     def onChangeMicp(self):
         micp_table_node = self.micpSelector.currentNode()
         if not micp_table_node:
+            self.micpSeries.clear()
+            self.pcSeries.clear()
+            self.radiiSeries.clear()
             return
-        micp_data = micp_table_node.GetAttribute("micp_data")
-        pc_data = micp_table_node.GetAttribute("pc_data")
-        radii_data = micp_table_node.GetAttribute("radii_data")
+        pc_table_id = micp_table_node.GetAttribute("pc_table_id")
+        radius_table_id = micp_table_node.GetAttribute("radius_table_id")
+        pc_table = slicer.mrmlScene.GetNodeByID(pc_table_id)
+        radius_table = slicer.mrmlScene.GetNodeByID(radius_table_id)
 
         pc_points_vtk_array = micp_table_node.GetTable().GetColumnByName("pc")
         self.pc_values = vtk_to_numpy(pc_points_vtk_array)
         snwp_points_vtk_array = micp_table_node.GetTable().GetColumnByName("snwp")
         self.snwp_values = vtk_to_numpy(snwp_points_vtk_array)
-        dsn_points_vtk_array = micp_table_node.GetTable().GetColumnByName("dsn")
-        self.dsn_values = vtk_to_numpy(dsn_points_vtk_array)
-        throat_radii_points_vtk_array = micp_table_node.GetTable().GetColumnByName("radii")
-        self.throat_radii_values = vtk_to_numpy(throat_radii_points_vtk_array)
+
+        pc_y_vtk_array = pc_table.GetTable().GetColumnByName("dsn")
+        self.pc_y_values = vtk_to_numpy(pc_y_vtk_array)
+        pc_x_vtk_array = pc_table.GetTable().GetColumnByName("pc")
+        self.pc_x_values = vtk_to_numpy(pc_x_vtk_array)
+
+        radius_y_vtk_array = radius_table.GetTable().GetColumnByName("dsn")
+        self.radius_y_values = vtk_to_numpy(radius_y_vtk_array)
+        radius_x_vtk_array = radius_table.GetTable().GetColumnByName("radius")
+        self.radius_x_values = vtk_to_numpy(radius_x_vtk_array)
 
         self.micpSeries.setData(self.snwp_values, self.pc_values)
-        self.pcSeries.setData(self.pc_values[:-1], self.dsn_values[:-1])
-        self.radiiSeries.setData(self.throat_radii_values[:-1], self.dsn_values[:-1])
+        self.pcSeries.setData(self.pc_x_values, self.pc_y_values)
+        self.radiiSeries.setData(self.radius_x_values, self.radius_y_values)
 
     def getFunction(self, pore_node):
         pore_network = geo2spy(pore_node)

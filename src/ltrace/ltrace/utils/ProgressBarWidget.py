@@ -57,6 +57,7 @@ class ProgressBarWidget(QWidget):
 
             if self.errorCount >= 30:
                 self.timer.stop()
+                self.timer.deleteLater()
                 self.timer = None
                 self.deleteLater()
 

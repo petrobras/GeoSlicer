@@ -16,6 +16,9 @@ GITHUB_REPO_URL = "git@github.com:ltracegeo/GeoSlicerManual.git"
 # The name for the git remote URL that points to the GitHub repo.
 REMOTE_NAME = "manual"
 
+# The default branch to deploy to.
+DEFAULT_TARGET_BRANCH = "gh-page"
+
 # The path to the mkdocs.yml file.
 MKDOCS_YML_PATH = (Path(__file__).parent / "mkdocs.yml").as_posix()
 
@@ -56,7 +59,9 @@ def setup_git_remote(remote_name: str, remote_url: str) -> None:
     try:
         remote = repo.remote(name=remote_name)
         if remote.url != remote_url:
-            logger.warning(f"⚠️ Remote '{remote_name}' found, but with incorrect URL. Updating...")
+            logger.warning(
+                f"⚠️ Remote '{remote_name}' found, but with incorrect URL '{remote.url}'. Updating to '{remote_url}'..."
+            )
             remote.set_url(remote_url)
             logger.info(f"✅ URL for remote '{remote_name}' updated to '{remote_url}'.")
     except ValueError:
@@ -67,52 +72,61 @@ def setup_git_remote(remote_name: str, remote_url: str) -> None:
     logger.info("✅ Git remote setup complete.")
 
 
-def run(args: argparse.Namespace) -> None:
+def run(
+    version: str,
+    aliases: list[str],
+    set_default: bool = False,
+    push: bool = True,
+    target_branch: str = DEFAULT_TARGET_BRANCH,
+    remote_name: str = REMOTE_NAME,
+) -> None:
     """
     Runs the main deployment process after argparse has parsed arguments.
     """
 
     # Ensure the git remote is configured correctly.
-    setup_git_remote(args.remote, GITHUB_REPO_URL)
+    setup_git_remote(remote_name, GITHUB_REPO_URL)
 
+    version = version.replace("v", "")
     # Deploy the specified version and any aliases using mike.
-    logger.info(f"🚀 Deploying version '{args.version}'...")
+    logger.info(f"🚀 Deploying documentation version '{version}' to '{GITHUB_REPO_URL}'...")
     deploy_cmd = [
         "mike",
         "deploy",
+        "--update-aliases",
         f"--config-file={MKDOCS_YML_PATH}",
-        f"--remote={args.remote}",
-        f"--branch={args.branch}",
-        f'--message="Deploying documentation version {args.version}"',
+        f"--remote={remote_name}",
+        f"--branch={target_branch}",
+        f'--message="Deploying documentation version {version}"',
     ]
-    if args.push:
+    if push:
         deploy_cmd.append("--push")
 
     # Add version and aliases to the command
-    deploy_cmd.extend([args.version] + args.aliases)
+    deploy_cmd.extend([version] + aliases)
     run_command(deploy_cmd)
 
     # Optionally, set the new version as the default.
-    if args.set_default:
+    if set_default:
         logger.info(f"👑 Setting default version...")
         default_cmd = [
             "mike",
             "set-default",
-            f"--remote={args.remote}",
-            f"--branch={args.branch}",
-            f'--message="Setting documentation version {args.version} as default"',
+            f"--remote={remote_name}",
+            f"--branch={target_branch}",
+            f'--message="Setting documentation version {version} as default"',
         ]
-        if args.push:
+        if push:
             default_cmd.append("--push")
 
         # Set the alias 'latest' or the version itself as the default
-        default_target = "latest" if "latest" in args.aliases else args.version
+        default_target = "latest" if "latest" in aliases else version
         default_cmd.append(default_target)
         run_command(default_cmd)
 
     logger.info("🎉 Deployment successful!")
     logger.info("Check the Pages settings in your GitHub repository to ensure the site is published.")
-    logger.info(f"🔗 https://ltracegeo.github.io/GeoSlicerManual/{args.version}/")
+    logger.info(f"🔗 https://ltracegeo.github.io/GeoSlicerManual/{version}/")
 
 
 def main():
@@ -121,29 +135,37 @@ def main():
     This script uses 'mike' for versioning.
 
     Usage:
-        python deploy.py <version> [aliases...] [--set-default]
+        python deploy_manual.py <version> [aliases...] [--set-default]
 
     Example:
         # Deploy version 1.0.0 and alias it as 'latest'
-        python deploy.py 1.0.0 latest
+        python deploy_manual.py 1.0.0 latest
 
         # Deploy version 1.1.0, alias it as 'latest', and make it the default
-        python deploy.py 1.1.0 latest --set-default
+        python deploy_manual.py 1.1.0 latest --set-default
     """
     parser = argparse.ArgumentParser(description="Deploy a versioned MkDocs site to GitHub Pages.")
     parser.add_argument("version", help='The version to deploy (e.g., "1.0.0").')
     parser.add_argument("aliases", nargs="*", help='Optional aliases for the version (e.g., "latest").')
     parser.add_argument("--remote", default=REMOTE_NAME, help="The git remote URL repository to deploy to.")
-    parser.add_argument("--set-default", action="store_true", help="Set this version as the default.")
+    parser.add_argument("--set-default", action="store_true", default=False, help="Set this version as the default.")
     parser.add_argument(
         "--no-push", dest="push", default=True, action="store_false", help="Disable pushing to the remote repository."
     )
-    parser.add_argument("--branch", default="main", help="The branch to deploy to.")
+    parser.add_argument("--branch", default=DEFAULT_TARGET_BRANCH, help="The branch to deploy to.")
 
     parsed_args = parser.parse_args()
 
-    run(parsed_args)
+    run(
+        version=parsed_args.version,
+        aliases=parsed_args.aliases,
+        set_default=parsed_args.set_default,
+        push=parsed_args.push,
+        target_branch=parsed_args.branch,
+        remote_name=parsed_args.remote,
+    )
 
 
 if __name__ == "__main__":
     main()
+    sys.exit(0)

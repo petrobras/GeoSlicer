@@ -20,6 +20,8 @@ class PixelSizeEditor(qt.QWidget):
         super().__init__(parent)
 
         self._currentNodeId = None
+        self._currentNodeObserver = None
+        self.markup = None
 
         self.loadFormLayout = qt.QFormLayout(self)
         self.loadFormLayout.setLabelAlignment(qt.Qt.AlignRight)
@@ -70,6 +72,10 @@ class PixelSizeEditor(qt.QWidget):
         def finish_callback(caller_markup, point_index=None):
             self.scaleSizePxLineEdit.text = round(caller_markup.get_line_length_in_pixels())
             self.__on_size_field_edited(self.FIELD_SCALE_SIZE_PX)
+            if self.markup:
+                self.markup.finish_callback = None
+                self.marku.finish_criterion = None
+                self.markup.deleteLater()
 
         def finish_criterion(caller_markup, point_index=None):
             return caller_markup.get_number_of_selected_points() >= 2
@@ -187,6 +193,7 @@ class PixelSizeEditor(qt.QWidget):
 
         if node is not None:
             if self._currentNodeObserver is not None:
+                self._currentNodeObserver.removedSignal.disconnect(self.onCurrentNodeRemoved)
                 self._currentNodeObserver.deleteLater()
 
             self._currentNodeObserver = NodeObserver(node, parent=self)
@@ -194,5 +201,6 @@ class PixelSizeEditor(qt.QWidget):
 
     def onCurrentNodeRemoved(self, nodeObserver: NodeObserver, node: slicer.vtkMRMLNode):
         self._currentNodeId = None
-        self._currentNodeObserver.deleteLater()
-        self._currentNodeObserver = None
+        if self._currentNodeObserver is not None:
+            self._currentNodeObserver.deleteLater()
+            self._currentNodeObserver = None

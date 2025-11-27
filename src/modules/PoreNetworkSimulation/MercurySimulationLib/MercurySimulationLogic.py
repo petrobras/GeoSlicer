@@ -19,7 +19,7 @@ from ltrace.pore_networks.functions import (
     estimate_radius,
     estimate_pressure,
 )
-from ltrace.pore_networks.subres_models import get_scalar_volume_data
+from ltrace.pore_networks.subres_models import get_scalar_volume_data, normalize_psd
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import (
     LTracePluginLogic,
@@ -138,6 +138,24 @@ class MercurySimulationLogic(LTracePluginLogic):
         _ = dataFrameToTableNode(micp_results, micpTable)
         _ = folderTree.CreateItem(self.rootDir, micpTable)
 
+        normalized_psd_x, normalized_psd_y = normalize_psd(pc.pc.to_numpy(), delta_saturation)
+        normalized_psd = pd.DataFrame({"pc": normalized_psd_y, "dsn": normalized_psd_x})
+        normPcTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Pressure")
+        normPcTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normPcTableName)
+        normPcTable.SetAttribute("table_type", "norm_pc")
+        self.norm_pc_table_id = micpTable.GetID()
+        _ = dataFrameToTableNode(normalized_psd, normPcTable)
+        _ = folderTree.CreateItem(self.rootDir, normPcTable)
+
+        normalized_radii_x, normalized_radii_y = normalize_psd(throat_radii.to_numpy(), delta_saturation)
+        normalized_radius = pd.DataFrame({"radius": normalized_radii_y, "dsn": normalized_radii_x})
+        normRadTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Radius")
+        normRadTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normRadTableName)
+        normRadTable.SetAttribute("table_type", "norm_radius")
+        self.norm_radius_table_id = normRadTable.GetID()
+        _ = dataFrameToTableNode(normalized_radius, normRadTable)
+        _ = folderTree.CreateItem(self.rootDir, normRadTable)
+
         with open(str(self.cwd / "net_flow_props.dict"), "rb") as file:
             net_flow_props = pickle.load(file)
         spy2geo(net_flow_props)
@@ -155,12 +173,14 @@ class MercurySimulationLogic(LTracePluginLogic):
         _ = dataFrameToTableNode(pd.DataFrame(net_throat_flow_props), flowPropsThroatTable)
         _ = folderTree.CreateItem(self.rootDir, flowPropsThroatTable)
 
-        self.setChartNodes(micpTable, self.rootDir)
+        micpTable.SetAttribute("pc_table_id", normPcTable.GetID())
+        micpTable.SetAttribute("radius_table_id", normRadTable.GetID())
+        self.setChartNodes(micpTable, normRadTable, normPcTable, self.rootDir)
 
         if self.params["save_radii_distrib_plots"]:
             self.setDistributionFolderAndChartNodes(self.rootDir, net, micp_results, self.params["experimental_radius"])
 
-    def setChartNodes(self, micpTable, currentDir):
+    def setChartNodes(self, micpTable, normRadTable, normPcTable, currentDir):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
 
         seriesSnwpNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Simulated MICP Curve")
@@ -177,8 +197,8 @@ class MercurySimulationLogic(LTracePluginLogic):
         folderTree.CreateItem(currentDir, seriesSnwpNode)
 
         seriesDeltaNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Effective Pressure Distribution")
-        micpTable.SetAttribute("pc data", seriesDeltaNode.GetID())
-        seriesDeltaNode.SetAndObserveTableNodeID(micpTable.GetID())
+        normPcTable.SetAttribute("pc data", seriesDeltaNode.GetID())
+        seriesDeltaNode.SetAndObserveTableNodeID(normPcTable.GetID())
         seriesDeltaNode.SetXColumnName("pc")
         seriesDeltaNode.SetYColumnName("dsn")
         seriesDeltaNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
@@ -190,9 +210,9 @@ class MercurySimulationLogic(LTracePluginLogic):
         folderTree.CreateItem(currentDir, seriesDeltaNode)
 
         seriesRadiiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Effective Radii Distribution")
-        micpTable.SetAttribute("radii data", seriesRadiiNode.GetID())
-        seriesRadiiNode.SetAndObserveTableNodeID(micpTable.GetID())
-        seriesRadiiNode.SetXColumnName("radii")
+        micpTable.SetAttribute("radius data", seriesRadiiNode.GetID())
+        seriesRadiiNode.SetAndObserveTableNodeID(normRadTable.GetID())
+        seriesRadiiNode.SetXColumnName("radius")
         seriesRadiiNode.SetYColumnName("dsn")
         seriesRadiiNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
         seriesRadiiNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleSolid)
@@ -405,3 +425,24 @@ class MercurySimulationLogic(LTracePluginLogic):
                 slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter,
                 color=(0.1, 0.75, 0.1),
             )
+
+
+def normalize_histogram(values, bin_edges, bins=100):
+    edge_min = bin_edges[0]
+    edge_max = bin_edges[-1]
+    new_bin_edges = np.linspace(edge_min, edge_max, num=bins + 1)
+    new_bin_values = np.zeros(bins, dtype=np.float64)
+    current_new_bin = 0
+    left_new_edge = new_bin_edges[current_new_bin]
+
+    for i in range(len(bin_edges) - 1):
+        left_original_edge = bin_edges[i]
+        right_original_edge = bin_edges[i + 1]
+        original_bin_mean = (left_original_edge + right_original_edge) / 2
+        while original_bin_mean > left_new_edge:
+            current_new_bin += 1
+            left_new_edge = new_bin_edges[i]
+        new_bin_values[current_new_bin] += values[i]
+    new_bin_values /= new_bin_values.sum()
+
+    return new_bin_values, new_bin_edges

@@ -22,4 +22,4 @@ class VolumeRenderingDisplayNodeCustomBehavior(NodeCustomBehaviorBase):
         HierarchyVisibilityManager(node, lambda _node: _node.GetVolumeNode())
 
     def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
-        node.RemoveAllObservers()
+        pass

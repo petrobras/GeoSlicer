@@ -117,8 +117,14 @@ library by Lukas-Mosser to access microtomography data from various sources.
         self.layout.addWidget(self.downloadButton)
         self.layout.addWidget(self.stdoutTextArea, 1)
 
-        self.timer = qt.QTimer()
+        self.timer = qt.QTimer(self.parent)
+        self.timer.timeout.connect(self.checkProcess)
         self.timer.setInterval(100)
+
+    def cleanup(self):
+        super().cleanup()
+        self.timer.stop()
+        self.timer.deleteLater()
 
     def onSelectionChanged(self):
         self.updateDownloadButton()
@@ -171,7 +177,6 @@ library by Lukas-Mosser to access microtomography data from various sources.
         self.outputPath = data_home / "output_nc" / output_name
         self.outputNodeName = hierarchy[-1]
         self.data_home = data_home
-        self.timer.timeout.connect(self.checkProcess)
         self.timer.start()
         self.is_downloading = True
         self.updateDownloadButton()
@@ -189,7 +194,6 @@ library by Lukas-Mosser to access microtomography data from various sources.
             self.stdoutTextArea.verticalScrollBar().setValue(self.stdoutTextArea.verticalScrollBar().maximum)
         else:
             self.timer.stop()
-            self.timer.timeout.disconnect()
             self.is_downloading = False
             self.updateDownloadButton()
             self.onDownloadFinished()

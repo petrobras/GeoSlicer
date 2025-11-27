@@ -28,6 +28,7 @@ except ImportError:
     MultiScaleTest = None  # tests not deployed to final version or closed source
 
 CONVERSION_FACTOR = 1000  # Base (1) should be milimeter
+ROUND_FACTOR = 2
 COLOCATE_DIMENSIONS = {
     "X": 0,
     "Y": 1,
@@ -1280,8 +1281,9 @@ class MultiScaleLogic(LTracePluginLogic):
                 self.createHardDataFile(
                     slicer.util.arrayFromVolume(SimulationHD),
                     slicer.util.arrayFromVolume(data["hardDataVolume"]),
-                    np.around(np.array(data["hardDataResolution"]) * CONVERSION_FACTOR, 2),
+                    np.around(np.array(data["hardDataResolution"]) * CONVERSION_FACTOR, ROUND_FACTOR),
                     hardDataSelectedSegments,
+                    self.temporaryPath,
                     invertHDSelectedSegments,
                 )
 
@@ -1298,7 +1300,7 @@ class MultiScaleLogic(LTracePluginLogic):
         params = {
             "finalImageSize": run_data["finalImageSize"].tolist(),
             "finalImageResolution": [
-                round(resolution * CONVERSION_FACTOR, 2) for resolution in run_data["finalImageResolution"]
+                round(resolution * CONVERSION_FACTOR, ROUND_FACTOR) for resolution in run_data["finalImageResolution"]
             ],
         }
 
@@ -1339,7 +1341,7 @@ class MultiScaleLogic(LTracePluginLogic):
         """
         self.configureMPSMethod(
             np.array(run_data["finalImageSize"]),
-            np.around(np.array(run_data["finalImageResolution"]) * CONVERSION_FACTOR, 2),
+            np.around(np.array(run_data["finalImageResolution"]) * CONVERSION_FACTOR, ROUND_FACTOR),
             run_data["ncond"],
             run_data["nreal"],
             run_data["iterations"],
@@ -1576,7 +1578,7 @@ class MultiScaleLogic(LTracePluginLogic):
             f.write("\n")
 
     def createHardDataFile(
-        self, hardDataValues, hardDataMask, hardDataResolution, selectedSegments, invertSelected=False
+        self, hardDataValues, hardDataMask, hardDataResolution, selectedSegments, temporaryPath, invertSelected=False
     ):
         if selectedSegments:
             indicesz, indicesy, indicesx = np.where(np.isin(hardDataMask, selectedSegments, invert=invertSelected))
@@ -1603,14 +1605,14 @@ class MultiScaleLogic(LTracePluginLogic):
                 )
             )
 
-        with open("hard.dat", "w") as f:
+        with open(os.path.join(temporaryPath, "hard.dat"), "w") as f:
             f.write("eas title" + "\n")
             f.write("4" + "\n")
             f.write("col0" + "\n")
             f.write("col1" + "\n")
             f.write("col2" + "\n")
             f.write("col3" + "\n")
-            np.savetxt(f, hardData, fmt="%.2f")
+            np.savetxt(f, hardData, fmt="           %.2f")
 
     def createImagelogHardDataFile(self, imageVolume, mask, values, unitConversionFactor):
         voxelHeight = imageVolume.GetSpacing()[2] * unitConversionFactor
@@ -1668,6 +1670,11 @@ class MultiScaleLogic(LTracePluginLogic):
     ):
         self.mpslib = mps.mpslib(method="mps_genesim")
         self.mpslib.parameter_filename = os.path.join(self.temporaryPath, "mps.txt")
+        self.mpslib.par["origin"] = [
+            0 - finalImageResolution[0] / 2.0,
+            0 - finalImageResolution[1] / 2.0,
+            0 - finalImageResolution[2] / 2.0,
+        ]
         self.mpslib.par["simulation_grid_size"] = finalImageSize
         self.mpslib.par["grid_cell_size"] = finalImageResolution
         self.mpslib.par["n_cond"] = ncond
@@ -1676,7 +1683,7 @@ class MultiScaleLogic(LTracePluginLogic):
         self.mpslib.par["out_folder"] = self.temporaryPath
         self.mpslib.par["n_max_ite"] = iterations
         self.mpslib.par["rseed"] = rseed
-        self.mpslib.par["hard_data_fnam"] = "hard.dat"
+        self.mpslib.par["hard_data_fnam"] = os.path.join(self.temporaryPath, "hard.dat")
         self.mpslib.par["mask_fnam"] = os.path.join(self.temporaryPath, "mask.dat")
         self.mpslib.par["colocate_dimension"] = colocateDimensions
         self.mpslib.par["max_search_radius"] = maxSearchRadius

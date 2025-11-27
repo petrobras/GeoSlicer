@@ -16,7 +16,7 @@ from ltrace.slicer.tests.constants import TestState, CaseType
 from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
 from ltrace.slicer.tests.utils import log, wait
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 TEST_STATUS_FILE_PATH = Path(slicer.app.temporaryPath) / "test_status.json"
 
@@ -35,24 +35,49 @@ class TestSuiteData(qt.QObject):
 
     def __init__(
         self,
+        parent: qt.QObject = None,
         test_class: object = None,
-        test_case_data_list: List["TestCaseData"] = None,
         enabled: bool = False,
         module_name=None,
+        case_type: CaseType = CaseType.TEST,
         *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(parent, *args, **kwargs)
         self.test_class = test_class
         self.name = self.test_class.__name__
         self.__test_case_data_list = None
-        self.test_case_data_list = test_case_data_list  # property setter
         self.__enabled = False
         self.enabled = enabled  # property setter
         self.__test_status = TestState.NOT_INITIALIZED
         self.module_name = module_name
         self.__failure_log_text: str = ""
         self.__warning_log_text: str = ""
+        self.case_type = case_type
+        self.test_case_data_list = self.__get_test_cases_data(self.test_class)  # property setter
+
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        try:
+            self.enablement_changed.disconnect()
+            self.test_case_enablement_changed.disconnect()
+        except (AttributeError, ValueError, SystemError):  # Object has been deleted
+            pass
+
+        self.__test_case_data_list = None
+
+    def __get_test_cases_data(self, test_class):
+        if not issubclass(test_class, LTracePluginTest):
+            if self.case_type == CaseType.TEMPLATE_GENERATOR:
+                return [None]
+
+            return [TestCaseData(parent=self, test_case_method=test_class().runTest)]
+
+        return [
+            TestCaseData(parent=self, test_case_method=test_case_method)
+            for test_case_method in test_class.get_case_methods(self.case_type)
+        ]
 
     @property
     def test_status(self):
@@ -148,17 +173,22 @@ class TestCaseData(qt.QObject):
 
     def __init__(
         self,
+        parent: qt.QObject = None,
         test_case_method: object = None,
         enabled: bool = False,
         *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(parent, *args, **kwargs)
         self.test_case_method = test_case_method
         self.name = self.test_case_method.__name__
         self.__enabled = False
         self.enabled = enabled
         self.__test_status = TestState.NOT_INITIALIZED
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        self.test_case_method = None
 
     @property
     def test_status(self):
@@ -200,6 +230,16 @@ class LTraceTestsModel(qt.QObject):
         self.__is_running = False
         self.__running_test_class = None
         self.__cancelling = False
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        self.__running_test_class = None
+
+        for data in self.__test_suite_list + self.__generate_suite_list:
+            data.deleteLater()
+
+        self.__test_suite_list.clear()
+        self.__generate_suite_list.clear()
 
     @property
     def is_running(self):
@@ -224,10 +264,10 @@ class LTraceTestsModel(qt.QObject):
 
         self.__test_source = test_source
         for test_suite_data in self.__test_suite_list[:]:
-            del test_suite_data
+            test_suite_data.deleteLater()
 
         for generate_suite_data in self.__generate_suite_list[:]:
-            del generate_suite_data
+            generate_suite_data.deleteLater()
 
         self.__test_suite_list.clear()
         self.__generate_suite_list.clear()
@@ -257,7 +297,7 @@ class LTraceTestsModel(qt.QObject):
 
         return check_suite(self.test_suite_list + self.generate_suite_list)
 
-    def __get_all_suites(self, test_source=TestsSource.ANY):
+    def __get_all_suites(self, test_source=TestsSource.ANY) -> Tuple[List["TestSuiteData"], List["TestSuiteData"]]:
         test_suite_list = []
         generate_suite_list = []
         for method in slicer.selfTests.values():
@@ -291,25 +331,28 @@ class LTraceTestsModel(qt.QObject):
                 if not self.__match_test_source(test_class, test_source):
                     continue
 
-                test_case_data_list = self.__get_test_cases_data(test_class)
-                if test_case_data_list:
-                    test_suite_list.append(
-                        TestSuiteData(
-                            test_class=test_class,
-                            test_case_data_list=test_case_data_list,
-                            module_name=module_name,
-                        )
-                    )
+                test_suite_data = TestSuiteData(
+                    parent=self,
+                    test_class=test_class,
+                    module_name=module_name,
+                    case_type=CaseType.TEST,
+                )
 
-                generate_case_data_list = self.__get_generate_methods_data(test_class)
-                if generate_case_data_list:
-                    generate_suite_list.append(
-                        TestSuiteData(
-                            test_class=test_class,
-                            test_case_data_list=generate_case_data_list,
-                            module_name=module_name,
-                        )
-                    )
+                if len(test_suite_data.test_case_data_list) > 0:
+                    test_suite_list.append(test_suite_data)
+                else:
+                    test_suite_data.deleteLater()
+
+                generate_case_data = TestSuiteData(
+                    parent=self,
+                    test_class=test_class,
+                    module_name=module_name,
+                    case_type=CaseType.TEMPLATE_GENERATOR,
+                )
+                if len(generate_case_data.test_case_data_list) > 0:
+                    generate_suite_list.append(generate_case_data)
+                else:
+                    generate_case_data.deleteLater()
 
         # Order list by test class name alphabetical asceding order
         test_suite_list.sort(key=lambda x: x.test_class.__name__, reverse=False)
@@ -332,24 +375,6 @@ class LTraceTestsModel(qt.QObject):
             return True
 
         return False
-
-    def __get_test_cases_data(self, test_class):
-        if not issubclass(test_class, LTracePluginTest):  # Original slicer test class
-            return [TestCaseData(test_case_method=test_class().runTest)]
-
-        return [
-            TestCaseData(test_case_method=test_case_method)
-            for test_case_method in test_class.get_case_methods(CaseType.TEST)
-        ]
-
-    def __get_generate_methods_data(self, test_class):
-        if not issubclass(test_class, LTracePluginTest):  # Original slicer test class
-            return None
-
-        return [
-            TestCaseData(test_case_method=test_case_method)
-            for test_case_method in test_class.get_case_methods(CaseType.TEMPLATE_GENERATOR)
-        ]
 
     def run_tests(self, **kwargs):
         self.__is_running = True
@@ -421,9 +446,10 @@ class LTraceTestsModel(qt.QObject):
             return
 
         # Connect signals
-        test_class.test_case_finished.connect(
-            lambda test_case_name, test_state: self.__on_test_case_finished(test_suite, test_case_name, test_state)
-        )
+        def on_test_case_finished(test_case_name: str, test_state: TestState):
+            self.__on_test_case_finished(test_suite, test_case_name, test_state)
+
+        test_class.test_case_finished.connect(on_test_case_finished)
         test_class.tests_cancelled.connect(self.tests_cancelled)
 
         # Run tests
@@ -432,7 +458,7 @@ class LTraceTestsModel(qt.QObject):
         test_suite.test_status = test_class.status
 
         # Disconnect signals
-        test_class.test_case_finished.disconnect()
+        test_class.test_case_finished.disconnect(on_test_case_finished)
         test_class.tests_cancelled.disconnect()
 
         # Store test suite logs
@@ -440,9 +466,9 @@ class LTraceTestsModel(qt.QObject):
         test_suite.failure_log_text = test_class.get_failure_overview_text()
 
         # Reset objects
-        del test_class
-        del self.__running_test_class
         self.__running_test_class = None
+        test_class.deleteLater()
+        del on_test_case_finished
         gc.collect()
 
     def __on_test_case_finished(self, test_suite_data: TestSuiteData, test_case_name: str, test_state: TestState):

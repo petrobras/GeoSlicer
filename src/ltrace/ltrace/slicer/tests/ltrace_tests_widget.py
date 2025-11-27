@@ -49,12 +49,13 @@ class ATreeViewItem(qt.QStandardItem):
 
     @testData.setter
     def testData(self, data):
-        if self._testData is not None:
-            self._testData.enablement_changed.disconnect(self.onEnablementChanged)
+        self.cleanup()
 
         self._testData = data
-        self._testData.enablement_changed.connect(self.onEnablementChanged)
+        if self._testData is None:
+            return
 
+        self._testData.enablement_changed.connect(self.onEnablementChanged)
         self._setup()
 
     def _setup(self):
@@ -74,6 +75,15 @@ class ATreeViewItem(qt.QStandardItem):
         checkState = qt.Qt.Checked if state is True else qt.Qt.Unchecked
         self.setCheckState(checkState)
 
+    def cleanup(self):
+        if self._testData is not None:
+            try:
+                self._testData.enablement_changed.disconnect(self.onEnablementChanged)
+            except SystemError:  # No connection found
+                pass
+
+            self._testData = None
+
 
 class ATreeView(qt.QTreeView):
     def __init__(self, *args, **kwargs) -> None:
@@ -87,6 +97,12 @@ class ATreeView(qt.QTreeView):
 
     def clear(self) -> None:
         self.standardItemModel.clear()
+
+    def cleanup(self) -> None:
+        if hasattr(self, "standardItemModel"):
+            self.standardItemModel.itemChanged.disconnect(self.__onTreeViewItemClicked)
+            self.clear()
+            del self.standardItemModel
 
     def setFilterRegularExpression(self, text) -> None:
         self.sortModel.setFilterRegularExpression(text)
@@ -137,8 +153,7 @@ class TestSuiteTreeViewItem(ATreeViewItem):
 
     @ATreeViewItem.testData.setter
     def testData(self, data: TestSuiteData):
-        if self._testData is not None:
-            self._testData.enablement_changed.disconnect(self.onEnablementChanged)
+        self.cleanup()
 
         self.removeRows(0, self.rowCount())
 
@@ -187,16 +202,34 @@ class LTraceTestsWidget(qt.QDialog):
     def __init__(self, parent=None, currentModule=None, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         loadAllModules()
-        self.__model = LTraceTestsModel(parent=parent, test_source=TestsSource.GEOSLICER)
+        self.__model = LTraceTestsModel(parent=self, test_source=TestsSource.GEOSLICER)
         self.__testSuiteItemList: List[TestSuiteTreeViewItem] = []
         self.__generateSuiteItemList: List[TestCaseTreeViewItem] = []
         self.__testCasesCount = 0
         self.__generateCasesCount = 0
+        self.__testTreeView = None
+        self.__generateTreeView = None
         self.__setupUi()
         self.__installLoggerHandler()
         self.__populateTree()
         self.__selectCurrentModuleTests(currentModule)
         self.__startupRun()
+
+    def __del__(self):
+        for item in self.__testSuiteItemList:
+            item.cleanup()
+
+        for item in self.__generateSuiteItemList:
+            item.cleanup()
+
+        self.__testSuiteItemList.clear()
+        self.__generateSuiteItemList.clear()
+
+        for treeView in [self.__testTreeView, self.__generateTreeView]:
+            treeView.cleanup()
+            del treeView
+
+        self.uninstallLoggerHandler()
 
     @staticmethod
     def __selectedTestsNames(suiteList) -> Dict[str, List[str]]:

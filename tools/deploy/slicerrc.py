@@ -439,6 +439,8 @@ def setModulePanel():
             else:
                 module = getattr(slicer.modules, f"{moduleName}Instance")
                 url = module.helpUrl if hasattr(module, "helpUrl") else MANUAL_BASE_URL
+                if isinstance(url, qt.QUrl):
+                    url = url.toString()
                 title = module.title() if hasattr(module, "title") else moduleName
 
             moduleHeader.update(title, url)

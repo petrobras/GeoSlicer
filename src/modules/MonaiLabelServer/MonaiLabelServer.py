@@ -176,6 +176,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
         self.process = None
         self.PID = None
         self.UID = None
+        self.timer = None
 
         if Path(LOCK_FILE).exists():
             try:
@@ -184,7 +185,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 self.PID = int(line.split("=")[1])
                 lock_file.close()
 
-                self.timer = qt.QTimer()
+                self.timer = qt.QTimer(self)
                 self.timer.timeout.connect(self.CheckIfServerIsRunning)
                 self.timer.start(5000)
 
@@ -229,7 +230,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 return
 
             # set a timer to check if the process is still running
-            self.timer = qt.QTimer()
+            if self.timer is not None:
+                self.timer.stop()
+                self.timer.deleteLater()
+
+            self.timer = qt.QTimer(self)
             self.timer.timeout.connect(self.CheckIfServerIsRunning)
             self.timer.start(5000)
             managed_cmd = MonaiLabelServerHandler(app_folder=appPath, dataset_folder=datasetPath)
@@ -299,7 +304,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             lock_file.close()
 
             # set a timer to check if the process is still running
-            self.timer = qt.QTimer()
+            if self.timer is not None:
+                self.timer.stop()
+                self.timer.deleteLater()
+
+            self.timer = qt.QTimer(self)
             self.timer.timeout.connect(self.CheckIfServerIsRunning)
             self.timer.start(5000)
 
@@ -333,7 +342,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             self.UID = None
 
     def onStopLocalServer(self):
-        self.timer.stop()
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer.deleteLater()
+            self.timer = None
+
         self.widget.statusIndicator.setText(f"Server stopped")
         self.widget.startServerButton.setEnabled(True)
         self.widget.stopServerButton.setEnabled(False)

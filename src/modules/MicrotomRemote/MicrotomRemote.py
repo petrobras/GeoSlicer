@@ -208,7 +208,7 @@ class DistributionsForm(BaseArgsForm):
                 ),
             )
 
-            defaultRadRes = 0.5
+            defaultRadRes = 0.05
             self.radiusResInput = ui.floatParam(value=defaultRadRes)
             self.addArg(
                 "Radius Resolution: ",
@@ -868,10 +868,10 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         ApplicationObservables().applicationLoadFinished.disconnect(self.server.retrieveActiveStreamlit)
 
     def cleanup(self) -> None:
-        super().cleanup()
         self.modeWidgets[widgets.BatchInputWidget.MODE_NAME].onDirSelected = None
         if StreamlitServer.StreamlitServer is not None:
             ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
+        super().cleanup()
 
     def onStreamlitServerUnavailable(self):
         slicer.util.errorDisplay("Server unavailable at this version.")
@@ -942,6 +942,10 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         modeWidget.soiInput.setCurrentNode(None)
         modeWidget.soiLabel.visible = True
         modeWidget.soiInput.visible = True
+
+        modeWidget.soiInput.enabled = modeWidget.mainInput.currentNode() is not None
+        modeWidget.referenceInput.enabled = modeWidget.mainInput.currentNode() is not None
+
         if "darcy_kabs_foam" in self.simOptions.currentData:
             self.logicType = MicrotomRemoteLogic
             for widget in self.hideWhenInputIsScalar:
@@ -994,9 +998,13 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             self.configWidget.setCurrentIndex(6)
             self._disableSwitchFor("Local", keep="Remote")
         elif "kabs_rev" in self.simOptions.currentData:
+            modeWidget.soiInput.enabled = True
+            modeWidget.referenceInput.enabled = True
             self.configWidget.setCurrentIndex(5)
             self._disableSwitchFor("Local", keep="Remote")
         elif "kabs" in self.simOptions.currentData:
+            modeWidget.soiInput.enabled = True
+            modeWidget.referenceInput.enabled = True
             self.configWidget.setCurrentIndex(4)
             self._disableSwitchFor("Local", keep="Remote")
         elif "hpsd" in self.simOptions.currentData:
@@ -1025,6 +1033,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
     def _onInputSelected(self, node):
 
+        self._onSimulSelected(-1)
         self.restartApplyButton()
 
         if node is None or isinstance(node, str):

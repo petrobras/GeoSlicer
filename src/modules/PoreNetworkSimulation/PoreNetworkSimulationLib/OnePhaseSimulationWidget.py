@@ -51,9 +51,11 @@ class OnePhaseSimulationWidget(qt.QFrame):
         layout.addRow("Solver", hbox)
 
         self.pressureDropFloat = ui.floatParam(101325.0)
+        self.pressureDropFloat.objectName = "Pressure drop"
         layout.addRow("Pressure drop (Pa)", self.pressureDropFloat)
 
         self.fluidViscosityFloat = ui.floatParam(1.0)
+        self.fluidViscosityFloat.objectName = "Fluid viscosity"
         layout.addRow("Fluid viscosity (mPa.s)", self.fluidViscosityFloat)
 
         self.cilindricalSample = qt.QCheckBox()

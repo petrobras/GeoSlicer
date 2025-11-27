@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 import logging
 import shutil
@@ -6,6 +7,8 @@ import re
 import time
 import traceback
 from pathlib import Path, PurePosixPath
+
+import vtk
 
 from ltrace.remote.utils import argstring, sacct
 from ltrace.remote import utils as slurm_utils
@@ -51,7 +54,7 @@ class OneResultSlurmHandler:
         self.running_jobs = []
         self.input_volume_node = input_volume_node
 
-        self.img_type = "kabs" if simulator in ["darcy_kabs_foam"] else "bin"
+        self.img_type = self.defineInputImageType(input_volume_node, simulator)
 
         self.cmd_params = params
 
@@ -71,7 +74,11 @@ class OneResultSlurmHandler:
         self.closed_jobs = set([])
 
         self.remote_dir = PurePosixPath(r"/nethome/drp/microtom") / shared_path.as_posix()
-        self.local_dir = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\microtom") / shared_path
+
+        if os.getenv("GEOSLICER_MODE") == "Remote":
+            self.local_dir = self.remote_dir
+        else:
+            self.local_dir = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\microtom") / shared_path
 
         self.is_strict = True
 
@@ -86,6 +93,19 @@ class OneResultSlurmHandler:
         }
 
         self.retries = 0
+
+    def defineInputImageType(self, node, simulator: str):
+        if simulator == "darcy_kabs_foam":
+            return "kabs"
+        elif "kabs" in simulator and node is not None:
+            imageData = node.GetImageData()
+            scalarRange = imageData.GetScalarRange()
+            minValue, maxValue = scalarRange
+            isFloat = imageData.GetScalarType() in [vtk.VTK_FLOAT, vtk.VTK_DOUBLE]
+
+            if 0 <= minValue and maxValue <= 1 and isFloat:
+                return "porosity"
+        return "bin"
 
     def retrieve_jobinfo_from_file(self, client: Any, deploy_path: Path):
         time.sleep(5)
@@ -120,7 +140,7 @@ class OneResultSlurmHandler:
             time.sleep(0.1)
             dest_path = self.local_dir / uid
 
-            if self.simulator == "krel" or self.simulator == "stokes_kabs":
+            if self.simulator == "krel":
                 direction = self.cmd_params.pop("direction", "z")
                 self.post_args["direction"] = direction
                 filename = exportNode(self.input_volume_node, direction, self.img_type, dest_path)

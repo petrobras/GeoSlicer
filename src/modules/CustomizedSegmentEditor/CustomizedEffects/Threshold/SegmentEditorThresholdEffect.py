@@ -36,11 +36,11 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
     import vtkITK
     self.autoThresholdCalculator = vtkITK.vtkITKImageThresholdCalculator()
 
-    self.timer = qt.QTimer()
+    self.timer = qt.QTimer(self.scriptedEffect.optionsFrame())
     self.previewState = 0
     self.previewStep = 1
     self.previewSteps = 5
-    self.timer.connect('timeout()', self.preview)
+    self.timer.timeout.connect(self.preview)
 
     self.previewPipelines = {}
     self.histogramPipeline = None
@@ -65,6 +65,12 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
     self.selectionStartPosition = None
     self.selectionEndPosition = None
     self.isInt= None
+
+  def cleanup(self):
+      if self.timer is not None:
+          self.timer.stop()
+          self.timer.deleteLater()
+          self.timer = None
 
   def clone(self):
     import qSlicerSegmentationsEditorEffectsPythonQt as effects

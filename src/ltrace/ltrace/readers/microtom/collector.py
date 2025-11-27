@@ -13,7 +13,7 @@ from ltrace.slicer import helpers, data_utils as du
 from .utils import read_file, revert_z_axis
 
 
-def create_volume_from(sim_data, ref_node=None, name="", environment=None, direction="z"):
+def create_volume_from(sim_data, ref_node=None, name="", environment=None, direction=None):
     volume_node = helpers.createTemporaryVolumeNode(
         slicer.vtkMRMLScalarVolumeNode,
         name,
@@ -94,9 +94,7 @@ class PorosimetryCompiler(BaseResultCompiler):
 
             simulation = get_dataset(sim_output_filepath)
 
-            nodes.append(
-                create_volume_from(simulation[simulator], ref_node, name="_".join(name) + "_Volume", direction=None)
-            )
+            nodes.append(create_volume_from(simulation[simulator], ref_node, name="_".join(name) + "_Volume"))
             nodes.append(self.create_table_from(simulation, simulator, name="_".join(name) + "_Data"))
 
         except TypeError:
@@ -172,12 +170,7 @@ class StokesKabsCompiler(BaseResultCompiler):
                     for rtype in ("bin", "velocity", "pressure"):
                         try:
                             name = "_".join([v.upper() for v in (prefix, simulator, direction, rtype) if v])
-                            node = create_volume_from(
-                                simulation[rtype],
-                                ref_node,
-                                name=name,
-                                direction=None if "darcy" in simulator else direction,
-                            )
+                            node = create_volume_from(simulation[rtype], ref_node, name=name)
                             nodes.append(node)
                         except KeyError:
                             continue

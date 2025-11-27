@@ -169,10 +169,6 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.parameterSetNode = None
         self.editor = None
         self.__tag = None
-        self.__updateEffectRegisteredTimer = qt.QTimer()
-        self.__updateEffectRegisteredTimer.setParent(self.parent)
-        self.__updateEffectRegisteredTimer.timeout.connect(lambda: self.__handleUpdatePlot())
-        self.__updateEffectRegisteredTimer.setInterval(1000)
 
     def setupSelectImage(self):
         inputWidget = qt.QWidget()
@@ -293,7 +289,7 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
 
         ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
 
-        self.multiFinishedTimer = qt.QTimer()
+        self.multiFinishedTimer = qt.QTimer(self.parent)
         self.multiFinishedTimer.setSingleShot(True)
         self.multiFinishedTimer.setInterval(100)
 
@@ -779,10 +775,6 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         """Callback for registres effect signal. A QTimer is used to avoid multiple calls at once when multiple effects are registered.
         The method 'qMRMLSegmentEditorWidget.updateEffectList' causes some widget's to update, it might result in some widgets blinking in the background if parent tree is not defined.
         """
-        # if self.__updateEffectRegisteredTimer.isActive():
-        #     self.__updateEffectRegisteredTimer.stop()
-
-        # self.__updateEffectRegisteredTimer.start()
         self.editor.updateEffectList()
         self.soiEditor.updateEffectList()
 
@@ -822,5 +814,5 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
         self.boundaryRemovalEffect.applyFinishedCallback = lambda: None
         self.expandSegmentsEffect.applyFinishedCallback = lambda: None
         self.multiFinishedTimer.stop()
-        self.multiFinishedTimer.timeout.disconnect()
+        self.multiFinishedTimer.deleteLater()
         ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)

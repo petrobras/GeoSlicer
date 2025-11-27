@@ -264,3 +264,26 @@ def get_scalar_volume_data(pore_table_node):
     }
 
     return scalar_volume_data
+
+
+def normalize_psd(x_values, y_values, bins=50):
+    edge_min = x_values.min()
+    edge_max = x_values.max()
+    new_bin_edges = np.linspace(edge_min, edge_max, num=bins + 1)
+    new_bin_values = np.zeros(bins, dtype=np.float64)
+
+    for i in range(len(x_values)):
+        original_value = x_values[i]
+        current_new_bin = 0
+        left_new_edge = new_bin_edges[current_new_bin]
+        right_new_edge = new_bin_edges[current_new_bin + 1]
+        while (original_value > right_new_edge) or (original_value < left_new_edge):
+            current_new_bin += 1
+            left_new_edge = new_bin_edges[current_new_bin]
+            right_new_edge = new_bin_edges[current_new_bin + 1]
+        new_bin_values[current_new_bin] += y_values[i]
+    new_bin_values /= new_bin_values.sum()
+
+    new_bin_center = np.zeros(bins, dtype=np.float64)
+    new_bin_center = (new_bin_edges[:-1] + new_bin_edges[1:]) / 2
+    return new_bin_values, new_bin_center

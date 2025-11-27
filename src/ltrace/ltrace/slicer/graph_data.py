@@ -236,10 +236,14 @@ class GraphData(QtCore.QObject):
         self.style.signalStyleChanged.connect(self.signalStyleChanged)
 
         # destroyed signal only works with a lambda
-        self.destroyed.connect(lambda: self._cleanUp())
-        from ltrace.slicer.debounce_caller import DebounceCaller
+        self.destroyed.connect(self._cleanUp)
+        from ltrace.slicer.debounce_caller import DebounceCallerPS2
 
-        self.signalModifiedDebouncer = DebounceCaller(parent=self, signal=self.signalModified, qtTimer=QtCore.QTimer)
+        self.signalModifiedDebouncer = DebounceCallerPS2(parent=parent)
+        self.signalModifiedDebouncer.triggered.connect(self._onModified)
+
+    def _onModified(self, *args, **kwargs):
+        self.signalModified.emit()
 
     def __eq__(self, other):
         if not isinstance(other, GraphData):
@@ -429,7 +433,7 @@ class NodeGraphData(GraphData):
         """Handles node's modification."""
         node = tryGetNode(self.__nodeId)
         if self.__parseData(node) is True:
-            self.signalModifiedDebouncer.emit()
+            self.signalModifiedDebouncer()
         else:
             # notify something went wrong
             self.signalRemoved.emit()

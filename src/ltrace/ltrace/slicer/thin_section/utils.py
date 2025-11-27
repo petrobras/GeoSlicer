@@ -196,6 +196,7 @@ def setTableUnits(tableNode):
         "elongation": "null",
         "eccentricity": "null",
         "perimeter": "mm",
+        "coordination_number": "null",
     }
 
     for col in range(tableNode.GetNumberOfColumns()):

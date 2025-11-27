@@ -181,8 +181,9 @@ class ImageToolsWidget(LTracePluginWidget):
             self.currentToolIndex == self.TOOL_HISTOGRAM_EQUALIZATION
             or self.currentToolIndex == self.TOOL_SHADING_CORRECTION
         ):
-            self.currentToolWidget.setVisible(False)
-            self.currentToolWidget = None
+            if self.currentToolWidget is not None:
+                self.currentToolWidget.setVisible(False)
+                self.currentToolWidget = None
             self.toolComboBox.blockSignals(True)
             self.toolComboBox.setCurrentIndex(self.TOOL_NONE)
             self.toolComboBox.blockSignals(False)
@@ -270,11 +271,9 @@ class ImageToolsWidget(LTracePluginWidget):
                 currentNode = helpers.clone_volume(
                     node, name=f"{node.GetName()}_Processed", as_temporary=True, hidden=True, uniqueName=True
                 )
-                if self.__referenceNodeObserver is not None:
-                    self.__referenceNodeObserver.deleteLater()
 
-                if self.__currentNodeObserver is not None:
-                    self.__currentNodeObserver.deleteLater()
+                self._resetNodeObserver(self.__referenceNodeObserver)
+                self._resetNodeObserver(self.__currentNodeObserver)
 
                 self.__referenceNodeObserver = NodeObserver(node, parent=self.parent)
                 self.__referenceNodeObserver.removedSignal.connect(self.onNodeRemoved)
@@ -283,13 +282,8 @@ class ImageToolsWidget(LTracePluginWidget):
                 self.imageArray = slicer.util.arrayFromVolume(currentNode).copy()
             else:
                 currentNode = None
-                if self.__referenceNodeObserver is not None:
-                    self.__referenceNodeObserver.deleteLater()
-                    self.__referenceNodeObserver = None
-
-                if self.__currentNodeObserver is not None:
-                    self.__currentNodeObserver.deleteLater()
-                    self.__currentNodeObserver = None
+                self._resetNodeObserver(self.__referenceNodeObserver)
+                self._resetNodeObserver(self.__currentNodeObserver)
 
             self.toolComboBox.blockSignals(True)
             self.toolComboBox.setCurrentIndex(self.TOOL_NONE)
@@ -477,13 +471,8 @@ class ImageToolsWidget(LTracePluginWidget):
     def clearWorkingNode(self, removeNode: bool = True) -> None:
         workingNode = self.currentNode
 
-        if self.__currentNodeObserver is not None:
-            self.__currentNodeObserver.deleteLater()
-            self.__currentNodeObserver = None
-
-        if self.__referenceNodeObserver is not None:
-            self.__referenceNodeObserver.deleteLater()
-            self.__referenceNodeObserver = None
+        self._resetNodeObserver(self.__currentNodeObserver)
+        self._resetNodeObserver(self.__referenceNodeObserver)
 
         if removeNode and workingNode is not None:
             slicer.mrmlScene.RemoveNode(workingNode)
@@ -499,6 +488,13 @@ class ImageToolsWidget(LTracePluginWidget):
         referenceArray = slicer.util.arrayFromVolume(referenceNode).copy()
         slicer.util.updateVolumeFromArray(workingNode, referenceArray)
         self.imageArray = slicer.util.arrayFromVolume(workingNode).copy()
+
+    def _resetNodeObserver(self, nodeObserver: NodeObserver) -> None:
+        if nodeObserver is None:
+            return
+
+        nodeObserver.removedSignal.disconnect(self.onNodeRemoved)
+        nodeObserver.deleteLater()
 
 
 class ImageToolsInfo(RuntimeError):

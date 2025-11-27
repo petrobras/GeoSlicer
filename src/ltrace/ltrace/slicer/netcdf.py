@@ -124,7 +124,9 @@ def get_dims(array: xr.DataArray) -> List[str]:
     return array.dims[:3]
 
 
-def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode, spacing: List[float]) -> None:
+def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode, spacing: List[float] = None) -> None:
+    if spacing is None:
+        spacing = get_spacing(array)
     ijk_to_ras = array.attrs.get("transform")
     origin = get_origin(array)
     slicer.util.updateVolumeFromArray(node, array.data)

@@ -195,9 +195,16 @@ def clone_volume(
     hidden=True,
     saveWithScene=False,
     uniqueName=True,
+    tag=None,
 ):
     new_volume = createTemporaryVolumeNode(
-        volume.__class__, name=name, content=volume, hidden=hidden, saveWithScene=saveWithScene, uniqueName=uniqueName
+        volume.__class__,
+        name=name,
+        content=volume,
+        hidden=hidden,
+        saveWithScene=saveWithScene,
+        uniqueName=uniqueName,
+        environment=tag,
     )
     if not as_temporary:
         makeTemporaryNodePermanent(new_volume, show=True)

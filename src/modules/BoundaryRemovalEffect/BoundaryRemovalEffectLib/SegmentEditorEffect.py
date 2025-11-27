@@ -37,14 +37,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         self.autoThresholdCalculator = vtkITK.vtkITKImageThresholdCalculator()
 
-        self.timer = qt.QTimer()
+        self.timer = qt.QTimer(self.scriptedEffect.optionsFrame())
         self.previewState = 0
         self.previewStep = 1
         self.previewSteps = 20
-        self.timer.connect("timeout()", self.preview)
-        self.timer.setParent(self.scriptedEffect.optionsFrame())
-
         self.isInitialized = False
+        self.timer.timeout.connect(self.preview)
 
         self.invisibleSegments = list()
 
@@ -54,6 +52,12 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyFinishedCallback = lambda: None
         self.setupFinishedCallback = lambda: None
         self.applyAllSupported = True
+
+    def cleanup(self):
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer.deleteLater()
+            self.timer = None
 
     def clone(self):
         clonedEffect = effects.qSlicerSegmentEditorScriptedEffect(None)

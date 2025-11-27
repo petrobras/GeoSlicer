@@ -162,7 +162,7 @@ class WindroseWidget(BasePlotWidget):
             self.plotUpdateTimer.deleteLater()
             self.plotUpdateTimer = None
 
-        self.plotUpdateTimer = QtCore.QTimer()
+        self.plotUpdateTimer = QtCore.QTimer(self)
         self.plotUpdateTimer.setSingleShot(True)
         self.plotUpdateTimer.timeout.connect(lambda: self.__handleUpdatePlot())
         self.plotUpdateTimer.setInterval(PLOT_UPDATE_TIMER_INTERVAL_MS)

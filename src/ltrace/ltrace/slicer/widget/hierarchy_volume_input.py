@@ -47,8 +47,8 @@ class HierarchyVolumeInput(qt.QWidget):
             self.selectorWidget.setProperty("defaultText", self.customDefaultText)
 
         self.node_attribute_filter_list = []
-        self.event_filter = CustomEventFilter(self.eventFilter, self.selectorWidget)
-        self.event_filter.install()
+        self.customEventFilter = CustomEventFilter(self.eventFilter, self.selectorWidget)
+        self.customEventFilter.install()
 
         self.end_close_scene_observer_handler = slicer.mrmlScene.AddObserver(
             slicer.mrmlScene.EndCloseEvent, self.__onEndCloseScene

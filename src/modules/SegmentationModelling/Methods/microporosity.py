@@ -19,6 +19,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
     signal_quality_control_changed = qt.Signal()
     METHOD = "microporosity"
     DISPLAY_NAME = "Porosity Map from Segmentation"
+    tag = "PorosityMap"
 
     SEGMENT_TYPES = ("Ignore", "High Attenuation", "Solid", "Reference Solid", "Macroporosity", "Microporosity")
 
@@ -84,8 +85,8 @@ class MicroPorosity(widgets.BaseSettingsWidget):
         referenceNode = self.inputWidget.referenceInput.currentNode()
         soiNode = self.inputWidget.soiInput.currentNode()
 
-        procLabelsNode, _ = processSegmentation(segmentationNode, referenceNode, soiNode)
-        procrRefNode = processVolume(referenceNode, soiNode)
+        procLabelsNode, _ = processSegmentation(segmentationNode, referenceNode, soiNode, tag=self.tag)
+        procrRefNode = processVolume(referenceNode, soiNode, tag=self.tag)
 
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
 
@@ -103,6 +104,7 @@ class MicroPorosity(widgets.BaseSettingsWidget):
             "outputPrefix": outputPrefix,
             "params": self.toJson(),
             "currentDir": outputDir,
+            "tag": self.tag,
         }
 
         common_params["params"]["returnVolume"] = returnVolume
@@ -225,8 +227,8 @@ class MicroPorosity(widgets.BaseSettingsWidget):
             referenceNode = self.inputWidget.referenceInput.currentNode()
             soiNode = self.inputWidget.soiInput.currentNode()
 
-            procLabelsNode, reverseMapping = processSegmentation(segmentationNode, referenceNode, soiNode)
-            procRefNode = processVolume(referenceNode, soiNode)
+            procLabelsNode, reverseMapping = processSegmentation(segmentationNode, referenceNode, soiNode, tag=self.tag)
+            procRefNode = processVolume(referenceNode, soiNode, tag=self.tag)
 
             self.microporosityPlot.set_data(procRefNode, procLabelsNode, labelsDictionary, reverseMapping)
 
@@ -433,6 +435,7 @@ class MicroPorosityLogic(qt.QObject):
         outputPrefix,
         params,
         currentDir,
+        tag,
     ):
         super().__init__(parent)
 
@@ -441,6 +444,7 @@ class MicroPorosityLogic(qt.QObject):
         self.__outputPrefix = outputPrefix
         self.__params = params
         self.__currentDir = currentDir
+        self.__tag = tag
 
         self._cliNode = None
         self.__cliNodeModifiedObserver = None
@@ -455,7 +459,7 @@ class MicroPorosityLogic(qt.QObject):
             self.__outputPrefix + "_{type}",
             self.__params,
             currentDir=self.__currentDir,
-            tag="PorosityMap",
+            tag=self.__tag,
         )
 
         self._cliNode = cliNode
@@ -489,7 +493,7 @@ class MicroPorosityLogic(qt.QObject):
                 nRows = table.GetNumberOfRows()
                 totalPorosity = None
                 for row in range(nRows):
-                    if table.GetValue(row, 0).ToString().startswith("Total Porosity"):
+                    if table.GetValue(row, 0).ToString().startswith("Weighted Total Porosity"):
                         totalPorosity = table.GetValue(row, 1).ToDouble()
                         break
 
@@ -505,9 +509,13 @@ class MicroPorosityLogic(qt.QObject):
                 helpers.makeTemporaryNodePermanent(outputReportNode, show=True)
                 slicer.util.setSliceViewerLayers(background=outputVolumeNode, foreground=None, label=None, fit=True)
             else:
-                slicer.util.setSliceViewerLayers(background=info.inputNode, foreground=None, label=None, fit=True)
+                referenceVolumeNode = helpers.tryGetNode(info.referenceNode)
+                if referenceVolumeNode:
+                    slicer.util.setSliceViewerLayers(
+                        background=referenceVolumeNode, foreground=None, label=None, fit=True
+                    )
 
-        helpers.removeTemporaryNodes(environment=self.__class__.__name__)
+        helpers.removeTemporaryNodes(environment=self.__tag)
         self.__resetCliNodes()
         self.signalProcessEnded.emit()
 
@@ -561,7 +569,7 @@ class MicroPorosityLogic(qt.QObject):
             allLabels=None,
             targetLabels=None,
             saveOutput=None,
-            referenceNode=None,
+            referenceNode=referenceNode.GetID() if referenceNode else None,
             params=params,
             currentDir=currentDir,
             inputNode=labelMapNode,

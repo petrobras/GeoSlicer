@@ -80,10 +80,11 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
             msec: delay to associate with :func:`ScriptedLoadableModuleTest.delayDisplay()`.
         """
         if useGui:
-            tests_widget = LTraceTestsWidget(
+            testsWidget = LTraceTestsWidget(
                 parent=slicer.modules.AppContextInstance.mainWindow, currentModule=self.__class__.__name__
             )
-            tests_widget.exec()
+            testsWidget.exec_()
+            testsWidget.deleteLater()
             return
 
         super().runTest(msec, **kwargs)
@@ -158,8 +159,8 @@ class LTracePluginLogic(
     metaclass=LTracePluginLogicMeta,
 ):
     def __init__(self, parent=None):
-        super(qt.QObject, self).__init__(parent)
-        super(ScriptedLoadableModule.ScriptedLoadableModuleLogic, self).__init__()
+        qt.QObject.__init__(self, parent)
+        ScriptedLoadableModule.ScriptedLoadableModuleLogic.__init__(self)
 
 
 def slicer_is_in_developer_mode():

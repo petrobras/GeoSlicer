@@ -812,11 +812,8 @@ class SegmenterWidget(LTracePluginWidget):
             combobox = self.inputComboboxes[i]
 
             label.setText(f"Input volume #{i + 1}: ")
-
-            if i > 0:
-                # only extra (i>0) volume comboboxes are hidden
-                label.visible = True
-                combobox.visible = True
+            label.visible = True
+            combobox.visible = True
 
     def _onModelTypeSelected(self, checked):
         if checked:
@@ -824,17 +821,6 @@ class SegmenterWidget(LTracePluginWidget):
             self._updateModels(
                 tags=self.modelTypeRadioGroup.checkedButton().property("tags")[self.__currentEnvironment]
             )
-
-    def _onCreateClassifierToggled(self, checked):
-        self._updateWidgetsVisibility()
-
-        if checked:
-            self._restoreInputBoxes()
-        else:
-            self.inputsSelector.mainInput.setCurrentNode(None)
-            self.inputsSelector.soiInput.enabled = True
-            self.inputsSelector.referenceInput.enabled = True
-            self._onChangedClassifier(checked)
 
     def _onInputSelected(self, node):
         pass

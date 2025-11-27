@@ -257,8 +257,9 @@ class ProjectEventsLogic:
         )
 
         self.__updateRecentProjectsDebounce = DebounceCaller(
-            parent=slicer.modules.AppContextInstance.mainWindow, intervalMs=10, callback=self.setupRecentlyLoadedMenu
+            parent=slicer.modules.AppContextInstance.mainWindow, intervalMs=10
         )
+        self.__updateRecentProjectsDebounce.triggered.connect(self.setupRecentlyLoadedMenu)
 
         lazy.register_eye_event()
         self.__projectManager.projectChangedSignal.connect(lazy.register_eye_event)
@@ -445,7 +446,7 @@ class ProjectEventsLogic:
             slicer.util.errorDisplay(errorMessage)
         self.setupRecentlyLoadedMenu()
 
-    def setupRecentlyLoadedMenu(self) -> None:
+    def setupRecentlyLoadedMenu(self, *args, **kwargs) -> None:
         """Method to install project manager load method into the recently loaded project actions."""
         fileMenu = slicer.modules.AppContextInstance.mainWindow.findChild("QMenu", "FileMenu")
         recentMenu = fileMenu.findChild("QMenu", "RecentlyLoadedMenu")

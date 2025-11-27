@@ -371,6 +371,11 @@ class JobMonitorWidget(LTracePluginWidget):
 
         self.logic = JobMonitorLogic(self)
 
+    def cleanup(self):
+        super().cleanup()
+        if self.logic is not None:
+            self.logic.deleteLater()
+
     def onReload(self) -> None:
         # import importlib
         # importlib.reload(register)
@@ -505,36 +510,51 @@ class JobMonitorWidget(LTracePluginWidget):
         # dialog.exec_()
 
 
+def _listener(job, event):
+    logic = slicer.modules.jobmonitor.widgetRepresentation().self().logic
+    logic._updates[job.uid] = (job, event)
+
+
 class JobMonitorLogic(LTracePluginLogic):
     def __init__(self, widget):
+        super().__init__(parent=widget.parent)
         self.widget = widget
 
         self.currentDetail = None
 
         self._updates = {}
 
-        def listener(job, event):
-            self._updates[job.uid] = (job, event)
+        JobManager.add_observer(_listener)
 
-        JobManager.add_observer(partial(listener))
+        self.timer = qt.QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.updater)
+        self.timer.start()
 
-        JobMonitorLogic.updater(self)
+        self.destroyed.connect(self.__del__)
 
-    @staticmethod
-    def updater(logic):
+    def __del__(self):
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer.deleteLater()
+
+        self.widget = None
+
+    def updater(self):
+        self.timer.stop()
         try:
-            for key in list(logic._updates.keys()):
-                job, event = logic._updates.pop(key)
-                logic.eventHandler(job, event)
+            for key in list(self._updates.keys()):
+                job, event = self._updates.pop(key)
+                self.eventHandler(job, event)
 
-                if logic.currentDetail and logic.currentDetail[0] == job.uid:
-                    logic.currentDetail[1](job)
+                if self.currentDetail and self.currentDetail[0] == job.uid:
+                    self.currentDetail[1](job)
 
         except Exception as e:
             logging.error(repr(e))
             # but keep running
 
-        qt.QTimer.singleShot(1000, partial(JobMonitorLogic.updater, logic))
+        self.timer.start()
 
     def eventHandler(self, job, event):
         if event == "JOB_DELETED":
