@@ -76,7 +76,7 @@ def microtom_job_loader(job: JobExecutor):
             post_args=dict(vfrac=details.get("vfrac", None), direction=direction),
         )
     task_handler.jobid = str(job.details["job_id"][0])
-    task_handler.jobs = [str(j) for j in job.details["job_id"]]
+    task_handler.slurm_job_ids = [str(j) for j in job.details["job_id"]]
     job.task_handler = task_handler
     print(job, task_handler)
     return job

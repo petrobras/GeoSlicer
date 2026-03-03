@@ -10,9 +10,9 @@ from __future__ import print_function
 import vtk, slicer, slicer.util, mrml
 import os
 import json
-
 import mpslib as mps
 import numpy as np
+
 
 MRML_TYPES = {
     "vtkMRMLScalarVolumeNode": mrml.vtkMRMLScalarVolumeNode,
@@ -20,30 +20,45 @@ MRML_TYPES = {
 }
 
 
-def MPS(args):
+def organizeParameters(args):
     temporaryPath = args.temporaryPath
     params = json.loads(args.params) if args.params is not None else {}
 
-    gridResolution = np.array(params["finalImageResolution"])
+    finalGrid = np.array(params["finalImageSize"])
+    finalResolution = np.array(params["finalImageResolution"])
+
+    grid = finalGrid[0], finalGrid[2], finalGrid[1]
+    resolution = finalResolution[0], finalResolution[2], finalResolution[1]
+
+    mpsParameters = {}
+    mpsParameters["origin"] = [0 - resolution[0] / 2.0, 0 - resolution[1] / 2.0, 0 - resolution[2] / 2.0]
+    mpsParameters["ti_fnam"] = os.path.join(temporaryPath, "ti.dat")
+    mpsParameters["out_folder"] = temporaryPath
+    mpsParameters["simulation_grid_size"] = grid
+    mpsParameters["grid_cell_size"] = resolution
+    mpsParameters["n_cond"] = args.ncond
+    mpsParameters["n_real"] = args.nreal
+    mpsParameters["n_max_ite"] = args.iterations
+    mpsParameters["rseed"] = args.rseed
+    mpsParameters["hard_data_fnam"] = os.path.join(temporaryPath, "hard.dat")
+    mpsParameters["mask_fnam"] = os.path.join(temporaryPath, "mask.dat")
+    mpsParameters["colocate_dimension"] = args.colocateDimensions
+    mpsParameters["max_search_radius"] = args.maxSearchRadius
+    mpsParameters["distance_max"] = args.distanceMax
+    mpsParameters["distance_pow"] = args.distancePower
+    mpsParameters["distance_measure"] = args.distanceMeasure
+
+    return mpsParameters
+
+
+def MPS(parameters, args):
+    temporaryPath = args.temporaryPath
 
     mpslib = mps.mpslib(method="mps_genesim")
     mpslib.parameter_filename = os.path.join(temporaryPath, "mps.txt")
-    mpslib.par["origin"] = [0 - gridResolution[0] / 2.0, 0 - gridResolution[1] / 2.0, 0 - gridResolution[2] / 2.0]
-    mpslib.par["ti_fnam"] = os.path.join(temporaryPath, "ti.dat")
-    mpslib.par["out_folder"] = temporaryPath
-    mpslib.par["simulation_grid_size"] = np.array(params["finalImageSize"])
-    mpslib.par["grid_cell_size"] = gridResolution
-    mpslib.par["n_cond"] = args.ncond
-    mpslib.par["n_real"] = args.nreal
-    mpslib.par["n_max_ite"] = args.iterations
-    mpslib.par["rseed"] = args.rseed
-    mpslib.par["hard_data_fnam"] = os.path.join(temporaryPath, "hard.dat")
-    mpslib.par["mask_fnam"] = os.path.join(temporaryPath, "mask.dat")
-    mpslib.par["colocate_dimension"] = args.colocateDimensions
-    mpslib.par["max_search_radius"] = args.maxSearchRadius
-    mpslib.par["distance_max"] = args.distanceMax
-    mpslib.par["distance_pow"] = args.distancePower
-    mpslib.par["distance_measure"] = args.distanceMeasure
+    for key, value in parameters.items():
+        mpslib.par[key] = value
+
     mpslib.run_parallel()
 
     for realization in range(args.nreal):
@@ -57,7 +72,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    # Inputs
 
     # Params
     parser.add_argument(
@@ -111,7 +125,7 @@ if __name__ == "__main__":
         dest="mpsTime",
         default=0.0,
         required=False,
-        help="Set if data is continuous or discrete.",
+        help="Output parameter that returns the MPS execution time in seconds.",
     )
 
     parser.add_argument(
@@ -128,5 +142,5 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    MPS(args)
+    mpslibParameters = organizeParameters(args)
+    MPS(mpslibParameters, args)

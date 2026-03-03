@@ -74,6 +74,7 @@ class AppContext(LTracePlugin):
         self.modules = ModuleManager(self)
 
         self.rightDrawer = ExpandDataDrawer(DockedData())
+        self.appInitialized: bool = False
 
     @property
     def imageLogLayoutId(self):

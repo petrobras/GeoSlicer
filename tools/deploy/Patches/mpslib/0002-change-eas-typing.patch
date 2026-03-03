@@ -1,0 +1,19 @@
+diff --git a/mpslib/eas.py b/mpslib/eas.py
+--- a/mpslib/eas.py
++++ b/mpslib/eas.py
+@@ -60,11 +60,11 @@ def read(filename='eas.dat', nanval=-997799):
+     dim_arr = eas['title'].split()
+     if len(dim_arr) == 3:
+         eas['dim'] = {}
+-        eas['dim']['nx'] = np.int16(dim_arr[0])
+-        eas['dim']['ny'] = np.int16(dim_arr[1])
+-        eas['dim']['nz'] = np.int16(dim_arr[2])
++        eas['dim']['nx'] = np.int32(dim_arr[0])
++        eas['dim']['ny'] = np.int32(dim_arr[1])
++        eas['dim']['nz'] = np.int32(dim_arr[2])
+ 
+-    eas['n_cols'] = np.int16(file.readline())
++    eas['n_cols'] = np.int32(file.readline())
+     
+     eas['header'] = []
+     for i in range(0, eas['n_cols']):

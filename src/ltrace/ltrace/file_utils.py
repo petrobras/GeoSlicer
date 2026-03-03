@@ -1,7 +1,10 @@
 import logging
+import typing
 
 import chardet
 import pandas as pd
+
+from pathlib import Path
 
 
 def read_csv(filepath, whitelist=None, **kwargs):
@@ -92,4 +95,97 @@ def detect_csv_file_delimiter(filepath, encoding, whitelist=[",", ";"]):
 
     except Exception as e:
         logging.critical(repr(e))
+        return None
+
+
+def load_and_parse_data(file_path: Path, filter_empty_columns: bool = False) -> typing.Union[pd.DataFrame, None]:
+    """
+    Data loader that handles CSV and Excel files like SIRR.
+    It automatically detects:
+    - The actual header row (ignoring titles/metadata above it).
+    - The decimal separator ('.' vs ',').
+    """
+
+    def find_header_index(df_temp):
+        """Helper to find which row index contains the header keywords."""
+        for idx, row in df_temp.iterrows():
+            # Convert row to a single string for easy searching
+            if row.hasnans is False:
+                return idx
+        return 0  # Default to first row if no keyword found
+
+    def detect_decimal_separator(sample_data):
+        """
+        Helper to guess decimal separator.
+        Returns ',' if it sees 'number,number' pattern, else '.'
+        """
+        import re
+
+        # Join sample data into one string
+        text = " ".join(sample_data.astype(str).values.flatten().tolist())
+
+        # Regex to find N,N pattern (e.g. 12,5)
+        if re.search(r"\d,\d", text):
+            return ","
+        return "."
+
+    # 2. Determine file extension
+    ext = file_path.suffix.lower()
+
+    try:
+        if ext == ".csv":
+            # Read first without header to scan content
+            df_raw = pd.read_csv(file_path, header=None)
+            header_idx = find_header_index(df_raw)
+
+            decimal_char = detect_decimal_separator(df_raw.iloc[header_idx + 1 : header_idx + 6])
+
+            # Load the final dataframe with correct parameters
+            df = pd.read_csv(
+                file_path,
+                header=header_idx,
+                decimal=decimal_char,
+                # Heuristic to handle standard csv or brazilian csv (;)
+                sep=None,
+                engine="python",
+            )
+
+        elif ext in [".xlsx", ".xls"]:
+            # --- EXCEL HANDLING ---
+
+            # Read first without header to scan content
+            df_raw = pd.read_excel(file_path, header=None)
+
+            # Find the true header row
+            header_idx = find_header_index(df_raw)
+            # Reload with the correct header
+            df = pd.read_excel(file_path, header=header_idx)
+
+            # Excel sometimes reads numbers as strings if decimals were ambiguous
+            # We check object columns and convert if necessary
+            for col in df.select_dtypes(include=["object"]):
+                # specific check: if column has commas, try converting to float
+                sample = df[col].dropna().astype(str).iloc[:5]
+                if sample.str.contains(r"\d,\d").any():
+                    # Clean and convert: 1.000,00 -> 1000.00
+                    df[col] = df[col].astype(str).str.replace(".", "", regex=False).str.replace(",", ".")
+                    df[col] = pd.to_numeric(df[col], errors="ignore")
+
+        else:
+            raise ValueError(f"Unsupported file format: {ext}")
+
+        # 3. Final Cleanup
+        # Remove columns/rows that are purely empty (artifacts of bad parsing)
+        df.dropna(how="all", axis=0, inplace=True)
+        if filter_empty_columns:
+            df.dropna(how="all", axis=1, inplace=True)
+
+        # Reset index after dropping rows
+        df.reset_index(drop=True, inplace=True)
+
+        logging.info(f"Detected Header Row: {header_idx}")
+        return df
+
+    except Exception as e:
+        logging.warning(f"Error processing file: {e}")
         return None

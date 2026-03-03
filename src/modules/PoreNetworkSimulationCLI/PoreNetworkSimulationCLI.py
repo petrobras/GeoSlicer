@@ -5,40 +5,31 @@
 
 from __future__ import print_function
 
-import os
-
-import vtk
-
 import json
+import os
+import pickle
+import shutil
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
-import pickle
 import openpnm
+import pandas as pd
+import vtk
 
-from ltrace.algorithms.common import (
-    generate_equidistant_points_on_sphere,
-    points_are_below_plane,
-)
-from ltrace.pore_networks.krel_result import KrelResult, KrelTables
-from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
-from ltrace.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
-
+from ltrace.algorithms.common import generate_equidistant_points_on_sphere, points_are_below_plane
+from ltrace.pore_networks.functions_extract import geo2pnf, get_sub_spy, get_connected_spy_network, geo2spy
 from ltrace.pore_networks.functions_simulation import (
-    get_connected_spy_network,
     get_flow_rate,
-    get_sub_spy,
     manual_valvatne_blunt,
     set_subresolution_conductance,
     single_phase_permeability,
 )
-from ltrace.pore_networks.subres_models import set_subres_model
-
+from ltrace.pore_networks.krel_result import KrelResult, KrelTables
+from ltrace.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
 from ltrace.pore_networks.processing.vtk_utils import create_flow_model, create_permeability_sphere
-
+from ltrace.pore_networks.subres_models import get_subres_function
+from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
 from ltrace.slicer.cli_utils import progressUpdate
-import shutil
 
 
 def writeDataFrame(df, path):
@@ -55,8 +46,13 @@ def writePolydata(polydata, filename):
 def onePhase(args, params):
     cwd = Path(args.cwd)
 
-    with open(str(cwd / "pore_network.dict"), "rb") as file:
-        pore_network = pickle.load(file)
+    with open(cwd / "pore_network.pkl", "rb") as f:
+        pore_network = pickle.load(f)
+
+    with open(cwd / "throat_network.pkl", "rb") as f:
+        throat_network = pickle.load(f)
+
+    pore_network = geo2spy(pore_network, throat_network)
 
     in_faces = ("xmin", "ymin", "zmin")
     out_faces = ("xmax", "ymax", "zmax")
@@ -64,7 +60,7 @@ def onePhase(args, params):
     flow_array = np.zeros((1, 3), dtype="float")
     permeability_array = np.zeros((1, 3), dtype="float")
 
-    ijktoras = params["ijktoras"]
+    ijktoras = params.get("ijktoras", (-1, -1, 1))
 
     bb_sizes = {}
     for axis_name, axis_i in (("x", 0), ("y", 1), ("z", 2)):
@@ -79,7 +75,7 @@ def onePhase(args, params):
         )  # cm
     sizes_product = bb_sizes["x"] * bb_sizes["y"] * bb_sizes["z"]
 
-    subres_func = set_subres_model(pore_network, params)
+    subres_func = get_subres_function(pore_network, params)
 
     minmax = []
     counter = 1
@@ -202,8 +198,13 @@ def onePhase(args, params):
 def onePhaseMultiAngle(args, params):
     cwd = Path(args.cwd)
 
-    with open(str(cwd / "pore_network.dict"), "rb") as file:
-        pore_network = pickle.load(file)
+    with open(cwd / "pore_network.pkl", "rb") as f:
+        pore_network = pickle.load(f)
+
+    with open(cwd / "throat_network.pkl", "rb") as f:
+        throat_network = pickle.load(f)
+
+    pore_network = geo2spy(pore_network, throat_network)
 
     boundingbox = {
         "xmin": pore_network["pore.coords"][:, 0].min(),
@@ -229,7 +230,7 @@ def onePhaseMultiAngle(args, params):
         if (pore_in_sphere[conn_1]) and (pore_in_sphere[conn_2]):
             throat_in_sphere[i] = True
 
-    subres_func = set_subres_model(pore_network, params)
+    subres_func = get_subres_function(pore_network, params)
 
     minmax = []
     surface_points = generate_equidistant_points_on_sphere(N=params["rotation angles"] * 2, r=(bb_radius / np.sqrt(2)))
@@ -332,8 +333,25 @@ def onePhaseMultiAngle(args, params):
 def twoPhaseSensibilityTest(args, params):
     cwd = Path(args.cwd)
 
-    with open(str(cwd / "statoil_dict.json"), "r") as file:
-        statoil_dict = json.load(file)
+    with open(cwd / "pore_network.pkl", "rb") as f:
+        pore_network = pickle.load(f)
+
+    with open(cwd / "throat_network.pkl", "rb") as f:
+        throat_network = pickle.load(f)
+
+    subradius_function = get_subres_function(pore_network, params)
+
+    statoil_dict = geo2pnf(
+        pore_network,
+        throat_network,
+        subradius_function,
+        params["extraction_algorithm"],
+        params["size"],
+        axis=params["direction"],
+        subres_shape_factor=params["subres_shape_factor"],
+        subres_porosity_modifier=params["subres_porositymodifier"],
+        save_tables=params["save_tables"],
+    )
 
     snapshot_file_path = cwd / "snapshot.bin"
     if snapshot_file_path.is_file():
@@ -407,7 +425,10 @@ def twoPhaseSensibilityTest(args, params):
             if params["create_drainage_snapshot"] == "T":
                 shutil.copyfile(Path(result["cwd"]) / "snapshot.bin", cwd / "snapshot.bin")
 
-            if not keep_temporary:
+            if keep_temporary:
+                with open(cwd / "statoil_dict.json", "w") as file:
+                    json.dump(statoil_dict, file)
+            else:
                 shutil.rmtree(result["cwd"])
 
     if saturation_steps_list:
@@ -415,17 +436,21 @@ def twoPhaseSensibilityTest(args, params):
             params["saturation_steps"].extend(saturation_steps_list)
         else:
             params["saturation_steps"] = saturation_steps_list
-        with open(str(cwd / "params_dict.json"), "w") as file:
+        with open(str(cwd / "simulation_params_dict.json"), "w") as file:
             json.dump(params, file)
 
 
 def simulate_mercury(args, params):
     cwd = Path(args.cwd)
 
-    with open(str(cwd / "pore_network.dict"), "rb") as file:
-        pore_network = pickle.load(file)
+    with open(cwd / "pore_network.pkl", "rb") as f:
+        pore_network = pickle.load(f)
 
-    subres_func = set_subres_model(pore_network, params)
+    with open(cwd / "throat_network.pkl", "rb") as f:
+        throat_network = pickle.load(f)
+
+    pore_network = geo2spy(pore_network, throat_network)
+    subres_func = get_subres_function(pore_network, params)
 
     proj = openpnm.io.network_from_porespy(pore_network)
     connected_pores, connected_throats = get_connected_spy_network(proj.network, "xmin", "xmax")
@@ -528,7 +553,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(f"{args.cwd}/params_dict.json", "r") as file:
+    with open(f"{args.cwd}/simulation_params_dict.json", "r") as file:
         params = json.load(file)
 
     if params.get("remote_execution") == "T":

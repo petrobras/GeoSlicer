@@ -3,6 +3,7 @@ import logging
 from AbstractScriptedSubjectHierarchyPlugin import *
 import numpy as np
 from ltrace.slicer import helpers
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.vtk_utils.well_model.well_model import create_well_model_from_node
@@ -365,6 +366,8 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             if not clonedNode:
                 logging.warning("Could not perform custom clone. The copy is invalid.")
                 continue
+
+            copy_metadata(originalNode, clonedNode)
 
             # If it is a segmentation, copy also the reference image geometry
             if isinstance(originalNode, slicer.vtkMRMLSegmentationNode):

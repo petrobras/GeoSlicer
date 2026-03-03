@@ -13,7 +13,7 @@ import slicer
 from tifffile import tifffile
 from functools import partial
 
-from MultiscaleLib import ResampleBox
+from ltrace.multiscaleLib.multiscaleResampleBox import ResampleBox
 from ltrace.slicer import helpers
 from ltrace.slicer import ui
 from ltrace.slicer import widgets
@@ -63,17 +63,19 @@ class MultiScale(LTracePlugin):
 class MultiScaleWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
-        self.runModeParallel = True
         self.logic = None
         self.valuesList = []
         self.isViewOn = False
         self.isContinuousCheckBoxLocked = False
         self.currentPreview = INPUT_TYPES["HD"]
+        self.resampleObserver = None
+        self.resampleQueue = []
 
     def setup(self):
+
         LTracePluginWidget.setup(self)
 
-        self.logic = MultiScaleLogic(self)
+        self.logic = MultiScaleLogic(parent=self.parent, widget=self)
 
         # Input section
         inputSection = ctk.ctkCollapsibleButton()
@@ -328,6 +330,15 @@ class MultiScaleWidget(LTracePluginWidget):
         self.resampleDataCheckbox.stateChanged.connect(self.onResampleStateChange)
         self.resampleDataCheckbox.objectName = "resampleCheckBox"
 
+        self.patchesSpinBox = qt.QSpinBox()
+        self.patchesSpinBox.objectName = f"patchesSpinBox"
+        self.patchesSpinBox.setRange(1, 64)
+        self.patchesSpinBox.setValue(1)
+        self.patchesSpinBox.setEnabled(False)
+        self.patchesSpinBox.setToolTip(
+            "Separate the simulation area into the number of patches to be calculated separetaly. Only available for 2D images"
+        )
+
         gridFormLayout = qt.QFormLayout(gridSection)
         gridFormLayout.addRow("Wrap HD into Cylinder: ", self.enableWrapCheckBox)
         gridFormLayout.addRow("Data type:", dataTypeWidget)
@@ -335,6 +346,7 @@ class MultiScaleWidget(LTracePluginWidget):
         gridFormLayout.addRow("Grid dimensions:", self.finalImageSizeWidget)
         gridFormLayout.addRow("Automatic resampling:", self.resampleDataCheckbox)
         gridFormLayout.addRow(None, self.resampleBoxesWidget)
+        gridFormLayout.addRow("Number of patches:", self.patchesSpinBox)
 
         # Parameters section
         parametersSection = ctk.ctkCollapsibleButton()
@@ -356,32 +368,19 @@ class MultiScaleWidget(LTracePluginWidget):
         self.nrealSpinBox.setRange(1, 9999)
         self.nrealSpinBox.setValue(cpu_count() - 1)
         self.nrealSpinBox.objectName = "realizationsNumber"
+        self.nrealSpinBox.valueChanged.connect(self.onRealizationChange)
 
-        self.maxIterationsCheckBox = qt.QCheckBox()
-        self.maxIterationsCheckBox.setChecked(True)
-        self.maxIterationsCheckBox.stateChanged.connect(self.onMaxIterationsCheckBoxChange)
-        self.maxIterationsCheckBox.objectName = "maxIterationsCheckBox"
-        self.maxIterationsCheckBox.setToolTip(
-            "If checked, the chosen max iterations will be used. If left unchecked, the value used will be -1 (whole training image)"
-        )
         self.maxIterationsSpinBox = qt.QSpinBox()
         self.maxIterationsSpinBox.setRange(-1, 999999)
         self.maxIterationsSpinBox.setValue(1000)
         self.maxIterationsSpinBox.setToolTip(
-            "Set the maximun number of iterations. Use -1 for a full training image scan."
+            "Set the maximun number of iterations to be made during simulation. Use -1 for a full training image scan."
         )
         self.maxIterationsSpinBox.objectName = "maxIterationsValue"
 
-        self.rseedCheckBox = qt.QCheckBox()
-        self.rseedCheckBox.stateChanged.connect(self.onRseedCheckBoxChange)
-        self.rseedCheckBox.objectName = "randomSeedCheckBox"
-        self.rseedCheckBox.setToolTip(
-            "If checked, the chosen random seed will be used. If left unchecked, the random seed will be 0"
-        )
         self.rseedSpinBox = qt.QSpinBox()
-        self.rseedSpinBox.setDisabled(True)
         self.rseedSpinBox.setToolTip(
-            "Set a seed value. Use the same value to obtain the same results. Use 0 for random seed"
+            "Sets the seed value for the simulation. Use 0 for a random seed. The simulation will produce consistent results for a given seed."
         )
         self.rseedSpinBox.objectName = "randomSeedValue"
 
@@ -419,9 +418,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
         parametersLayout.addRow("Number of conditioning points:", self.ncondSpinBox)
         parametersLayout.addRow("Number of realizations:", self.nrealSpinBox)
-        parametersLayout.addRow("Use max iterations?", self.maxIterationsCheckBox)
         parametersLayout.addRow("Number of iterations:", self.maxIterationsSpinBox)
-        parametersLayout.addRow("Use random seed?", self.rseedCheckBox)
         parametersLayout.addRow("Random seed:", self.rseedSpinBox)
         parametersLayout.addRow("Colocate dimension:", self.colocateDimensionComboBox)
         parametersLayout.addRow("Max search radius (mm):", self.maxSearchRadiusSpinBox)
@@ -439,7 +436,9 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.saveSingleRealizationCheckBox = qt.QCheckBox()
         self.saveSingleRealizationCheckBox.setText("First realization")
-        self.saveSingleRealizationCheckBox.setToolTip("If checked, only the first realization will be saved as volume.")
+        self.saveSingleRealizationCheckBox.setToolTip(
+            "If checked, only the first realization will be saved as volume. Overrides number of realizations if its the only selected option"
+        )
         self.saveSingleRealizationCheckBox.objectName = "saveSingle"
         self.saveSingleRealizationCheckBox.setChecked(qt.Qt.Checked)
         self.saveSingleRealizationCheckBox.stateChanged.connect(
@@ -495,18 +494,11 @@ class MultiScaleWidget(LTracePluginWidget):
         outputFormLayout.addRow("Export directory:", self.exportDirectoryButton)
 
         self.runButton = qt.QPushButton("Run")
-        self.runButton.objectName = "runSequentialButton"
+        self.runButton.objectName = "runButton"
         self.runButton.enabled = False
         self.runButton.setFixedHeight(40)
-        self.runButton.clicked.connect(lambda: self.startRun(False))
-        self.runButton.setToolTip("Run Generalized ENESIM sequential algorithm")
-
-        self.runParallelButton = qt.QPushButton("Run Parallel")
-        self.runParallelButton.objectName = "runParallelButton"
-        self.runParallelButton.enabled = False
-        self.runParallelButton.setFixedHeight(40)
-        self.runParallelButton.clicked.connect(lambda: self.startRun(True))
-        self.runParallelButton.setToolTip("Run Generalized ENESIM parallel algorithm")
+        self.runButton.clicked.connect(self.startRun)
+        self.runButton.setToolTip("Run Generalized ENESIM parallel algorithm")
 
         self.cancelButton = qt.QPushButton("Cancel")
         self.cancelButton.enabled = False
@@ -519,7 +511,6 @@ class MultiScaleWidget(LTracePluginWidget):
 
         buttonsHBoxLayout = qt.QHBoxLayout()
         buttonsHBoxLayout.addWidget(self.runButton)
-        buttonsHBoxLayout.addWidget(self.runParallelButton)
         buttonsHBoxLayout.addWidget(self.cancelButton)
 
         self.localProgressBar = LocalProgressBar()
@@ -542,6 +533,21 @@ class MultiScaleWidget(LTracePluginWidget):
         self.resampleBoxTI.localProgressBar = self.localProgressBar
         self.resampleBoxHD.localProgressBar = self.localProgressBar
         self.resampleBoxMask.localProgressBar = self.localProgressBar
+
+    def exit(self) -> None:
+        helpers.removeTemporaryNodes()
+
+    def cleanup(self):
+        if self.logic:
+            self.logic.cleanup()
+            self.logic.deleteLater()
+            self.logic = None
+
+        if self.resampleObserver is not None:
+            self.resampleQueue[-1].RemoveObserver(self.resampleObserver)
+            self.resampleObserver = None
+
+        super().cleanup()
 
     def onGridSpacingChange(self):
         try:
@@ -570,6 +576,8 @@ class MultiScaleWidget(LTracePluginWidget):
         else:
             self.updateFinalImageWidgets(skipSpacing=True)
 
+        self.checkPatchesState()
+
     def onResampleStateChange(self, state):
         self.resampleBoxesWidget.setVisible(state)
         if state:
@@ -582,20 +590,29 @@ class MultiScaleWidget(LTracePluginWidget):
         if state:
             self.resampleDataCheckbox.setChecked(qt.Qt.Unchecked)
             self.discreteDataCheckBox.setChecked(qt.Qt.Unchecked)
+        else:
+            self.discreteDataCheckBox.setChecked(qt.Qt.Checked)
 
     def onDiscreteDataStateChange(self, state):
         if state:
             self.continuousDataCheckBox.setChecked(qt.Qt.Unchecked)
+        else:
+            self.continuousDataCheckBox.setChecked(qt.Qt.Checked)
+
+    def onRealizationChange(self, realizations):
+        if realizations == 1:
+            self.saveSingleRealizationCheckBox.setChecked(qt.Qt.Checked)
+            self.saveAllRealizationAsVolumeCheckBox.setEnabled(False)
+            self.saveAllRealizationAsVolumeCheckBox.setChecked(qt.Qt.Unchecked)
+            self.saveAllRealizationAsSequenceCheckBox.setEnabled(False)
+            self.saveAllRealizationAsSequenceCheckBox.setChecked(qt.Qt.Unchecked)
+        else:
+            self.saveAllRealizationAsSequenceCheckBox.setEnabled(True)
+            self.saveAllRealizationAsVolumeCheckBox.setEnabled(True)
 
     def onSaveAllRealizationAsFileCheckBox(self):
         self.exportDirectoryButton.setEnabled(self.saveAllRealizationAsFileCheckBox.isChecked())
         self.checkRunButtonState()
-
-    def onMaxIterationsCheckBoxChange(self):
-        self.maxIterationsSpinBox.setEnabled(self.maxIterationsCheckBox.isChecked())
-
-    def onRseedCheckBoxChange(self):
-        self.rseedSpinBox.setEnabled(self.rseedCheckBox.isChecked())
 
     def onSaveAsVolumeCheckBoxChange(self, state, saveSingle):
         if state == qt.Qt.Checked:
@@ -667,11 +684,28 @@ class MultiScaleWidget(LTracePluginWidget):
             self.updateHardDataResolution(self.hardDataResolution)
             if node.GetImageData().GetDimensions()[1] == 1:
                 self.setPreviewValues(True, node)
-                self.enableWrapCheckBox.enabled = True
+                self.enableWrapCheckBox.setEnabled(True)
             else:
+                self.enableWrapCheckBox.setEnabled(False)
                 self.setPreviewValues(False, node)
         self.checkRunButtonState()
         self.resampleBoxHD.setSourceID(node)
+        self.checkPatchesState()
+
+    def checkPatchesState(self):
+        HDnode = self.hardDataWidget.mainInput.currentNode()
+        if HDnode is not None and isinstance(HDnode, slicer.vtkMRMLSegmentationNode):
+            HDnodeReference = helpers.getSourceVolume(HDnode)
+        else:
+            HDnodeReference = HDnode
+        TInode = self.trainingImageWidget.mainInput.currentNode()
+
+        self.patchesSpinBox.setEnabled(False)
+        self.patchesSpinBox.setValue(1)
+
+        if HDnode and TInode and HDnode == TInode and not self.enableWrapCheckBox.isChecked():
+            if HDnodeReference.GetImageData().GetDimensions()[1] == 1:
+                self.patchesSpinBox.setEnabled(True)
 
     def onHardDataChange(self, nodeID):
         self.changePreviewOptionsVisibility()
@@ -707,6 +741,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.updateOutputPrefix()
         self.updateInputWidgetsVisibility()
+        self.checkPatchesState()
 
     def onMaskSourceChange(self, node) -> None:
         self.resampleBoxMask.setSourceID(node)
@@ -745,6 +780,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def onTrainingImageChange(self):
         self.checkListItems(self.trainingImageWidget.segmentListGroup[1])
+        self.checkPatchesState()
 
     def checkListItems(self, segmentList):
         if segmentList.visible:
@@ -758,8 +794,6 @@ class MultiScaleWidget(LTracePluginWidget):
     def changeRunButtonsState(self, state):
         self.runButton.enabled = state
         self.runButton.blockSignals(not state)
-        self.runParallelButton.enabled = state
-        self.runParallelButton.blockSignals(not state)
 
     def checkRunButtonState(self):
         trainingImageisValid = (
@@ -800,15 +834,14 @@ class MultiScaleWidget(LTracePluginWidget):
         else:
             self.changeRunButtonsState(False)
 
-    def startRun(self, isParallel):
-        self.runModeParallel = isParallel
+    def startRun(self):
         if self.resampleDataCheckbox.isChecked():
             self.resampleStep()
         else:
             self.createPreprocessingData()
 
     def resampleStep(self):
-        self.resampleQueue = []
+        self.resampleQueue.clear()
 
         self.resampleQueue.append(self.resampleBoxTI.resampleNode(self.localProgressBar))
         if self.hardDataWidget.mainInput.currentNode() is not None:
@@ -845,8 +878,7 @@ class MultiScaleWidget(LTracePluginWidget):
             self.resampleQueue[-1].RemoveObserver(self.resampleObserver)
             self.resampleObserver = None
 
-        del self.resampleQueue
-        self.resampleQueue = []
+        self.resampleQueue.clear()
 
     def createPreprocessingData(self, resampledNodes=[]):
         # Training Image
@@ -960,12 +992,13 @@ class MultiScaleWidget(LTracePluginWidget):
                     gridDimensions = np.flip(gridDimensions)
 
                 mpsConfiguration = {
+                    "patches": self.patchesSpinBox.value,
                     "finalImageResolution": gridResolution,
                     "finalImageSize": gridDimensions,
                     "ncond": self.ncondSpinBox.value,
                     "nreal": nreal,
-                    "iterations": self.maxIterationsSpinBox.value if self.maxIterationsCheckBox.isChecked() else -1,
-                    "rseed": self.rseedSpinBox.value if self.rseedCheckBox.isChecked() else 0,
+                    "iterations": self.maxIterationsSpinBox.value,
+                    "rseed": self.rseedSpinBox.value,
                     "colocate_dimensions": COLOCATE_DIMENSIONS[self.colocateDimensionComboBox.currentText],
                     "max_search_radius": int(self.maxSearchRadiusSpinBox.value * 1000),
                     "distance_max": self.distanceMaxSpinBox.value,
@@ -987,15 +1020,13 @@ class MultiScaleWidget(LTracePluginWidget):
                     preprocessing,
                     mpsConfiguration,
                     saveOptions,
-                    self.runModeParallel,
                     self.localProgressBar,
                     progressBar,
+                    self,
                 )
 
-                if self.runModeParallel:
-                    self.cancelButton.enabled = True
-                else:
-                    self.changeRunButtonsState(True)
+                self.cancelButton.enabled = True
+                self.changeRunButtonsState(False)
             except:
                 self.changeRunButtonsState(True)
 
@@ -1144,6 +1175,7 @@ class MultiScaleWidget(LTracePluginWidget):
         elif self.isContinuousCheckBoxLocked:
             self.isContinuousCheckBoxLocked = False
             self.continuousDataCheckBox.setChecked(qt.Qt.Unchecked)
+            self.discreteDataCheckBox.setChecked(qt.Qt.Checked)
 
     def setPreviewValues(self, enableOptions: bool = False, node=None):
         start = 0
@@ -1183,8 +1215,8 @@ class MultiScaleWidget(LTracePluginWidget):
 
 
 class MultiScaleLogic(LTracePluginLogic):
-    def __init__(self, widget):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent=None, widget=None):
+        LTracePluginLogic.__init__(self, parent)
         self.image = []
         self.time = 0
         self.cliNode = None
@@ -1273,6 +1305,7 @@ class MultiScaleLogic(LTracePluginLogic):
                     SimulationHD,
                     slicer.util.arrayFromVolume(data["hardDataVolume"]),
                     data["hardDataValues"],
+                    self.temporaryPath,
                     CONVERSION_FACTOR,
                 )
             else:
@@ -1291,6 +1324,81 @@ class MultiScaleLogic(LTracePluginLogic):
             sequentialProgressBar.setMessage("Writing mask file")
             maskArray = np.where(np.isin(slicer.util.arrayFromVolume(data["maskVolume"]), data["maskSegments"]), 1, 0)
             self.createTrainingImagefile(maskArray, self.temporaryPath, "mask.dat")
+
+    def prepareByChunksVolumes(self, preprocessing):
+        tiVolume = preprocessing["trainingDataVolume"]
+        tiReference = preprocessing["trainingReference"] if preprocessing["trainingReference"] is not None else tiVolume
+        tiSegments = preprocessing["trainingDataSegments"]
+
+        tiVolumeArray = slicer.util.arrayFromVolume(tiVolume)
+        tiReferenceArray = slicer.util.arrayFromVolume(tiReference)
+        filteredTI = np.where(np.isin(tiVolumeArray, tiSegments), tiReferenceArray, -9999)
+
+        hdVolume = preprocessing["hardDataVolume"]
+        hdReference = preprocessing["hardDataReference"] if preprocessing["hardDataReference"] is not None else hdVolume
+        hdSegments = preprocessing["hardDataValues"]
+
+        hdVolumeArray = slicer.util.arrayFromVolume(hdVolume)
+        hdReferenceArray = slicer.util.arrayFromVolume(hdReference)
+        filteredHD = np.where(np.isin(hdVolumeArray, hdSegments), hdReferenceArray, -9999)
+
+        if self.save_options["flipAxis"]:
+            filteredTI = filteredTI.transpose(0, 2, 1)
+            filteredHD = filteredHD.transpose(0, 2, 1)
+        else:
+            filteredTI = filteredTI.transpose(2, 0, 1)
+            filteredHD = filteredHD.transpose(2, 0, 1)
+
+        temporaryTI = helpers.createTemporaryVolumeNode(
+            tiReference.__class__, name="ByChunksTI", environment=self.__class__.__name__
+        )
+        temporaryHD = helpers.createTemporaryVolumeNode(
+            hdReference.__class__, name="ByChunksHD", environment=self.__class__.__name__
+        )
+
+        slicer.util.updateVolumeFromArray(temporaryTI, filteredTI.astype(np.int32))
+        slicer.util.updateVolumeFromArray(temporaryHD, filteredHD.astype(np.int32))
+
+        return temporaryTI.GetID(), temporaryHD.GetID()
+
+    def runByChunks(self, preprocessing, run_data: dict, progressBar):
+        """
+        Method responsible for preparing data and sending to the by chunks method CLI
+        """
+
+        trainingImageID, hardDataID = self.prepareByChunksVolumes(preprocessing)
+        cliConfig = {
+            "ti": trainingImageID,
+            "hd": hardDataID,
+            "patches": run_data["patches"],
+            "nreal": run_data["nreal"],
+            "ncond": run_data["ncond"],
+            "iterations": run_data["iterations"],
+            "rseed": run_data["rseed"],
+            "colocateDimensions": run_data["colocate_dimensions"],
+            "maxSearchRadius": run_data["max_search_radius"],
+            "distanceMax": run_data["distance_max"],
+            "distancePower": run_data["distance_power"],
+            "distanceMeasure": 2 if run_data["distance_measure"] else 1,
+            "temporaryPath": self.temporaryPath,
+        }
+
+        self.cliNode = slicer.cli.run(
+            slicer.modules.multiscalebychunkscli,
+            None,
+            cliConfig,
+            wait_for_completion=False,
+        )
+
+        self.cliObserver = self.cliNode.AddObserver(
+            "ModifiedEvent",
+            lambda c, ev, info=run_data: self.onCliChangeEvent(c, ev, info, preprocessing["hardDataReference"]),
+        )
+
+        if progressBar is not None:
+            progressBar.setCommandLineModuleNode(self.cliNode)
+
+        self.widget.updateStatusLabel("Running")
 
     def run_parallel(self, run_data: dict, reference_volume, progressBar):
         """
@@ -1333,36 +1441,8 @@ class MultiScaleLogic(LTracePluginLogic):
         if progressBar is not None:
             progressBar.setCommandLineModuleNode(self.cliNode)
 
-        self.widget.updateStatusLabel("Running")
-
-    def run_sequential(self, run_data: dict, reference_volume, progress_bar):
-        """
-        Method responsible for configuring mps and running sequential algorithm
-        """
-        self.configureMPSMethod(
-            np.array(run_data["finalImageSize"]),
-            np.around(np.array(run_data["finalImageResolution"]) * CONVERSION_FACTOR, ROUND_FACTOR),
-            run_data["ncond"],
-            run_data["nreal"],
-            run_data["iterations"],
-            run_data["rseed"],
-            run_data["colocate_dimensions"],
-            run_data["max_search_radius"],
-            run_data["distance_max"],
-            run_data["distance_power"],
-            2 if run_data["distance_measure"] else 1,
-        )
-
-        progress_bar.setMessage("Running algorithm")
-        try:
-            self.runMPS()
-        except RuntimeError as e:
-            slicer.util.infoDisplay(str(e))
-            return
-        finally:
-            self.mpslib.delete_local_files()
-
-        self.save_outputs(run_data, reference_volume)
+        if self.widget is not None:
+            self.widget.updateStatusLabel("Running")
 
     def save_outputs(self, run_data, reference_volume):
         """
@@ -1385,12 +1465,12 @@ class MultiScaleLogic(LTracePluginLogic):
             SequenceNode.SetIndexUnit("")
             SequenceNode.SetIndexName("Realization")
 
-        color_node_id = None
+        colorNodeId = None
         if isinstance(reference_volume, slicer.vtkMRMLLabelMapVolumeNode):
-            color_node = slicer.mrmlScene.CopyNode(reference_volume.GetDisplayNode().GetColorNode())
-            helpers.makeTemporaryNodePermanent(color_node, show=True)
-            color_node.SetName(f"{self.outputName}_colortable")
-            color_node_id = color_node.GetID()
+            colorNode = slicer.mrmlScene.CopyNode(reference_volume.GetDisplayNode().GetColorNode())
+            helpers.makeTemporaryNodePermanent(colorNode, show=True)
+            colorNode.SetName(f"{self.outputName}_colortable")
+            colorNodeId = colorNode.GetID()
 
         # Loop through realization
         for realization in range(run_data["nreal"]):
@@ -1401,7 +1481,7 @@ class MultiScaleLogic(LTracePluginLogic):
                 realization,
                 f"{self.outputName}_r{realization}",
                 self.outputDir if self.save_options["saveAllAsVolume"] else None,
-                color_node_id,
+                colorNodeId,
             )
 
             # Adds to sequence
@@ -1441,70 +1521,80 @@ class MultiScaleLogic(LTracePluginLogic):
                 run_data["finalImageResolution"], run_data["nreal"], self.save_options["directory"], self.outputName
             )
 
-        self.widget.updateTime(self.time)
+        if self.widget is not None:
+            self.widget.updateTime(self.time)
 
-        self.cleanUp(self.temporaryPath)
+        self.cleanWorkspace(self.temporaryPath)
 
     def runMultiscale(
         self,
         preprocessing_data: dict,
         mps_configuration: dict,
         save_options: dict,
-        isParallel: bool,
         progressBar=None,
         sequentialProgressBar=None,
+        widget=None,
     ):
+        if widget is not None:
+            self.widget = widget
+
         self.save_options = save_options
         self.save_options["distance_measure"] = mps_configuration["distance_measure"]
         self.temporaryPath = os.path.join(slicer.util.tempDirectory())
 
-        self.mps_preprocessing(preprocessing_data, mps_configuration["distance_measure"], sequentialProgressBar)
+        if mps_configuration["patches"] > 1:
+            self.isByChunks = True
+            self.runByChunks(
+                preprocessing_data,
+                mps_configuration,
+                progressBar,
+            )
 
-        if "maskVolume" in preprocessing_data:
-            self.mask_options["maskSegments"] = preprocessing_data["maskSegments"]
-            self.mask_options["trainingDataSegments"] = preprocessing_data["trainingDataSegments"]
-
-            if mps_configuration["distance_measure"]:
-                reference_volume = preprocessing_data["maskReference"]
-            else:
-                reference_volume = preprocessing_data["maskVolume"]
-                self.mask_options["maskSegmentList"] = preprocessing_data["maskSegmentList"]
-                self.mask_options["trainingImageSegmentList"] = preprocessing_data["trainingImageSegmentList"]
         else:
-            TIAsReference = False
-            if "hardDataVolume" not in preprocessing_data:
-                TIAsReference = True
-            elif (
-                isinstance(preprocessing_data["trainingDataVolume"], slicer.vtkMRMLLabelMapVolumeNode)
-                and isinstance(preprocessing_data["hardDataVolume"], slicer.vtkMRMLLabelMapVolumeNode)
-                and len(helpers.getSegmentList(preprocessing_data["trainingDataVolume"]))
-                > len(helpers.getSegmentList(preprocessing_data["hardDataVolume"]))
-            ):
-                TIAsReference = True
+            self.isByChunks = False
+            self.mps_preprocessing(preprocessing_data, mps_configuration["distance_measure"], sequentialProgressBar)
 
-            if mps_configuration["distance_measure"]:
-                reference_volume = (
-                    preprocessing_data["trainingReference"]
-                    if TIAsReference
-                    else preprocessing_data["hardDataReference"]
-                )
+            if "maskVolume" in preprocessing_data:
+                self.mask_options["maskSegments"] = preprocessing_data["maskSegments"]
+                self.mask_options["trainingDataSegments"] = preprocessing_data["trainingDataSegments"]
+
+                if mps_configuration["distance_measure"]:
+                    reference_volume = preprocessing_data["maskReference"]
+                else:
+                    reference_volume = preprocessing_data["maskVolume"]
+                    self.mask_options["maskSegmentList"] = preprocessing_data["maskSegmentList"]
+                    self.mask_options["trainingImageSegmentList"] = preprocessing_data["trainingImageSegmentList"]
             else:
-                reference_volume = (
-                    preprocessing_data["trainingDataVolume"] if TIAsReference else preprocessing_data["hardDataVolume"]
-                )
+                TIAsReference = False
+                if "hardDataVolume" not in preprocessing_data:
+                    TIAsReference = True
+                elif (
+                    isinstance(preprocessing_data["trainingDataVolume"], slicer.vtkMRMLLabelMapVolumeNode)
+                    and isinstance(preprocessing_data["hardDataVolume"], slicer.vtkMRMLLabelMapVolumeNode)
+                    and len(helpers.getSegmentList(preprocessing_data["trainingDataVolume"]))
+                    > len(helpers.getSegmentList(preprocessing_data["hardDataVolume"]))
+                ):
+                    TIAsReference = True
 
-        sequentialProgressBar.setMessage("Configuring mps algorithm")
-        if isParallel:
+                if mps_configuration["distance_measure"]:
+                    reference_volume = (
+                        preprocessing_data["trainingReference"]
+                        if TIAsReference
+                        else preprocessing_data["hardDataReference"]
+                    )
+                else:
+                    reference_volume = (
+                        preprocessing_data["trainingDataVolume"]
+                        if TIAsReference
+                        else preprocessing_data["hardDataVolume"]
+                    )
+
+            sequentialProgressBar.setMessage("Configuring mps algorithm")
+
             self.run_parallel(
                 mps_configuration,
                 reference_volume,
                 progressBar,
-            )
-        else:
-            self.run_sequential(
-                mps_configuration,
-                reference_volume,
-                sequentialProgressBar,
             )
 
     def onCliChangeEvent(
@@ -1529,7 +1619,7 @@ class MultiScaleLogic(LTracePluginLogic):
 
             self.save_outputs(info, reference_volume)
 
-        self.cleanUp(self.temporaryPath, info["nreal"])
+        self.cleanWorkspace(self.temporaryPath, info["nreal"])
 
         if self.cliObserver is not None:
             self.cliNode.RemoveObserver(self.cliObserver)
@@ -1537,9 +1627,11 @@ class MultiScaleLogic(LTracePluginLogic):
 
         del self.cliNode
         self.cliNode = None
-        self.widget.onCLIEvent()
+        if self.widget is not None:
+            self.widget.onCLIEvent()
+            self.widget = None
 
-    def cleanUp(self, temporaryPath, parallelFiles=None):
+    def cleanWorkspace(self, temporaryPath, parallelFiles=None):
         shutil.rmtree(temporaryPath, ignore_errors=True)
         helpers.removeTemporaryNodes(environment=self.__class__.__name__)
         if parallelFiles:
@@ -1560,21 +1652,29 @@ class MultiScaleLogic(LTracePluginLogic):
         self.save_options = {}
         self.mask_options = {}
 
+    def cleanup(self):
+        if self.cliNode is not None:
+            self.cancelCLI()
+            self.cliNode = None
+
     def cancelCLI(self):
         if self.cliNode:
+            if self.widget is not None:
+                self.widget.updateStatusLabel("Canceled")
             self.cliNode.Cancel()
-            self.widget.updateStatusLabel("Canceled")
 
-    def createTrainingImagefile(self, array, temporaryPath, filename="ti.dat"):
+    def createTrainingImagefile(self, image, temporaryPath, filename="ti.dat"):
         flipAxis = self.save_options["flipAxis"]
-        flatList = array.flatten("F" if flipAxis else "C").tolist()
-        tiShape = array.shape if flipAxis else np.flip(array.shape)
+        if flipAxis:
+            image = image.transpose(0, 2, 1)
+        else:
+            image = image.transpose(2, 0, 1)
 
         with open(os.path.join(temporaryPath, filename), "w") as f:
-            f.write(" ".join([str(num) for num in tiShape]) + "\n")
+            f.write(" ".join([str(num) for num in image.shape]) + "\n")
             f.write("1" + "\n")
             f.write("Header" + "\n")
-            f.write("\n".join([str(num) for num in flatList]))
+            f.write("\n".join([str(num) for num in image.flatten("F").tolist()]))
             f.write("\n")
 
     def createHardDataFile(
@@ -1590,8 +1690,8 @@ class MultiScaleLogic(LTracePluginLogic):
             hardData[:] = np.column_stack(
                 (
                     indicesz * hardDataResolution[2],
-                    indicesy * hardDataResolution[1],
                     indicesx * hardDataResolution[0],
+                    indicesy * hardDataResolution[1],
                     hardDataValues[indicesz, indicesy, indicesx],
                 )
             )
@@ -1599,8 +1699,8 @@ class MultiScaleLogic(LTracePluginLogic):
             hardData[:] = np.column_stack(
                 (
                     indicesx * hardDataResolution[0],
-                    indicesy * hardDataResolution[1],
                     indicesz * hardDataResolution[2],
+                    indicesy * hardDataResolution[1],
                     hardDataValues[indicesz, indicesy, indicesx],
                 )
             )
@@ -1612,9 +1712,9 @@ class MultiScaleLogic(LTracePluginLogic):
             f.write("col1" + "\n")
             f.write("col2" + "\n")
             f.write("col3" + "\n")
-            np.savetxt(f, hardData, fmt="           %.2f")
+            np.savetxt(f, hardData[np.lexsort((hardData[:, 0], hardData[:, 1]))], fmt="           %.2f")
 
-    def createImagelogHardDataFile(self, imageVolume, mask, values, unitConversionFactor):
+    def createImagelogHardDataFile(self, imageVolume, mask, values, temporaryPath, unitConversionFactor):
         voxelHeight = imageVolume.GetSpacing()[2] * unitConversionFactor
         length, width, height = imageVolume.GetImageData().GetDimensions()
 
@@ -1646,51 +1746,13 @@ class MultiScaleLogic(LTracePluginLogic):
             hardData = np.column_stack(
                 (
                     x_cylinder.flatten()[maskArray],
-                    y_cylinder.flatten()[maskArray],
                     z_cylinder.flatten()[maskArray],
+                    y_cylinder.flatten()[maskArray],
                     imageArray[maskArray],
                 )
             )
 
-        mps.eas.write(hardData, "hard.dat")
-
-    def configureMPSMethod(
-        self,
-        finalImageSize,
-        finalImageResolution,
-        ncond,
-        nreal,
-        iterations,
-        rseed,
-        colocateDimensions,
-        maxSearchRadius,
-        distanceMax,
-        distancePower,
-        distanceMeasure,
-    ):
-        self.mpslib = mps.mpslib(method="mps_genesim")
-        self.mpslib.parameter_filename = os.path.join(self.temporaryPath, "mps.txt")
-        self.mpslib.par["origin"] = [
-            0 - finalImageResolution[0] / 2.0,
-            0 - finalImageResolution[1] / 2.0,
-            0 - finalImageResolution[2] / 2.0,
-        ]
-        self.mpslib.par["simulation_grid_size"] = finalImageSize
-        self.mpslib.par["grid_cell_size"] = finalImageResolution
-        self.mpslib.par["n_cond"] = ncond
-        self.mpslib.par["n_real"] = nreal
-        self.mpslib.par["ti_fnam"] = os.path.join(self.temporaryPath, "ti.dat")
-        self.mpslib.par["out_folder"] = self.temporaryPath
-        self.mpslib.par["n_max_ite"] = iterations
-        self.mpslib.par["rseed"] = rseed
-        self.mpslib.par["hard_data_fnam"] = os.path.join(self.temporaryPath, "hard.dat")
-        self.mpslib.par["mask_fnam"] = os.path.join(self.temporaryPath, "mask.dat")
-        self.mpslib.par["colocate_dimension"] = colocateDimensions
-        self.mpslib.par["max_search_radius"] = maxSearchRadius
-        self.mpslib.par["distance_max"] = distanceMax
-        self.mpslib.par["distance_pow"] = distancePower
-        self.mpslib.par["distance_measure"] = distanceMeasure
-        self.mpslib.par["verbose_level"] = -1
+        mps.eas.write(hardData, Path(temporaryPath).joinpath("hard.dat"))
 
     def setSubjectHierarchy(self, node, folderDir):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -1736,16 +1798,17 @@ class MultiScaleLogic(LTracePluginLogic):
         return outputColorNode
 
     def createOutputVolume(self, refVolume, spacing, realization, name, outputDir=None, colorNode=None):
+        outputArray = self.image[realization]
+        if self.save_options["flipAxis"]:
+            outputArray = outputArray.transpose(0, 2, 1)
+            outputSpacing = np.flip(np.around(np.array(spacing), 5))
+        else:
+            outputArray = outputArray.transpose(1, 2, 0)
+            outputSpacing = np.around(np.array(spacing), 5)
+
         if isinstance(refVolume, slicer.vtkMRMLLabelMapVolumeNode):
             labelmapNode, _ = helpers.createLabelmapInput(refVolume, name)
             labelmapNode.GetDisplayNode().GetColorNode().SetAttribute("NodeEnvironment", self.__class__.__name__)
-
-            if self.save_options["flipAxis"]:
-                outputArray = self.image[realization]
-                outputSpacing = np.flip(np.around(np.array(spacing), 5))
-            else:
-                outputArray = np.transpose(self.image[realization])
-                outputSpacing = np.around(np.array(spacing), 5)
 
             if not self.mask_options:
                 slicer.util.updateVolumeFromArray(labelmapNode, outputArray.astype(np.int32))
@@ -1794,13 +1857,6 @@ class MultiScaleLogic(LTracePluginLogic):
             for attrName in refVolume.GetAttributeNames():
                 newVolume.SetAttribute(attrName, refVolume.GetAttribute(attrName))
 
-            if self.save_options["flipAxis"]:
-                outputArray = self.image[realization]
-                outputSpacing = np.flip(np.around(np.array(spacing), 5))
-            else:
-                outputArray = np.transpose(self.image[realization])
-                outputSpacing = np.around(np.array(spacing), 5)
-
             if self.mask_options:
                 referenceArray = slicer.util.arrayFromVolume(refVolume)
                 outputArray = np.where(np.isnan(outputArray), referenceArray, outputArray)
@@ -1832,7 +1888,9 @@ class MultiScaleLogic(LTracePluginLogic):
         self.image = self.mpslib.sim
         self.time = self.mpslib.time
 
-    def generatePreview(self, volume, dimension, top, bottom):
+    def generatePreview(
+        self, volume: slicer.vtkMRMLScalarVolumeNode, dimension: int, top: float = None, bottom: float = None
+    ):
         length, width, height = volume.GetImageData().GetDimensions()
         newVolume, _ = helpers.createLabelmapInput(volume, "previewLabelmap")
 
@@ -1840,8 +1898,12 @@ class MultiScaleLogic(LTracePluginLogic):
         newVolume.SetSpacing([wellDiameter / dimension, wellDiameter / dimension, volume.GetSpacing()[2]])
 
         startingDepth = -volume.GetOrigin()[2] / 1000
-        topVoxelHeight = round((top - startingDepth) / volume.GetSpacing()[2] * 1000)
-        bottomVoxelHeight = round((bottom - startingDepth) / volume.GetSpacing()[2] * 1000)
+        topVoxelHeight = 0
+        bottomVoxelHeight = height
+        if top is not None:
+            topVoxelHeight = round((top - startingDepth) / volume.GetSpacing()[2] * 1000)
+        if bottom is not None:
+            bottomVoxelHeight = round((bottom - startingDepth) / volume.GetSpacing()[2] * 1000)
 
         imagelogArray = slicer.util.arrayFromVolume(volume)[topVoxelHeight:bottomVoxelHeight, :, :]
 
@@ -1869,6 +1931,8 @@ class MultiScaleLogic(LTracePluginLogic):
 
         if (x[0], y[0]) == (x[-1], y[-1]):
             coords = coords[:-1]
+
+        # print(len(coords))
 
         volumeArray[:, coords[:, 0], coords[:, 1]] = imagelogArray[:, 0, coords[:, 2]]
 

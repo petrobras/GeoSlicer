@@ -51,6 +51,7 @@ class JobExecutor:
         protocol = data["host"]["protocol"]
         host = PROTOCOL_HANDLERS[protocol].from_dict(data["host"])
         job = JobExecutor(data["uid"], None, host, name=data["name"], job_type=data["job_type"])
+        job.polling_enabled = data.get("polling_enabled", True)  # Using get for older versions compatibility
         job.progress = data["progress"]
         job.status = data["status"]
         job.start_time = data["start_time"]
@@ -65,6 +66,7 @@ class JobExecutor:
             "uid": self.uid,
             "job_type": self.job_type,
             "name": self.name,
+            "polling_enabled": self.polling_enabled,
             "host": self.host.to_dict(),
             "progress": self.progress,
             "status": self.status,

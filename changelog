@@ -1,8 +1,100 @@
-# New features:
+# v2.8.4 - 2026-02-24
+
+## Bug fixes:
+- Corrected an issue where the NMR plot would break upon increasing samples. (AM-13)
+- Resolved an issue with the deploy script in Docker for Windows when public mode is enabled. (AM-13)
+- Ensured that a clean repository commit is recovered after a public version deployment. (PL-3088)
+
+# v2.8.3 - 2026-01-15
+
+## Highlights:
+- SinGAN module integrated into the multiscale environment for AI model generation.
+- New capabilities for handling DICOM database paths and improving release script processes.
+- Enhanced PNM (Pore Network Model) with subresolution unit adaptation and MICP chart generation.
+
+## New features:
+- Added SinGAN module to the multiscale environment (MUSA-110).
+- Allow segmentation as hard data for apply and preview in SinGAN (MUSA-110).
+- Added option to load image on core unwrap import (PL-3009).
+- Added log checkbox on crossplot in Charts module (PL-3033).
+- Added Cancel buttons for modules with long computations (PL-3031).
+
+## Improvements:
+- SinGAN adjusted to generate images in parts based on available resources (MUSA-116).
+- SinGAN model widget updated to correctly find and display models and their tags (MUSA-116).
+- Improved PNM remote handlers for checking job statuses more efficiently (PL-3055).
+- Enhanced release script for better changelog management and simplified documentation versioning (PL-3025).
+- Added and refined AI agent guidelines, including pull request templates and code review instructions (PL-3048).
+- Enhanced DICOM database path migration with a safe checker for non-existent paths (PL-3024).
+- Improved `check_init_files` in `deploy_slicer.py` to prevent false positive warnings (PL-2962).
+- Updated `deploy_manual.py` instructions for versioning and added multicore common errors sections to the manual (PL-3066).
+- Included visualization generation when using extract on remote; added check for pandas file existence (PL-3056).
+- Implemented "by chunks" functionality for multiscale when new variable patches exceed 1 (MUSA-149).
+- Transposed training image, hard data, and mask inputs for improved MPS execution in multiscale (MUSA-146).
+- Improved microtom description in the manual (PL-3017).
+- Changed default values for subresolution in PNM and automatically set parameters on PNM subscale model (PL-2995).
+- Uniform porosity results from saturation and segmentation (PL-2978).
+- Updated ModuleTemplate use of `helpUrl` to point to manual documentation (PL-2975).
+- Enabled developer to define high-performance code blocks using a context manager to handle GIL configuration (PL-3016).
+- Increased maximum job time to 5 days for Slurm managed jobs (PL-3016).
+- Increased thread time for large simulations (PL-3016).
+- Enabled polling using `get` for older versions compatibility in job execution (PL-3016).
+- Set 3D Slice Edge visibility to false by default (PL-3063).
+- Added `md5` checker for scripts that download GeoSlicer base files (PL-2928).
+- Added functionality to handle CSV and XLSX files with title and comma alternatives (PL-3052).
+- Limited the minimum threads used in parallel extraction to 2 (PL-3035).
+- Transposing x<->z axis in `connected_image` auxiliary function (PL-3068).
+
+## Bug fixes:
+- Fixed checks of status in PNM Remote handlers and improved status checking logic (PL-3055).
+- Fixed errors after rebasing SinGAN integration, added `.nc` export to GPU generation, and improved interface (MUSA-116).
+- Fixed method names breaking execution and added missing methods in SinGAN documentation (MUSA-116).
+- Fixed PNM Extractor tests and added delays before cancel to tests (PL-3031).
+- Fixed memory leak in new tests related to cancel buttons (PL-3031).
+- Fixed PNM simulation and handler bugs (PL-3016).
+- Fixed throats visualization problem and improved related logic (PL-3016).
+- Fixed extraction results placement bug by removing saving `dirId` (PL-3016).
+- Fixed saving tables to correctly detect developer mode (PL-3016).
+- Fixed keep temp bug in remote execution (PL-3016).
+- Fixed bug with Porosity calculation in `PorosityMappingFromSaturation` (PL-2978).
+- Fixed bug with 'column type void' table when loading projects (PL-3040).
+- Fixed segment disappearing when switching to thin section during threshold (PL-2983).
+- Removed 'Edges' segment when cancelling boundary removal effect (PL-2983).
+- Fixed SinGAN not being found correctly (MUSA-116).
+- Fixed errors due to missing hard data resolution in SinGAN when creating TI from model (MUSA-110).
+- Fixed single volume name and error handling when no model is available in SinGAN (MUSA-110).
+- Fixed `gemini` commands not working in Powershell (PL-3048).
+- Fixed `MPS` int16 to int32 bug and corrected code style for related variable names (MUSA-146).
+- Fixed unselected data type bug in multiscale (MUSA-146).
+- Fixed ordering when wrapping in multiscale (MUSA-146).
+- Fixed `by patches` slicing direction and wrap button not working properly in multiscale (MUSA-149).
+- Fixed `MPS` integration tests to run in parallel (MUSA-149).
+- Fixed `by chunks` temporary nodes not being removed after simulation in multiscale (MUSA-149).
+- Fixed `MicrotomRemote` integration test case and warning (PL-3018).
+- Fixed MultiScale integration test (PL-3000).
+- Fixed `pipeline` not committing to public repository (PL-2928).
+- Fixed error handling when downloading public release in packer build script (PL-3028).
+- Fixed black formatting in various files (PL-3052, PL-2995, PL-2978).
+- Fixed log on histograms in Charts module (PL-3033).
+- Fixed typo in manual (PL-3017).
+- Fixed `remote.utils` file by creating lists in a more pythonic way (PL-3055).
+- Fixed simulation bug in PNM (PL-3016).
+- Fixed labelmap bugfix in remote extraction (PL-3056).
+
+## Removed:
+- Removed old sequential `mps.run()` and related interface in multiscale (MUSA-149).
+- Removed unused code from core unwrap import (PL-3009).
+- Removed extractor output from scene items to use with Remote without problems when the scene is empty (PL-3016).
+- Removed carriage return from manual update instructions (PL-3066).
+
+# v2.8.2 - 2025-11-20
+
+
+## New features:
 - Enabled float volumes as input on Microtom kabs.
 - Added native directional support for Kabs.
 
-# Improvements:
+## Improvements:
 - Restored enable state of input nodes after changes.
 - Changed the default value for Radius Resolution in microtom. (PL-3014)
 - Improved gradient diffusion. (PL-2900)
@@ -11,12 +103,117 @@
 - Enhanced SIRR import interface and integrated it with MICP Visualization. (PL-2999)
 - Added documentation for grain classes to the GeoSlicer manual. (PL-2976)
 
-# Bug fixes:
+## Bug fixes:
 - Fixed porosity label display on the modeling interface. (PL-3015)
 - Resolved temporary node cleanup and ensured view resets to the reference volume. (PL-3015)
 - Addressed memory leaks. (PL-2992)
 - Corrected hard data coordinates in `mpslib` to ensure they are within grid voxels and fixed hard data file reading by `mps`. (MUSA-148)
 - Fixed a translation error in the GeoSlicer manual. (PL-2976)
 
-# Removed:
+## Removed:
 - Removed the porosity modifier from the user graphical interface. (PL-2999)
+
+
+# v2.8.1 - 2025-10-28
+
+
+## Highlights:
+- Pore Network Model (PNM) simulation can now be executed on the cluster. (PL-2866)
+- A new module was added to the ImageLog environment for creating KDE (Kernel Density Estimation) tables and grouping instance segmenter results by depth and attribute for analysis. (MUSA-143)
+- MicroCT Loader now supports loading NetCDF files directly from a directory. (PL-2921)
+
+## New features:
+- A new module for calculating Euclidean Distance Transform (EDT) from segmentations was added. (PL-2946)
+- New capability to measure segment coordination in watershed algorithms, including an interface checkbox. (PL-2968)
+
+## Improvements:
+- Bug Report widget now handles missing exceptions and provides a fallback message, with a description length limit for JIRA compatibility and placeholder instructions. (PL-2942)
+- Segmentation effect highlight updated for improved visibility when active. (PL-2972)
+- Improved user feedback and error logging when project loading fails. (PL-2950)
+- Subscale widget now supports SIRR import, with updated interface and instructions. (PL-2966)
+- Users can now resume annotation after changing the layout. (PL-2964)
+- Added a 'do_preprocessing' parameter to SegmentInspectorCLI and a 'Include Preprocessing' checkbox to SegmentInspector, Islands, and Snow widgets in InstanceSegmenter, allowing control over morphological operations. (PL-2953)
+- Added support for float pore maps with values between 0 and 1, and changed the warning color from red to yellow. (PL-2951)
+- Pore Network Model (PNM) Simulation manual updated with cluster execution information and figure numbering adjustments. (PL-2949)
+- Jobs can now be collected while in progress if configured to allow it. (PL-2866)
+- GeoSlicer manual updated to support internationalization (i18n), along with updated installation and development articles, translated Virtual Segmentation Flow charts, and updated ImageLogExport documentation translation. (PL-2883)
+- Implemented a simple query to check the connection with BIAEP. (PL-2930)
+- ImageLog dimensions are now always visible, with interface improvements in spacing and labels.
+- Thin Section environment help URL and category were set.
+- Documentation for Euclidean Distance Transform was added. (PL-2946)
+- Variogram Analysis documentation added and improved. (PL-2990)
+- Manual page for Interactive Segmenter added. (PL-2964)
+- Manual pages updated with information about coordination calculation. (PL-2968)
+- MicroCT Filters documentation improved. (PL-2965)
+- Improved object orientation of subres model classes and unified node creation with `ExtractionNodesCreator`. (PL-2925)
+
+## Bug fixes:
+- Addressed an application crash that occurred when running SegmentInspector tests. (PL-2987)
+- Re-enabled the Pore Network Model (PNM) extract apply button. (PL-2988)
+- Restored the `throat.volume` property for use with OpenPNM. (PL-2986)
+- Improved plotting behavior for KDE module, including handling of single-line tables and single unique values. (MUSA-143)
+- Enhanced error and warning handling for the KDE module, with user-facing error messages for empty or single-depth report tables. (MUSA-143)
+- Addressed an issue where volumes sometimes did not fit the view. (PL-2964)
+- Corrected the subres parameter parser. (PL-2970)
+- Corrected the behavior of the MicroCT Export button. (PL-2948)
+- Addressed a traceback issue in the Pore Network Model (PNM) visualization module. (PL-2960)
+- Addressed tracebacks in KabsREV when the network is unavailable. (PL-2955)
+- Corrected an issue where parallelization was inadvertently disabled. (PL-2910)
+- Fixed one-phase simulations failing when no throats are resolved. (PL-2925)
+- KabsREV was updated to use the current `set_subres_model` parameters structure. (PL-2925)
+- Helper buttons now correctly use the provided help URL links. (PL-2883)
+- Addressed an invalid node reference issue during segment editor destruction. (PL-2927)
+- Fixed an issue related to module updates when interacting with original 3DSlicer modules. (PL-2927)
+- Corrected an issue where the AI Models widget failed to load models when a directory was selected. (PL-2912)
+- Fixed the order of remote protocol options. (PL-2930)
+- Addressed an issue preventing the loading of EuclideanDistanceTransform.py on Windows due to case-insensitivity. (PL-2946)
+- Fixed a bug during Volume loading environment caused by specific imports.
+
+
+# v2.8.0 - 2025-09-30
+
+
+## Highlights:
+- Added a supervised MicroCT (MCT) segmentation module with real-time preview capabilities (PL-2843)
+- Introduced the CLAHE (Contrast Limited Adaptive Histogram Equalization) tool for image processing (MUSA-122)
+- Enhanced the Image Log Export Widget to support exporting proportions labelmap with segmentation (MUSA-130)
+- Improved ROI visibility and usability by simplifying the UI and refining range sliders for Image Log cropping (MUSA-125)
+
+## New features:
+- Added a supervised MicroCT (MCT) segmentation module with real-time preview capabilities (PL-2843)
+- Added new visualizations for Kabs (PL-2898)
+- Added the CLAHE (Contrast Limited Adaptive Histogram Equalization) tool (MUSA-122)
+- Added a bug report upload feature to the service desk for closed-source versions (PL-2857)
+
+## Improvements:
+- Enhanced the Image Log Export Widget to support exporting proportions labelmap with segmentation and improved identification of proportions labelmaps (MUSA-130)
+- Improved the clone action for nodes to preserve properties and reference nodes, including role references for tables (PL-2914)
+- Failed remote jobs can now be restarted when attempting to collect results, with retries occurring in the same directory (PL-2864)
+- Adjusted shape factor calculation (PL-2910)
+- Reset masking section when effects change (PL-2913)
+- Implemented a new parameters architecture for local simulations and enabled parameter node creation after collecting remote execution results. Parameters are now saved after simulation, and the load button in subscale parameters was reintroduced (PL-2904)
+- Added the option to load NetCDF files in the data source panel (PL-2901)
+- Improved handling of failed extractor jobs and partially failed simulation jobs. Enhanced method and prefix display for Pore Network Model (PNM) remote jobs (PL-2892)
+- Centered the modal progress bar (PL-2857)
+- Updated the node custom behavior feature (PL-2850)
+- Renamed the 'Volumes Crop' module to 'Crop' (PL-2868)
+- Improved ROI visibility and usability by simplifying the UI with `ctkRangeSlider` for Image Log cropping (MUSA-125)
+- Improved modeling by adding new labels, handling numbers greater than int32_max, and increasing processing speed
+- Adjusted segmentation visualization to show segment colors directly
+
+## Bug fixes:
+- Fixed an issue with member access during module panel updates (PL-2920)
+- Fixed bugs related to Kabs, Krel, and MICP calculations (PL-2918)
+- Fixed missing parameter, log step, two-phase cancel, and number of simulations bugs in the simulation workflow (PL-2904)
+- Fixed an issue with importing LabelMapVolume from CSV files (MUSA-134)
+- Fixed issues with `keep_temporary` and `timeout_enabled` checkboxes, and corrected snapshot selection visibility and behavior (PL-2895)
+- Fixed an error during DLIS export caused by a variable with an incorrect name (MUSA-133)
+- Addressed several bugs found during integration tests (PL-2850)
+- Addressed issues related to memory leaks, stability, and errors during scene closing or segmentation restarts (PL-2843)
+- Fixed buggy behavior in spinboxes and UI glitches related to range slider and ROI interaction (MUSA-125)
+
+## Removed:
+- Removed the 'Color smudge' option (PL-2913)
+- Removed Tesseract from the repository for open-source versions (PL-2868)
+- Removed the "Grow from seeds" option from the Thin Section environment (PL-1972)
+- Removed deprecated functionalities from the saturation module

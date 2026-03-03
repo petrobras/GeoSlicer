@@ -22,7 +22,7 @@ O módulo se encontra no ambiente _Well Logs_. Na barra esquerda, navegar por _P
 
 ### Método
 
-O método calcula o índice de heterogeneidade (HI) de uma imagem de amplitude, avaliando o desvio padrão em diferentes escalas (tamanhos de janela de convolução). Em seguida, o algoritmo ajusta uma regressão linear entre o logaritmo da escala e o desvio padrão. O coeficiente angular dessa regressão representa o índice de heterogeneidade para cada profundidade analisada. Assim, o índice quantifica a relação entre a variação local e a escala de observação.
+O método calcula o índice de heterogeneidade (HI) de uma imagem de amplitude, avaliando o desvio padrão em diferentes escalas (tamanhos de janela de convolução). Em seguida, o algoritmo ajusta uma regressão linear entre o logaritmo da escala e o logaritmo do desvio padrão. O coeficiente angular dessa regressão representa o índice de heterogeneidade para cada profundidade analisada. Assim, o índice quantifica a relação entre a variação local e a escala de observação.
 
 ### Referências
 

@@ -314,8 +314,8 @@ def microporosity(
         for v in values:
             sumup += np.sum(label_count[(label_values == v).nonzero()], dtype=_dtype)
 
-        coverage[f"{name} Segment Coverage (vx)"] = sumup
-        coverage[f"{name} Segment Coverage (%)"] = sumup / info["Image Size (voxels)"] * 100
+        coverage[f"{name} Segment (vx)"] = sumup
+        coverage[f"{name} Segment (%)"] = sumup / info["Image Size (voxels)"] * 100
 
     info.update(
         {

@@ -45,20 +45,20 @@ plugins:
       docs_structure: folder
       languages:
         - locale: pt
-          name: Português
+          name: PortuguÃªs
           build: true
           nav_translations:
-            Overview: Visão Geral
-            Introduction: Introdução
-            Installation: Instalação
+            Overview: VisÃ£o Geral
+            Introduction: IntroduÃ§Ã£o
+            Installation: InstalaÃ§Ã£o
             First Steps: Primeiros Passos
-            Application: Aplicação
-            Modules: Módulos
+            Application: AplicaÃ§Ã£o
+            Modules: MÃ³dulos
             Loading Data: Carregando dados
-            Remote computing: Computação Remota
+            Remote computing: ComputaÃ§Ã£o Remota
             Development: Desenvolvimento
             How To Contribute: Como Contribuir
-            Documentation: Documentação
+            Documentation: DocumentaÃ§Ã£o
             Building GeoSlicer: Compilando o GeoSlicer
         - locale: en
           name: English
@@ -175,7 +175,7 @@ nav:
       - Image Log Pre-processing: "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.md"
       - Volumes Pre-processing: "Multiscale/VolumesPreProcessing/VolumesPreProcessing.md"
       - Microtom: "Multiscale/Microtom/Microtom.md"
-      - Multiscale Image Generation: "Multiscale/MultiscaleImageGeneration/Multiscale.md"
+      - Image Generation: "Multiscale/MultiscaleImageGeneration/Multiscale.md"
       - Multiscale Post-Processing: "Multiscale/MultiscalePostProcessing/MultiscalePostProcessing.md"
       - Pore Network: "Multiscale/PNM/PNM.md"
       - Volume Segmentation: "Multiscale/Segmentation/VolumeSegmentation.md"

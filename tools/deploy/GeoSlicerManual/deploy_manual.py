@@ -34,10 +34,11 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess:
     logger.info(f"🏃 Executing: {' '.join(command)}")
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
-        logger.error(f"❌ Error: Command failed with exit code {result.returncode}")
-        logger.error(f"Stdout:\n{result.stdout}")
-        logger.error(f"Stderr:\n{result.stderr}")
-        sys.exit(1)
+        message = (
+            f"Command failed with exit code {result.returncode}\nStdout:\n{result.stdout}\nStderr:\n{result.stderr}"
+        )
+        raise Exception(message)
+
     logger.info(result.stdout)
     return result
 
@@ -72,7 +73,7 @@ def setup_git_remote(remote_name: str, remote_url: str) -> None:
     logger.info("✅ Git remote setup complete.")
 
 
-def run(
+def _process(
     version: str,
     aliases: list[str],
     set_default: bool = False,
@@ -87,7 +88,7 @@ def run(
     # Ensure the git remote is configured correctly.
     setup_git_remote(remote_name, GITHUB_REPO_URL)
 
-    version = version.replace("v", "")
+    version = ".".join(version.replace("v", "").split(".")[:2])
     # Deploy the specified version and any aliases using mike.
     logger.info(f"🚀 Deploying documentation version '{version}' to '{GITHUB_REPO_URL}'...")
     deploy_cmd = [
@@ -127,6 +128,28 @@ def run(
     logger.info("🎉 Deployment successful!")
     logger.info("Check the Pages settings in your GitHub repository to ensure the site is published.")
     logger.info(f"🔗 https://ltracegeo.github.io/GeoSlicerManual/{version}/")
+
+
+def run(
+    version: str,
+    aliases: list[str],
+    set_default: bool = False,
+    push: bool = True,
+    target_branch: str = DEFAULT_TARGET_BRANCH,
+    remote_name: str = REMOTE_NAME,
+) -> None:
+    try:
+        _process(
+            version=version,
+            aliases=aliases,
+            set_default=set_default,
+            push=push,
+            target_branch=target_branch,
+            remote_name=remote_name,
+        )
+    except Exception as error:
+        logger.error(f"❌ Error: {error}")
+        sys.exit(1)
 
 
 def main():

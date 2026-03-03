@@ -1,12 +1,432 @@
+import logging
+import os
+import re
 from typing import Optional
-
-from ltrace.image import optimized_transforms
-from porespy.networks import regions_to_network_parallel, snow2
-from porespy.tools import make_contiguous
 
 import numpy as np
 import pandas as pd
+import slicer
+import vtk
 from numba import njit, prange
+
+from ltrace.slicer.data_utils import dataFrameToTableNode
+from porespy.networks import regions_to_network_parallel, snow2
+from porespy.tools import make_contiguous
+
+DEFAULT_SHAPE_FACTOR = 1.0
+
+
+"""
+Three Pore network description formats:
+spy: PoreSpy format (dict of 1D and 2D np arrays)
+pne: PNExtractor format (four csv strings)
+geo: GeoSlicer format (two MRML tables, one column for each property)
+pnf: PNFlow format (four ascii tables), pore and throat indexes start 
+    at 1 (pores with index -1 and 0 represent inlet and outlet, 
+    repsectivelly). This is equivalent to the statoil format
+vtu: VTK Unstructured Grid, in this context especifically .vtu files 
+    created by PNFlow.
+"""
+
+
+def geo2spy(pore_dict, throat_dict):
+    """
+    Takes a Table Node with pore_table type attribute and returns a dictionary
+    describing the pore network using the PoreSpy format.
+    """
+    # remove edge throats from PNExtract
+    edge_throats = list(range(len(throat_dict["throat.all"])))
+    for i in range(len(throat_dict["throat.all"])):
+        if (throat_dict["throat.conns_0"][i] <= -1) or (throat_dict["throat.conns_1"][i] <= -1):
+            edge_throats.remove(i)
+    for column in throat_dict:
+        throat_dict[column] = throat_dict[column][edge_throats]
+
+    geo = {}
+    geo.update(pore_dict)
+    geo.update(throat_dict)
+
+    prop_array = [re.split(r"_\d$", key)[0] for key in geo.keys()]
+    prop_dict = {i: prop_array.count(i) for i in prop_array}
+
+    spy = {}
+    for prop_name, columns in prop_dict.items():
+        if columns == 1:
+            spy[prop_name] = geo[prop_name]
+        else:
+            spy[prop_name] = np.stack([geo[f"{prop_name}_{i}"] for i in range(columns)], axis=1)
+
+    spy["pore.phase1"] = spy["pore.phase"] == 1
+    spy["pore.phase2"] = spy["pore.phase"] == 2
+    return spy
+
+
+def geo2pnf(
+    pore_dict,
+    throat_dict,
+    subresolution_function,
+    extraction_algorithm,
+    size,
+    edge_throats="none",
+    scale_factor=10**-3,
+    axis="x",
+    subres_shape_factor=0.071,
+    subres_porosity_modifier=1.0,
+    save_tables=False,
+):
+    """
+    Returns a dictionary with four strings ("link1", "link2", "node1", "node2") representing the four files in the statoil format
+    """
+    # Local import here to prevent circular dependency
+    from ltrace.pore_networks.functions_simulation import manual_valvatne_blunt, set_subresolution_conductance
+
+    spy_network = geo2spy(pore_dict, throat_dict)
+    manual_valvatne_blunt(spy_network)
+
+    if (spy_network["pore.phase"] == 2).any():
+        set_subresolution_conductance(
+            spy_network,
+            subresolution_function,
+            subres_porositymodifier=subres_porosity_modifier,
+            subres_shape_factor=subres_shape_factor,
+            save_tables=save_tables,
+        )
+    spy2geo(spy_network)
+    pore_dict = {i: spy_network[i] for i in spy_network.keys() if ("pore." in i)}
+    throat_dict = {i: spy_network[i] for i in spy_network.keys() if ("throat." in i)}
+
+    if extraction_algorithm == "porespy":
+        # Correction necessary since porespy counts element volume twice (once for pore and once for throat)
+        # While PNE/PNF counts each volume once, either for pore or throat
+        volume_multiplier = 0.5
+    else:
+        volume_multiplier = 1
+
+    connected_pores, connected_throats = get_connected_geo_network(pore_dict, throat_dict, f"{axis}min", f"{axis}max")
+    if not any(connected_pores) or not any(connected_throats):
+        logging.warning("The network is invalid. Does not percolate.")
+        return None
+    pore_dict, throat_dict = get_sub_geo(pore_dict, throat_dict, connected_pores, connected_throats)
+
+    pores_with_edge_throats = set()
+    n_pores = len(pore_dict["pore.all"])
+    n_throats = len(throat_dict["throat.all"])
+    pores_conns_pores = [[] for _ in range(n_pores)]
+    pores_conns_throats = [[] for _ in range(n_pores)]
+    # Connections are used to fill node1 item 6 parameters later
+    for i in range(n_throats):
+        left_pore = throat_dict["throat.conns_0"][i]
+        right_pore = throat_dict["throat.conns_1"][i]
+        for start_pore, end_pore in ((left_pore, right_pore), (right_pore, left_pore)):
+            if start_pore >= 0:
+                if end_pore >= 0:
+                    pores_conns_pores[start_pore].append(end_pore)
+                    pores_conns_throats[start_pore].append(i)
+                elif axis == edge_throats:
+                    pores_conns_pores[start_pore].append(end_pore)
+                    pores_conns_throats[start_pore].append(i)
+                    pores_with_edge_throats.add(start_pore)
+
+    pnf = {"link1": [""], "link2": [], "link3": []}
+
+    if "throat.perimeter" in throat_dict.keys():
+        min_perimeter = throat_dict["throat.perimeter"][throat_dict["throat.perimeter"] > 0].min()
+
+    for i in range(n_throats):
+        # link1 items
+        left_pore = throat_dict["throat.conns_0"][i]
+        right_pore = throat_dict["throat.conns_1"][i]
+
+        radius = "{:E}".format(scale_factor * throat_dict["throat.inscribed_diameter"][i] / 2)
+
+        if "throat.shape_factor" in throat_dict.keys():
+            shape_factor = "{:E}".format(throat_dict["throat.shape_factor"][i])
+        else:
+            cross_area = throat_dict["throat.cross_sectional_area"][i]
+            perimeter = throat_dict["throat.perimeter"][i]
+            if perimeter < min_perimeter:
+                perimeter = min_perimeter
+            eq_circle_area = perimeter**2 / (4 * np.pi)
+            unformatted_shape_factor = cross_area / eq_circle_area
+            if unformatted_shape_factor > 1:
+                unformatted_shape_factor = 1
+            shape_factor = "{:E}".format(unformatted_shape_factor)
+        length = "{:E}".format(scale_factor * throat_dict["throat.direct_length"][i])
+
+        # link2 items
+        if "throat.conns_0_length" in throat_dict.keys():
+            left_pore_length = "{:E}".format(scale_factor * throat_dict["throat.conns_0_length"][i])
+            right_pore_length = "{:E}".format(scale_factor * throat_dict["throat.conns_1_length"][i])
+        else:
+            left_pore_length = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][left_pore - 1])
+            right_pore_length = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][right_pore - 1])
+
+        if "throat.mid_length" in throat_dict.keys():
+            mid_length = "{:E}".format(scale_factor * throat_dict["throat.mid_length"][i])
+        else:
+            mid_length = "{:E}".format(float(length) - float(left_pore_length) - float(right_pore_length))
+
+        if "throat.volume" in throat_dict.keys():
+            volume = "{:E}".format(scale_factor**3 * throat_dict["throat.volume"][i] * volume_multiplier)
+        else:
+            volume = "{:E}".format(
+                scale_factor**3
+                * throat_dict["throat.direct_length"][i]
+                * throat_dict["throat.cross_sectional_area"][i]
+                * volume_multiplier
+            )
+
+        if not throat_dict.get("throat.clay", None):
+            clay = "0"
+        else:
+            clay = "{:E}".format(throat_dict["throat.clay"][i])
+
+        # modify values for darcy pores
+        left_is_darcy = throat_dict["throat.phases_0"][i] == 2
+        right_is_darcy = throat_dict["throat.phases_1"][i] == 2
+        throat_is_darcy = left_is_darcy or right_is_darcy
+        if throat_is_darcy:
+            N = "{:E}".format(throat_dict["throat.number_of_capilaries"][i])
+            radius = "{:E}".format(scale_factor * throat_dict["throat.cap_radius"][i])
+            shape_factor = "{:E}".format(subres_shape_factor)
+
+            mid_length = scale_factor * throat_dict["throat.mid_length"][i]
+
+            if left_is_darcy:
+                left_pore_length = scale_factor * throat_dict["throat.conns_0_length"][i]
+            else:
+                left_pore_length = scale_factor * throat_dict["throat.conns_0_length"][i]
+
+            if right_is_darcy:
+                right_pore_length = scale_factor * throat_dict["throat.conns_1_length"][i]
+            else:
+                right_pore_length = scale_factor * throat_dict["throat.conns_1_length"][i]
+
+            length = left_pore_length + right_pore_length + mid_length
+        else:  # pore is not Darcy
+            N = "{:E}".format(1.0)
+
+        # write results
+        pnf["link1"].append(f"{i+1} {left_pore+1} {right_pore+1} {radius} {shape_factor} {length}")
+        pnf["link2"].append(
+            f"{i+1} {left_pore+1} {right_pore+1} {left_pore_length} {right_pore_length} {mid_length} {volume} {clay}"
+        )
+        pnf["link3"].append(f"{i+1} {left_pore+1} {right_pore+1} {N}")
+
+    # adds mock throats to define inlets and outlets
+    for i in range(n_pores):
+        if i in pores_with_edge_throats:
+            continue
+        if pore_dict[f"pore.{axis}min"][i]:
+            target_pore = -1
+        elif pore_dict[f"pore.{axis}max"][i]:
+            target_pore = -2
+        else:
+            continue
+        pores_conns_pores[i].append(target_pore)
+        pores_conns_throats[i].append(n_throats)
+        shape_factor = "{:E}".format(subres_shape_factor)  # Similar to PNE behavior
+        if "pore.extended_diameter" in pore_dict.keys():
+            radius = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][i] / 2)
+            length = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][i] / 2)
+        else:
+            radius = "{:E}".format(scale_factor * pore_dict["pore.radius"][i])
+            length = "{:E}".format(scale_factor * pore_dict["pore.radius"][i])
+        volume = "{:E}".format(scale_factor**3 * pore_dict["pore.volume"][i] * volume_multiplier)
+
+        pnf["link1"].append(f"{n_throats+1} {i+1} {target_pore+1} {radius} {shape_factor} {length}")
+        pnf["link2"].append(f"{n_throats+1} {i+1} {target_pore+1} {length} {0} {0} {volume} {0}")
+        n_throats += 1
+
+    pnf["link1"][0] = f"{n_throats}"
+
+    x = size["x"] * scale_factor
+    y = size["y"] * scale_factor
+    z = size["z"] * scale_factor
+
+    pnf["node1"] = [f"{n_pores} {x} {y} {z}"]
+    pnf["node2"] = []
+    pnf["node3"] = []
+    for i in range(n_pores):
+        input_x = pore_dict["pore.coords_0"][i] * scale_factor
+        input_y = pore_dict["pore.coords_1"][i] * scale_factor
+        input_z = pore_dict["pore.coords_2"][i] * scale_factor
+        p_z, p_y, p_x = input_x, input_y, input_z
+        coordinate_number = len(pores_conns_pores[i])
+        is_inlet = int(pore_dict[f"pore.{axis}max"][i])
+        is_outlet = int(pore_dict[f"pore.{axis}min"][i])
+        connected_pores = " ".join((str(j + 1) for j in pores_conns_pores[i]))
+        connected_throats = " ".join((str(j + 1) for j in pores_conns_throats[i]))
+        if "pore.extended_diameter" in pore_dict.keys():
+            radius = "{:E}".format(scale_factor * pore_dict["pore.extended_diameter"][i] / 2)
+        else:
+            radius = "{:E}".format(scale_factor * pore_dict["pore.radius"][i])
+        volume = "{:E}".format(scale_factor**3 * pore_dict["pore.volume"][i] * volume_multiplier)
+        area = scale_factor**2 * pore_dict["pore.surface_area"][i]
+
+        if "pore.shape_factor" in pore_dict.keys():
+            shape_factor = pore_dict["pore.shape_factor"][i]
+        elif area > 0:
+            eq_volume = (1 / (6 * np.sqrt(np.pi))) * (area) ** (3 / 2)
+            shape_factor = "{:E}".format(float(volume) / eq_volume)
+        else:
+            shape_factor = DEFAULT_SHAPE_FACTOR
+
+        if not throat_dict.get("pore.clay", None):
+            clay = 0
+        else:
+            clay = "{:E}".format(throat_dict["pore.clay"][i])
+
+        # adjustments for darcy pores
+        if pore_dict["pore.phase"][i] == 2:
+            radius = "{:E}".format(scale_factor * pore_dict["pore.cap_radius"][i])
+            shape_factor = "{:E}".format(subres_shape_factor)
+            N = "{:E}".format(pore_dict["pore.number_of_capilaries"][i])
+        else:
+            N = "{:E}".format(1.0)
+
+        pnf["node1"].append(
+            f"{i+1} {p_x} {p_y} {p_z} {coordinate_number} {connected_pores} {is_inlet} {is_outlet} {connected_throats}"
+        )
+        pnf["node2"].append(f"{i+1} {volume} {radius} {shape_factor} {clay}")
+
+        pnf["node3"].append(f"{i+1} {N}")
+
+    return pnf
+
+
+def get_connected_geo_network(pore_dict, throat_dict, in_face, out_face):
+    """
+    in_face, out_face: str
+        Each must be one of 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'
+    return:
+        two bool arrays for pores and throats connected to both faces
+    """
+    from scipy.sparse import csgraph as csg
+    import scipy.sparse as sprs
+
+    valid_inputs = ["xmin", "xmax", "ymin", "ymax", "zmin", "zmax"]
+    if in_face not in valid_inputs:
+        raise ValueError(f"Face values is invalid: in_face = {in_face}")
+    if out_face not in valid_inputs:
+        raise ValueError(f"Face values is invalid: out_face = {out_face}")
+
+    n_throats = throat_dict["throat.all"].size
+    n_pores = pore_dict["pore.all"].size
+    weights = np.ones((2 * n_throats,), dtype=int)
+
+    conn_0 = [max(0, i) for i in throat_dict["throat.conns_0"]]
+    conn_1 = [max(0, i) for i in throat_dict["throat.conns_1"]]
+    row = conn_0
+    col = conn_1
+    row = np.append(row, conn_1)
+    col = np.append(col, conn_0)
+
+    adjacency_network = sprs.coo_matrix((weights, (row, col)), (n_pores, n_pores))
+    _, cluster_labels = csg.connected_components(adjacency_network, directed=False)
+
+    in_labels = np.unique(cluster_labels[pore_dict[f"pore.{in_face}"]])
+    out_labels = np.unique(cluster_labels[pore_dict[f"pore.{out_face}"]])
+    common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
+
+    connected_pores = np.isin(cluster_labels, common_labels)
+    throat_connected_0 = connected_pores[throat_dict["throat.conns_0"]]
+    throat_connected_1 = connected_pores[throat_dict["throat.conns_1"]]
+    connected_throats = np.logical_or(throat_connected_0, throat_connected_1)
+    return connected_pores, connected_throats
+
+
+def get_sub_geo(pore_dict, throat_dict, sub_pores, sub_throats):
+    def _counter():
+        i = -1
+        while True:
+            i += 1
+            yield i
+
+    sub_pore_dict = {}
+    sub_throat_dict = {}
+    for prop in pore_dict.keys():
+        sub_pore_dict[prop] = pore_dict[prop][sub_pores]
+    for prop in throat_dict.keys():
+        sub_throat_dict[prop] = throat_dict[prop][sub_throats]
+
+    counter = _counter()
+    f_counter = lambda x: next(counter) if x else 0
+    new_pore_index = np.fromiter(map(f_counter, sub_pores), dtype="int")
+
+    for i in np.nditer(sub_throat_dict["throat.conns_0"], op_flags=["readwrite"]):
+        if i > 0:
+            i[...] = new_pore_index[i]
+
+    for i in np.nditer(sub_throat_dict["throat.conns_1"], op_flags=["readwrite"]):
+        if i > 0:
+            i[...] = new_pore_index[i]
+    return sub_pore_dict, sub_throat_dict
+
+
+def get_clusters(network):
+    """
+    clusters are numbered starting at 0
+    """
+    from scipy.sparse import csgraph as csg
+
+    am = network.create_adjacency_matrix(fmt="coo", triu=True)
+    N, Cs = csg.connected_components(am, directed=False)
+    return N, Cs
+
+
+def get_sub_spy(spy_network, sub_pores, sub_throats):
+    def _counter():
+        i = -1
+        while True:
+            i += 1
+            yield i
+
+    sub_pn = {}
+    for prop in spy_network.keys():
+        if prop.split(".")[0] == "pore":
+            sub_pn[prop] = spy_network[prop][sub_pores]
+        else:
+            sub_pn[prop] = spy_network[prop][sub_throats]
+
+    counter = _counter()
+    f_counter = lambda x: next(counter) if x else 0
+    new_pore_index = np.fromiter(map(f_counter, sub_pores), dtype="int")
+
+    if len(sub_pn["throat.conns"]) == 0:
+        return False
+    for i in np.nditer(sub_pn["throat.conns"], op_flags=["readwrite"]):
+        i[...] = new_pore_index[i]
+    return sub_pn
+
+
+def get_connected_spy_network(network, in_face, out_face, coord_limits=None):
+    """
+    in_face, out_face: str
+        Each must be one of 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'
+    """
+    valid_inputs = ["xmin", "xmax", "ymin", "ymax", "zmin", "zmax"]
+    if in_face not in valid_inputs:
+        raise ValueError(f"Face values is invalid: in_face = {in_face}")
+    if out_face not in valid_inputs:
+        raise ValueError(f"Face values is invalid: out_face = {out_face}")
+
+    _, cluster_labels = get_clusters(network)
+    in_labels = np.unique(cluster_labels[network[f"pore.{in_face}"]])
+    out_labels = np.unique(cluster_labels[network[f"pore.{out_face}"]])
+    common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
+
+    connected_pores = network.pores()[np.isin(cluster_labels, common_labels)]
+    if coord_limits:
+        pore_coords = network["pore.coords"][connected_pores]
+        mask = np.ones(len(connected_pores), dtype=bool)
+        for axis, (low, high) in coord_limits.items():
+            axis_idx = "xyz".index(axis)
+            mask &= (pore_coords[:, axis_idx] >= low) & (pore_coords[:, axis_idx] <= high)
+
+        connected_pores = connected_pores[mask]
+
+    return np.isin(cluster_labels, common_labels), np.isin(network["throat.conns"], connected_pores).all(axis=1)
 
 
 def spy2geo(pn_properties):
@@ -23,49 +443,13 @@ def spy2geo(pn_properties):
     pn_properties.update(properties_pairs_to_add)
 
 
-'''
-def get_connected_array_from_node(inputVolume: slicer.vtkMRMLLabelMapVolumeNode) -> np.ndarray:
-    """
-    Receives a volume node, removes its array unconnected elements and returns that array.
-
-    :param inputVolume: The volume node representing the pore-network.
-
-    :return: The volume node array with connected elements only.
-
-    :raises PoreNetworkExtractorError:
-        Pore network extraction failed: there was no percolating pore network through any oposite faces of the volume.
-    """
-
-    input_array = slicer.util.arrayFromVolume(inputVolume)
-    if input_array.max() <= 2**16 - 1:
-        input_array = input_array.astype(np.uint16)
-    else:
-        print(f"{inputVolume} has many indexes: {input_array.max()}")
-        input_array = input_array.astype(np.uint32)
-
-    input_array = optimized_transforms.connected_image(input_array, direction="all_combinations")
-
-    if input_array.max() == 0:
-        raise ValueError(
-            "Pore network extraction failed: there was no percolating pore network through any oposite faces of the volume."
-        )
-
-    return input_array
-'''
-
-
 def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=None):
-
     # Extracts PNM with porespy and "flattens" the data into a dict of 1d arrays
-
     porosity = pn_properties["pore.subresolution_porosity"]
     pn_properties["pore.subresolution_porosity"][porosity == 0] = porosity[porosity > 0].min()
-
     # spy2geo
     spy2geo(pn_properties)
-
     # Include additional properties
-
     pn_properties["pore.radius"] = pn_properties["pore.extended_diameter"] / 2
 
     pn_properties["throat.shape_factor"] = np.clip(
@@ -335,8 +719,6 @@ def general_pn_extract(
         )
         pn_properties = snow_results.network
         watershed_output = snow_results.regions
-        # if watershed_output.size > scalar_array:
-
     elif is_multiscale is True:  # and label_array is not None
         if not is_contiguous(label_array):
             watershed_output = make_contiguous(label_array)
@@ -395,40 +777,6 @@ def general_pn_extract(
     df_network = pd.DataFrame(pn_network, index=[0])
 
     return df_pores, df_throats, df_network, watershed_output
-
-
-"""
-def multiscale_extraction(
-    inputPorosityNode: slicer.vtkMRMLScalarVolumeNode,
-    inputWatershed: slicer.vtkMRMLLabelMapVolumeNode,
-    method: str,
-    watershed_blur: dict,
-    force_cpu=False,
-):
-    porosity_array = slicer.util.arrayFromVolume(inputPorosityNode)
-    if np.issubdtype(porosity_array.dtype, np.floating):
-        if porosity_array.max() <= 1:
-            porosity_array = (100 * porosity_array).astype(np.uint8)
-        else:
-            porosity_array = porosity_array.astype(np.uint8)
-
-    resolved_array = (porosity_array == 100).astype(np.uint8)
-    unresolved_array = np.logical_and(porosity_array > 0, porosity_array < 100).astype(np.uint8)
-    multiphase_array = resolved_array + (2 * unresolved_array)
-
-    slicer.util.updateVolumeFromArray(inputPorosityNode, multiphase_array)
-
-    extract_result = general_pn_extract(
-        inputPorosityNode,
-        inputWatershed,
-        method=method,
-        porosity_map=porosity_array,
-        watershed_blur=watershed_blur,
-        force_cpu=force_cpu,
-    )
-
-    return extract_result
-"""
 
 
 @njit(parallel=True)
@@ -517,3 +865,326 @@ def is_contiguous(labelmap):
         return False
     else:
         raise Exception
+
+
+class ExtractionNodesCreator:
+    def __init__(self, metadata, cwd, prefix, visualization):
+        """
+        :param metadata: dict containing 'spacing', 'origin', 'ijktorasmatrix', 'bounds', and 'itemTreeId'
+        :param cwd: current working directory (Path object)
+        :param prefix: string prefix for node naming
+        :param visualization: boolean to trigger 3D model creation
+        """
+        self.metadata = metadata
+        self.cwd = cwd
+        self.prefix = prefix
+        self.visualization = visualization
+        self.results = {}
+
+    def create(self):
+        required_files = ["pore_network.pkl", "throat_network.pkl", "network.pkl"]
+        missing_files = []
+
+        for filename in required_files:
+            file_path = self.cwd / filename
+            if not file_path.exists():
+                missing_files.append(str(file_path))
+
+        if missing_files:
+            raise FileNotFoundError(
+                f"The following required pore network files were not found: {', '.join(missing_files)}"
+            )
+
+        df_pores, df_throats, df_network = [pd.read_pickle(str(self.cwd / f)) for f in required_files]
+
+        # Handle Watershed Volume
+        if os.path.isfile(str(self.cwd / "watershed.npy")):
+            array_watershed = np.load(str(self.cwd / "watershed.npy"))
+            output_watershed_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            output_watershed_volume.CreateDefaultDisplayNodes()
+            slicer.util.updateVolumeFromArray(output_watershed_volume, array_watershed)
+
+            # Apply metadata
+            output_watershed_volume.SetSpacing(self.metadata["spacing"])
+            output_watershed_volume.SetOrigin(self.metadata["origin"])
+            vtk_matrix = slicer.util.vtkMatrixFromArray(np.array(self.metadata["ijktorasmatrix"]))
+            output_watershed_volume.SetIJKToRASDirectionMatrix(vtk_matrix)
+        else:
+            array_watershed = None
+
+        throatOutputTable, poreOutputTable, networkOutputTable = self.__create_tables("porespy")
+
+        self.results["pore_table"] = poreOutputTable
+        self.results["throat_table"] = throatOutputTable
+        self.results["network_table"] = networkOutputTable
+
+        dataFrameToTableNode(df_pores, poreOutputTable)
+        dataFrameToTableNode(df_throats, throatOutputTable)
+        dataFrameToTableNode(df_network, networkOutputTable)
+
+        ### Include size and spatial information in attributes ###
+        bounds = self.metadata["bounds"]
+        spacing = self.metadata["spacing"]
+        origin = self.metadata["origin"]
+
+        poreOutputTable.AddNodeReferenceID("throat_table", throatOutputTable.GetID())
+        poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
+        poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
+        poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
+        poreOutputTable.SetAttribute("origin", f"{origin[0]};{origin[1]};{origin[2]}")
+        poreOutputTable.SetAttribute("x_spacing", str(spacing[0]))
+        poreOutputTable.SetAttribute("y_spacing", str(spacing[1]))
+        poreOutputTable.SetAttribute("z_spacing", str(spacing[2]))
+
+        if array_watershed is not None:
+            poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
+            poreOutputTable.AddNodeReferenceID("watershed", output_watershed_volume.GetID())
+
+        ### Move nodes to Subject Hierarchy ###
+        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+        # Create the specific folder for this extraction
+        currentDir = folderTree.CreateFolderItem(folderTree.GetSceneItemID(), f"{self.prefix}_Pore_Network")
+
+        # Helper to move and organize nodes
+        for node in [poreOutputTable, throatOutputTable, networkOutputTable]:
+            itemId = folderTree.GetItemByDataNode(node)
+            folderTree.SetItemParent(itemId, currentDir)
+
+        if array_watershed is not None:
+            itemId = folderTree.GetItemByDataNode(output_watershed_volume)
+            folderTree.SetItemParent(itemId, currentDir)
+
+        if self.visualization:
+            self.results["model_nodes"] = visualize_network(poreOutputTable, throatOutputTable, self.metadata)
+
+        return self.results
+
+    def __create_tables(self, algorithm_name):
+        poreOutputTable = self.__create_table("pore")
+        throatOutputTable = self.__create_table("throat")
+        networkOutputTable = self.__create_table("network")
+
+        poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
+        edge_throats = "none" if (algorithm_name == "porespy") else "x"
+        poreOutputTable.SetAttribute("edge_throats", edge_throats)
+        return throatOutputTable, poreOutputTable, networkOutputTable
+
+    def __create_table(self, table_type):
+        table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
+        table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_{table_type}_table"))
+        table.SetAttribute("table_type", f"{table_type}_table")
+        table.SetAttribute("is_multiscale", "false")
+        slicer.mrmlScene.AddNode(table)
+        return table
+
+
+def visualize_network(
+    poreOutputTable: slicer.vtkMRMLTableNode,
+    throatOutputTable: slicer.vtkMRMLTableNode,
+    metadata: dict,
+):
+    """
+    Receives pore and throat table nodes and metadata to create 3D visualizations.
+    """
+    ########################
+    ##### Create pores #####
+    ########################
+    pore_columns = {poreOutputTable.GetColumnName(i): i for i in range(poreOutputTable.GetNumberOfColumns())}
+
+    n_of_phases = int(np.array(poreOutputTable.GetTable().GetColumn(pore_columns["pore.phase"])).max())
+    coordinates = [vtk.vtkPoints() for _ in range(n_of_phases)]
+    diameters = [vtk.vtkFloatArray() for _ in range(n_of_phases)]
+
+    for pore_index in range(poreOutputTable.GetTable().GetNumberOfRows()):
+        row = poreOutputTable.GetTable().GetRow(pore_index)
+        phase = row.GetVariantValue(pore_columns["pore.phase"]).ToInt() - 1
+        coordinates[phase].InsertNextPoint(
+            row.GetVariantValue(pore_columns["pore.coords_0"]).ToFloat(),
+            row.GetVariantValue(pore_columns["pore.coords_1"]).ToFloat(),
+            row.GetVariantValue(pore_columns["pore.coords_2"]).ToFloat(),
+        )
+        diameters[phase].InsertNextTuple1(row.GetVariantValue(pore_columns["pore.equivalent_diameter"]).ToFloat())
+
+    sphere_colors = ((0.1, 0.1, 0.9), (0.9, 0.1, 0.9))
+    pores_model_nodes = []
+
+    for phase in range(n_of_phases):
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(coordinates[phase])
+        polydata.GetPointData().SetScalars(diameters[phase])
+
+        sphereSource = vtk.vtkSphereSource()
+        glyph3D = vtk.vtkGlyph3D()
+        glyph3D.SetScaleModeToScaleByScalar()
+        glyph3D.SetScaleFactor(0.5)
+        glyph3D.SetSourceConnection(sphereSource.GetOutputPort())
+        glyph3D.SetInputData(polydata)
+        glyph3D.Update()
+
+        node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"pore_model_phase_{phase+1}")
+        node.SetPolyDataConnection(glyph3D.GetOutputPort())
+        node.CreateDefaultDisplayNodes()
+        display = node.GetDisplayNode()
+        display.SetScalarVisibility(0)
+        display.SetColor(*sphere_colors[phase])
+        pores_model_nodes.append(node)
+
+    ##########################
+    ##### Create throats #####
+    ##########################
+    throat_columns = {throatOutputTable.GetColumnName(i): i for i in range(throatOutputTable.GetNumberOfColumns())}
+
+    n_throat_phases = n_of_phases * 2 - 1
+    nodes_list_by_phase = [[] for _ in range(n_throat_phases)]
+    links_list_by_phase = [[] for _ in range(n_throat_phases)]
+    diameters_list_by_phase = [[] for _ in range(n_throat_phases)]
+    i_by_phase = [0] * n_throat_phases
+    max_diameter_by_phase = [0.0] * n_throat_phases
+    min_diameter_by_phase = [np.inf] * n_throat_phases
+
+    for throat_index in range(throatOutputTable.GetTable().GetNumberOfRows()):
+        throat_row = throatOutputTable.GetTable().GetRow(throat_index)
+        lp_idx = throat_row.GetVariantValue(throat_columns["throat.conns_0"]).ToInt()
+        rp_idx = throat_row.GetVariantValue(throat_columns["throat.conns_1"]).ToInt()
+
+        if (lp_idx < 0) or (rp_idx < 0):
+            continue
+
+        l_phase = throat_row.GetVariantValue(throat_columns["throat.phases_0"]).ToInt()
+        r_phase = throat_row.GetVariantValue(throat_columns["throat.phases_1"]).ToInt()
+        t_phase = l_phase + r_phase - 2
+
+        curr_i = i_by_phase[t_phase]
+
+        lp_row = poreOutputTable.GetTable().GetRow(lp_idx)
+        nodes_list_by_phase[t_phase].append(
+            (
+                curr_i * 2,
+                lp_row.GetVariantValue(pore_columns["pore.coords_0"]).ToFloat(),
+                lp_row.GetVariantValue(pore_columns["pore.coords_1"]).ToFloat(),
+                lp_row.GetVariantValue(pore_columns["pore.coords_2"]).ToFloat(),
+            )
+        )
+
+        rp_row = poreOutputTable.GetTable().GetRow(rp_idx)
+        nodes_list_by_phase[t_phase].append(
+            (
+                curr_i * 2 + 1,
+                rp_row.GetVariantValue(pore_columns["pore.coords_0"]).ToFloat(),
+                rp_row.GetVariantValue(pore_columns["pore.coords_1"]).ToFloat(),
+                rp_row.GetVariantValue(pore_columns["pore.coords_2"]).ToFloat(),
+            )
+        )
+
+        t_dia = throat_row.GetVariantValue(throat_columns["throat.inscribed_diameter"]).ToFloat()
+        if (t_dia < min_diameter_by_phase[t_phase]) and (t_dia > 0):
+            min_diameter_by_phase[t_phase] = t_dia
+        if t_dia > max_diameter_by_phase[t_phase]:
+            max_diameter_by_phase[t_phase] = t_dia
+
+        diameters_list_by_phase[t_phase].append((curr_i * 2, t_dia))
+        diameters_list_by_phase[t_phase].append((curr_i * 2 + 1, t_dia))
+
+        links_list_by_phase[t_phase].append((curr_i * 2, curr_i * 2 + 1))
+        i_by_phase[t_phase] += 1
+
+    throats_model_nodes = []
+    throats_colors = ((0.1, 0.9, 0.1), (0.9, 0.8, 0.1), (0.9, 0.1, 0.1))
+
+    for phase in range(n_throat_phases):
+        if not nodes_list_by_phase[phase]:
+            continue
+
+        coords = vtk.vtkPoints()
+        for pt in nodes_list_by_phase[phase]:
+            coords.InsertPoint(pt[0], pt[1:])
+
+        elements = vtk.vtkCellArray()
+        for link in links_list_by_phase[phase]:
+            idList = vtk.vtkIdList()
+            idList.InsertNextId(link[0])
+            idList.InsertNextId(link[1])
+            elements.InsertNextCell(idList)
+
+        rad_array = vtk.vtkDoubleArray()
+        rad_array.SetName("TubeRadius")
+        rad_array.SetNumberOfTuples(len(diameters_list_by_phase[phase]))
+        for entry in diameters_list_by_phase[phase]:
+            rad_array.SetTuple1(entry[0], entry[1])
+
+        poly = vtk.vtkPolyData()
+        poly.SetPoints(coords)
+        poly.SetLines(elements)
+        poly.GetPointData().AddArray(rad_array)
+        poly.GetPointData().SetActiveScalars("TubeRadius")
+
+        min_r = min_diameter_by_phase[phase] / (2 * (phase + 1))
+        max_r_factor = (max_diameter_by_phase[phase] / min_diameter_by_phase[phase]) ** 0.5
+
+        tubes = vtk.vtkTubeFilter()
+        tubes.SetInputData(poly)
+        tubes.SetNumberOfSides(6)
+        tubes.SetVaryRadiusToVaryRadiusByScalar()
+        tubes.SetRadius(min_r)
+        tubes.SetRadiusFactor(max_r_factor)
+        tubes.Update()
+
+        t_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"throat_model_phase_{phase+1}")
+        t_node.SetPolyDataConnection(tubes.GetOutputPort())
+        t_node.CreateDefaultDisplayNodes()
+        t_node.GetDisplayNode().SetScalarVisibility(0)
+        t_node.GetDisplayNode().SetColor(*throats_colors[phase])
+        throats_model_nodes.append(t_node)
+
+    ### Final Spatial Placement and Hierarchy ###
+    folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    parentItemId = folderTree.GetItemParent(folderTree.GetItemByDataNode(poreOutputTable))
+
+    # Construct the full transform matrix from metadata
+    fullMatrix = slicer.util.vtkMatrixFromArray(np.array(metadata["ijktorasmatrix"]))
+    fullMatrix.SetElement(0, 3, metadata["origin"][0])
+    fullMatrix.SetElement(1, 3, metadata["origin"][1])
+    fullMatrix.SetElement(2, 3, metadata["origin"][2])
+
+    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
+    transformNode.SetMatrixTransformToParent(fullMatrix)
+
+    for model_node in pores_model_nodes + throats_model_nodes:
+        folderTree.SetItemParent(folderTree.GetItemByDataNode(model_node), parentItemId)
+        model_node.SetAndObserveTransformNodeID(transformNode.GetID())
+        model_node.HardenTransform()
+
+    slicer.mrmlScene.RemoveNode(transformNode)
+
+    return {"pores_nodes": pores_model_nodes, "throats_nodes": throats_model_nodes}
+
+
+def _get_paired_throats_table(geo_pore):
+    """ "
+    =================================================================================================
+    DEPRECATED To get the paired throat table use geo_pore.GetNodeReference("throat_table")
+    =================================================================================================
+    """
+
+    folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    pore_table_id = folderTree.GetItemByDataNode(geo_pore)
+    parent_id = folderTree.GetItemParent(pore_table_id)
+    vtk_list = vtk.vtkIdList()
+    folderTree.GetItemChildren(parent_id, vtk_list)
+    geo_throat = None
+    for i in range(vtk_list.GetNumberOfIds()):
+        sibling_id = vtk_list.GetId(i)
+        node = folderTree.GetItemDataNode(sibling_id)
+        if not node:
+            continue
+        table_type = node.GetAttribute("table_type")
+        if table_type:
+            if table_type == "throat_table":
+                geo_throat = node
+                break
+
+    if not geo_throat:
+        logging.warning("No throats table found in pores table folder.")
+        return False
+    return geo_throat

@@ -1,27 +1,21 @@
+import json
+import logging
 import os
 import shutil
 import time
-from pathlib import Path
 from collections import namedtuple
-import json
-import logging
-import qt
-import slicer
-import vtk
+from pathlib import Path
+
 import nrrd
 import numpy as np
 import pandas as pd
-
-from ltrace.pore_networks.functions import geo2spy
-from ltrace.pore_networks.subres_models import get_scalar_volume_data
-from ltrace.slicer import data_utils as du
-from ltrace.slicer.helpers import LazyLoad
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.slicer_utils import LTracePluginLogic
-
+import qt
+import slicer
+import vtk
 
 from CustomResampleScalarVolume import CustomResampleScalarVolumeLogic
+from PoreNetworkExtractor import PoreNetworkExtractorLogic
+from PoreNetworkProduction import PoreNetworkProductionLogic
 from PoreNetworkSimulation import (
     OnePhaseSimulationWidget,
     OnePhaseSimulationLogic,
@@ -29,10 +23,11 @@ from PoreNetworkSimulation import (
     TwoPhaseSimulationWidget,
     MercurySimulationWidget,
     MercurySimulationLogic,
-    SubscaleLogicDict,
 )
-from PoreNetworkExtractor import PoreNetworkExtractorLogic
-from PoreNetworkProduction import PoreNetworkProductionLogic
+from ltrace.slicer import data_utils as du
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer_utils import LTracePluginLogic
+from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 
 class PNMQueue(qt.QObject):
@@ -57,26 +52,6 @@ class ReportLogic(LTracePluginLogic):
         self.MICPState = False
         self.finished = False
         self.batchExecution = False
-
-        self.logic_models = SubscaleLogicDict
-
-    def set_subres_model(self, table_node, params):
-        pore_network = geo2spy(table_node)
-        scalar_volume_data = get_scalar_volume_data(table_node)
-
-        subres_model = params["subres_model_name"]
-        subres_params = params["subres_params"]
-        if (subres_model == "Throat Radius Curve" or subres_model == "Pressure Curve") and subres_params:
-            subres_params = {
-                i: np.asarray(subres_params[i]) if subres_params[i] is not None else None for i in subres_params.keys()
-            }
-
-        subresolution_logic = self.logic_models[subres_model]
-        subresolution_function = subresolution_logic().get_capillary_radius_function(
-            subres_params, pore_network, scalar_volume_data
-        )
-
-        return subresolution_function
 
     def deleteSubjectHierarchyFolder(self, folderName):
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -210,16 +185,8 @@ class ReportLogic(LTracePluginLogic):
         self.two_phase_logic = TwoPhaseSimulationLogic(self.parent(), local_progress_bar)
         self.micp_logic = MercurySimulationLogic(self.parent(), local_progress_bar)
 
-        # Set subresolution model
-        if "subscale_model_params" in params:
-            self.subresolution_function = lambda node: self.set_subres_model(node, params["subscale_model_params"])
-            self.subres_model_name = params["subscale_model_params"]["subres_model_name"]
-            self.subres_params = params["subscale_model_params"]["subres_params"]
-        else:
-            kabs_params = OnePhaseSimulationWidget().getParams()
-            self.subresolution_function = kabs_params["subresolution function call"]
-            self.subres_model_name = kabs_params["subres_model_name"]
-            self.subres_params = kabs_params["subres_params"]
+        self.subres_model_name = params["subres_model_name"]
+        self.subres_params = params["subres_params"]
 
         # Queue with simulations
         self.sim_index = 0
@@ -314,10 +281,8 @@ class ReportLogic(LTracePluginLogic):
 
     # Kabs One-angle
     def run_1phase_one_angle(self):
-        kabs_params = OnePhaseSimulationWidget().getParams()
+        kabs_params = OnePhaseSimulationWidget().getParams(self.pore_table)
         kabs_params["keep_temporary"] = True
-        kabs_params["subresolution function call"] = self.subresolution_function
-        kabs_params["subresolution function"] = kabs_params["subresolution function call"](self.pore_table)
         kabs_params["subres_model_name"] = self.subres_model_name
         kabs_params["subres_params"] = self.subres_params
         try:
@@ -356,12 +321,10 @@ class ReportLogic(LTracePluginLogic):
 
     # Kabs Multi-angle
     def run_1phase_multi_angle(self):
-        kabs_params = OnePhaseSimulationWidget().getParams()
+        kabs_params = OnePhaseSimulationWidget().getParams(self.pore_table)
         kabs_params["simulation type"] = "Multiple orientations"
         kabs_params["rotation angles"] = 100
         kabs_params["keep_temporary"] = True
-        kabs_params["subresolution function call"] = self.subresolution_function
-        kabs_params["subresolution function"] = kabs_params["subresolution function call"](self.pore_table)
         kabs_params["subres_model_name"] = self.subres_model_name
         kabs_params["subres_params"] = self.subres_params
         try:
@@ -446,9 +409,7 @@ class ReportLogic(LTracePluginLogic):
         twoPhaseWidget = TwoPhaseSimulationWidget()
         twoPhaseWidget.parameterInputWidget.setCurrentNode(self.params["sensibility_parameters_node"])
         twoPhaseWidget.onParameterInputLoad()
-        krel_params = twoPhaseWidget.getParams()
-        krel_params["subresolution function call"] = self.subresolution_function
-        krel_params["subresolution function"] = krel_params["subresolution function call"](self.pore_table)
+        krel_params = twoPhaseWidget.getParams(self.pore_table)
         krel_params["subres_model_name"] = self.subres_model_name
         krel_params["subres_params"] = self.subres_params
         try:
@@ -529,9 +490,7 @@ class ReportLogic(LTracePluginLogic):
 
     # MICP
     def run_micp(self):
-        micp_params = MercurySimulationWidget().getParams()
-        micp_params["subresolution function call"] = self.subresolution_function
-        micp_params["subresolution function"] = micp_params["subresolution function call"](self.pore_table)
+        micp_params = MercurySimulationWidget().getParams(self.pore_table)
         micp_params["subres_model_name"] = self.subres_model_name
         micp_params["subres_params"] = self.subres_params
         try:

@@ -1,7 +1,16 @@
 import json
+import pickle
+import shutil
+import logging
 from pathlib import Path
+from typing import Any, Callable
+from datetime import datetime
+import time
+
+import slicer
 
 from ltrace.slicer_utils import print_debug
+from ltrace.remote.jobs import JobManager
 
 
 def argstring(params):
@@ -83,6 +92,9 @@ def any_running(jobs: list):
     """Check if any jobs are running
     jobs: list of job dictionaries
     """
+    if not jobs:
+        raise RuntimeError("Job list is empty")
+
     for job in jobs:
         if job["state"] == "RUNNING":
             return True
@@ -93,6 +105,9 @@ def all_complete(jobs: list):
     """Check if all jobs are complete
     jobs: list of job dictionaries
     """
+    if not jobs:
+        raise RuntimeError("Job list is empty")
+
     for job in jobs:
         if job["state"] != "COMPLETED":
             return False
@@ -103,6 +118,9 @@ def any_failed(jobs: list):
     """Check if any jobs failed
     jobs: list of job dictionaries
     """
+    if not jobs:
+        raise RuntimeError("Job list is empty")
+
     for job in jobs:
         if job["state"] == "FAILED":
             return True
@@ -113,6 +131,9 @@ def all_failed(jobs: list):
     """Check if all jobs failed
     jobs: list of job dictionaries
     """
+    if not jobs:
+        raise RuntimeError("Job list is empty")
+
     for job in jobs:
         if job["state"] != "FAILED":
             return False
@@ -123,6 +144,9 @@ def all_done(jobs: list):
     """Check if all jobs are done
     jobs: list of job dictionaries
     """
+    if not jobs:
+        raise RuntimeError("Job list is empty")
+
     for job in jobs:
         state = job["state"]
         if state != "COMPLETED" and state != "FAILED" and "CANCELLED" not in state:
@@ -148,3 +172,75 @@ def look_for_general_tracebacks_on_slurm_logs(client, deploy_path: Path):
     )
 
     return error_check["stdout"].strip() == "yes"
+
+
+def dump_via_slicer_temp(obj, filename, final_dir, format="json"):
+    temp_path = Path(slicer.util.tempDirectory()) / filename
+    final_path = Path(final_dir) / filename
+
+    if format == "json":
+        with open(temp_path, "w") as f:
+            json.dump(obj, f)
+
+    elif format == "pickle":
+        with open(temp_path, "wb") as f:
+            pickle.dump(obj, f)
+    else:
+        raise ValueError(f"Unsupported format: {format}")
+
+    shutil.move(str(temp_path), str(final_path))
+
+
+class SlurmJobStatusMixin:
+    def __init__(self, timeout_seconds, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._timeout_seconds = timeout_seconds
+        self._sacct_failure_start_time = None
+
+        self.slurm_job_ids = []
+
+    def progress(self, caller: JobManager, uid: str, client: Any = None):
+        tsnow = datetime.now().timestamp()
+        try:
+            jobstatus = sacct(client, self.slurm_job_ids)
+            if not jobstatus:
+                raise RuntimeError("Job list is empty")
+
+            # Reset failure start time on success
+            self._sacct_failure_start_time = None
+
+            self._post_status_update(caller, uid, client, jobstatus)
+        except RuntimeError as e:
+            if self._sacct_failure_start_time is None:
+                self._sacct_failure_start_time = time.time()
+
+            elapsed_time = time.time() - self._sacct_failure_start_time
+
+            if elapsed_time < self._timeout_seconds:
+                logging.debug(
+                    f"Slurm job status fetch failed for job {self.slurm_job_ids}. Retrying after {elapsed_time:.2f}s (timeout {self._timeout_seconds}s). Error: {repr(e)}"
+                )
+                caller.set_state(
+                    uid,
+                    "PENDING",
+                    0,
+                    message=f"Requesting job status. Waiting for response (elapsed: {elapsed_time:.2f}s).",
+                    end_time=tsnow,
+                    traceback=repr(e),
+                )
+                caller.schedule(uid, "PROGRESS")
+            else:
+                logging.error(
+                    f"Slurm job status fetch failed for job {self.slurm_job_ids} after timeout ({self._timeout_seconds}s). Error: {repr(e)}"
+                )
+                caller.set_state(
+                    uid,
+                    "FAILED",
+                    0,
+                    message=f"Failed to get job status after timeout ({self._timeout_seconds}s). Check your connection or account authorization.",
+                    end_time=tsnow,
+                    traceback=repr(e),
+                )
+
+    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: list):
+        raise NotImplementedError("Subclasses must implement _post_sacct_progress method")

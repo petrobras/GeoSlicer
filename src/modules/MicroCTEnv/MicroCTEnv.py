@@ -117,7 +117,15 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 module()
 
         self.setupTools(
-            tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts", "VariogramAnalysis", "NetCDF"]
+            tools=[
+                "VolumeCalculator",
+                "CustomizedTables",
+                "TableFilter",
+                "Charts",
+                "VariogramAnalysis",
+                "NetCDF",
+                "AttributeTools",
+            ]
         )
 
         self.setupLoaders()

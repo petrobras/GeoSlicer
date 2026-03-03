@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 import vtk
 
-from ltrace.remote.utils import argstring, sacct
+from ltrace.remote.utils import argstring, sacct, SlurmJobStatusMixin
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
 
@@ -28,10 +28,9 @@ def truncate_relative_path_on(dirname: str, path: Path):
     return Path(*path.parts[relindex:])
 
 
-class OneResultSlurmHandler:
+class OneResultSlurmHandler(SlurmJobStatusMixin):
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
     TRACEBACK_PATTERN = r"Traceback[\s\S]*?(?:File[\s\S]*?)+\w+Error:.*"
-    MAX_RETRIES = 15
 
     def __init__(
         self,
@@ -45,8 +44,11 @@ class OneResultSlurmHandler:
         prefix: str,
         ref_volume_node_id: str,
         tag: str,
+        timeout_seconds: int = 600,
         post_args: dict = None,
     ) -> None:
+        super().__init__(timeout_seconds=timeout_seconds)
+
         self.jobid = None
         self.results = []
         self.simulator = simulator
@@ -70,7 +72,6 @@ class OneResultSlurmHandler:
 
         self.opening_command = opening_command
 
-        self.jobs = []
         self.closed_jobs = set([])
 
         self.remote_dir = PurePosixPath(r"/nethome/drp/microtom") / shared_path.as_posix()
@@ -91,8 +92,6 @@ class OneResultSlurmHandler:
             "CANCEL": self.cancel,
             "COLLECT": self.collect,
         }
-
-        self.retries = 0
 
     def defineInputImageType(self, node, simulator: str):
         if simulator == "darcy_kabs_foam":
@@ -199,9 +198,9 @@ class OneResultSlurmHandler:
             else:
                 sim_info = parse_command_stdout(output["stdout"].split("\n"))
 
-            self.jobs = [str(j) for j in sim_info["job_id"]]
+            self.slurm_job_ids = [str(j) for j in sim_info["job_id"]]
 
-            if not self.jobs:
+            if not self.slurm_job_ids:
                 caller.set_state(
                     uid, "FAILED", 100, end_time=tsnow, message="Execution failed to create a job on cluster."
                 )
@@ -240,39 +239,8 @@ class OneResultSlurmHandler:
                 message="Execution failed to start a job on cluster.",
             )
 
-    def progress(self, caller: JobManager, uid: str, client: Any = None):
+    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: list):
         try:
-            tsnow = datetime.now().timestamp()
-
-            try:
-                jobstatus = sacct(client, self.jobs)
-            except RuntimeError as e:
-                self.retries += 1
-
-                if self.retries < self.MAX_RETRIES:
-                    caller.set_state(
-                        uid,
-                        "PENDING",
-                        0,
-                        message="Requesting job status. Waiting for response.",
-                        end_time=tsnow,
-                        traceback=repr(e),
-                    )
-                    caller.schedule(uid, "PROGRESS")
-                else:
-                    caller.set_state(
-                        uid,
-                        "FAILED",
-                        0,
-                        message="Failed to get job status. Check yout connection or account authorization.",
-                        end_time=tsnow,
-                        traceback=repr(e),
-                    )
-
-                return
-
-            self.retries = 0
-
             slurm_out = self.get_slurm_log(uid)
 
             submitted_jobs = []
@@ -286,7 +254,7 @@ class OneResultSlurmHandler:
                         self.closed_jobs.add(job["jobid"])
 
             # Remove duplicates but keep order
-            self.jobs = list(dict.fromkeys([*self.jobs, *submitted_jobs]))
+            self.slurm_job_ids = list(dict.fromkeys([*self.slurm_job_ids, *submitted_jobs]))
 
             if slurm_utils.all_done(jobstatus):
                 if slurm_utils.all_failed(jobstatus):
@@ -295,7 +263,7 @@ class OneResultSlurmHandler:
                         "FAILED",
                         0,
                         message="Job(s) failed. Check the logs.",
-                        end_time=tsnow,
+                        end_time=datetime.now().timestamp(),
                         traceback=slurm_out,
                     )
                     return  # EXIT
@@ -323,7 +291,12 @@ class OneResultSlurmHandler:
                 if self.confirm_results(strict=self.is_strict):
                     """job finished and got out of queue"""
                     caller.set_state(
-                        uid, "COMPLETED", 100, message="Execution Completed.", end_time=tsnow, traceback=slurm_out
+                        uid,
+                        "COMPLETED",
+                        100,
+                        message="Execution Completed.",
+                        end_time=datetime.now().timestamp(),
+                        traceback=slurm_out,
                     )
                 else:
                     caller.set_state(
@@ -350,8 +323,8 @@ class OneResultSlurmHandler:
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):
         ghosted = False
         traceback = None
-        if self.jobs:
-            stringified_job_list = ",".join(self.jobs)
+        if self.slurm_job_ids:
+            stringified_job_list = ",".join(self.slurm_job_ids)
             try:
                 r = client.run_command(f"scancel {stringified_job_list}")
 
@@ -426,7 +399,7 @@ class OneResultSlurmHandler:
 
     def get_slurm_log(self, uid):
         content = {}
-        for jobid in self.jobs:
+        for jobid in self.slurm_job_ids:
             logfilename = f"slurm-{jobid}.out"
             slurm_path = self.local_dir / uid / logfilename
 

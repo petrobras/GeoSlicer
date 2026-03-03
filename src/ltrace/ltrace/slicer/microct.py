@@ -9,6 +9,7 @@ import slicer
 import xarray as xr
 from ltrace.slicer import netcdf
 from ltrace.slicer import loader
+from ltrace.slicer.metadata import Metadata
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 from collections import defaultdict
@@ -99,22 +100,13 @@ def loadPCRInfoIfExist(path):
     raise FileNotFoundError("No PCR file found in the directory")
 
 
-def setPCRFile(nodes, pcrNode):
+def setPCRFile(nodes, pcr):
     if not isinstance(nodes, list):
         nodes = [nodes]
 
     for node in nodes:
-        if pcrNode:
-            node.SetAttribute("PCR", pcrNode.GetID())
-
-    # Place PCR node in the same subject hierarchy folder as the first image node
-    if nodes and pcrNode:
-        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        imageItemID = shNode.GetItemByDataNode(nodes[0])
-        parentItemID = shNode.GetItemParent(imageItemID)
-        pcrItemID = shNode.GetItemByDataNode(pcrNode)
-        if parentItemID and pcrItemID:
-            shNode.SetItemParent(pcrItemID, parentItemID)
+        if pcr:
+            Metadata(node)["pcr"] = pcr
 
 
 def _createSequenceFromNodeList(nodeList, directoryName):
@@ -319,47 +311,11 @@ def loadPCRAsTextNode(pcrFile):
             logging.debug(f"Failed to parse PCR string. Cause: {repr(e)}")
             return None
 
-        textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_attr_pcr")
-        textNode.SetText(pcr)
-        textNode.SetAttribute("IsNcAttrs", "1")
-        textNode.SetAttribute("AttrKey", "pcr")
+        return pcr
 
     except Exception as e:
         logging.debug(f"Failed to load PCR file. Cause: {repr(e)}")
         return None
-
-    return textNode
-
-
-# def loadPCRIntoTextNode(pcrFile):
-#     import configparser
-#
-#     config = configparser.ConfigParser()
-#     try:
-#         if pcrFile.suffix in (".nc", ".h5", ".hdf5"):
-#             try:
-#                 with xr.open_dataset(pcrFile) as ds:
-#                     pcr_string = ds.attrs.get("pcr")
-#                     if not pcr_string:
-#                         return None
-#
-#                     config.read_string(pcr_string)
-#             except Exception as e:
-#                 logging.debug(f"Failed to load PCR from NetCDF: {e}")
-#                 raise
-#         else:
-#             config.read(pcrFile)
-#             content = pcrFile.read_text()
-#         config.
-#         if not content:
-#             return None
-#
-#         textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", f"{pcrFile.stem}_PCR")
-#         textNode.SetText(content)
-#         return textNode
-#
-#     except configparser.Error:
-#         return None
 
 
 class PCRNotFoundError(Exception):
@@ -371,12 +327,20 @@ class PCRNotFoundError(Exception):
 
 def pcrMinMaxFromTableNode(imageNode):
     try:
-        pcrFile = imageNode.GetAttribute("PCR")
-        pcrDryTextNode = slicer.mrmlScene.GetNodeByID(pcrFile) if pcrFile else None
-        if not pcrDryTextNode:
+        pcrDry = Metadata(imageNode).get("pcr", None)
+
+        # Handle legacy PCR attribute migration
+        # This can be removed in future versions
+        pcrNodeId = imageNode.GetAttribute("PCR")
+        pcrDryTextNode = slicer.mrmlScene.GetNodeByID(pcrNodeId) if pcrNodeId else None
+        if pcrDryTextNode is not None and pcrDry is None:
+            pcrDry = pcrDryTextNode.GetText()
+            Metadata(imageNode)["pcr"] = pcrDry
+            logging.debug("Migrated legacy PCR attribute to Metadata.")
+
+        if not pcrDry:
             raise PCRNotFoundError(imageNode.GetName())
 
-        pcrDry = pcrDryTextNode.GetText()
         parser = configparser.ConfigParser()
         parser.read_string(pcrDry)
         _min = np.float32(parser.getfloat("VolumeData", "Min"))

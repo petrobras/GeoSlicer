@@ -71,6 +71,8 @@ streamlit==1.22.0
 sympy==1.10.1
 #tbb>=2021.6.0
 tensorflow==2.8.2
+tomli==2.2.1
+tomli-w==1.2.0
 toolz==0.11.1
 torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
 torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-linux_x86_64.whl ; platform_system == "Linux"

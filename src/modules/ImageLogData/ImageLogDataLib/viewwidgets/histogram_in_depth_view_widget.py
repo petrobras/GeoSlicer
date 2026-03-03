@@ -442,6 +442,7 @@ class PlotWidget(QtWidgets.QWidget):
     def _getPlotData(self, graph_data):
         x = self._getXArray(graph_data)
         y, depth_hist = self._getYValues(graph_data)
+        y = y[:: self.__samples, :]
         depth_hist = depth_hist[:: self.__samples]
 
         return x, y, depth_hist

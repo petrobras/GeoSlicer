@@ -6,10 +6,17 @@ import qt
 import slicer
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from skimage.measure import block_reduce
 from pathlib import Path
 from scipy import ndimage
 from vtk.util.numpy_support import numpy_to_vtk
+
+
+try:
+    from Test.HeterogeneityIndexTest import HeterogeneityIndexTest
+except ImportError:
+    HeterogeneityIndexTest = None  # tests not deployed to final version or closed source
 
 
 class HeterogeneityIndex(LTracePlugin):
@@ -21,7 +28,7 @@ class HeterogeneityIndex(LTracePlugin):
         self.parent.title = "Heterogeneity Index"
         self.parent.categories = ["Tools", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.setHelpUrl("ImageLog/Processing/Processing.html#heterogeneity-index.html")
+        self.setHelpUrl("ImageLog/Processing/Processing.html#heterogeneity-index")
 
     @classmethod
     def readme_path(cls):
@@ -42,6 +49,7 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
         inputFormLayout = qt.QFormLayout(inputCollapsibleButton)
         self.inputSelector = hierarchyVolumeInput(onChange=self.onInputChanged, nodeTypes=["vtkMRMLScalarVolumeNode"])
         self.inputSelector.setToolTip("Select the amplitude image.")
+        self.inputSelector.objectName = "inputSelector"
         inputFormLayout.addRow("Amplitude image:", self.inputSelector)
 
         paramsCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -50,7 +58,7 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
         paramsFormLayout = qt.QFormLayout(paramsCollapsibleButton)
         self.windowSizeSpinBox = qt.QDoubleSpinBox()
         self.windowSizeSpinBox.setDecimals(2)
-        self.windowSizeSpinBox.setValue(0.5)
+        self.windowSizeSpinBox.setValue(2.0)
         self.windowSizeSpinBox.setSingleStep(0.05)
         self.windowSizeSpinBox.setToolTip(
             "Size in meters of the largest depth window which will be analyzed. Increasing this will result in a smoother HI curve."
@@ -63,6 +71,7 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
         outputFormLayout = qt.QFormLayout(outputCollapsibleButton)
         self.outputPrefixLineEdit = qt.QLineEdit()
         self.outputPrefixLineEdit.setToolTip('Output curve will be named "<prefix>_HI".')
+        self.outputPrefixLineEdit.objectName = "outputPrefixLineEdit"
         outputFormLayout.addRow("Output prefix:", self.outputPrefixLineEdit)
 
         self.statusLabel = qt.QLabel()
@@ -73,6 +82,7 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
         self.applyButton.enabled = False
         self.applyButton.clicked.connect(self.onApplyButtonClicked)
         self.applyButton.setToolTip("Compute heterogeneity index.")
+        self.applyButton.objectName = "applyButton"
         formLayout.addRow(self.applyButton)
         formLayout.addRow(self.statusLabel)
 
@@ -117,18 +127,29 @@ def create_hi_curve(inputVolume, outputPrefix, window_size_m):
     return table
 
 
+def log_spaced_ints(n, min_, max_):
+    """
+    Generates n integers from min_ to max_ approximately spaced on a log2 scale,
+    ensuring each subsequent number is unique and greater than the last.
+    """
+    generated = np.logspace(np.log2(min_), np.log2(max_), num=n, base=2.0)
+    result = np.round(generated).astype(int).tolist()
+    for i in range(1, n):
+        result[i] = max(result[i], result[i - 1] + 1)
+    return result
+
+
 def compute_hi(amp, y_origin, y_spacing, window_size_m):
     """Calculates standard deviation of amplitude image at different scales.
     The heterogeneity index is calculated by fitting a linear regression where
     X = log scale; Y = std
     The slope of the regression is the heterogeneity index.
     """
-    img = ndimage.zoom(amp, 0.5, order=1)  # Image will be filtered by at least 2, so downsample to save time
+    # Image will be filtered by at least 2, so downsample to save time
+    img = block_reduce(amp, block_size=2, func=np.mean)
     width = img.shape[1]
 
-    sizes = 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64
-    size_mul = width / 128
-    sizes = [max(round(size * size_mul), 1) for size in sizes]
+    sizes = log_spaced_ints(18, 1, round(width / 2))
 
     y_spacing *= 2
     window_size = int(window_size_m * 1000 / y_spacing)
@@ -145,6 +166,7 @@ def compute_hi(amp, y_origin, y_spacing, window_size_m):
     mean_sqr_diff = ndimage.uniform_filter(sqr_diff, size=(1, window_size, filtered.shape[2]), mode="wrap")
     stds = np.sqrt(mean_sqr_diff)
     stds = stds[:, :, 0]
+    stds = np.log(stds + 1e-9)
 
     x = np.array(sizes).reshape((-1, 1))
     x = np.log(x) * 2  # Same as log(x^2), since cylinder sector volume is proportional to size^2

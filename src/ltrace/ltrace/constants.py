@@ -49,3 +49,13 @@ class SaveStatus(Enum):
     CANCELLED = 2
     FAILED = 3
     FAILED_FILE_ALREADY_EXISTS = 4
+
+
+class model_selector_tags(str, Enum):
+    IMAGELOG_INSTANCE_SEGMENTER = "ImageLogInstanceSegmenter"
+    SILICLASTICS_PORES = "SiliciclasticsPore"
+    SINGAN = "SinGAN"
+    PORE_STATS = "PoreStats"
+    TEST_ENV = "testEnv"
+    TEXTURAL_STRUCTURES = "TexturalStructures"
+    THIN_SECTION_ENV = "ThinSectionEnv"

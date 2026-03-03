@@ -1,19 +1,17 @@
 import ctk
 import qt
 import slicer
-import numpy as np
 
+import ltrace.slicer.widget.simulation as simulation_widgets
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
-from ltrace.pore_networks.functions import is_multiscale_geo
-
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
-from ltrace.slicer import ui, helpers
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data
+from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import getResourcePath, slicer_is_in_developer_mode
-import ltrace.slicer.widget.simulation as simulation_widgets
 from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer_utils import getResourcePath, slicer_is_in_developer_mode
 
 
 class TwoPhaseParametersEditDialog:
@@ -77,7 +75,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         "keep_temporary": False,
         "create_sequence": False,
         "subres_model_name": "Fixed Radius",
-        "subres_params": {"radius": 0.1},
+        "subres_params": {"radius": 1.0},
         "subres_shape_factor": 0.04,
         "subres_porositymodifier": 1.0,
     }
@@ -434,6 +432,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
     def setCurrentNode(self, currentNode):
         self.currentNode = currentNode
+        self.mercury_widget.setVolumeNode(currentNode)
 
     def setParams(self, params):
         mercury_params = {
@@ -494,7 +493,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                     subres_params[k] = None
                 elif isinstance(v, (list, tuple)):
                     subres_params[k] = list(v)
-                elif hasattr(v, "tolist"):  # e.g. numpy.ndarray
+                elif hasattr(v, "tolist"):
                     subres_params[k] = v.tolist()
                 else:
                     subres_params[k] = v
@@ -504,20 +503,19 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameters_dict["subres_model_name"] = subres_model_name
         parameters_dict["subres_params"] = subres_params
 
-        shape_factor = self.mercury_widget.getParams().get("subres_shape_factor", None)
-        subres_porositymodifier = self.mercury_widget.getParams().get("subres_porositymodifier", None)
+        mercury_widget_params = self.mercury_widget.getParams(pore_table_node)
+        shape_factor = mercury_widget_params["subres_shape_factor"]
+        subres_porositymodifier = mercury_widget_params["subres_porositymodifier"]
         parameters_dict["subres_shape_factor"] = shape_factor
         parameters_dict["subres_porositymodifier"] = subres_porositymodifier
 
-        # function handle/reference and execution flags
-        parameters_dict["subresolution function call"] = getattr(self.mercury_widget, "getFunction", None)
-        parameters_dict["subresolution function"] = parameters_dict["subresolution function call"](
-            pore_table_node
-        )  # @todo checar com o romulo
         parameters_dict["skip_imbibition"] = False
         parameters_dict["remote_execution"] = "T" if self.remoteQRadioButton.isChecked() else "F"
 
-        parameters_dict["is_multiscale"] = int(is_multiscale_geo(pore_table_node))
+        scalar_volume_data = get_pore_network_volume_data(pore_table_node)
+        parameters_dict.update(scalar_volume_data)
+
+        parameters_dict["save_tables"] = slicer_is_in_developer_mode()
 
         return parameters_dict
 

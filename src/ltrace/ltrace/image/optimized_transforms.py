@@ -241,12 +241,12 @@ def connected_image(array, connectivity=1, direction="all_combinations", make_co
         raise ValueError(f"Connectivity must be in (1, 2, 3), was {connectivity}")
     # fmt: off
     set_generators = {
-        'z-' : lambda: set(np.unique(labeled[1:-1, 1:-1,  0])),
-        'z+' : lambda: set(np.unique(labeled[1:-1, 1:-1, -1])),
+        'z-' : lambda: set(np.unique(labeled[ 0, 1:-1, 1:-1])),
+        'z+' : lambda: set(np.unique(labeled[-1, 1:-1, 1:-1])),
         'y-' : lambda: set(np.unique(labeled[1:-1,  0, 1:-1])),
         'y+' : lambda: set(np.unique(labeled[1:-1, -1, 1:-1])),
-        'x-' : lambda: set(np.unique(labeled[ 0, 1:-1, 1:-1])),
-        'x+' : lambda: set(np.unique(labeled[-1, 1:-1, 1:-1])),
+        'x-' : lambda: set(np.unique(labeled[1:-1, 1:-1,  0])),
+        'x+' : lambda: set(np.unique(labeled[1:-1, 1:-1, -1])),
     } if dimensions == 3 else {
         'y-' : lambda: set(np.unique(labeled[1:-1,  0])),
         'y+' : lambda: set(np.unique(labeled[1:-1, -1])),

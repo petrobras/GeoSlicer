@@ -193,6 +193,8 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def onInputSelectorChange(self):
         input_node = self.inputSelector.currentNode()
         self.twoPhaseSimWidget.setCurrentNode(input_node)
+        self.onePhaseSimWidget.setVolumeNode(input_node)
+        self.mercurySimWidget.setVolumeNode(input_node)
         output_prefix = input_node.GetName() if input_node else ""
         self.outputPrefix.setText(output_prefix)
 
@@ -214,8 +216,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def runOnePhaseSimulation(self, pore_node):
         self.applyButtonEnabled(False)
         slicer.app.processEvents()
-        params = self.onePhaseSimWidget.getParams()
-        params["subresolution function"] = params["subresolution function call"](pore_node)
+        params = self.onePhaseSimWidget.getParams(pore_node)
         self.logic.run_1phase(
             pore_node,
             params,
@@ -259,8 +260,7 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def runMICPSimulation(self, pore_node):
         self.applyButtonEnabled(False)
         slicer.app.processEvents()
-        params = self.mercurySimWidget.getParams()
-        params["subresolution function"] = params["subresolution function call"](pore_node)
+        params = self.mercurySimWidget.getParams(pore_node)
         self.logic.run_mercury(
             pore_node,
             params,

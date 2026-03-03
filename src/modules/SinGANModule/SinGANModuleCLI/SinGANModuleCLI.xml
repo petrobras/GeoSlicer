@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Tools</category>
+  <index>3</index>
+  <title>Sin Gan Multiscale CLI</title>
+  <description>CLI for Multiscale SinGAN </description>
+  <version>0.0.1</version>
+  <contributor>LTrace Geophysics Team</contributor>
+
+  <parameters>
+    <directory>
+      <name>model path</name>
+      <longflag>model_path</longflag>
+      <description>Path to the model to be used</description>
+      <channel>input</channel>
+    </directory>
+    <directory>
+      <name>temp path</name>
+      <longflag>temp_path</longflag>
+      <description>Path that hold temporary files</description>
+      <channel>input</channel>
+    </directory>
+    <boolean>
+      <longflag>use_gpu</longflag>
+    </boolean>
+    <integer>
+      <longflag>gpu_device</longflag>
+      <default>0</default>
+    </integer>
+    <image type="scalar">
+      <longflag>cond_img</longflag>
+      <name>cond img</name>
+      <channel>input</channel>
+    </image>
+    <string>
+      <name>injection scale</name>
+      <longflag>injection_scale</longflag>
+      <default>hd</default>
+      <channel>input</channel>
+    </string>
+    <string>
+      <name>hard_data</name>
+      <longflag>hard_data</longflag>
+      <default>1,3</default>
+    </string>
+    <image type="scalar">
+      <longflag>imagelog</longflag>
+      <name>imagelog</name>
+      <channel>input</channel>
+    </image>
+    <string>
+      <name>imagelog_segments</name>
+      <longflag>imagelog_segments</longflag>
+      <default>1,3</default>
+    </string>
+    <integer>
+      <longflag>seed</longflag>
+      <default>0</default>
+    </integer>
+    <integer>
+      <longflag>number_realizations</longflag>
+      <default>1</default>
+    </integer>
+    <float>
+      <longflag>cond_img_resolution</longflag>
+      <default>0.0</default>
+    </float>
+    <boolean>
+      <longflag>save_file</longflag>
+    </boolean>
+    <boolean>
+      <longflag>save_bin</longflag>
+    </boolean>
+    <boolean>
+      <longflag>save_tif</longflag>
+    </boolean>
+    <integer>
+      <longflag>partitions</longflag>
+      <default>1</default>
+    </integer>
+    <boolean>
+      <longflag>rec</longflag>
+    </boolean>
+    <string>
+      <name>method</name>
+      <longflag>method</longflag>
+      <default>generation_early_cropping</default>
+      <channel>input</channel>
+    </string>
+    <integer>
+      <longflag>base_volume</longflag>
+      <default>128</default>
+    </integer>
+    <integer>
+      <longflag>split_scale</longflag>
+      <default>14</default>
+    </integer>
+    <integer>
+      <longflag>crop_scale</longflag>
+      <default>0</default>
+    </integer>
+    <integer>
+      <longflag>disk_scale</longflag>
+      <default>5</default>
+    </integer>
+    <boolean>
+      <longflag>p2p</longflag>
+    </boolean>
+    <string>
+      <name>chunks</name>
+      <longflag>chunks</longflag>
+      <default>3,3,3</default>
+      <channel>input</channel>
+    </string>
+
+    <directory>
+      <name>out path</name>
+      <longflag>out_path</longflag>
+      <description>Path to export files</description>
+      <channel>input</channel>
+    </directory>
+    <string>
+      <name>out name</name>
+      <longflag>out_name</longflag>
+    </string>
+
+  </parameters>
+</executable>

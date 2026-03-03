@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from ltrace.constants import SaveStatus
 from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.helpers import singleton
+from ltrace.slicer.helpers import singleton, disableSlice3DEdges
 from ltrace.slicer.node_custom_behavior.node_custom_behavior_manager import NodeCustomBehaviorManager
 from ltrace.slicer.node_custom_behavior.defs import TriggerEvent
 from ltrace.slicer.node_observer import NodeObserver
@@ -423,6 +423,7 @@ class ProjectManager(qt.QObject):
         status = True
         try:
             slicer.util.loadScene(projectFilePath.as_posix())
+            disableSlice3DEdges()
         except Exception as error:
             logging.error(f"A problem occured during the 'Load Scene' process: {error}")
             errorMessage = f"A problem occured during the 'Load Scene' process:\n...\n{str(error)[-1000:]}...\nCheck the log for more details."
@@ -487,8 +488,11 @@ class ProjectManager(qt.QObject):
         ):
             return
 
-        if isinstance(callData, slicer.vtkMRMLTableNode) and callData.GetName() == "Default mineral colors":
-            return
+        if isinstance(callData, slicer.vtkMRMLTableNode):
+            if callData.GetName() == "Default mineral colors":
+                return
+
+            callData.SetDefaultColumnType("double")
 
         observer = NodeObserver(node=callData, parent=self)
         observer.modifiedSignal.connect(self.__onSceneModified)

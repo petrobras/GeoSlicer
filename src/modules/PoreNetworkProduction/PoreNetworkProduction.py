@@ -603,22 +603,50 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
 
         return VV / WW
 
-    def calculate_production_preview(self, krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim):
-        sim = "_" + str(sim)
-        krel_dict["Kro_blur" + sim] = self.gaussian_filter1d_w_nans(krel_dict["Kro" + sim], krel_smoothing)
-        krel_dict["Krw_blur" + sim] = self.gaussian_filter1d_w_nans(krel_dict["Krw" + sim], krel_smoothing)
-        krel_dict["fw" + sim] = 1 / (
-            1 + (water_viscosity * krel_dict["Kro_blur" + sim]) / (oil_viscosity * krel_dict["Krw_blur" + sim])
+    def calculate_production_preview(
+        self, krel_dict, water_viscosity, oil_viscosity, krel_smoothing, sim, origin_at_zero_f=True
+    ):
+        krel_dict[f"Kro_blur_{sim}"] = self.gaussian_filter1d_w_nans(krel_dict[f"Kro_{sim}"], krel_smoothing)
+        krel_dict[f"Krw_blur_{sim}"] = self.gaussian_filter1d_w_nans(krel_dict[f"Krw_{sim}"], krel_smoothing)
+        krel_dict[f"fw_{sim}"] = 1 / (
+            1 + (water_viscosity * krel_dict[f"Kro_blur_{sim}"]) / (oil_viscosity * krel_dict[f"Krw_blur_{sim}"])
         )
 
-        krel_dict["fw" + sim] = replace_nans(krel_dict["fw" + sim])
+        fw_left_index, fw_right_index = get_valid_range(krel_dict[f"Kro_blur_{sim}"])
+        krel_dict[f"fw_{sim}"] = replace_nans(krel_dict[f"fw_{sim}"])
 
-        coef, _ = optimize.curve_fit(_general_logistic, krel_dict["Sw"], krel_dict["fw" + sim], maxfev=1000000)
+        fw_data_n = fw_right_index - fw_left_index + 1
+        enriched_sw = np.concatenate(
+            (
+                krel_dict["Sw"][fw_left_index : fw_right_index + 1],
+                np.linspace(0.0, -(0.05 * fw_data_n // 2), num=fw_data_n // 2, dtype=krel_dict["Sw"].dtype),
+                np.linspace(1.0, 1.0 + (0.05 * fw_data_n // 2), num=fw_data_n // 2, dtype=krel_dict["Sw"].dtype),
+            )
+        )
+        enriched_fw = np.concatenate(
+            (
+                krel_dict[f"fw_{sim}"][fw_left_index : fw_right_index + 1],
+                np.zeros(fw_data_n // 2, dtype=krel_dict[f"fw_{sim}"].dtype),
+                np.ones(fw_data_n // 2, dtype=krel_dict[f"fw_{sim}"].dtype),
+            )
+        )
+        coef, _ = optimize.curve_fit(
+            _general_logistic,
+            enriched_sw,
+            enriched_fw,
+            maxfev=1000000,
+        )
         fitted_logistic = lambda x: _general_logistic(x, *coef)
         fitted_logistic_diff = lambda x: _general_logistic_diff(x, *coef)
-        swi = krel_dict["Sw"][0]
-        sw_max = krel_dict["Sw"][-1]
-        fw_delta = lambda x: fitted_logistic(x) / (x - swi)
+        swi = krel_dict["Sw"][fw_left_index]
+        sw_max = krel_dict["Sw"][fw_right_index]
+        if origin_at_zero_f:
+            fw_delta = lambda x: (fitted_logistic(x)) / (x - swi)
+            # derivative of shock tangent if shock is at x
+        else:
+            fw_delta = lambda x: (fitted_logistic(x) - fitted_logistic(swi)) / (
+                x - swi
+            )  # derivative of shock tangent if shock is at x
 
         symbols = {}
         for key in "xABCDEFG":
@@ -662,7 +690,9 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         no_shock = False
         try:
             sws_solution = optimize.brentq(
-                lambda x: fitted_logistic_diff(x) - fw_delta(x), a=middle_logistic_curve * 0.99, b=sw_max
+                lambda x: fitted_logistic_diff(x) - fw_delta(x),
+                a=middle_logistic_curve * 0.99,
+                b=sw_max,
             )
         except ValueError as e:
             print(f"Found error while searching for shock: ", e)
@@ -674,11 +704,11 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                 no_shock = True
 
         sws = sws_solution
-        krel_dict["fw_fit" + sim] = fitted_logistic(krel_dict["Sw"])
-        krel_dict["fw_fit_diff" + sim] = fitted_logistic_diff(krel_dict["Sw"])
-        krel_dict["fw_delta" + sim] = np.empty(krel_dict["fw_fit" + sim].shape, dtype=np.float32)
-        krel_dict["fw_delta" + sim][0] = 0
-        krel_dict["fw_delta" + sim][1:] = (krel_dict["fw_fit" + sim][1:] - krel_dict["fw_fit" + sim][0]) / (
+        krel_dict[f"fw_fit_{sim}"] = fitted_logistic(krel_dict["Sw"])
+        krel_dict[f"fw_fit_diff_{sim}"] = fitted_logistic_diff(krel_dict["Sw"])
+        krel_dict[f"fw_delta_{sim}"] = np.empty(krel_dict[f"fw_fit_{sim}"].shape, dtype=np.float32)
+        krel_dict[f"fw_delta_{sim}"][0] = 0
+        krel_dict[f"fw_delta_{sim}"][1:] = (krel_dict[f"fw_fit_{sim}"][1:] - krel_dict[f"fw_fit_{sim}"][0]) / (
             krel_dict["Sw"][1:] - krel_dict["Sw"][0]
         )
         shock_line_sw = [swi, sw_max]
@@ -686,6 +716,8 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
             fitted_logistic(sws) - (sws - swi) * fitted_logistic_diff(sws),
             fitted_logistic(sws) + (sw_max - sws) * fitted_logistic_diff(sws),
         ]
+        if origin_at_zero_f:
+            shock_line_fw[0] = 0.0
 
         if no_shock or fitted_logistic_diff(sws) == 0:
             t_breakthrough = sw_max - swi
@@ -701,11 +733,11 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         else:
             t_breakthrough = (fitted_logistic_diff(sws)) ** (-1)
             before_breakthrough = {}
-            before_breakthrough["tD"] = np.linspace(0, t_breakthrough, 50)
-            before_breakthrough["Sw"] = np.ones(50) * swi
+            before_breakthrough["tD"] = np.linspace(0, t_breakthrough, 20)
+            before_breakthrough["Sw"] = np.zeros(20)  # actually just uncomputated since it's not used
             before_breakthrough["NpD"] = before_breakthrough["tD"].copy()
-            before_breakthrough["Sw_mean"] = np.zeros(50)  # actually just uncomputated since it's not used
-            before_breakthrough["vD"] = np.zeros(50)  # actually just uncomputated since it's not used
+            before_breakthrough["Sw_mean"] = np.zeros(20)  # actually just uncomputated since it's not used
+            before_breakthrough["vD"] = np.zeros(20)  # actually just uncomputated since it's not used
 
             after_breakthrough = {}
             after_breakthrough["Sw"] = np.linspace(sws, sw_max, 50)  # sw_max = (1 - Sor)
@@ -714,7 +746,9 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
             after_breakthrough["Sw_mean"] = after_breakthrough["Sw"] + after_breakthrough["tD"] * (
                 1 - fitted_logistic(after_breakthrough["Sw"])
             )
-            after_breakthrough["NpD"] = after_breakthrough["Sw_mean"] - swi
+            after_breakthrough["NpD"] = (after_breakthrough["Sw"] - swi) + (
+                1 - fitted_logistic(after_breakthrough["Sw"])
+            ) * after_breakthrough["tD"]
             valid_indexes = np.logical_and(
                 fitted_logistic(after_breakthrough["Sw"]) <= 1, after_breakthrough["Sw_mean"] <= 1
             )
@@ -770,6 +804,21 @@ def replace_nans(array):
     array[right_index + 1 :] = np.nan_to_num(array[right_index + 1 :], nan=1)
 
     return array
+
+
+def get_valid_range(array):
+    if np.isnan(array).all():
+        raise ValueError("Input array consists entirely of NaN values.")
+
+    non_nan_indices = np.where(~np.isnan(array))[0]
+
+    if len(non_nan_indices) <= 1:
+        raise ValueError("Input array must have at least two non-NaN values.")
+
+    left_index = non_nan_indices[0]
+    right_index = non_nan_indices[-1]
+
+    return left_index, right_index
 
 
 @njit

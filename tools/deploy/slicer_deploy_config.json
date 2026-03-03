@@ -109,7 +109,11 @@
         ".git-blame-ignore-revs",
         "tools/release/",
         "src/ltrace/ltrace/slicer/bug_report/extended_bug_report_widget.py",
-        "src/ltrace/ltrace/slicer/bug_report/submit.py"
+        "src/ltrace/ltrace/slicer/bug_report/submit.py",
+        "AGENTS.md",
+        ".pull_request_template.md",
+        ".gemini/",
+        ".rovodev/"
     ],
     "LargeFilesClosedSourceHostOnly" : [
         "tools/deploy/Assets/Tesseract-OCR.zip",
@@ -132,5 +136,13 @@
                   ["mpslib", "lib/Python/lib/python3.9/site-packages", 0],
                   ["pygments", "lib/Python/lib/python3.9/site-packages", 0],
                   ["AbstractScriptedSegmentEditorAutoCompleteEffect", "lib/$slicer_dir/qt-scripted-modules", 0]]
-    }
+    },
+    "InitCheckExceptions": [
+        "ltrace.egg-info",
+        "build",
+        "__pycache__",
+        "assets",
+        "Resources",
+        "resources"
+    ]
 }

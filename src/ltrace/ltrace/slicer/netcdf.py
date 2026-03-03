@@ -7,7 +7,8 @@ import xarray as xr
 import logging
 import numpy as np
 import pandas as pd
-import toml
+import tomli
+import tomli_w
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from pathlib import Path
 from PIL import ImageColor
 from pint import UnitRegistry
 from ltrace.readers import microtom
-from ltrace.slicer import export
+from ltrace.slicer import export, metadata
 from ltrace.slicer.helpers import (
     autoDetectColumnType,
     create_color_table,
@@ -28,7 +29,7 @@ from ltrace.slicer.helpers import (
 )
 from ltrace.utils.callback import Callback
 from scipy import ndimage
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Generator
 from ltrace.slicer.data_utils import dataFrameToTableNode, tableNodeToDataFrame
 
 MIN_CHUNKING_SIZE_BYTES = 2**33  # 8 GiB
@@ -194,76 +195,6 @@ def extract_pixel_sizes_from_hdf5(file_path):
         return x_mm, y_mm, z_mm
 
 
-def _convert_numpy(obj):
-    if isinstance(obj, dict):
-        return {k: _convert_numpy(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_convert_numpy(i) for i in obj]
-    elif isinstance(obj, (np.integer, np.floating, np.ndarray)):
-        return obj.tolist()
-    else:
-        return obj
-
-
-def _create_attr_text_node(name: str, key: str, value: str) -> slicer.vtkMRMLTextNode:
-    text_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", name)
-    text_node.SetText(value)
-    text_node.SetAttribute("IsNcAttrs", "1")
-    text_node.SetAttribute("AttrKey", key)
-    return text_node
-
-
-def _create_attrs_toml_node(name: str, attrs: dict) -> slicer.vtkMRMLTextNode:
-    text_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", name)
-    text_node.SetText(toml.dumps(_convert_numpy(attrs)))
-    text_node.SetAttribute("IsNcAttrs", "1")
-    return text_node
-
-
-def _is_attr_node(node: slicer.vtkMRMLNode) -> bool:
-    if not isinstance(node, slicer.vtkMRMLTextNode):
-        return False
-    return node.GetAttribute("IsNcAttrs") == "1"
-
-
-def _attrs_from_node(node: slicer.vtkMRMLTextNode) -> dict:
-    if not _is_attr_node(node):
-        raise ValueError(f"Node {node.GetName()} is not a valid attributes node.")
-    key = node.GetAttribute("AttrKey")
-    text = node.GetText()
-    if key:
-        return {key: text}
-    else:
-        return toml.loads(text)
-
-
-def _create_text_nodes_for_attrs(attrs_dict: dict, base_name: str) -> dict:
-    text_nodes = {}
-
-    if not attrs_dict:
-        return text_nodes
-
-    small_attrs = {}
-
-    for key, value in attrs_dict.items():
-        attr_toml = toml.dumps({key: value})
-        if len(attr_toml) > 500 or key.lower() == "pcr":
-            node_name = f"{base_name}_attr_{key}"
-            if isinstance(value, str):
-                text_node = _create_attr_text_node(node_name, key, value)
-            else:
-                text_node = _create_attrs_toml_node(node_name, {key: value})
-            text_nodes[key] = text_node
-        else:
-            small_attrs[key] = value
-
-    if small_attrs:
-        text_node = _create_attrs_toml_node(f"{base_name}_attrs", small_attrs)
-        text_nodes[...] = text_node  # Use a non-string key to indicate small attributes
-
-    return text_nodes
-
-
 def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
     """Handles opening of netcdf files from a directory.
         Some datasets might contain data with different dimension labels, causing the function 'open_mfdataset' to fail when concatenating by a single defined dimension label.
@@ -350,7 +281,7 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
     return final_datasets
 
 
-def import_dataset(dataset, images="all"):
+def import_dataset(dataset, images="all") -> Generator[slicer.vtkMRMLNode, None, None]:
     has_reference = []
     other = []
     column_items = []
@@ -422,10 +353,11 @@ def import_dataset(dataset, images="all"):
 
         special_attrs = {"labels", "type", "reference", "transform"}
         attrs = {k: v for k, v in array.attrs.items() if k not in special_attrs}
-        text_nodes = _create_text_nodes_for_attrs(attrs, name) if attrs else {}
+        if attrs:
+            metadata.set_node_metadata(node, attrs)
 
         imported[name] = node
-        yield (node, list(text_nodes.values()))
+        yield node
 
     if first_scalar:
         slicer.util.setSliceViewerLayers(background=first_scalar, label=first_label_map, fit=True)
@@ -449,7 +381,7 @@ def import_dataset(dataset, images="all"):
 
         makeTemporaryNodePermanent(node, show=True)
         autoDetectColumnType(node)
-        yield (node, [])
+        yield node
 
     tables = defaultdict(list)
     for name, column in column_items:
@@ -460,7 +392,7 @@ def import_dataset(dataset, images="all"):
         df = pd.DataFrame({col_name: col.data for col_name, col in columns})
         node = dataFrameToTableNode(df)
         node.SetName(table_name)
-        yield (node, [])
+        yield node
 
 
 def _segmentation_to_label_map(segmentation: slicer.vtkMRMLSegmentationNode) -> slicer.vtkMRMLLabelMapVolumeNode:
@@ -578,31 +510,6 @@ def _get_dataset_main_dims(dataset):
             return dims[:4]
 
 
-def _get_attrs_from_text_nodes(folder_id, sh):
-    attrs = {}
-
-    children = vtk.vtkIdList()
-    sh.GetItemChildren(folder_id, children)
-
-    for i in range(children.GetNumberOfIds()):
-        child_id = children.GetId(i)
-
-        if sh.GetItemOwnerPluginName(child_id) == "Folder":
-            item_name = sh.GetItemName(child_id)
-            if not item_name.endswith("_attrs"):
-                continue
-
-            sub_children = vtk.vtkIdList()
-            sh.GetItemChildren(child_id, sub_children)
-            for j in range(sub_children.GetNumberOfIds()):
-                sub_child_id = sub_children.GetId(j)
-                sub_child_node = sh.GetItemDataNode(sub_child_id)
-                if _is_attr_node(sub_child_node):
-                    attrs.update(_attrs_from_node(sub_child_node))
-
-    return attrs
-
-
 def exportNetcdf(
     exportPath,
     dataNodes,
@@ -644,20 +551,24 @@ def exportNetcdf(
     processed_dataset_folders = set()
 
     for node, name in zip(dataNodes, nodeNames):
-        image_folder_id = sh.GetItemParent(sh.GetItemByDataNode(node))
-        if not image_folder_id:
-            continue
-
-        attrs = _get_attrs_from_text_nodes(image_folder_id, sh)
+        attrs = metadata.get_node_metadata(node)
         if attrs:
             node_attrs[name] = attrs
 
-        dataset_folder_id = sh.GetItemParent(image_folder_id)
+        item_id = sh.GetItemByDataNode(node)
+        if not item_id:
+            continue
+
+        dataset_folder_id = sh.GetItemParent(item_id)
         if dataset_folder_id and dataset_folder_id not in processed_dataset_folders:
             if sh.GetItemAttribute(dataset_folder_id, "netcdf_path"):
-                dataset_folder_attrs = _get_attrs_from_text_nodes(dataset_folder_id, sh)
+                dataset_folder_attrs = metadata.get_item_metadata(dataset_folder_id)
                 dataset_attrs.update(dataset_folder_attrs)
                 processed_dataset_folders.add(dataset_folder_id)
+
+    pcr_values = [attrs["pcr"] for attrs in node_attrs.values() if "pcr" in attrs]
+    if len(pcr_values) == 1:
+        dataset_attrs["pcr"] = pcr_values[0]
 
     if save_in_place:
         existing_dataset = xr.load_dataset(exportPath)
@@ -732,7 +643,8 @@ def exportNetcdf(
             ref_spacing = np.array(referenceItem.GetSpacing())[::-1]
             ras_min = np.array([tr.ras_min for _, tr, _ in arrays.values()]).min(axis=0)
             ras_max = np.array([tr.ras_max for _, tr, _ in arrays.values()]).max(axis=0)
-            output_shape = np.ceil((ras_max - ras_min) / ref_spacing).astype(int) + 1
+            epsilon = 1e-10
+            output_shape = np.ceil((ras_max - ras_min - epsilon) / ref_spacing).astype(int) + 1
 
         output_transform_no_color = np.array(
             [
@@ -892,37 +804,27 @@ def _handle_dataset(dataset, path, callback, images):
     sh.SetItemAttribute(current_dir, "netcdf_path", path.as_posix())
 
     nodes = []
-    for (main_node, aux_nodes), progress in zip(
-        import_dataset(dataset, images=images), np.arange(10, 100, 90 / len(dataset))
-    ):
+    for node, progress in zip(import_dataset(dataset, images=images), np.arange(10, 100, 90 / len(dataset))):
         if pixel_sizes:
-            main_node.SetSpacing(*pixel_sizes)
+            node.SetSpacing(*pixel_sizes)
         callback("Loading...", progress)
 
-        if aux_nodes:
-            image_folder = sh.CreateFolderItem(current_dir, main_node.GetName())
-            sh.CreateItem(image_folder, main_node)
-            attrs_folder = sh.CreateFolderItem(image_folder, f"{main_node.GetName()}_attrs")
-            for aux_node in aux_nodes:
-                sh.CreateItem(attrs_folder, aux_node)
-        else:
-            sh.CreateItem(current_dir, main_node)
-
-        nodes.append(main_node)
+        sh.CreateItem(current_dir, node)
+        nodes.append(node)
 
     special_dataset_attrs = {"geoslicer_version"}
     dataset_attrs_to_encode = {k: v for k, v in dataset.attrs.items() if k not in special_dataset_attrs}
     if dataset_attrs_to_encode:
-        text_nodes = _create_text_nodes_for_attrs(dataset_attrs_to_encode, dataset_name)
+        metadata.set_item_metadata(current_dir, dataset_attrs_to_encode)
 
-        pcr_node = text_nodes.get("pcr") or text_nodes.get("PCR") or text_nodes.get("Pcr")
-        if pcr_node is not None:
+        pcr_keys = {"pcr", "PCR", "Pcr"}
+        intersection = pcr_keys & dataset_attrs_to_encode.keys()
+        first_pcr_key = next(iter(intersection), None)
+        if first_pcr_key:
             for node in nodes:
-                node.SetAttribute("PCR", pcr_node.GetID())
-
-        attrs_folder = sh.CreateFolderItem(current_dir, f"{dataset_name}_attrs")
-        for _, text_node in text_nodes.items():
-            sh.CreateItem(attrs_folder, text_node)
-            nodes.append(text_node)
+                if not isinstance(node, slicer.vtkMRMLTextNode):
+                    node_metadata = metadata.get_node_metadata(node)
+                    node_metadata["pcr"] = dataset_attrs_to_encode[first_pcr_key]
+                    metadata.set_node_metadata(node, node_metadata)
 
     return nodes

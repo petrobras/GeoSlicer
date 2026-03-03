@@ -278,6 +278,9 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             # nothing changed
             return
 
+        # Call deactivate on the currently selected effect
+        self.editor.setActiveEffect(None)
+
         if self.parameterSetNode:
             self.removeObserver(self.parameterSetNode, vtk.vtkCommand.ModifiedEvent, self.onParameterNodeModified)
 

@@ -70,9 +70,9 @@ def extractPNM(args, params):
         print("No connected network was identified. Possible cause: unsegmented pore space.")
         return
 
-    pores_df.to_pickle(f"{args.cwd}/pores.pd")
-    throats_df.to_pickle(f"{args.cwd}/throats.pd")
-    network_df.to_pickle(f"{args.cwd}/network.pd")
+    pores_df.to_pickle(f"{args.cwd}/pore_network.pkl")
+    throats_df.to_pickle(f"{args.cwd}/throat_network.pkl")
+    network_df.to_pickle(f"{args.cwd}/network.pkl")
     if output_watershed is not None:
         np.save(f"{args.cwd}/watershed.npy", output_watershed)
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(args)
-    with open(f"{args.cwd}/params_dict.json", "r") as file:
+    with open(f"{args.cwd}/extractor_params_dict.json", "r") as file:
         params = json.load(file)
 
     extractPNM(args, params)

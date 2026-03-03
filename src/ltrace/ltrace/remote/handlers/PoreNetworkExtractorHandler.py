@@ -1,34 +1,38 @@
-import json
 import logging
+import platform
 import re
 import shutil
 import traceback
 from datetime import datetime
 from pathlib import Path
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, List
 
-import pandas as pd
 import slicer
 
+from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring
-from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
+
+_1hour = 3600  # seconds
 
 
-class PoreNetworkExtractorHandler:
+class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
     JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
-    JOBS_LOCAL_PATH = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\servicos\\LTRACE\\GEOSLICER\\jobs")
+    if platform.system() == "Windows":
+        JOBS_LOCAL_PATH = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\GEOSLICER\jobs")
+    else:
+        JOBS_LOCAL_PATH = Path("/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
-    def __init__(self, result_callback, input_node_id, label_node_id, params) -> None:
+    def __init__(self, input_node_id, label_node_id, visualization, params) -> None:
+        super().__init__(timeout_seconds=_1hour)
+
         self.input_node_id = input_node_id
         self.label_node_id = label_node_id
+        self.visualization = visualization
         self.params = params
-        self.result_callback = result_callback
-
-        self.slurm_job_ids = []
 
         self.job_remote_path = None
         self.job_local_path = None
@@ -61,8 +65,7 @@ class PoreNetworkExtractorHandler:
             client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
             client.run_command(f"mkdir {self.job_remote_path}/temp")
 
-            with (self.job_local_path / "params_dict.json").open("w") as file:
-                json.dump(self.params, file)
+            dump_via_slicer_temp(self.params, "extractor_params_dict.json", self.job_local_path)
 
             input_node = slicer.mrmlScene.GetNodeByID(self.input_node_id)
             input_node_path = self.job_local_path / f"{self.input_node_id}.nrrd"
@@ -90,7 +93,7 @@ class PoreNetworkExtractorHandler:
         try:
             script = " ".join(["PoreNetworkExtractorCLI.PoreNetworkExtractorCLI", argstring(self.cli_params)])
             opening_command = caller.jobs[uid].host.opening_command
-            main_cmd = f"RPS_DIR='/atena/users/g575/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --gpu 1 --cli -- '{script}'"
+            main_cmd = f"RPS_DIR='/atena/users/dibi/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --cli '{script}'"
             full_cmd = " && ".join([opening_command, rf"cd {self.job_remote_path}", main_cmd])
 
             output = client.run_command(full_cmd, verbose=True)
@@ -105,6 +108,7 @@ class PoreNetworkExtractorHandler:
             details = {
                 "input_node_id": self.input_node_id,
                 "label_node_id": self.label_node_id,
+                "visualization": self.visualization,
                 "params": self.params,
                 "job_remote_path": str(self.job_remote_path),
                 "job_local_path": str(self.job_local_path),
@@ -120,6 +124,7 @@ class PoreNetworkExtractorHandler:
                 start_time=ts_start,
                 details=details,
             )
+            caller.persist(uid)
             caller.schedule(uid, "PROGRESS")
         except Exception:
             traceback.print_exc()
@@ -133,7 +138,7 @@ class PoreNetworkExtractorHandler:
             )
             caller.persist(uid)
 
-    def progress(self, caller: JobManager, uid: str, client: Any = None):
+    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: List[dict]):
         try:
             job_status = slurm_utils.sacct(client, self.slurm_job_ids)
             if slurm_utils.all_done(job_status):
@@ -164,7 +169,7 @@ class PoreNetworkExtractorHandler:
                 )
                 caller.persist(uid)
                 return
-            else:
+            elif slurm_utils.any_running(job_status):
                 total_progress = 0
                 count = 0
                 for job_id in self.slurm_job_ids:
@@ -173,6 +178,9 @@ class PoreNetworkExtractorHandler:
                     count += 1
                 avg_progress = max(total_progress / count, 10) if count > 0 else 10
                 caller.set_state(uid, "RUNNING", avg_progress)
+                caller.schedule(uid, "PROGRESS")
+            else:
+                caller.set_state(uid, "PENDING", 10)
                 caller.schedule(uid, "PROGRESS")
         except Exception as e:
             traceback.print_exc()
@@ -217,11 +225,17 @@ class PoreNetworkExtractorHandler:
                 shutil.rmtree(local_path, ignore_errors=True)
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
-        inputNode = slicer.mrmlScene.GetNodeByID(self.input_node_id)
-
-        if inputNode:
-            self.result_callback(self.input_node_id, self.job_local_path, self.params["prefix"])
-        else:
-            slicer.util.infoDisplay(
-                f"Could not find the reference node with ID '{self.input_node_id}'. Load the scene that contains that node before collecting the job result."
-            )
+        metadata = self.params["metadata"]
+        extraction_nodes_creator = ExtractionNodesCreator(
+            metadata, self.job_local_path, self.params["prefix"], self.visualization
+        )
+        try:
+            self.results = extraction_nodes_creator.create()
+        except FileNotFoundError as e:
+            error_message = str(e)
+            logging.error(error_message)
+            slicer.util.errorDisplay(f"Cannot create Pore Network.\n\n{error_message}", windowTitle="Missing Data")
+        except Exception as e:
+            # Catch-all for other potential issues during node creation
+            logging.error(f"Unexpected error creating nodes: {str(e)}")
+            slicer.util.errorDisplay(f"An error occurred: {str(e)}")

@@ -1,7 +1,7 @@
+from ltrace.slicer.helpers import themeIsDark, disableSlice3DEdges
+
 import slicer
 import qt
-
-from ltrace.slicer.helpers import themeIsDark
 
 
 def customize_3d_view():
@@ -25,3 +25,6 @@ def customize_3d_view():
     for action in orientationMenu.actions():
         if action.text in ["Cube", "Human"]:
             orientationMenu.removeAction(action)
+
+    qt.QSettings().setValue("DefaultSliceView/SliceEdgeVisibility3D", False)
+    disableSlice3DEdges()

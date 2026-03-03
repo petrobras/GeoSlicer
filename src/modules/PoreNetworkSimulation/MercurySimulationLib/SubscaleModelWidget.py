@@ -1,30 +1,48 @@
+import ast
 import logging
 from pathlib import Path
 
 import ctk
+import numpy as np
+import pandas as pd
 import qt
 import slicer
-import ast
 
-import pandas as pd
-import numpy as np
-from ltrace.pore_networks.functions_simulation import estimate_radius
-
+from ltrace.file_utils import read_csv
 from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
+from ltrace.pore_networks.subres_models import MODEL_DICT, estimate_radius
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data
+from ltrace.pore_networks.subres_models import normalize_psd
 from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
+from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer.ui import (
     hierarchyVolumeInput,
     DirOrFileWidget,
     floatParam,
 )
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
-from ltrace.file_utils import read_csv
-from ltrace.pore_networks.subres_models import MODEL_DICT
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.pore_networks.subres_models import normalize_psd
+
+MICRON_TO_MM = 0.001
+
+# Heuristics for auto-parameter detection relative to voxel spacing
+SPACING_TO_MEAN_RADIUS = 0.5
+SPACING_TO_STD_DEV = 0.5
+SPACING_TO_MIN_RADIUS = 0.05
+SPACING_TO_MAX_RADIUS = 5.0
+SPACING_TO_CUTOFF_RADIUS = 2.0
+
+
+def get_volume_min_spacing_microns(volume_node):
+    scalar_volume_data = get_pore_network_volume_data(volume_node)
+    min_spacing = min(
+        scalar_volume_data["spacing"]["x"],
+        scalar_volume_data["spacing"]["y"],
+        scalar_volume_data["spacing"]["z"],
+    )
+    return min_spacing * 1000
 
 
 class SubscaleModelWidget(qt.QWidget):
@@ -218,6 +236,11 @@ class SubscaleModelWidget(qt.QWidget):
         subscale_widget = self.parameter_widgets[params["subres_model_name"]]
         subscale_widget.set_params(params["subres_params"])
 
+    def setVolumeNode(self, volume_node):
+        for widget in self.parameter_widgets.values():
+            if hasattr(widget, "set_volume_node"):
+                widget.set_volume_node(volume_node)
+
 
 class FixedRadiusWidget(qt.QWidget):
     STR = "Fixed Radius"
@@ -226,17 +249,20 @@ class FixedRadiusWidget(qt.QWidget):
         super().__init__()
         layout = qt.QFormLayout(self)
         self.logic = MODEL_DICT[self.STR]
+        self.volume_node = None
 
         self.micropore_radius = ui.floatParam()
-        self.micropore_radius.text = 0.1
-        self.auto_radius_btn = qt.QPushButton("Auto detect radius")
+        self.micropore_radius.text = 1
 
-        layout.addRow("Micropore radius (mm): ", self.micropore_radius)
-        layout.addRow(self.auto_radius_btn)
+        layout.addRow("Micropore radius (µm): ", self.micropore_radius)
+
+        self.estimate_button = qt.QPushButton("Estimate from input volume")
+        self.estimate_button.clicked.connect(self.on_estimate_clicked)
+        layout.addRow(self.estimate_button)
 
     def get_params(self):
         params = {
-            "radius": float(self.micropore_radius.text),
+            "radius": float(self.micropore_radius.text) * MICRON_TO_MM,
         }
         return params
 
@@ -245,6 +271,18 @@ class FixedRadiusWidget(qt.QWidget):
             params = ast.literal_eval(params)
 
         self.micropore_radius.text = str(params["radius"])
+
+    def set_volume_node(self, volume_node):
+        self.volume_node = volume_node
+
+    def on_estimate_clicked(self):
+        if not self.volume_node:
+            return
+        try:
+            min_spacing_microns = get_volume_min_spacing_microns(self.volume_node)
+            self.micropore_radius.text = str(round(min_spacing_microns * SPACING_TO_MEAN_RADIUS, 6))
+        except Exception as e:
+            logging.debug(f"FixedRadiusWidget: Could not auto-update parameters from volume: {e}")
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -261,27 +299,32 @@ class TruncatedGaussianWidget(qt.QWidget):
         self.logic = MODEL_DICT[self.STR]
 
         self.mean_radius = ui.floatParam()
-        self.mean_radius.text = 0.10
-        layout.addRow("Mean radius (mm): ", self.mean_radius)
+        self.mean_radius.text = 1
+        layout.addRow("Mean radius (µm): ", self.mean_radius)
 
         self.micropore_std = ui.floatParam()
-        self.micropore_std.text = 0.02
-        layout.addRow("Radius standard deviation: ", self.micropore_std)
+        self.micropore_std.text = 1
+        layout.addRow("Radius standard deviation (µm): ", self.micropore_std)
 
         self.minimum_radius = ui.floatParam()
-        self.minimum_radius.text = 0.05
-        layout.addRow("Min radius cutoff (mm): ", self.minimum_radius)
+        self.minimum_radius.text = 0.1
+        layout.addRow("Min radius cutoff (µm): ", self.minimum_radius)
 
         self.maximum_radius = ui.floatParam()
-        self.maximum_radius.text = 0.15
-        layout.addRow("Max radius cutoff (mm): ", self.maximum_radius)
+        self.maximum_radius.text = 5
+        layout.addRow("Max radius cutoff (µm): ", self.maximum_radius)
+
+        self.volume_node = None
+        self.estimate_button = qt.QPushButton("Estimate from input volume")
+        self.estimate_button.clicked.connect(self.on_estimate_clicked)
+        layout.addRow(self.estimate_button)
 
     def get_params(self):
         params = {
-            "mean radius": float(self.mean_radius.text),
-            "standard deviation": float(self.micropore_std.text),
-            "min radius": float(self.minimum_radius.text),
-            "max radius": float(self.maximum_radius.text),
+            "mean radius": float(self.mean_radius.text) * MICRON_TO_MM,
+            "standard deviation": float(self.micropore_std.text) * MICRON_TO_MM,
+            "min radius": float(self.minimum_radius.text) * MICRON_TO_MM,
+            "max radius": float(self.maximum_radius.text) * MICRON_TO_MM,
         }
         return params
 
@@ -293,6 +336,21 @@ class TruncatedGaussianWidget(qt.QWidget):
         self.micropore_std.text = params["standard deviation"]
         self.minimum_radius.text = params["min radius"]
         self.maximum_radius.text = params["max radius"]
+
+    def set_volume_node(self, volume_node):
+        self.volume_node = volume_node
+
+    def on_estimate_clicked(self):
+        if not self.volume_node:
+            return
+        try:
+            min_spacing_microns = get_volume_min_spacing_microns(self.volume_node)
+            self.mean_radius.text = str(round(min_spacing_microns * SPACING_TO_MEAN_RADIUS, 6))
+            self.micropore_std.text = str(round(min_spacing_microns * SPACING_TO_STD_DEV, 6))
+            self.minimum_radius.text = str(round(min_spacing_microns * SPACING_TO_MIN_RADIUS, 6))
+            self.maximum_radius.text = str(round(min_spacing_microns * SPACING_TO_MAX_RADIUS, 6))
+        except Exception as e:
+            logging.debug(f"TruncatedGaussianWidget: Could not auto-update parameters from volume: {e}")
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -329,8 +387,13 @@ class ThroatRadiusCurveWidget(qt.QWidget):
             self.cboxes[cbox] = qt.QComboBox()
             import_layout.addRow(cbox, self.cboxes[cbox])
 
-        self.cutoffMultiplierEdit = floatParam(3.0)
-        import_layout.addRow("Cutoff Multiplier", self.cutoffMultiplierEdit)
+        self.subresCutoff = floatParam(1.0)
+        import_layout.addRow("Subresolution cutoff radius (µm)", self.subresCutoff)
+
+        self.volume_node = None
+        self.estimate_button = qt.QPushButton("Estimate from input volume")
+        self.estimate_button.clicked.connect(self.on_estimate_clicked)
+        import_layout.addRow(self.estimate_button)
 
     def __change_import_table(self, item):
         node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(item)
@@ -365,14 +428,14 @@ class ThroatRadiusCurveWidget(qt.QWidget):
 
         Rc = df[self.cboxes["Throat Radius Column"].currentText].to_numpy()
         Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
-        cutoff_multiplier = float(self.cutoffMultiplierEdit.text)
+        cutoff_radius = float(self.subresCutoff.text) * MICRON_TO_MM
 
         return {
             "node id": self.throatRadiusSelector.currentNode().GetID(),
             "throat radii": Rc,
             "capillary pressure": None,
             "dsn": Fvol,
-            "smallest_radii_multiplier": cutoff_multiplier,
+            "radii_cutoff_mm": cutoff_radius,
         }
 
     def set_params(self, params):
@@ -383,7 +446,19 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         self.throatRadiusSelector.setCurrentNode(throatRadiusNode)
         self.cboxes["Throat Radius Column"].setCurrentText(params["throat radii"])
         self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
-        self.cutoffMultiplierEdit.text = params["smallest_radii_multiplier"]
+        self.subresCutoff.text = params["radii_cutoff_mm"] * 1000
+
+    def set_volume_node(self, volume_node):
+        self.volume_node = volume_node
+
+    def on_estimate_clicked(self):
+        if not self.volume_node:
+            return
+        try:
+            min_spacing_microns = get_volume_min_spacing_microns(self.volume_node)
+            self.subresCutoff.text = str(round(min_spacing_microns * SPACING_TO_CUTOFF_RADIUS, 6))
+        except Exception as e:
+            logging.debug(f"ThroatRadiusCurveWidget: Could not auto-update parameters from volume: {e}")
 
     def get_subradius_function(self, pore_network, volume):
         params = self.get_params()
@@ -459,7 +534,7 @@ class PressureCurveWidget(qt.QWidget):
             "throat radii": None,
             "capillary pressure": Pc,
             "dsn": Fvol,
-            "smallest_radii_multiplier": 2.0,
+            "radii_cutoff_mm": 1.0,
         }
 
     def set_params(self, params):
@@ -595,30 +670,22 @@ class LeverettNewWidget(LeverettWidgetBase):
 
 
 def onImportSIRRClicked(parameter_widgets, sirr_input_selector):
-    file_path = qt.QFileDialog.getOpenFileName(None, "Select SIRR CSV file", "", "CSV files (*.csv)")
+    file_path = qt.QFileDialog.getOpenFileName(
+        None, "Select SIRR CSV file", "", "Data Files (*.csv *.xlsx);;CSV Files (*.csv);;Excel Files (*.xlsx)"
+    )
     if not file_path:
         return
     importSIRR(file_path, parameter_widgets, sirr_input_selector)
 
 
 def importSIRR(file_path, parameter_widgets, sirr_input_selector):
+    from ltrace.file_utils import load_and_parse_data
+
     try:
-        df = read_csv(Path(file_path))
-
-        df = df.drop(
-            columns=[
-                "σ pressão capilar(psi)",
-                "σ saturação de Hg (%)",
-                "Saturação de gás (%)",
-                "σ saturação de gás (%)",
-            ]
-        )
-
-        df = df.rename(columns={"Pressão capilar(psi)": "pc"})
-        df["pc"] = df["pc"] * 6894.75729  # convert psi → Pa
-
-        df = df.rename(columns={"Saturação de Hg (%)": "snwp"})
-        df["snwp"] = df["snwp"] / 100
+        loaded_df = load_and_parse_data(Path(file_path), filter_empty_columns=True)
+        pc_col = loaded_df["Pressão capilar(psi)"] * 6894.75729  # convert psi → Pa
+        df = pd.DataFrame({"pc": pc_col})
+        df["snwp"] = loaded_df["Saturação de Hg (%)"] / 100
         df["dsn"] = np.diff(df["snwp"], n=1, prepend=0)
         df["radii"] = estimate_radius(df["pc"])
 

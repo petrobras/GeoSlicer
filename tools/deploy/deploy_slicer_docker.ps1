@@ -23,19 +23,29 @@ function Show-Help {
     Write-Host "-o, -OutputDir=DIR       Specify a directory to store output in"
 }
 
+# Function to normalize paths
+function Normalize-Path {
+    param ([string]$Path)
+    if (-not $Path) { return "" }
+    $normalized = $Path -replace '[/\\]+', '/'
+    $normalized = $normalized -replace '/$', ''
+    return $normalized
+}
+
 # Function to determine if one path is relative to another
 function Test-PathRelative {
     param (
         [string]$BasePath,
         [string]$TargetPath
     )
-    try {
-        $resolvedBase = (Resolve-Path -Path $BasePath).Path
-        $resolvedTarget = (Resolve-Path -Path $TargetPath).Path
-        return $resolvedTarget.StartsWith($resolvedBase)
-    } catch {
-        return $false
-    }
+    if ((-not $BasePath) -or (-not $TargetPath)) { return $false }
+    $normBase = (Normalize-Path $BasePath).ToLower()
+    $normTarget = (Normalize-Path $TargetPath).ToLower()
+    
+    if ($normBase -eq $normTarget) { return $true }
+    if ($normTarget.StartsWith($normBase + "/")) { return $true }
+    
+    return $false
 }
 
 # Function to get the mount path for a given path.
@@ -45,10 +55,11 @@ function Get-MountPath {
         [string]$Path
     )
 
-    $mountPath = $Path
-    if (-not (Test-PathRelative -BasePath "C:/" -TargetPath $Path)) {
-        $pathDrive = Split-Path -Path $Path -Qualifier
-        $mountPath = $Path -replace $pathDrive, "C:"
+    $normPath = Normalize-Path $Path
+    $mountPath = $normPath
+    if (-not $normPath.ToLower().StartsWith("c:/")) {
+        $pathDrive = $normPath.Split(":")[0] + ":"
+        $mountPath = $normPath -replace "^$pathDrive", "C:"
     }
 
     return $mountPath
@@ -60,21 +71,20 @@ function Get-UniquePaths {
         [string[]]$Paths
     )
 
-    $sortedPaths = $Paths | Sort-Object -Unique
+    $normalizedPaths = $Paths | ForEach-Object { Normalize-Path $_ } | Where-Object { $_ -ne "" } | Sort-Object -Unique
+    $sortedPaths = $normalizedPaths | Sort-Object Length
     
     $uniquePaths = @()
     foreach ($currentPath in $sortedPaths) {
-        if ($currentPath -in $uniquePaths) {
-            continue
-        }
-        $isRelative = $false
+        $alreadyCovered = $false
         foreach ($uniquePath in $uniquePaths) {
             if (Test-PathRelative -BasePath $uniquePath -TargetPath $currentPath) {
-                $isRelative = $true
+                $alreadyCovered = $true
+                break
             }
         }
 
-        if (-not $isRelative) {
+        if (-not $alreadyCovered) {
             $uniquePaths += $currentPath    
         }
     }
@@ -140,29 +150,36 @@ if ($LASTEXITCODE -ne 0) {
 
 # Get the parent directory of the archive
 $archiveParentDir = [System.IO.Path]::GetDirectoryName($Archive)
-$repoPath = $repoPath -replace '\\', '/'
-$outputDir = $OutputDir -replace '\\', '/'
-$archiveParentDir = $archiveParentDir -replace '\\', '/'
-$archiveFilePath = $Archive -replace '\\', '/'
+$repoPath = Normalize-Path $repoPath
+$outputDir = Normalize-Path $OutputDir
+$archiveParentDir = Normalize-Path $archiveParentDir
+$archiveFilePath = Normalize-Path $Archive
 
 $mountedRepoPath = Get-MountPath -Path $repoPath
-$mountedOutputDir = Get-MountPath -Path $outputDir # "C:/output/" 
-$mountedArchive = Get-MountPath -Path $archiveParentDir # "C:/archive/"
+$mountedOutputDir = Get-MountPath -Path $outputDir
+$mountedArchive = Get-MountPath -Path $archiveParentDir
 $archiveFileName = Split-Path -Path $archiveFilePath -Leaf
-$mountedArchiveFilePath = Join-Path -Path $mountedArchive -ChildPath $archiveFileName
+$mountedArchiveFilePath = Normalize-Path (Join-Path -Path $mountedArchive -ChildPath $archiveFileName)
+
+Write-Host "Mounted Repo Path: $mountedRepoPath"
+Write-Host "Mounted Output Dir: $mountedOutputDir"
+Write-Host "Mounted Archive Path: $mountedArchiveFilePath"
+
 
 $volumePathsMap = @{}
-$volumePathsMap["${repoPath}"] = $mountedRepoPath
-$volumePathsMap["${outputDir}"] = $mountedOutputDir
-$volumePathsMap["${archiveParentDir}"] = $mountedArchive
+$volumePathsMap["$repoPath"] = $mountedRepoPath
+$volumePathsMap["$outputDir"] = $mountedOutputDir
+$volumePathsMap["$archiveParentDir"] = $mountedArchive
 
 $volumePaths = @(
-    "${repoPath}",
-    "${outputDir}",
-    "${archiveParentDir}"
+    $repoPath,
+    $outputDir,
+    $archiveParentDir
 )
 
+Write-Host "volumePaths: $volumePaths"
 $uniqueVolumePaths = Get-UniquePaths -Paths $volumePaths
+Write-Host "uniqueVolumePaths: $uniqueVolumePaths"
 
 # Construct the string for the volume arguments
 $volumeArgs = @()
@@ -172,13 +189,27 @@ foreach ($path in $uniqueVolumePaths) {
     $volumeArgs += "${path}:${mountPath}"
 }
 
-# Run the Docker Compose command
-& $dockerComposeAlias run --rm -T ${volumeArgs} `
-    --env PYTHONUNBUFFERED=1 `
-    "${dockerServiceName}" `
-    powershell -Command "python ${mountedRepoPath}/tools/deploy/deploy_slicer.py $mountedArchiveFilePath $Arguments --output-dir $mountedOutputDir"
+Write-Host "volumeArgs: $volumeArgs"
+
+# Create a clean array of arguments to prevent quoting/expansion issues
+$dockerArgs = @(
+    "run", "--rm", "-T"
+)
+$dockerArgs += $volumeArgs
+$dockerArgs += @(
+    "--env", "PYTHONUNBUFFERED=1",
+    $dockerServiceName,
+    "powershell",
+    "-Command", "python ${mountedRepoPath}/tools/deploy/deploy_slicer.py $mountedArchiveFilePath $Arguments --output-dir $mountedOutputDir"
+)
+
+Write-Host "Executing deployment inside Docker..."
+Write-Host "Command: $dockerComposeAlias $($dockerArgs -join ' ')"
+
+# Run Docker Compose: merge stderr to stdout (2>&1) and force to string
+& $dockerComposeAlias $dockerArgs 2>&1 | ForEach-Object { Write-Output $_.ToString() }
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to run the deploy script. Check the logs and try again."
+    Write-Error "Failed to run the deploy script. Container exited with code $LASTEXITCODE. Check the Docker logs above."
     exit 6
 }

@@ -231,13 +231,10 @@ class CrossplotWidget(BasePlotWidget):
         self.__xUnitConversion = UnitConversionWidget()
 
         self.__xLogCheckBox = QtGui.QCheckBox()
-        self.__xLogCheckBox.setVisible(False)
-        self.__xLogCheckBox.setEnabled(False)
         self.__xLogCheckBox.setChecked(False)
         self.__xLogCheckBox.stateChanged.connect(self.__onLogCheckBoxChange)
         xLogCheckBoxLabel = QtGui.QLabel("Log")
         xLogCheckBoxLabel.setBuddy(self.__xLogCheckBox)
-        xLogCheckBoxLabel.setVisible(False)
 
         # Parameter combobox
         self.__xAxisComboBox = QtGui.QComboBox()
@@ -260,8 +257,15 @@ class CrossplotWidget(BasePlotWidget):
         x_bins_layout.addWidget(self.__xHistogramBinSpinBox)
         x_bins_layout.setSpacing(5)
         self.__xAxisGridLayout.addLayout(x_bins_layout, 1, 2, 1, 1)
+
+        log_layout = QtGui.QHBoxLayout()
+        log_layout.addWidget(xLogCheckBoxLabel)
+        log_layout.addWidget(self.__xLogCheckBox)
+        log_layout.setSpacing(5)
+        self.__xAxisGridLayout.addLayout(log_layout, 2, 0, 1, 3)
+
         self.__xAxisGridLayout.addWidget(
-            shiboken2.wrapInstance(hash(self.__xUnitConversion), QtGui.QWidget), 2, 0, 1, 4
+            shiboken2.wrapInstance(hash(self.__xUnitConversion), QtGui.QWidget), 3, 0, 1, 5
         )
         # Groupbox
 
@@ -282,13 +286,10 @@ class CrossplotWidget(BasePlotWidget):
         self.__yUnitConversion = UnitConversionWidget()
 
         self.__yLogCheckBox = QtGui.QCheckBox()
-        self.__yLogCheckBox.setVisible(False)
-        self.__yLogCheckBox.setEnabled(False)
         self.__yLogCheckBox.setChecked(False)
         self.__yLogCheckBox.stateChanged.connect(self.__onLogCheckBoxChange)
         yLogCheckBoxLabel = QtGui.QLabel("Log")
         yLogCheckBoxLabel.setBuddy(self.__yLogCheckBox)
-        yLogCheckBoxLabel.setVisible(False)
 
         # Parameter combobox
         self.__yAxisComboBox = QtGui.QComboBox()
@@ -312,8 +313,15 @@ class CrossplotWidget(BasePlotWidget):
         y_bins_layout.addWidget(self.__yHistogramBinSpinBox)
         y_bins_layout.setSpacing(5)
         self.__yAxisGridLayout.addLayout(y_bins_layout, 1, 2, 1, 1)
+
+        log_layout = QtGui.QHBoxLayout()
+        log_layout.addWidget(yLogCheckBoxLabel)
+        log_layout.addWidget(self.__yLogCheckBox)
+        log_layout.setSpacing(5)
+        self.__yAxisGridLayout.addLayout(log_layout, 2, 0, 1, 3)
+
         self.__yAxisGridLayout.addWidget(
-            shiboken2.wrapInstance(hash(self.__yUnitConversion), QtGui.QWidget), 2, 0, 1, 4
+            shiboken2.wrapInstance(hash(self.__yUnitConversion), QtGui.QWidget), 3, 0, 1, 5
         )
         # Groupbox
 
@@ -796,8 +804,23 @@ class CrossplotWidget(BasePlotWidget):
             if xData is None or yData is None:
                 continue
 
+            xData = xData.copy()
+            yData = yData.copy()
+
             xAxisName = xAxisParameter
             yAxisName = yAxisParameter
+
+            if self.__xLogCheckBox.isChecked():
+                positive_mask = xData > 0
+                xData[~positive_mask] = np.nan
+                xData[positive_mask] = np.log10(xData[positive_mask])
+                xAxisName = f"log10({xAxisParameter})"
+
+            if self.__yLogCheckBox.isChecked():
+                positive_mask = yData > 0
+                yData[~positive_mask] = np.nan
+                yData[positive_mask] = np.log10(yData[positive_mask])
+                yAxisName = f"log10({yAxisParameter})"
 
             if self.__xUnitConversion.isActive():
                 xData = self.__xUnitConversion.convert(xData)
@@ -991,7 +1014,7 @@ class CrossplotWidget(BasePlotWidget):
         xAxisParameter = self.__xAxisComboBox.currentText()
         yAxisParameter = self.__yAxisComboBox.currentText()
 
-        def createHistogramPlots(graphData, axisParameter, bins):
+        def createHistogramPlots(graphData, axisParameter, bins, logChecked):
             if graphData.visible is False:
                 return None, None
 
@@ -999,7 +1022,14 @@ class CrossplotWidget(BasePlotWidget):
             if data is None:
                 return None, None
 
-            data = data[~np.isnan(data)]
+            data = data.copy()
+
+            if logChecked:
+                data = data[data > 0]
+                data = np.log10(data)
+            else:
+                data = data[~np.isnan(data)]
+
             data = (
                 self.__xUnitConversion.convert(data)
                 if axisParameter == xAxisParameter
@@ -1013,7 +1043,10 @@ class CrossplotWidget(BasePlotWidget):
         if self.__xAxisHistogramEnableCheckBox.isChecked() is True:
             for graphData in self.__graphDataList:
                 xHistogram, yHistogram = createHistogramPlots(
-                    graphData, xAxisParameter, self.__xHistogramBinSpinBox.value()
+                    graphData,
+                    xAxisParameter,
+                    self.__xHistogramBinSpinBox.value(),
+                    self.__xLogCheckBox.isChecked(),
                 )
                 if xHistogram is not None and yHistogram is not None:
                     self.dataPlotWidget.add_histogram_plot_x(graphData, xHistogram, yHistogram)
@@ -1021,7 +1054,10 @@ class CrossplotWidget(BasePlotWidget):
         if self.__yAxisHistogramEnableCheckBox.isChecked() is True:
             for graphData in self.__graphDataList:
                 xHistogram, yHistogram = createHistogramPlots(
-                    graphData, yAxisParameter, self.__yHistogramBinSpinBox.value()
+                    graphData,
+                    yAxisParameter,
+                    self.__yHistogramBinSpinBox.value(),
+                    self.__yLogCheckBox.isChecked(),
                 )
                 if xHistogram is not None and yHistogram is not None:
                     self.dataPlotWidget.add_histogram_plot_y(graphData, xHistogram, yHistogram)

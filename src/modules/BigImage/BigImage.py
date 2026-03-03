@@ -35,7 +35,7 @@ class BigImage(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Large Image Loader (beta)"
-        self.parent.categories = ["Tools", "MicroCT"]
+        self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("Volumes/BigImage/BigImage.html")
 

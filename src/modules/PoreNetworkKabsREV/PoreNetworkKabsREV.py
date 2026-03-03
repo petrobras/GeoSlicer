@@ -1,19 +1,17 @@
-import ctk
+import json
 import os
+from pathlib import Path
+
+import ctk
+import pandas as pd
 import qt
 import slicer
-import pickle
-import json
-from pathlib import Path
-import pandas as pd
-
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.pore_networks.functions import geo2spy
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from ltrace.slicer import ui
+from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
 
 try:
     from Test.PoreNetworkKabsREVTest import PoreNetworkKabsREVTest
@@ -152,13 +150,23 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
         self.__applyButton = ui.ApplyButton(onClick=self.__onApplyButtonClicked, tooltip="Apply changes", enabled=True)
         self.__applyButton.objectName = "Apply Button"
 
+        self.__cancelButton = qt.QPushButton("Cancel")
+        self.__cancelButton.objectName = "Cancel Button"
+        self.__cancelButton.setEnabled(False)
+        self.__cancelButton.setSizePolicy(self.__applyButton.sizePolicy)
+
+        buttonsLayout = qt.QHBoxLayout()
+        buttonsLayout.addWidget(self.__applyButton)
+        buttonsLayout.addWidget(self.__cancelButton)
+
         self.__inputSelector.currentItemChanged.connect(self.__onInputSelectorChange)
+        self.__cancelButton.clicked.connect(self.__onCancelButtonClicked)
 
         # Update layout
         self.layout.addWidget(inputSection)
         self.layout.addWidget(parametersSection)
         self.layout.addWidget(outputSection)
-        self.layout.addWidget(self.__applyButton)
+        self.layout.addLayout(buttonsLayout)
         self.layout.addWidget(self.progressBar)
         self.layout.addStretch(1)
 
@@ -183,19 +191,20 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
             slicer.util.errorDisplay("Please select an input node.")
             return
 
-        subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
-        subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
-        subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
-        shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
+        self.__applyButton.enabled = False
+        self.__cancelButton.enabled = True
+
+        input_node = self.__inputSelector.currentNode()
+
+        mercury_widget_params = self.mercury_widget.getParams(input_node)
+        subres_model_name = mercury_widget_params["subres_model_name"]
+        subres_params = mercury_widget_params["subres_params"]
 
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             subres_params = {i: v.tolist() if hasattr(v, "tolist") else v for i, v in subres_params.items()}
+        mercury_widget_params["subres_params"] = subres_params
 
         params = {
-            "subres_porositymodifier": subres_porositymodifier,
-            "subres_shape_factor": shape_factor,
-            "subres_model_name": subres_model_name,
-            "subres_params": subres_params,
             "solver": self.solverComboBox.currentText,
             "solver_error": float(self.errorEdit.text),
             "pressure_drop": float(self.pressureDropFloat.text),
@@ -207,8 +216,20 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
             "min_fraction": float(self.minFraction.text) / 100.0,
         }
 
-        self.logic = PoreNetworkKabsREVLogic(self.progressBar)
+        params.update(mercury_widget_params)
+
+        self.logic = PoreNetworkKabsREVLogic(self.parent, self.progressBar)
+        self.logic.processFinished.connect(self.__onProcessFinished)
         self.logic.apply(self.__inputSelector.currentNode(), params, self.__outputPrefixLineEdit.text)
+
+    def __onCancelButtonClicked(self):
+        if hasattr(self, "logic") and self.logic:
+            self.logic.cancel()
+
+    def __onProcessFinished(self):
+        self.__applyButton.enabled = True
+        self.__cancelButton.enabled = False
+        self.logic = None
 
     def __onInputNodeChanged(self, vtkId):
         node = self.__inputSelector.currentNode()
@@ -219,11 +240,17 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
 
 
 class PoreNetworkKabsREVLogic(LTracePluginLogic):
-    def __init__(self, progressBar):
-        LTracePluginLogic.__init__(self)
+    processFinished = qt.Signal()
+
+    def __init__(self, parent, progressBar):
+        LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
         self.progressBar = progressBar
         self.cwd = None
+
+    def cancel(self):
+        if self.cliNode:
+            self.cliNode.Cancel()
 
     def apply(self, node, params, prefix):
         self.cwd = Path(slicer.util.tempDirectory())
@@ -263,6 +290,7 @@ class PoreNetworkKabsREVLogic(LTracePluginLogic):
             else:
                 folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
                 folderTree.RemoveItem(self.rootDir)
+            self.processFinished.emit()
 
     def onFinish(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()

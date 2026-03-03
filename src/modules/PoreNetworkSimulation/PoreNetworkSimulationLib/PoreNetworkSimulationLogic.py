@@ -1,44 +1,27 @@
-import vtk
-
-import random
-import string
-import itertools
 import json
 import logging
 import os
+import pickle
+import random
 import re
 import shutil
+import string
 import time
 import traceback
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from numba import njit
 import slicer
-import pickle
+import vtk
+from numba import njit
 
-from ltrace.algorithms.common import (
-    generate_equidistant_points_on_sphere,
-    points_are_below_plane,
-)
-from ltrace.pore_networks.functions import is_multiscale_geo, geo2pnf, geo2spy
-from ltrace.pore_networks.subres_models import get_scalar_volume_data
-from ltrace.pore_networks.vtk_utils import (
-    create_flow_model,
-    create_permeability_sphere,
-)
+from ltrace.pore_networks.functions_extract import _get_paired_throats_table
 from ltrace.slicer import helpers
 from ltrace.slicer.binary_node import createBinaryNode, getBinary
 from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import (
-    LTracePluginLogic,
-    dataFrameToTableNode,
-    hide_nodes_of_type,
-)
-
-from .constants import *
-from .utils import save_parameters_to_table
+from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, hide_nodes_of_type, tableNodeToDict
+from .constants import ONE_ANGLE, MULTI_ANGLE
 
 NUM_THREADS = 48
 
@@ -83,7 +66,6 @@ def readPolydata(filename):
     reader = vtk.vtkPolyDataReader()
     reader.SetFileName(filename)
     reader.Update()
-
     polydata = reader.GetOutput()
     return polydata
 
@@ -124,41 +106,37 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         params["advanced visualization"] = False
 
         refNode = inputTable.GetNodeReference("PoresLabelMap")
-        ijktorasDirections = np.zeros([3, 3])
-        refNode.GetIJKToRASDirections(ijktorasDirections)
-        self.params["ijktoras"] = [ijktorasDirections[i, i] for i in range(3)]
+        if refNode:
+            ijktorasDirections = np.zeros([3, 3])
+            refNode.GetIJKToRASDirections(ijktorasDirections)
+            self.params["ijktoras"] = [ijktorasDirections[i, i] for i in range(3)]
 
-        hash = "".join(
-            random.choices(
-                string.ascii_letters,
-                k=22,
-            )
-        )
+        hash = "".join(random.choices(string.ascii_letters, k=22))
         directory_name = f"pnm_cli_{hash}"
         self.temp_dir = f"{slicer.app.temporaryPath}/{directory_name}"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         os.mkdir(self.temp_dir)
 
-        cliParams = {
-            "model": "onePhase",
-            "cwd": str(self.cwd),
-            "tempDir": self.temp_dir,
-        }
+        cliParams = {"model": "onePhase", "cwd": str(self.cwd), "tempDir": self.temp_dir}
 
         hide_nodes_of_type("vtkMRMLModelNode")
 
-        pore_network = geo2spy(inputTable)
+        pore_network = tableNodeToDict(inputTable)
 
-        dict_file = open(str(self.cwd / "pore_network.dict"), "wb")
-        pickle.dump(pore_network, dict_file)
-        dict_file.close()
+        throat_table = inputTable.GetNodeReference("throat_table")
+        if throat_table is None:
+            # Legacy compatibility. Will be removed in later versions.
+            throat_table = _get_paired_throats_table(inputTable)
+            inputTable.AddNodeReferenceID("throat_table", throat_table.GetID())
+        throat_network = tableNodeToDict(throat_table)
 
-        del self.params["subresolution function"]
-        del self.params["subresolution function call"]
+        with open(self.cwd / "pore_network.pkl", "wb") as f:
+            pickle.dump(pore_network, f)
 
-        self.params["scalar_volume_data"] = get_scalar_volume_data(inputTable)
+        with open(self.cwd / "throat_network.pkl", "wb") as f:
+            pickle.dump(throat_network, f)
 
-        with open(str(self.cwd / "params_dict.json"), "w") as file:
+        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         self.cliNode = slicer.cli.run(
@@ -294,16 +272,8 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             )
             model_node["throat_flow_rate"].GetDisplayNode().SetAndObserveColorNodeID("vtkMRMLColorTableNodeWarmTint1")
             model_node["border_pores"].GetDisplayNode().SetAndObserveColorNodeID("vtkMRMLColorTableNodeFileViridis.txt")
-            # model_node["throat_flow_rate"].GetDisplayNode().SetScalarRangeFlag(0)
-            # min_throat = minmax_dict[key]["min"]
-            # max_throat = minmax_dict[key]["max"]
-            # model_node["throat_flow_rate"].GetDisplayNode().SetScalarRange(min_throat, max_throat)
             model_node["throat_flow_rate"].GetDisplayNode().SetScalarRangeFlag(1)
             model_node["throat_flow_rate"].GetDisplayNode().SetActiveScalarName("log value array")
-
-            # if (inlet + outlet) != 0:  # by default only display z-z results
-            #    model_node["pore_pressure"].SetDisplayVisibility(False)
-            #    model_node["throat_flow_rate"].SetDisplayVisibility(False)
 
             folderTree.SetDisplayVisibilityForBranch(subDir, False)
             folderTree.SetItemExpanded(subDir, False)
@@ -451,9 +421,6 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         model_display.SetAndObserveColorNodeID(slicer.util.getNode("Viridis").GetID())
         model_display.SetScalarRangeFlag(0)
         model_display.SetScalarRange(0, multiangle_model_range)
-        # model_display.SetColor(0.1, 0.1, 0.9)
-        # model_display.SetAmbient(0.15)
-        # model_display.SetDiffuse(0.85)
         model_node.SetAndObservePolyData(model_polydata)
 
         file = f"{self.temp_dir}/sphere.vtk"
@@ -502,30 +469,13 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         _ = folderTree.CreateItem(sphere_dir, plane_node)
         _ = folderTree.CreateItem(sphere_dir, arrow_node)
 
-    def _create_vector_map(
-        self,
-        df_pores,
-        df_throats,
-        sizes,
-        IJKTORAS=(-1, -1, 1),
-    ):
-
+    def _create_vector_map(self, df_pores, df_throats, sizes, IJKTORAS=(-1, -1, 1)):
         if sizes:
             offset = [10 * sizes[axis] if IJKTORAS[i] < 0 else 0 for i, axis in enumerate(["x", "y", "z"])]
         else:
             offset = [0 for i, axis in enumerate(["x", "y", "z"])]
-        # pn_throats["throat.conns_0"]
-        # pn_throats["throat.conns_1"]
-        # pn_throats["throat.flow"]
-        # throat.global_peak_0, throat.conns_0, pore.geometric_centroid_0
 
         points = vtk.vtkPoints()
-        # for i in range(len(df_throats["throat.global_peak_0"])):
-        #     points.InsertNextPoint((
-        #         df_throats["throat.global_peak_0"][i],
-        #         df_throats["throat.global_peak_1"][i],
-        #         df_throats["throat.global_peak_2"][i],
-        #     ))
 
         flow_array = vtk.vtkFloatArray()
         flow_array.SetName("flow")
@@ -555,13 +505,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             zn = zd / length
             scaled_flow = flow / max_flow
 
-            direction_array.InsertNextTuple(
-                (
-                    (xn * length) / 2,
-                    (yn * length) / 2,
-                    (zn * length) / 2,
-                )
-            )
+            direction_array.InsertNextTuple(((xn * length) / 2, (yn * length) / 2, (zn * length) / 2))
             points.InsertNextPoint(
                 (
                     ((x0 + x1) - (xn * length / 2)) / 2,
@@ -589,9 +533,6 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         glyph.OrientOn()
         glyph.SetScaleFactor(1)  # Adjust arrow size
         glyph.Update()
-
-        # mapper = vtk.vtkPolyDataMapper()
-        # mapper.SetInputConnection(glyph.GetOutputPort())
 
         arrow_glyph3D_with_normals = vtk.vtkPolyDataNormals()
         arrow_glyph3D_with_normals.SetSplitting(False)
@@ -628,13 +569,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             yn = yd / length
             zn = zd / length
             scaled_flow = abs(flow / max_flow) ** (1 / 2) * max_radius
-            position = np.array(
-                (
-                    (x0 + 0.05 * (x1 - x0)),
-                    (y0 + 0.05 * (y1 - y0)),
-                    (z0 + 0.05 * (z1 - z0)),
-                )
-            )
+            position = np.array(((x0 + 0.05 * (x1 - x0)), (y0 + 0.05 * (y1 - y0)), (z0 + 0.05 * (z1 - z0))))
 
             # Create arrow source (unit arrow along +X)
             arrow = vtk.vtkArrowSource()
@@ -683,7 +618,6 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         arrows = append.GetOutput()
         arrows.GetPointData().SetScalars(flow_values)
 
-        # return arrow_glyph3D_with_normals.GetOutput()
         return arrows
 
     def _create_volumetric_pressure(self, df_pores, df_throats, watershed_array):
@@ -743,12 +677,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         self.params = params
         self.prefix = prefix
 
-        hash = "".join(
-            random.choices(
-                string.ascii_letters,
-                k=22,
-            )
-        )
+        hash = "".join(random.choices(string.ascii_letters, k=22))
         directory_name = f"pnm_cli_{hash}"
         self.temp_dir = f"{slicer.app.temporaryPath}/{directory_name}"
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -756,22 +685,22 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
 
         cliParams = {"model": "TwoPhaseSensibilityTest", "cwd": str(self.cwd), "tempDir": self.temp_dir}
 
-        subresolution_function = params["subresolution function"]
-        del params["subresolution function"]
-        del params["subresolution function call"]
+        pore_network = tableNodeToDict(pore_node)
 
-        statoil_dict = geo2pnf(
-            pore_node,
-            subresolution_function,
-            axis=params["direction"],
-            subres_shape_factor=params["subres_shape_factor"],
-            subres_porositymodifier=params["subres_porositymodifier"],
-        )
+        throat_table = pore_node.GetNodeReference("throat_table")
+        if throat_table is None:
+            # Legacy compatibility. Will be removed in later versions.
+            throat_table = _get_paired_throats_table(pore_node)
+            pore_node.AddNodeReferenceID("throat_table", throat_table.GetID())
+        throat_network = tableNodeToDict(throat_table)
 
-        with open(str(self.cwd / "statoil_dict.json"), "w") as file:
-            json.dump(statoil_dict, file)
+        with open(self.cwd / "pore_network.pkl", "wb") as f:
+            pickle.dump(pore_network, f)
 
-        with open(str(self.cwd / "params_dict.json"), "w") as file:
+        with open(self.cwd / "throat_network.pkl", "wb") as f:
+            pickle.dump(throat_network, f)
+
+        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         if snapshot_node is not None:
@@ -805,7 +734,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     folderTree.SetItemExpanded(self.rootDir, False)
 
                     # Reload updated params
-                    with open(str(self.cwd / "params_dict.json"), "r") as f:
+                    with open(str(self.cwd / "simulation_params_dict.json"), "r") as f:
                         self.params = json.load(f)
 
                     parametersNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
@@ -943,18 +872,19 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
 
         # Set the correct orientation and origin
         poresLabelMap = self.pore_node.GetNodeReference("PoresLabelMap")
-        vtkTransformationMatrix = vtk.vtkMatrix4x4()
-        poresLabelMap.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
-        poresLabelMapOrigin = poresLabelMap.GetOrigin()
-        vtkTransformationMatrix.SetElement(0, 3, poresLabelMapOrigin[0])
-        vtkTransformationMatrix.SetElement(1, 3, poresLabelMapOrigin[1])
-        vtkTransformationMatrix.SetElement(2, 3, poresLabelMapOrigin[2])
-        transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
-        transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
-        pores_model_node.SetAndObserveTransformNodeID(transformNode.GetID())
-        pores_model_node.HardenTransform()
-        slicer.mrmlScene.RemoveNode(transformNode)
-        del transformNode
+        if poresLabelMap:
+            vtkTransformationMatrix = vtk.vtkMatrix4x4()
+            poresLabelMap.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
+            poresLabelMapOrigin = poresLabelMap.GetOrigin()
+            vtkTransformationMatrix.SetElement(0, 3, poresLabelMapOrigin[0])
+            vtkTransformationMatrix.SetElement(1, 3, poresLabelMapOrigin[1])
+            vtkTransformationMatrix.SetElement(2, 3, poresLabelMapOrigin[2])
+            transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
+            transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
+            pores_model_node.SetAndObserveTransformNodeID(transformNode.GetID())
+            pores_model_node.HardenTransform()
+            slicer.mrmlScene.RemoveNode(transformNode)
+            del transformNode
 
         return pores_model_node
 

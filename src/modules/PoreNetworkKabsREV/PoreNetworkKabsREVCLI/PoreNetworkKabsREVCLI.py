@@ -6,41 +6,20 @@
 from __future__ import print_function
 
 import slicer
-import vtk
 
 import json
-from pathlib import Path
-import itertools
-
+import logging
 import re
+from pathlib import Path
+
 import mrml
 import numpy as np
 import pandas as pd
-import pickle
-import porespy
-import openpnm
-
-from ltrace.algorithms.common import (
-    points_are_below_plane,
-)
-from ltrace.pore_networks.functions_simulation import (
-    get_connected_spy_network,
-    get_flow_rate,
-    get_sub_spy,
-    manual_valvatne_blunt,
-    set_subresolution_conductance,
-    single_phase_permeability,
-)
 
 from ltrace.pore_networks.functions_extract import general_pn_extract
-from ltrace.pore_networks.subres_models import set_subres_model
-
+from ltrace.pore_networks.functions_simulation import get_flow_rate, single_phase_permeability
+from ltrace.pore_networks.subres_models import get_subres_function
 from ltrace.slicer.cli_utils import progressUpdate
-import shutil
-
-from ltrace.pore_networks.watershed_normalization import normalize_watershed
-
-import logging
 
 logger = logging.getLogger("numba")
 logger.setLevel(logging.ERROR)
@@ -89,11 +68,6 @@ def crop_volume(array, size, translation=(0, 0, 0), is_labelmap=False):
     )
 
     cropped_array = array[zmin:zmax, ymin:ymax, xmin:xmax]
-
-    if is_labelmap:
-        normalized_array = normalize_watershed(cropped_array)
-    else:
-        normalized_array = cropped_array
 
     return cropped_array
 
@@ -197,7 +171,7 @@ def KabsREV(args, params):
                 "z": scale[2],
             }
             sizes_product = x_size * y_size * z_size
-            subres_func = set_subres_model(pore_network, params)
+            subres_func = get_subres_function(pore_network, params)
 
             volume_porosity = 100 * network_df["network.input_volume_porosity"][0]
             network_porosity = 100 * network_df["network.pore_total_porosity"][0]

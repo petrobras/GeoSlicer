@@ -1,36 +1,47 @@
 import json
 import logging
+import pickle
+import platform
 import re
 import shutil
 import traceback
 from datetime import datetime
 from pathlib import Path
 from pathlib import PurePosixPath
-from typing import Any
-
+from typing import Any, List
 
 import numpy as np
 import pandas as pd
 import slicer
-from ltrace.pore_networks.functions import geo2pnf
+
+from ltrace.pore_networks.functions_extract import _get_paired_throats_table
 from ltrace.pore_networks.processing.two_phase.two_phase_simulation import TwoPhaseSimulation
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring
+from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
 from ltrace.slicer.data_utils import dataFrameToTableNode
 from ltrace.slicer.node_attributes import TableType
+from ltrace.slicer_utils import tableNodeToDict
+from ltrace.sys_utils import priority_lock
 
 
-class PoreNetworkSimulationHandler:
+_1hour = 3600  # seconds
+
+
+class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
     JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
-    JOBS_LOCAL_PATH = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\servicos\\LTRACE\\GEOSLICER\\jobs")
+    if platform.system() == "Windows":
+        JOBS_LOCAL_PATH = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\GEOSLICER\jobs")
+    else:
+        JOBS_LOCAL_PATH = Path("/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
     def __init__(self, pore_table_node_id, params, prefix, simulation_intervals=None, job_dir_name=None) -> None:
+        super().__init__(timeout_seconds=_1hour)
+
         self.pore_table_node_id = pore_table_node_id
         self.params = params
         self.prefix = prefix
-        self.slurm_job_ids = []
         self.job_map = {}  # Maps job_id to simulation interval
         self.simulation_intervals = simulation_intervals  # Optional: specific intervals to run
         self.job_dir_name = job_dir_name  # Store job_dir_name for reuse
@@ -71,22 +82,19 @@ class PoreNetworkSimulationHandler:
                 client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
                 client.run_command(f"mkdir {self.job_remote_path}/temp")
 
-                statoil_dict = geo2pnf(
-                    slicer.mrmlScene.GetNodeByID(self.pore_table_node_id),
-                    self.params["subresolution function"],
-                    axis=self.params["direction"],
-                    subres_shape_factor=self.params["subres_shape_factor"],
-                    subres_porositymodifier=self.params["subres_porositymodifier"],
-                )
+                with priority_lock(interval=3600):  # 1 hour, for the largest simulations
+                    pore_table_node = slicer.mrmlScene.GetNodeByID(self.pore_table_node_id)
+                    pore_network = tableNodeToDict(pore_table_node)
+                    throat_table = pore_table_node.GetNodeReference("throat_table")
+                    if throat_table is None:
+                        # Legacy compatibility. Will be removed in later versions.
+                        throat_table = _get_paired_throats_table(pore_table_node)
+                        pore_table_node.AddNodeReferenceID("throat_table", throat_table.GetID())
+                    throat_network = tableNodeToDict(throat_table)
 
-                with (self.job_local_path / "statoil_dict.json").open("w") as file:
-                    json.dump(statoil_dict, file)
-
-            del self.params_to_save["subresolution function"]
-            del self.params_to_save["subresolution function call"]
-            if not retried_job:
-                with (self.job_local_path / "params_dict.json").open("w") as file:
-                    json.dump(self.params_to_save, file)
+                dump_via_slicer_temp(pore_network, "pore_network.pkl", self.job_local_path, format="pickle")
+                dump_via_slicer_temp(throat_network, "throat_network.pkl", self.job_local_path, format="pickle")
+                dump_via_slicer_temp(self.params_to_save, "simulation_params_dict.json", self.job_local_path)
 
             self.cli_params = {
                 "model": "TwoPhaseSensibilityTest",
@@ -135,7 +143,7 @@ class PoreNetworkSimulationHandler:
 
                 script = " ".join(["PoreNetworkSimulationCLI.PoreNetworkSimulationCLI", argstring(cli_params)])
                 opening_command = caller.jobs[uid].host.opening_command
-                main_cmd = f"RPS_DIR='/atena/users/g575/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --gpu 1 --cli -- '{script}'"
+                main_cmd = f"RPS_DIR='/atena/users/dibi/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --cli '{script}'"
                 full_cmd = " && ".join([opening_command, rf"cd {self.job_remote_path}", main_cmd])
 
                 output = client.run_command(full_cmd, verbose=True)
@@ -172,6 +180,7 @@ class PoreNetworkSimulationHandler:
                 start_time=ts_start,
                 details=details,
             )
+            caller.persist(uid)
             caller.schedule(uid, "PROGRESS")
         except Exception:
             traceback.print_exc()
@@ -185,10 +194,8 @@ class PoreNetworkSimulationHandler:
             )
             caller.persist(uid)
 
-    def progress(self, caller: JobManager, uid: str, client: Any = None):
+    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: List[dict]):
         try:
-            job_status = slurm_utils.sacct(client, self.slurm_job_ids)
-
             # Gather latest progress for each job
             successful_job_ids = []
             total_progress = 0
@@ -204,7 +211,7 @@ class PoreNetworkSimulationHandler:
                 count += 1
 
             # Only consider completion when Slurm reports all jobs are done
-            if slurm_utils.all_done(job_status):
+            if slurm_utils.all_done(jobstatus):
                 details = {
                     "successful_job_ids": successful_job_ids,
                     "job_progress": job_progress_map,
@@ -246,12 +253,14 @@ class PoreNetworkSimulationHandler:
                     )
                 caller.persist(uid)
                 return
-
-            # Not all done yet -> report aggregated running progress and reschedule
-            avg_progress = max(total_progress / count, 10) if count > 0 else 10
-            caller.set_state(uid, "RUNNING", avg_progress)
-            caller.schedule(uid, "PROGRESS")
-
+            elif slurm_utils.any_running(jobstatus):
+                # Not all done yet -> report aggregated running progress and reschedule
+                avg_progress = max(total_progress / count, 10) if count > 0 else 10
+                caller.set_state(uid, "RUNNING", avg_progress)
+                caller.schedule(uid, "PROGRESS")
+            else:
+                caller.set_state(uid, "PENDING", 10)
+                caller.schedule(uid, "PROGRESS")
         except Exception as e:
             traceback.print_exc()
             caller.set_state(
@@ -346,7 +355,7 @@ class PoreNetworkSimulationHandler:
         folder_tree.SetItemExpanded(table_dir, False)
 
         # Reload updated params
-        with (self.job_local_path / "params_dict.json").open("r") as file:
+        with (self.job_local_path / "simulation_params_dict.json").open("r") as file:
             params = json.load(file)
         parameters_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
         parameters_node.SetText(json.dumps(params, indent=4))

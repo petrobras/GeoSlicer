@@ -572,9 +572,16 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
             workDir = folderTree.GetItemParent(folderTree.GetItemByDataNode(dryImageNode))
             outputDir = folderTree.CreateFolderItem(workDir, "Porosity Mapping Results")
 
+            outputName = self.prefixOutputLineEdit.text
+            fullOutputName = outputName + "_PorosityMap"
+
             # compute the results
-            self.logic.computeVolume(
-                self.factorTunningDry.dataSource, self.factorTunningWet.dataSource, targetLabels, outputDir
+            resultNodeID = self.logic.computeVolume(
+                self.factorTunningDry.dataSource,
+                self.factorTunningWet.dataSource,
+                targetLabels,
+                outputDir,
+                fullOutputName,
             )
 
             segNode = self.inputWidget.segmentationNodeSelectorInput.currentData
@@ -593,7 +600,7 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
             segmentNames = [segmentation.GetSegment(sid).GetName() for sid in segments]
 
             self.logic.computeTable(
-                "PorosityMap",
+                resultNodeID,
                 dryImageNode,
                 wetImageNode,
                 segmentNames,
@@ -894,14 +901,16 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
         minPCR, maxPCR = pcrMinMaxFromTableNode(node)
         return minPCR, maxPCR
 
-    def computeVolume(self, dryModel: SampleModel, wetModel: SampleModel, targets, outputDir):
+    def computeVolume(
+        self, dryModel: SampleModel, wetModel: SampleModel, targets, outputDir, outputName
+    ) -> typing.Optional[str]:
 
         if self.__lastReferenceNodeID is None or self.__lastLabelsArray is None:
             slicer.util.warningDisplay(
                 "No previous model found. Please, select the inputs and click on the initialize "
                 "button to compute a new porosity model."
             )
-            return
+            return None
 
         try:
             porousWet = wetModel.threshold("Porous", normalized=True)
@@ -926,7 +935,7 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
 
             self.__progressCallback(0.85)
 
-            volume = helpers.createTemporaryVolumeNode(slicer.vtkMRMLScalarVolumeNode, "PorosityMap")
+            volume = helpers.createTemporaryVolumeNode(slicer.vtkMRMLScalarVolumeNode, outputName)
             slicer.util.updateVolumeFromArray(volume, porosityImageFloat)
             volume.Modified()
 
@@ -940,6 +949,7 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
             volume.GetDisplayNode().SetVisibility(False)
             volume.GetDisplayNode().SetVisibility(True)
 
+            return volume.GetID()
         except Exception as e:
             logging.error(f"Failed to compute volume: {e}")
             raise
@@ -949,7 +959,7 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
 
     def computeTable(
         self,
-        resultName: str,
+        resultNodeID: str,
         dryImageNode,
         wetImageNode,
         segments,
@@ -960,12 +970,14 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
     ):
 
         try:
-            resultNode = helpers.tryGetNode(resultName)
+            resultNode = slicer.mrmlScene.GetNodeByID(resultNodeID)
             if not resultNode:
                 return
 
             resultArray = slicer.util.arrayFromVolume(resultNode)
-            porosityMean = np.mean(resultArray[self.__lastMaskArray])
+            totalPorosityMean = 100.0 * np.mean(resultArray[self.__lastMaskArray])
+            resolvedPorosityMean = 100.0 * np.mean(resultArray[self.__lastMaskArray] == 1)
+            microporosityMean = totalPorosityMean - resolvedPorosityMean
 
             bins = np.bincount(self.__lastLabelsArray.ravel())
             bins[0] = 0
@@ -973,21 +985,46 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
 
             proportions = 100 * bins / total
 
-            tableNode = helpers.createTemporaryNode(slicer.vtkMRMLTableNode, "Porosity Map Info")
-            tableDF = pd.DataFrame(
-                data={
-                    "Dry Volume": dryImageNode.GetName(),
-                    "Saturated Volume": wetImageNode.GetName(),
-                    "Porous Segment": targets[0],
-                    "Ref. Solid Segment": targets[1],
-                    "Porosity": porosityMean,
-                    "Calcite Dry": dryModel.threshold("Calcite", normalized=False),
-                    "Calcite Wet": wetModel.threshold("Calcite", normalized=False),
-                    "Porous Dry": dryModel.threshold("Porous", normalized=False),
-                    "Porous Wet": wetModel.threshold("Porous", normalized=False),
-                    **{f"{segments[i - 1]}%": proportions[i] for i in range(1, len(segments) + 1)},
-                }
+            tableNode = helpers.createTemporaryNode(
+                slicer.vtkMRMLTableNode, "Porosity Map Info", environment="PorosityMap"
             )
+            data = {
+                "Property": [
+                    "Dry Volume",
+                    "Saturated Volume",
+                    "Porous Segment",
+                    "Ref. Solid Segment",
+                    "Calcite Dry",
+                    "Calcite Wet",
+                    "Porous Dry",
+                    "Porous Wet",
+                ],
+                "Value": [
+                    dryImageNode.GetName(),
+                    wetImageNode.GetName(),
+                    targets[0],
+                    targets[1],
+                    dryModel.threshold("Calcite", normalized=False)[0],
+                    wetModel.threshold("Calcite", normalized=False)[0],
+                    dryModel.threshold("Porous", normalized=False)[0],
+                    wetModel.threshold("Porous", normalized=False)[0],
+                ],
+            }
+
+            for i in range(1, len(segments) + 1):
+                data["Property"].append(f"{segments[i - 1]} (%)")
+                data["Value"].append(f"{proportions[i]}")
+
+            data["Property"].append("Macroporosity Segment (%)")
+            data["Value"].append(f"{resolvedPorosityMean:.2f}")
+
+            data["Property"].append("Weighted Microporosity (%)")
+            data["Value"].append(f"{microporosityMean:.2f}")
+
+            data["Property"].append("Weighted Total Porosity (%)")
+            data["Value"].append(f"{totalPorosityMean:.2f}")
+
+            tableDF = pd.DataFrame(data)
 
             du.dataFrameToTableNode(tableDF, tableNode)
             resultNode.SetAttribute("info", tableNode.GetID())

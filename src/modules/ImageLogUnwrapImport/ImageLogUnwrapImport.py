@@ -18,7 +18,7 @@ class ImageLogUnwrapImport(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "Image Log Unwrap"
+        self.parent.title = "Core Unwrap"
         self.parent.categories = ["Tools", "ImageLog", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ImageLogUnwrapImport.help()

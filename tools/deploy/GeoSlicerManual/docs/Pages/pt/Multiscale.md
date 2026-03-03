@@ -1,4 +1,4 @@
-## Image Generation
+## Multiscale
 
 O módulo Multiscale Image Generation oferece uma interface com diversos parâmetros para a manipulação e configuração da biblioteca [MPSlib](https://mpslib.readthedocs.io/en/latest/). O MPSlib possui um conjunto de algoritmos baseados em modelos estatísticos de múltiplos pontos (MPS - Multiple point statistics) inferidos a partir de uma imagem de treinamento. Atualmente, apenas o algoritmo Generalized ENESIM com modo de amostragem direta (DS - Direct Sampling) está disponível.
 
@@ -33,15 +33,17 @@ O módulo Multiscale Image Generation oferece uma interface com diversos parâme
     - _Size_: Nova dimensão do eixo após o redimensionamento.
     - _Ratio_: Razão da nova resolução do voxel para a resolução inicial.
 
+  - _Number of patches_: Quebra a imagem em múltiplas partes e as simula separadamente, aumentando performance e reduzindo tempo de simulação para imagens grandes. Disponível apenas para imagens 2D.
+
 #### Parâmetros
 
  - _Number of Conditioning points_: Número de pontos condicionantes a ser utilizado em cada iteração.
  
  - _Number of realizations_: Número de simulações e imagens a serem geradas.
 
- - _Number of iterations_: Número máximo de iterações a serem realizadas na imagem de treinamento.
+ - _Number of iterations_: Número máximo de iterações a serem realizadas na imagem de treinamento. Use valor -1 para varredura completa na imagem de treinamento.
 
- - _Random seed_: Valor usado para iniciar a simulação. Uma mesma seed com os mesmos parâmetros sempre geram o mesmo resultado.
+ - _Random seed_: Valor usado para iniciar a simulação. Uma mesma _seed_ com os mesmos parâmetros sempre geram o mesmo resultado. Use valor 0 para gerar uma _seed_ aleatória.
 
  - _Colocate dimensions_: Para uma simulação 3D, garanta que a ordem nas últimas dimensões seja importante, permitindo uma co-simulação 2D com dados condicionais na terceira dimensão.
 
@@ -65,6 +67,5 @@ O módulo Multiscale Image Generation oferece uma interface com diversos parâme
 
 #### Botões
 
-- _Run_: Executa o mps de forma sequencial. A interface do _Geoslicer_ é travada durante a execução dessa opção.
-- _Run Parallel_: Executa o mps de forma paralela. Nessa opção a execução é executada em outra thread e a interface pode ser usada durante a execução.
-- _Cancel_: Interrompe a execução da simulação. Apenas quando executado de forma paralela.
+- _Run_: Executa o MPS. Se o _number of patches_ é 1, o código paralelo do MPS será executado. Caso contrário, o código sequencial do MPS será executado para cada patch e cada realização."
+- _Cancel_: Interrompe a execução da simulação.

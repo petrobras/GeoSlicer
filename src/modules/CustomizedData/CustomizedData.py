@@ -117,29 +117,44 @@ class CustomizedDataWidget(LTracePluginWidget):
         infoFrameLayout = qt.QVBoxLayout(self.infoFrame)
         infoFrameLayout.setContentsMargins(0, 0, 0, 0)
 
+        self.tabWidget = qt.QTabWidget()
+        infoFrameLayout.addWidget(self.tabWidget)
+
+        self.infoWidgetContainer = qt.QWidget()
+        self.infoWidgetLayout = qt.QVBoxLayout(self.infoWidgetContainer)
+        self.infoWidgetLayout.setContentsMargins(0, 0, 0, 0)
+        self.tabWidget.addTab(self.infoWidgetContainer, "Info")
+
         self.scalarVolumeWidget = ScalarVolumeWidget(isLabelMap=False)
-        infoFrameLayout.addWidget(self.scalarVolumeWidget)
+        self.infoWidgetLayout.addWidget(self.scalarVolumeWidget)
         self.scalarVolumeWidget.setVisible(False)
 
         self.vectorVolumeWidget = VectorVolumeWidget()
-        infoFrameLayout.addWidget(self.vectorVolumeWidget)
+        self.infoWidgetLayout.addWidget(self.vectorVolumeWidget)
         self.vectorVolumeWidget.setVisible(False)
 
         self.tableWidget = TableWidget()
-        infoFrameLayout.addWidget(self.tableWidget)
+        self.infoWidgetLayout.addWidget(self.tableWidget)
         self.tableWidget.setVisible(False)
 
         self.labelMapWidget = ScalarVolumeWidget(isLabelMap=True)
-        infoFrameLayout.addWidget(self.labelMapWidget)
+        self.infoWidgetLayout.addWidget(self.labelMapWidget)
         self.labelMapWidget.setVisible(False)
 
         self.segmentationWidget = SegmentationWidget()
-        infoFrameLayout.addWidget(self.segmentationWidget)
+        self.infoWidgetLayout.addWidget(self.segmentationWidget)
         self.segmentationWidget.setVisible(False)
 
         self.textWidget = TextWidget()
-        infoFrameLayout.addWidget(self.textWidget)
+        self.infoWidgetLayout.addWidget(self.textWidget)
         self.textWidget.setVisible(False)
+
+        self.infoWidgetLayout.addStretch()
+
+        self.attributesWidget = TextWidget()
+        self.tabWidget.addTab(self.attributesWidget, "Attributes")
+
+        self.tabWidget.setVisible(False)
 
         self.fullPanel = qt.QSplitter()
         self.fullPanel.setOrientation(qt.Qt.Vertical)
@@ -173,10 +188,24 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.segmentationWidget.setVisible(False)
         self.textWidget.setVisible(False)
 
-        if itemID == 0:
+        node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene).GetItemDataNode(itemID)
+
+        if itemID == 0 or not node:
+            self.tabWidget.setVisible(False)
             return
 
-        node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene).GetItemDataNode(itemID)
+        self.tabWidget.setVisible(True)
+
+        # Handle attributes tab
+        metadata_node_id = node.GetAttribute("MetadataNode")
+        metadata_node = slicer.mrmlScene.GetNodeByID(metadata_node_id) if metadata_node_id else None
+        if metadata_node:
+            self.attributesWidget.setNode(metadata_node)
+        else:
+            self.attributesWidget.textEdit.setPlainText("")
+            self.attributesWidget.highlightMatches()
+
+        # Handle info tab
         try:
             if type(node) is slicer.vtkMRMLScalarVolumeNode:
                 self.scalarVolumeWidget.setNode(node)

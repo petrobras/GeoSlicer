@@ -1,25 +1,14 @@
-import os
 import csv
+import os
+
 import numpy as np
 import openpnm
-
 from pypardiso import spsolve
 from scipy.sparse import csr_matrix
-from numba import njit, prange
+
+from ltrace.pore_networks.functions_extract import get_sub_spy, get_connected_spy_network
+from ltrace.pore_networks.subres_models import estimate_pressure
 from pyflowsolver import NetworkManager, DarcySolver
-
-HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
-HG_CONTACT_ANGLE = 140  # º
-
-
-def estimate_radius(capilary_pressure):
-    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
-    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / capilary_pressure
-
-
-def estimate_pressure(radius):
-    theta = (np.pi * HG_CONTACT_ANGLE) / 180.0
-    return abs(2.0 * HG_SURFACE_TENSION * np.cos(theta)) / radius
 
 
 def manual_valvatne_blunt(pore_network):
@@ -141,7 +130,6 @@ def set_subresolution_conductance(
 
     A = pore_capilar_radius**2 / (4 * subres_shape_factor)  # Area
     G = subres_shape_factor  # Shape Factor
-    P = 2 * np.pi * pore_capilar_radius  # Perimeter
     if subres_shape_factor <= 0.048:
         K = 3 / 5
     elif subres_shape_factor <= 0.07:
@@ -168,7 +156,6 @@ def set_subresolution_conductance(
 
     A = throat_capilar_radius**2 / (4 * subres_shape_factor)  # Area
     G = subres_shape_factor  # Shape Factor
-    P = 2 * np.pi * throat_capilar_radius  # Perimeter
     if subres_shape_factor <= 0.048:
         K = 3 / 5
     elif subres_shape_factor <= 0.07:
@@ -183,7 +170,6 @@ def set_subresolution_conductance(
 
     A = pore_capilar_radius**2 / (4 * subres_shape_factor)  # Area
     G = subres_shape_factor  # Shape Factor
-    P = 2 * np.pi * pore_capilar_radius  # Perimeter
     if subres_shape_factor <= 0.048:
         K = 3 / 5
     elif subres_shape_factor <= 0.07:
@@ -207,20 +193,6 @@ def set_subresolution_conductance(
     ):
         left_unresolved = sub_network["throat.phases"][throat_index][0] == 2
         right_unresolved = sub_network["throat.phases"][throat_index][1] == 2
-        """
-        length_multiplier = (int(left_unresolved) + int(right_unresolved)) / 2
-        if length_multiplier == 0: 
-            continue
-
-        total_length = (
-            length_multiplier 
-            * sub_network["throat.mid_length"][throat_index]
-        )
-        throat_conductance[throat_index] = (
-            throat_subscale_conductivity[throat_index]
-            / total_length
-        ) 
-        """
         if left_unresolved and not right_unresolved:
             throat_conductance[throat_index] = sub_network["throat.mid_length"][throat_index] / (
                 2 * throat_subscale_conductivity[throat_index]
@@ -296,74 +268,6 @@ def set_subresolution_conductance(
                 for i in range(len(pore_dict[pore_keys[0]])):
                     row_data = {key: pore_dict[key][i] for key in pore_keys}
                     writer.writerow(row_data)
-
-
-def _counter():
-    i = -1
-    while True:
-        i += 1
-        yield i
-
-
-def get_clusters(network):
-    """
-    clusters are numbered starting at 0
-    """
-    from scipy.sparse import csgraph as csg
-
-    am = network.create_adjacency_matrix(fmt="coo", triu=True)
-    N, Cs = csg.connected_components(am, directed=False)
-    return N, Cs
-
-
-def get_sub_spy(spy_network, sub_pores, sub_throats):
-    sub_pn = {}
-    for prop in spy_network.keys():
-        if prop.split(".")[0] == "pore":
-            sub_pn[prop] = spy_network[prop][sub_pores]
-        else:
-            sub_pn[prop] = spy_network[prop][sub_throats]
-
-    counter = _counter()
-    f_counter = lambda x: next(counter) if x else 0
-    new_pore_index = np.fromiter(map(f_counter, sub_pores), dtype="int")
-
-    if len(sub_pn["throat.conns"]) == 0:
-        return False
-    for i in np.nditer(sub_pn["throat.conns"], op_flags=["readwrite"]):
-        i[...] = new_pore_index[i]
-    return sub_pn
-
-
-def get_connected_spy_network(network, in_face, out_face, coord_limits=None):
-    """
-    in_face, out_face: str
-        Each must be one of 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax'
-    """
-    valid_inputs = ["xmin", "xmax", "ymin", "ymax", "zmin", "zmax"]
-    if in_face not in valid_inputs:
-        raise ValueError(f"Face values is invalid: in_face = {in_face}")
-    if out_face not in valid_inputs:
-        raise ValueError(f"Face values is invalid: out_face = {out_face}")
-
-    _, cluster_labels = get_clusters(network)
-    in_labels = np.unique(cluster_labels[network[f"pore.{in_face}"]])
-    out_labels = np.unique(cluster_labels[network[f"pore.{out_face}"]])
-    common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
-
-    connected_pores = network.pores()[np.isin(cluster_labels, common_labels)]
-    if coord_limits:
-        pore_coords = network["pore.coords"][connected_pores]
-        mask = np.ones(len(connected_pores), dtype=bool)
-        for axis, (low, high) in coord_limits.items():
-            axis_idx = "xyz".index(axis)
-            mask &= (pore_coords[:, axis_idx] >= low) & (pore_coords[:, axis_idx] <= high)
-
-        connected_pores = connected_pores[mask]
-
-    connected_throats = network.throats()[np.isin(network["throat.conns"], connected_pores).all(axis=1)]
-
-    return np.isin(cluster_labels, common_labels), np.isin(network["throat.conns"], connected_pores).all(axis=1)
 
 
 def single_phase_permeability(
@@ -528,7 +432,6 @@ def get_flow_rate(pn_pores, pn_throats, viscosity, pressure_drop):
     outlet_flow_total = np.float64(0.0)
     inlets = pn_pores["pore.inlets"]
     outlets = pn_pores["pore.outlets"]
-    border_pore = np.logical_or(inlets, outlets)
 
     flow = np.zeros(pn_throats["throat.all"].size, dtype=np.float64)
     delta_p = np.zeros(pn_throats["throat.all"].size, dtype=np.float64)

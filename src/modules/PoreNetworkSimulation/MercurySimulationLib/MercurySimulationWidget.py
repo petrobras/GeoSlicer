@@ -1,30 +1,18 @@
-from pathlib import Path
-
 import PySide2 as pyside
 import ctk
+import numpy as np
 import pyqtgraph as pg
 import qt
 import shiboken2
+import slicer
 from pyqtgraph.Qt import QtCore
 from vtk.util.numpy_support import vtk_to_numpy
-import slicer
 
-import numpy as np
-from ltrace.pore_networks.functions import (
-    geo2spy,
-    estimate_pressure,
-)
-from ltrace.pore_networks.subres_models import get_scalar_volume_data
-from ltrace.file_utils import read_csv
-from ltrace.slicer import ui
-from ltrace.slicer.ui import (
-    hierarchyVolumeInput,
-    DirOrFileWidget,
-    floatParam,
-)
+from PoreNetworkSimulationLib.constants import *
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data
+from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from .SubscaleModelWidget import SubscaleModelWidget
-from PoreNetworkSimulationLib.constants import *
 
 
 class MercurySimulationWidget(qt.QFrame):
@@ -32,7 +20,7 @@ class MercurySimulationWidget(qt.QFrame):
         "simulation type": MICP,
         "keep_temporary": False,
         "subres_model_name": "Fixed Radius",
-        "subres_params": {"radius": 0.1},
+        "subres_params": {"radius": 1.0},
         "subres_shape_factor": 0.04,
         "subres_porositymodifier": 1.0,
         "pressures": 100,
@@ -168,6 +156,9 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiPlotItem.addLegend()
         pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
+    def setVolumeNode(self, node):
+        self.subscaleModelWidget.setVolumeNode(node)
+
     def getSirrSelector(self):
         return self.sirrSelector
 
@@ -255,17 +246,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.pcSeries.setData(self.pc_x_values, self.pc_y_values)
         self.radiiSeries.setData(self.radius_x_values, self.radius_y_values)
 
-    def getFunction(self, pore_node):
-        pore_network = geo2spy(pore_node)
-        scalar_volume_data = get_scalar_volume_data(pore_node)
-
-        model = self.subscaleModelWidget.microscale_model_dropdown.currentText
-        capillary_function = self.subscaleModelWidget.parameter_widgets[model].get_subradius_function(
-            pore_network, scalar_volume_data
-        )
-        return lambda x: capillary_function(x)
-
-    def getParams(self):
+    def getParams(self, node):
         subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
         subres_shape_factor = self.subscaleModelWidget.getParams()["subres_shape_factor"]
@@ -284,10 +265,9 @@ class MercurySimulationWidget(qt.QFrame):
         else:
             subres_params_copy = subres_params
 
-        return {
+        params = {
             "simulation type": MICP,
             "keep_temporary": False,
-            "subresolution function call": self.getFunction,
             "subres_model_name": subres_model_name,
             "subres_shape_factor": subres_shape_factor,
             "subres_porositymodifier": subres_porositymodifier,
@@ -296,6 +276,10 @@ class MercurySimulationWidget(qt.QFrame):
             "save_radii_distrib_plots": True,
             "experimental_radius": subres_params_copy.get("pore radii"),
         }
+
+        if type(node) is slicer.vtkMRMLTableNode:
+            params.update(get_pore_network_volume_data(node))
+        return params
 
     def setParams(self, params):
         self.subscaleModelWidget.microscale_model_dropdown.setCurrentText(params["subres_model_name"])

@@ -28,12 +28,19 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
         super().__init__(parent)
 
         self.currentDirectoryPath = None
+        self.selectedFilePath = None
+        self.fileMode = False
 
         layout = qt.QVBoxLayout(self)
 
-        self.selectDirectoryButton = qt.QPushButton("Select directory")
-        self.selectDirectoryButton.setIcon(self.style().standardIcon(qt.QStyle.SP_DirIcon))
-        self.selectDirectoryButton.clicked.connect(self.onSelectDirectory)
+        # Use DirOrFileWidget for path selection
+        self.dirOrFileWidget = ui.DirOrFileWidget(
+            settingKey="TomographicUnwrapLoadWidget/lastPath",
+            dirCaption="Select folder",
+            fileCaption="Select image file",
+            filters="Images (*.jpg *.png *.tif);;All files (*)",
+        )
+        self.dirOrFileWidget.pathSelected.connect(self.onPathSelected)
 
         self.fileListWidget = qt.QListWidget()
 
@@ -41,35 +48,83 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
         self.wellDiameter = ui.floatParam("")
         helpers.reset_style_on_valid_text(self.wellDiameter)
         self.boundariesFileInput = ctk.ctkPathLineEdit()
+        self.boundariesFileInputLabel = qt.QLabel("Boundaries file:")
         helpers.reset_style_on_valid_text(self.boundariesFileInput)
         formLayout.addRow("Well diameter (inches):", self.wellDiameter)
-        formLayout.addRow("Boundaries file:", self.boundariesFileInput)
+        formLayout.addRow(self.boundariesFileInputLabel, self.boundariesFileInput)
+
+        # Fields shown only when single-file mode is selected
+        self.singleFileDepth = ui.floatParam("")
+        self.singleFileCoreLength = ui.floatParam("")
+        helpers.reset_style_on_valid_text(self.singleFileDepth)
+        helpers.reset_style_on_valid_text(self.singleFileCoreLength)
+        self.singleFileDepth.setVisible(False)
+        self.singleFileCoreLength.setVisible(False)
+        self.singleFileDepthLabel = qt.QLabel("Depth (m):")
+        self.singleFileCoreLengthLabel = qt.QLabel("Core length (m):")
+        self.singleFileDepthLabel.setVisible(False)
+        self.singleFileCoreLengthLabel.setVisible(False)
+        formLayout.addRow(self.singleFileDepthLabel, self.singleFileDepth)
+        formLayout.addRow(self.singleFileCoreLengthLabel, self.singleFileCoreLength)
 
         self.loadButton = ui.ApplyButton(onClick=self.onLoadButtonClicked, text="Load", enabled=False)
 
         self.statusLabel = ui.TemporaryStatusLabel()
 
-        layout.addWidget(self.selectDirectoryButton)
+        layout.addWidget(self.dirOrFileWidget)
         layout.addWidget(self.fileListWidget)
         layout.addLayout(formLayout)
         layout.addWidget(self.loadButton)
         layout.addWidget(self.statusLabel)
         layout.addStretch()
 
-    def onSelectDirectory(self):
-        self.currentDirectoryPath = qt.QFileDialog.getExistingDirectory(self, None, None)
-        if not self.currentDirectoryPath:
+    def onPathSelected(self, path):
+        """Handle path selection from DirOrFileWidget."""
+        if not path:
+            self.selectedFilePath = None
+            self.currentDirectoryPath = None
+            self.fileListWidget.clear()
+            self.loadButton.enabled = False
+            self.singleFileDepth.setVisible(False)
+            self.singleFileCoreLength.setVisible(False)
+            self.singleFileDepthLabel.setVisible(False)
+            self.singleFileCoreLengthLabel.setVisible(False)
+            self.boundariesFileInput.setVisible(True)
+            self.boundariesFileInputLabel.setVisible(True)
+            self.fileMode = False
             return
-
-        self.fileListWidget.clear()
-        imageFiles = [f for f in os.listdir(self.currentDirectoryPath) if re.match(self.REGEX_PATTERN, f)]
-        for imageFileName in imageFiles:
-            self.fileListWidget.addItem(imageFileName)
-
-        tableFiles = [f for f in os.listdir(self.currentDirectoryPath) if re.match(r".+\.(csv)", f)]
-        if tableFiles:
-            self.boundariesFileInput.setCurrentPath(str(Path(self.currentDirectoryPath) / Path(tableFiles[0])))
-        self.loadButton.enabled = self.fileListWidget.count > 0
+        p = Path(path)
+        if p.is_file():
+            self.selectedFilePath = str(p)
+            self.currentDirectoryPath = str(p.parent)
+            self.fileListWidget.clear()
+            self.fileListWidget.addItem(p.name)
+            self.loadButton.enabled = True
+            self.singleFileDepth.setVisible(True)
+            self.singleFileCoreLength.setVisible(True)
+            self.singleFileDepthLabel.setVisible(True)
+            self.singleFileCoreLengthLabel.setVisible(True)
+            self.boundariesFileInput.setVisible(False)
+            self.boundariesFileInputLabel.setVisible(False)
+            self.fileMode = True
+        elif p.is_dir():
+            self.selectedFilePath = None
+            self.currentDirectoryPath = str(p)
+            self.fileListWidget.clear()
+            imageFiles = [f for f in os.listdir(self.currentDirectoryPath) if re.match(self.REGEX_PATTERN, f)]
+            for imageFileName in imageFiles:
+                self.fileListWidget.addItem(imageFileName)
+            tableFiles = [f for f in os.listdir(self.currentDirectoryPath) if re.match(r".+\.(csv)", f)]
+            if tableFiles:
+                self.boundariesFileInput.setCurrentPath(str(Path(self.currentDirectoryPath) / Path(tableFiles[0])))
+            self.loadButton.enabled = self.fileListWidget.count > 0
+            self.singleFileDepth.setVisible(False)
+            self.boundariesFileInput.setVisible(True)
+            self.boundariesFileInputLabel.setVisible(True)
+            self.singleFileCoreLength.setVisible(False)
+            self.singleFileDepthLabel.setVisible(False)
+            self.singleFileCoreLengthLabel.setVisible(False)
+            self.fileMode = False
 
     def onLoadButtonClicked(self):
         # Checks
@@ -78,6 +133,28 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
             return
         else:
             wellDiameter = float(self.wellDiameter.text)
+        # If file mode, validate single-file inputs and load only that file
+        if self.fileMode:
+            if not self.selectedFilePath or not Path(self.selectedFilePath).is_file():
+                self.statusLabel.setStatus("No image file selected", "red")
+                return
+            try:
+                depth = float(self.singleFileDepth.text)
+                core_length = float(self.singleFileCoreLength.text)
+            except Exception:
+                helpers.highlight_error(self.singleFileDepth)
+                helpers.highlight_error(self.singleFileCoreLength)
+                self.statusLabel.setStatus("Invalid depth or core length", "red")
+                return
+
+            self.statusLabel.setStatus("Loading", "blue")
+            slicer.app.processEvents()
+            success, message = self.loadSingleImage(self.selectedFilePath, wellDiameter, depth, core_length)
+            message_color = "green" if success else "red"
+            self.statusLabel.setStatus(message, message_color)
+            return
+
+        # Folder mode: require boundaries csv and load many files
         if not self.__validateBoundariesFileInput():
             self.statusLabel.setStatus("Missing boundaries csv file", "red")
             return
@@ -151,6 +228,7 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
             new_node_name = self.__getNodeName(testemunho_info_df, testemunho_id)
             new_node = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLScalarVolumeNode.__name__)
             new_node.SetName(slicer.mrmlScene.GenerateUniqueName(new_node_name))
+            new_node.SetAttribute("Volume type", "Well unwrap")
             transform = vtk.vtkTransform()
             transform.RotateY(180)
             new_node.SetIJKToRASMatrix(transform.GetMatrix())
@@ -163,6 +241,42 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
             self.__setDirForNode(dir_name, new_node)
 
         return True, "Successfully loaded {} nodes from {} files".format(len(testemunho_info_list), valid_files_count)
+
+    def loadSingleImage(self, filePath, wellDiameter, depth, core_length):
+        """Load a single image using provided depth (m) and core_length (m)."""
+        try:
+            image = cv2.imread(str(filePath), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                return False, f"Could not read image {filePath}"
+            image = image[..., np.newaxis]
+
+            # compute spacings
+            well_diameter_mm = wellDiameter * 25.4
+            total_circumference_mm = np.pi * well_diameter_mm
+
+            core_box = CoreBox(image, 0, 0, "", float(core_length), float(depth))
+            full_array, spacing_return, origin = concatenate_core_boxes([core_box])
+            full_array = full_array.squeeze()
+            full_array = full_array[:, np.newaxis, :]
+
+            new_node_name = Path(filePath).stem
+            new_node = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLScalarVolumeNode.__name__)
+            new_node.SetAttribute("Volume type", "Well unwrap")
+            new_node.SetName(slicer.mrmlScene.GenerateUniqueName(new_node_name))
+            transform = vtk.vtkTransform()
+            transform.RotateY(180)
+            new_node.SetIJKToRASMatrix(transform.GetMatrix())
+            new_node.SetOrigin(total_circumference_mm / 2, 0.0, origin * -1000)
+            horizontal_spacing_mm = total_circumference_mm / full_array.shape[2]
+            # spacing_return is expected in meters per pixel
+            new_node.SetSpacing(horizontal_spacing_mm, 0.48, spacing_return * 1000)
+            slicer.util.updateVolumeFromArray(new_node, full_array)
+
+            dir_name = Path(self.currentDirectoryPath).name if self.currentDirectoryPath else Path(filePath).parent.name
+            self.__setDirForNode(dir_name, new_node)
+            return True, f"Successfully loaded single file {Path(filePath).name}"
+        except Exception as e:
+            return False, str(e)
 
     def __getNodeName(self, samples_info_table, sample_id):
         index = samples_info_table[self.TABLE_COLUMN_SAMPLE].eq(sample_id).idxmax()

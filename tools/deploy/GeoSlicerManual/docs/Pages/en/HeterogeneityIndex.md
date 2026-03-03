@@ -22,7 +22,7 @@ The module is located in the _Well Logs_ environment. In the left sidebar, navig
 
 ### Method
 
-The method calculates the heterogeneity index (HI) of an amplitude image by evaluating the standard deviation at different scales (convolution window sizes). Subsequently, the algorithm fits a linear regression between the logarithm of the scale and the standard deviation. The slope coefficient of this regression represents the heterogeneity index for each analyzed depth. Thus, the index quantifies the relationship between local variation and the observation scale.
+The method calculates the heterogeneity index (HI) of an amplitude image by evaluating the standard deviation at different scales (convolution window sizes). Subsequently, the algorithm fits a linear regression between the logarithm of the scale and the logarithm of the standard deviation. The slope coefficient of this regression represents the heterogeneity index for each analyzed depth. Thus, the index quantifies the relationship between local variation and the observation scale.
 
 ### References
 

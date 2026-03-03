@@ -17,6 +17,13 @@ RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resou
 CHARTS_ICON_PATH = os.path.join(RESOURCES_PATH, "Charts.png")
 
 
+# Checks if closed source code is available
+try:
+    from Test.CustomizedTablesTest import CustomizedTablesTest
+except ImportError:
+    CustomizedTablesTest = None  # tests not deployed to final version or closed source
+
+
 class CustomizedTables(LTracePlugin):
     SETTING_KEY = "CustomizedTables"
 
@@ -70,20 +77,6 @@ class CustomizedTablesWidget(LTracePluginWidget):
         newPropertiesNullLocale.setNumberOptions(qt.QLocale.RejectGroupSeparator)
         newPropertiesNullValidator.setLocale(newPropertiesNullLocale)
         newPropertiesNullValueEdit.setValidator(newPropertiesNullValidator)
-
-        newPropertiesDataTypeBox = newPropertiesWidget.findChild(qt.QComboBox, "DataTypeComboBox")
-        newPropertiesDataTypeBox.removeItem(0)
-        tableNodeSelector = self.tablesWidget.findChild(slicer.qMRMLNodeComboBox, "TableNodeSelector")
-
-        # This function exists because removing the "string" type would cause
-        # the initial selected data type when a node is created to appear blank
-        def fixInitialDataType(node):
-            currentNode = tableNodeSelector.currentNode()
-            self.tablesWidget.setCurrentTableNode(node)
-            newPropertiesDataTypeBox.setCurrentIndex(0)
-            self.tablesWidget.setCurrentTableNode(currentNode)
-
-        tableNodeSelector.nodeAdded.connect(fixInitialDataType)
 
         # Set old plot button as invisible
         plotLayoutItem = menuExtraOptionsLayout.itemAt(0)

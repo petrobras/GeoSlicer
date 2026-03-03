@@ -47,17 +47,22 @@ def get_models_by_tag(tags: list[str]) -> list[str]:
         return models
 
     for path in pathList:
-        directories = [d for d in Path(path).rglob("*") if d.is_dir()]
+        directories = [Path(path)] + [d for d in Path(path).rglob("*") if d.is_dir()]
 
         for _dir in directories:
             if _dir.parent.name not in tags:
                 continue
 
+            metaFile = _dir / "meta.json"
+            if not metaFile.exists():
+                continue
+            metaData = get_metadata(metaFile.parent)
+            folderLike = "folder-structure" in metaData.keys() and metaData["folder-structure"]
+
             modelPthFile = _dir / "model.pth"
             modelH5File = _dir / "model.h5"
-            metaFile = _dir / "meta.json"
 
-            if (modelPthFile.exists() or modelH5File.exists()) and metaFile.exists():
+            if modelPthFile.exists() or modelH5File.exists() or folderLike:
                 models.append(_dir)
 
     return models
@@ -71,8 +76,11 @@ def get_metadata(model_dir: str) -> dict:
     if not model_dir.exists():
         raise FileNotFoundError(f"Model directory '{model_dir.as_posix()}' does not exist.")
 
-    with open(model_dir / f"meta.json") as f:
-        metadata = json.load(f)
+    try:
+        with open(model_dir / f"meta.json") as f:
+            metadata = json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"No meta.json file was found in '{model_dir.as_posix()}")
     return metadata
 
 

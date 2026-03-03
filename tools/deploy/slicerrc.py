@@ -55,6 +55,9 @@ toBool = slicer.util.toBool
 
 
 def getAppContext():
+    if not hasattr(slicer.modules, "AppContextInstance"):
+        return None
+
     return slicer.modules.AppContextInstance
 
 
@@ -1271,6 +1274,7 @@ def configure(rebuild_index=False):
     setDataProbeCollapsibleButton()
     setCustomDataProbeInfo()
     updateWindowTitle(getApplicationVersion())
+    updateDICOMDatabasePath()
 
     # TODO move to function (lock moveble)
     for toolbar in APP_TOOLBARS.values():
@@ -1384,6 +1388,63 @@ def createIndex():
     return allPlugins
 
 
+def updateDICOMDatabasePath():
+    """Update DICOM Database directory base path. This function helps old DICOM database files to be moved to the new desired location."""
+    currentPath = slicer.app.DICOMDatabaseDirectoryBasePath()
+    desiredPath = Path(qt.QStandardPaths.writableLocation(qt.QStandardPaths.AppLocalDataLocation))
+
+    if not currentPath:
+        logging.info(
+            f"The current DICOM Database directory base path is undefined. Defining default DICOM Database directory base path as '{str(desiredPath)}'"
+        )
+        slicer.app.userSettings().setValue("DICOM/DatabaseDirectoryBase", str(desiredPath))
+        return
+
+    currentPath = Path(currentPath)
+    if not currentPath.exists():
+        logging.info(
+            f"The current DICOM Database directory base path '{str(currentPath)}' does not exist. Defining default DICOM Database directory base path as '{str(desiredPath)}'"
+        )
+        slicer.app.userSettings().setValue("DICOM/DatabaseDirectoryBase", str(desiredPath))
+        return
+
+    if currentPath == desiredPath:
+        return
+
+    try:
+        isRelative = currentPath.is_relative_to(Path(slicer.app.slicerHome))
+    except ValueError:
+        isRelative = False
+
+    if currentPath == Path(qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)) or isRelative:
+        slicer.app.userSettings().setValue("DICOM/DatabaseDirectoryBase", str(desiredPath))
+        logging.info(
+            f"Updating the current DICOM Database directory base path to '{str(desiredPath)}'. Checking for existent DICOM Database files..."
+        )
+
+        dicomFilesWithSubs = [path for path in currentPath.rglob("*") if "dicom" in path.name.lower()]
+
+        dicomFiles = []
+        for path in dicomFilesWithSubs:
+            isSubpath = any(path != otherPath and path.is_relative_to(otherPath) for otherPath in dicomFilesWithSubs)
+            if not isSubpath:
+                dicomFiles.append(path)
+
+        for file in dicomFiles:
+            try:
+                relativePath = file.relative_to(currentPath)
+                destination = desiredPath / relativePath
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(file, destination)
+                logging.info(f"Moved DICOM Database file '{str(file)}' to '{str(destination)}'")
+            except Exception as error:
+                logging.warning(
+                    f"Failed to update DICOM Database file '{str(file)}' to '{str(destination)}': {str(error)}"
+                )
+
+        logging.info("DICOM Database Migration completed.")
+
+
 def bootstrapped(userSettings):
     revision = slicer.app.revisionUserSettings()
     booted = toBool(revision.value(f"{APP_NAME}/Booted", False))
@@ -1453,5 +1514,16 @@ def init():
         if previousAppVersion != getApplicationVersion():
             userSettings.setValue(f"{APP_NAME}/Version", getApplicationVersion())
 
+    getAppContext().appInitialized = True
 
-init()
+
+def wasAppInitialized():
+    if not getAppContext() or not hasattr(getAppContext(), "appInitialized"):
+        return False
+
+    return getAppContext().appInitialized
+
+
+if not wasAppInitialized():
+    # Condition to avoid the 'init()' call during the test environment
+    init()

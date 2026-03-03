@@ -1,4 +1,4 @@
-## Image Generation
+## Multiscale
 
 The Multiscale Image Generation module offers an interface with various parameters for manipulating and configuring the MPSlib library. MPSlib features a set of algorithms based on multiple point statistical (MPS) models inferred from a training image.
 Currently, only the Generalized ENESIM algorithm with direct sampling (DS) mode is available.
@@ -34,15 +34,17 @@ Currently, only the Generalized ENESIM algorithm with direct sampling (DS) mode 
     - _Size_: New axis dimension after resizing.
     - _Ratio_: Ratio of the new voxel resolution to the initial resolution.
 
+ - _Number of patches_: Breaks the simulation grid in several parts to simulate separetaly, improving performance and reducing overall simulation time for big images. Only available for 2D images.
+
 #### Parameters
 
  - _Number of Conditioning points_: Number of conditioning points to be used in each iteration.
  
  - _Number of realizations_: Number of simulations and images to be generated.
 
- - _Number of iterations_: Maximum number of iterations when searching the training image.
+ - _Number of iterations_: Maximum number of iterations when searching the training image. Use value -1 to run a full scan on the training image.
 
- - _Random seed_: Initial value used to start the simulation. The same seed with the same parameters always generates the same result.
+ - _Random seed_: Initial value used to start the simulation. The same seed with the same parameters always generates the same result. Value 0 will generate a random seed for the simulation.
 
  - _Colocate dimensions_: For a 3D simulation, ensure that the order in the last dimensions is important, allowing a 2D co-simulation with conditional data in the third dimension.
 
@@ -66,6 +68,5 @@ Currently, only the Generalized ENESIM algorithm with direct sampling (DS) mode 
 
 #### Buttons
 
-- _Run_: Executes the mps sequentially. The _Geoslicer_ interface is locked during the execution of this option.
-- _Run Parallel_: Executes the mps in parallel. In this option, the execution runs in another thread, and the interface can be used during execution.
-- _Cancel_: Interrupts the simulation execution. Only when executed in parallel.
+- _Run_: Executes the MPS. If _number of patches_ is 1, the parallel MPS code will be executed. Otherwise, the sequential MPS code will be executed for each patch and realization."
+- _Cancel_: Interrupts the simulation execution.

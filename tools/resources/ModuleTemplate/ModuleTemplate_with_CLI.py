@@ -24,7 +24,7 @@ class {{name}}(LTracePlugin):
         self.parent.title = "{{name}}"
         self.parent.categories = ["{{category}}"]
         self.parent.contributors = ["LTrace Geophysics Team"]
-        self.parent.helpText = {{name}}.help()
+        self.setHelpUrl("Environment/Section/Page.html")
 
     @classmethod
     def readme_path(cls):

@@ -85,8 +85,8 @@ class SaturationCorrectionWidget(ctk.ctkCollapsibleButton):
                 df = slicer.util.dataframeFromTable(table_node)
                 assert df.Property is not None
                 assert df.Value is not None
-                total_micropor_row = df.loc[df.Property == "Total Microporosity (%)"]
-                total_porosity_row = df.loc[df.Property == "Total Porosity (Micro+Macro) (%)"]
+                total_micropor_row = df.loc[df.Property == "Weighted Microporosity (%)"]
+                total_porosity_row = df.loc[df.Property == "Weighted Total Porosity (%)"]
                 macro_por_row = df.loc[df.Property == "Macroporosity Segment (%)"]
 
                 if len(total_micropor_row) == 1 and len(total_porosity_row) == 1 and len(macro_por_row) == 1:
@@ -104,7 +104,7 @@ class SaturationCorrectionWidget(ctk.ctkCollapsibleButton):
                     raise Exception()
             except:
                 slicer.util.errorDisplay(
-                    "Table needs the following rows:\nTotal Microporosity (%)\nTotal Porosity (Micro+Macro) (%)\nMacroporosity Segment (%)"
+                    "Table needs the following rows:\nWeighted Microporosity (%)\nWeighted Total Porosity (%)\nMacroporosity Segment (%)"
                 )
 
     def vfrac(self):
@@ -456,6 +456,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         super().__init__(parent)
 
         self.logic = None
+        self.server = None
         self.loadedFiles = None
 
         self.chosenExecutionMode = "Local"
@@ -504,7 +505,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         self.simBtn.enabled = False
         self.canBtn.enabled = False
-        self.canBtn.hide()
 
         # Add vertical spacer
         self.layout.addStretch(1)
@@ -751,14 +751,14 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         self.simBtn = qt.QPushButton("Apply")
         self.simBtn.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 4px}")
-        self.simBtn.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
+        self.simBtn.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
         self.simBtn.objectName = "Apply PushButton"
 
         self.simBtn.clicked.connect(self.onExecuteClicked)
 
         self.canBtn = qt.QPushButton("Cancel")
         self.canBtn.setStyleSheet("QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 4px}")
-        self.canBtn.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
+        self.canBtn.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
         self.canBtn.objectName = "CancelButton"
         self.canBtn.clicked.connect(self.onCancelClicked)
 
@@ -931,8 +931,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         for key, widget in self.modeSelectors.items():
             widget.hide()
 
-        self.canBtn.hide()
-
         self.toggleServerButton.hide()
         # self.serverStatus.hide()
         self.streamlitAdvancedSection.hide()
@@ -962,7 +960,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             self.mode_label.show()
             for key, widget in self.modeSelectors.items():
                 widget.show()
-            self.canBtn.show()
             self.logicType = ReportLogic.ReportLogic
 
             for widget in self.hideWhenInputIsScalar:
@@ -1265,6 +1262,10 @@ class MicrotomRemoteLogicBase(LTracePluginLogic):
         self.progressBar = progressBar
         self.cliNode = None
         self._cliNodeObserver = None
+
+    def cancel(self):
+        if self.cliNode:
+            self.cliNode.Cancel()
 
 
 #

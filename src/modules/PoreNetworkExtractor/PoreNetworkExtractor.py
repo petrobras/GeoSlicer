@@ -6,28 +6,19 @@ from pathlib import Path
 from typing import Tuple, Union
 
 import ctk
-import pandas as pd
 import qt
 import slicer
 import slicer.util
 import vtk
-import numpy as np
 
-import ltrace.pore_networks.functions as pn
+from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
 from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
 from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import (
-    LTracePlugin,
-    LTracePluginWidget,
-    LTracePluginLogic,
-    slicer_is_in_developer_mode,
-    dataFrameToTableNode,
-    getResourcePath,
-)
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, slicer_is_in_developer_mode
 
 try:
     from Test.PoreNetworkExtractorTest import PoreNetworkExtractorTest
@@ -148,6 +139,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
         self.logic = PoreNetworkExtractorLogic(self.parent, self.progressBar)
+        self.logic.extractionFinished.connect(self.onExtractionLogicFinished)
 
         #
         # Input Area: inputFormLayout
@@ -225,7 +217,17 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         #
         self.extractButton = ui.ApplyButton(tooltip="Extract the pore-throat network.")
         self.extractButton.objectName = "Apply Button"
-        self.layout.addWidget(self.extractButton)
+
+        self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.objectName = "Cancel Button"
+        self.cancelButton.setToolTip("Cancel the extraction process.")
+        self.cancelButton.setEnabled(False)
+        self.cancelButton.setSizePolicy(self.extractButton.sizePolicy)
+
+        buttonsLayout = qt.QHBoxLayout()
+        buttonsLayout.addWidget(self.extractButton)
+        buttonsLayout.addWidget(self.cancelButton)
+        self.layout.addLayout(buttonsLayout)
         self.warningsLabel = qt.QLabel("")
         self.warningsLabel.setStyleSheet("QLabel { color: yellow;}")
         self.warningsLabel.setVisible(False)
@@ -238,20 +240,32 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         # Connections
         #
         self.extractButton.clicked.connect(self.onExtractButton)
+        self.cancelButton.clicked.connect(self.onCancelButton)
         self.onInputSelectorChange(None)
 
         # Add vertical spacer
         self.layout.addStretch(1)
 
+    def onCancelButton(self):
+        self.logic.cancel()
+
+    def onLocalExtractionFinished(self, success):
+        self.extractButton.setEnabled(True)
+        self.cancelButton.setEnabled(False)
+
+    def onExtractionLogicFinished(self, success):
+        if self.paramsWidget.localQRadioButton.isChecked():
+            self.onLocalExtractionFinished(success)
+        else:
+            self.showJobs()
+
     def onExtractButton(self):
         localMode = self.paramsWidget.localQRadioButton.isChecked()
         if localMode:
             self.extractButton.setEnabled(False)
+            self.cancelButton.setEnabled(True)
             self.warningsLabel.setText("")
             self.warningsLabel.setVisible(False)
-            callback = self.extractButton.setEnabled
-        else:
-            callback = self.showJobs
 
         watershed_blur = {
             1: float(self.paramsWidget.resolvedBlurEdit.text),
@@ -264,7 +278,6 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
             self.paramsWidget.generateVisualizationCheckbox.isChecked(),
             self.paramsWidget.methodSelector.currentText,
             watershed_blur,
-            callback,
             localMode,
         )
 
@@ -347,6 +360,8 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
 # PoreNetworkExtractorLogic
 #
 class PoreNetworkExtractorLogic(LTracePluginLogic):
+    extractionFinished = qt.Signal(bool)
+
     def __init__(self, parent, progressBar):
         LTracePluginLogic.__init__(self, parent)
         self.cliNode = None
@@ -355,6 +370,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         self.rootDir = None
         self.results = {}
         self.visualization = False
+        self.params = None
 
     def extract(
         self,
@@ -364,12 +380,12 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         visualization: bool,
         method: str,
         watershed_blur: list,
-        callback,
-        localMode,
+        localMode: bool,
     ) -> Union[Tuple[slicer.vtkMRMLTableNode, slicer.vtkMRMLTableNode], bool]:
-        params = {"prefix": prefix, "method": method}
+        self.params = {"prefix": prefix, "method": method}
 
         self.visualization = visualization
+        self.localMode = localMode
 
         self.inputNodeID = inputVolumeNode.GetID()
         self.labelNodeID = None
@@ -377,17 +393,32 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             self.labelNodeID = inputLabelMap.GetID()
 
         if inputVolumeNode.IsA("vtkMRMLLabelMapVolumeNode") and inputLabelMap is None:
-            params["is_multiscale"] = False
+            self.params["is_multiscale"] = False
         elif inputVolumeNode:
-            params["is_multiscale"] = True
+            self.params["is_multiscale"] = True
         else:
             logging.warning("Not a valid input.")
             return
 
-        params["watershed_blur"] = watershed_blur
+        self.params["watershed_blur"] = watershed_blur
+
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        ijkToRasMatrix = vtk.vtkMatrix4x4()
+        inputVolumeNode.GetIJKToRASDirectionMatrix(ijkToRasMatrix)
+
+        bounds = [0.0] * 6
+        inputVolumeNode.GetBounds(bounds)
+
+        metadata = {
+            "spacing": list(inputVolumeNode.GetSpacing()),
+            "origin": list(inputVolumeNode.GetOrigin()),
+            "ijktorasmatrix": slicer.util.arrayFromVTKMatrix(ijkToRasMatrix).tolist(),
+            "bounds": list(bounds),
+        }
+
+        self.params.update({"metadata": metadata})
 
         self.cwd = Path(slicer.util.tempDirectory())
-        self.callback = callback
         self.prefix = prefix
 
         if localMode:
@@ -395,17 +426,19 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             cliParams["volume"] = self.inputNodeID
             if self.labelNodeID:
                 cliParams["label"] = self.labelNodeID
-            with open(str(self.cwd / "params_dict.json"), "w") as file:
-                json.dump(params, file)
+            with open(str(self.cwd / "extractor_params_dict.json"), "w") as file:
+                json.dump(self.params, file)
             self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
             self.progressBar.setCommandLineModuleNode(self.cliNode)
             self.cliNode.AddObserver("ModifiedEvent", self.extractCLICallback)
         else:
             job_name = f"PNM Extract: {self.prefix}"
-            self.handler = PoreNetworkExtractorHandler(self.onRemoteResult, self.inputNodeID, self.labelNodeID, params)
+            self.handler = PoreNetworkExtractorHandler(
+                self.inputNodeID, self.labelNodeID, self.visualization, self.params
+            )
             success = slicer.modules.RemoteServiceInstance.cli.run(self.handler, name=job_name, job_type="pnmextractor")
             if success:
-                self.callback()
+                self.extractionFinished.emit(True)
 
     def cancel(self):
         if self.cliNode is None:
@@ -428,121 +461,22 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
                 self.onFinish()
                 shutil.rmtree(self.cwd)
 
-            self.callback(True)
+            self.extractionFinished.emit(True)
 
     def onFinish(self):
-        extraction_nodes_creator = ExtractionNodesCreator(
-            self.inputNodeID, self.labelNodeID, self.cwd, self.prefix, self.visualization
-        )
-        self.results = extraction_nodes_creator.create()
-
-    def onRemoteResult(self, inputNodeID, cwd, prefix):
-        extraction_nodes_creator = ExtractionNodesCreator(inputNodeID, None, cwd, prefix, False)
-        self.results = extraction_nodes_creator.create()
+        metadata = self.params["metadata"]
+        extraction_nodes_creator = ExtractionNodesCreator(metadata, self.cwd, self.prefix, self.visualization)
+        try:
+            self.results = extraction_nodes_creator.create()
+        except FileNotFoundError as e:
+            error_message = str(e)
+            logging.error(error_message)
+            slicer.util.errorDisplay(f"Cannot create Pore Network.\n\n{error_message}", windowTitle="Missing Data")
+        except Exception as e:
+            # Catch-all for other potential issues during node creation
+            logging.error(f"Unexpected error creating nodes: {str(e)}")
+            slicer.util.errorDisplay(f"An error occurred: {str(e)}")
 
 
 class PoreNetworkExtractorError(RuntimeError):
     pass
-
-
-class ExtractionNodesCreator:
-    def __init__(self, inputNodeID, labelNodeID, cwd, prefix, visualization):
-        self.inputNodeID = inputNodeID
-        self.labelNodeID = labelNodeID
-        self.cwd = cwd
-        self.prefix = prefix
-        self.visualization = visualization
-
-        self.results = {}
-
-    def create(self):
-        inputNode = slicer.mrmlScene.GetNodeByID(self.inputNodeID)
-
-        df_pores = pd.read_pickle(str(self.cwd / "pores.pd"))
-        df_throats = pd.read_pickle(str(self.cwd / "throats.pd"))
-        df_network = pd.read_pickle(str(self.cwd / "network.pd"))
-        if os.path.isfile(str(self.cwd / "watershed.npy")):
-            array_watershed = np.load(str(self.cwd / "watershed.npy"))
-            output_watershed_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-            output_watershed_volume.CreateDefaultDisplayNodes()
-            slicer.util.updateVolumeFromArray(output_watershed_volume, array_watershed)
-            output_watershed_volume.SetSpacing(inputNode.GetSpacing())
-            output_watershed_volume.SetOrigin(inputNode.GetOrigin())
-            v = vtk.vtkMatrix4x4()
-            inputNode.GetIJKToRASDirectionMatrix(v)
-            output_watershed_volume.SetIJKToRASDirectionMatrix(v)
-        else:
-            array_watershed = None
-
-        throatOutputTable, poreOutputTable, networkOutputTable = self.__create_tables("porespy")
-
-        self.results["pore_table"] = poreOutputTable
-        self.results["throat_table"] = throatOutputTable
-        self.results["network_table"] = networkOutputTable
-
-        dataFrameToTableNode(df_pores, poreOutputTable)
-        dataFrameToTableNode(df_throats, throatOutputTable)
-        dataFrameToTableNode(df_network, networkOutputTable)
-
-        ### Include size infomation ###
-        bounds = [0, 0, 0, 0, 0, 0]
-        inputNode.GetBounds(bounds)  # In millimeters
-        spacing = inputNode.GetSpacing()
-        poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
-        poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
-        poreOutputTable.SetAttribute("z_size", str(bounds[5] - bounds[4]))
-        poreOutputTable.SetAttribute("origin", f"{bounds[0]};{bounds[2]};{bounds[4]}")
-        poreOutputTable.SetAttribute("x_spacing", f"{spacing[0]}")
-        poreOutputTable.SetAttribute("y_spacing", f"{spacing[1]}")
-        poreOutputTable.SetAttribute("z_spacing", f"{spacing[2]}")
-        if array_watershed is not None:
-            poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
-        else:
-            poreOutputTable.SetAttribute("watershed_node_id", self.labelNodeID)
-
-        ### Move table nodes to hierarchy nodes ###
-        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        itemTreeId = folderTree.GetItemByDataNode(inputNode)
-        parentItemId = folderTree.GetItemParent(itemTreeId)
-        currentDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix}_Pore_Network")
-
-        folderTree.CreateItem(currentDir, poreOutputTable)
-        folderTree.CreateItem(currentDir, throatOutputTable)
-        folderTree.CreateItem(currentDir, networkOutputTable)
-        if array_watershed is not None:
-            folderTree.CreateItem(currentDir, output_watershed_volume)
-
-        if self.visualization:
-            self.results["model_nodes"] = self.__visualize(poreOutputTable, throatOutputTable, inputNode)
-
-        return self.results
-
-    def __create_tables(self, algorithm_name):
-        poreOutputTable = self.__create_table("pore")
-        throatOutputTable = self.__create_table("throat")
-        networkOutputTable = self.__create_table("network")
-        poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
-        edge_throats = "none" if (algorithm_name == "porespy") else "x"
-        poreOutputTable.SetAttribute("edge_throats", edge_throats)
-        return throatOutputTable, poreOutputTable, networkOutputTable
-
-    def __create_table(self, table_type):
-        table = slicer.mrmlScene.CreateNodeByClass("vtkMRMLTableNode")
-        table.AddNodeReferenceID("PoresLabelMap", self.inputNodeID)
-        table.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_{table_type}_table"))
-        table.SetAttribute("table_type", f"{table_type}_table")
-        table.SetAttribute("is_multiscale", "false")  # TODO check if needed, case positive, set it correctly
-        slicer.mrmlScene.AddNode(table)
-        return table
-
-    @staticmethod
-    def __visualize(
-        poreOutputTable: slicer.vtkMRMLTableNode,
-        throatOutputTable: slicer.vtkMRMLTableNode,
-        inputVolume: slicer.vtkMRMLLabelMapVolumeNode,
-    ):
-        return pn.visualize(
-            poreOutputTable,
-            throatOutputTable,
-            inputVolume,
-        )

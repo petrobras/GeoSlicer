@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List
 from pathlib import Path
 
+from ltrace.constants import model_selector_tags
 from ltrace.assets_utils import get_metadata, get_public_asset_path
 from ltrace.slicer.ai_models.defs import get_model_download_links
 from ltrace.slicer.application_observables import ApplicationObservables
@@ -125,21 +126,28 @@ class AIModelsPathModel:
                 if not subdir.is_dir():
                     continue
 
-                pth = subdir / f"model.pth"
-                h5 = subdir / f"model.h5"
-                if not (pth.exists() or h5.exists()):
+                try:
+                    metaData = get_metadata(subdir)
+                except FileNotFoundError:
                     continue
 
-                modelPath = pth if pth.exists() else h5
-                metaData = get_metadata(subdir)
                 if not metaData:
+                    continue
+
+                pth = subdir / f"model.pth"
+                h5 = subdir / f"model.h5"
+                modelPath = pth if pth.exists() else h5
+                if "folder-structure" in metaData.keys() and metaData["folder-structure"]:
+                    modelPath = subdir
+
+                if not (modelPath.exists()):
                     continue
 
                 title = metaData["title"]
                 environment = ""
 
                 # Identify the environment
-                for env in ENVIRONMENTS:
+                for env in ENVIRONMENTS + [tag.value for tag in model_selector_tags]:
                     if env.lower() in subdir.as_posix().lower():
                         environment = env.replace("Env", "")
                         break

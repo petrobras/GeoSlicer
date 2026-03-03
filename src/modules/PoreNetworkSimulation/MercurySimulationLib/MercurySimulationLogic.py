@@ -1,34 +1,22 @@
-import numpy as np
-import scipy as sp
-import openpnm
-import pandas as pd
-import slicer
-import pickle
-
-import random
-import string
 import json
 import logging
 import os
+import pickle
+import random
 import shutil
+import string
 from pathlib import Path
 
-from ltrace.pore_networks.functions import (
-    geo2spy,
-    spy2geo,
-    estimate_radius,
-    estimate_pressure,
-)
-from ltrace.pore_networks.subres_models import get_scalar_volume_data, normalize_psd
+import numpy as np
+import openpnm
+import pandas as pd
+import slicer
+
+from ltrace.pore_networks.functions_extract import spy2geo, _get_paired_throats_table
+from ltrace.pore_networks.subres_models import normalize_psd, estimate_radius
 from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import (
-    LTracePluginLogic,
-    dataFrameToTableNode,
-    slicer_is_in_developer_mode,
-)
-
-
-from PoreNetworkSimulationLib.utils import save_parameters_to_table
+from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
+from ltrace.slicer_utils import tableNodeToDict
 
 
 class MercurySimulationLogic(LTracePluginLogic):
@@ -65,18 +53,22 @@ class MercurySimulationLogic(LTracePluginLogic):
             "tempDir": self.temp_dir,
         }
 
-        pore_network = geo2spy(inputTable)
+        pore_network = tableNodeToDict(inputTable)
 
-        dict_file = open(str(self.cwd / "pore_network.dict"), "wb")
-        pickle.dump(pore_network, dict_file)
-        dict_file.close()
+        throat_table = inputTable.GetNodeReference("throat_table")
+        if throat_table is None:
+            # Legacy compatibility. Will be removed in later versions.
+            throat_table = _get_paired_throats_table(inputTable)
+            inputTable.AddNodeReferenceID("throat_table", throat_table.GetID())
+        throat_network = tableNodeToDict(throat_table)
 
-        del self.params["subresolution function"]
-        del self.params["subresolution function call"]
+        with open(self.cwd / "pore_network.pkl", "wb") as f:
+            pickle.dump(pore_network, f)
 
-        self.params["scalar_volume_data"] = get_scalar_volume_data(inputTable)
+        with open(self.cwd / "throat_network.pkl", "wb") as f:
+            pickle.dump(throat_network, f)
 
-        with open(str(self.cwd / "params_dict.json"), "w") as file:
+        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         self.cliNode = slicer.cli.run(
@@ -175,10 +167,13 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         micpTable.SetAttribute("pc_table_id", normPcTable.GetID())
         micpTable.SetAttribute("radius_table_id", normRadTable.GetID())
-        self.setChartNodes(micpTable, normRadTable, normPcTable, self.rootDir)
 
-        if self.params["save_radii_distrib_plots"]:
-            self.setDistributionFolderAndChartNodes(self.rootDir, net, micp_results, self.params["experimental_radius"])
+        if slicer_is_in_developer_mode():
+            self.setChartNodes(micpTable, normRadTable, normPcTable, self.rootDir)
+            if self.params["save_radii_distrib_plots"]:
+                self.setDistributionFolderAndChartNodes(
+                    self.rootDir, net, micp_results, self.params["experimental_radius"]
+                )
 
     def setChartNodes(self, micpTable, normRadTable, normPcTable, currentDir):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()

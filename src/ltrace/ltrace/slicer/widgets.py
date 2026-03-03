@@ -355,6 +355,12 @@ class SingleShotInputWidget(qt.QWidget):
 
         return selectedItems
 
+    def selectSegments(self, indices: List[int]):
+        """Set given zero-based indices to checked (silently ignore invalid indices)."""
+        for idx in indices:
+            if 0 <= idx < self.segmentListGroup[1].count:
+                self.segmentListGroup[1].item(idx).setCheckState(qt.Qt.Checked)
+
     def allSegmentsSelected(self):
         return all(
             self.segmentListGroup[1].item(nth).checkState() == qt.Qt.Checked

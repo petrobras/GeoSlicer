@@ -54,3 +54,39 @@ Check the option you wish to execute:
 
 ### Apply all
 Applies all processing, orientation, and unwrapping steps.
+
+## Common Problems
+
+### "Could not detect core geometry"
+
+The error "Could not detect core geometry" occurs in the `Multicore` module when the `CoreGeometryCLI` command-line interface fails to detect any valid core geometry in the provided volume. This happens because the CLI is unable to find circular features (representing the core) in the volume slices using image processing techniques.
+
+Primary reasons this error can occur:
+
+### 1. **No Detectable Core Circles in the Volume**
+   - The volume image does not contain a clear, cylindrical core structure that can be identified via Hough circle detection.
+   - Possible causes:
+     - The core is obscured, damaged, or has irregular geometry that doesn't form detectable circles in cross-sections.
+     - Low image quality, noise, or artifacts prevent edge detection from working properly.
+
+### 2. **Incorrect Core Radius Parameter**
+   - The `coreRadius` value passed to the CLI is inaccurate, causing the search radius range (min/max) to not match the actual core size in the image.
+   - The search radius is calculated as `[coreRadius - 3mm, coreRadius + 3mm]` in pixels. If the real core radius is outside this range, no circles will be detected.
+   - Users should verify the core radius matches the physical dimensions of the sample by loading the original volume and measuring the radius.
+
+### 3. **Insufficient Valid Slices for Analysis**
+   - The CLI discards 20 slices from each end of the volume to avoid "destroyed core ends," then samples every 5th slice.
+   - If the volume has very few slices (e.g., <40 total), there may be no slices left to analyze after discarding ends.
+   - If all sampled slices fail the geometry detection (e.g., due to poor image quality in those slices), the result list remains empty.
+
+### 4. **Circle Detection Filtering**
+   - Detected circles are filtered out if their center is too close to the image center (within 10% of the minimum image dimension from the center). This is to avoid false positives from central artifacts.
+   - If all detected circles are filtered out by this condition, no valid geometry is recorded.
+
+
+### Troubleshooting Steps for Users
+- **Verify Input Data**: Ensure the volume is a valid core image with clear circular cross-sections. Check volume dimensions and spacing.
+- **Adjust Core Radius**: Provide an accurate core radius in meters. If unsure, try a range of values.
+- **Check Volume Quality**: Load only the original core image to confirm the core is visible and not obscured.
+
+If the error persists, the volume may not be suitable for automated core geometry detection, and manual intervention or alternative modules might be needed.

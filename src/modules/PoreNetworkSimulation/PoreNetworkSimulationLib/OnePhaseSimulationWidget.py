@@ -1,6 +1,8 @@
 import qt
 
 import numpy as np
+
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data
 from .constants import *
 from ltrace.slicer import ui
 
@@ -16,7 +18,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "rotation angles": 100,
         "keep_temporary": False,
         "subres_model_name": "Fixed Radius",
-        "subres_params": {"radius": 0.1},
+        "subres_params": {"radius": 1.0},
         "subres_shape_factor": 0.04,
         "subres_porositymodifier": 1.0,
         "solver": "pypardiso",
@@ -119,11 +121,12 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.mercury_widget = MercurySimulationWidget()
         layout.addRow(self.mercury_widget)
 
-    def getParams(self):
+    def getParams(self, pore_table_node):
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
-        subres_porositymodifier = self.mercury_widget.getParams()["subres_porositymodifier"]
-        shape_factor = self.mercury_widget.getParams()["subres_shape_factor"]
+        mercury_widget_params = self.mercury_widget.getParams(pore_table_node)
+        subres_porositymodifier = mercury_widget_params["subres_porositymodifier"]
+        shape_factor = mercury_widget_params["subres_shape_factor"]
 
         subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
@@ -138,12 +141,11 @@ class OnePhaseSimulationWidget(qt.QFrame):
         else:
             subres_params_copy = subres_params
 
-        return {
+        params = {
             "model type": self.modelTypeComboBox.currentText,
             "simulation type": self.simulationTypeComboBox.currentText,
             "rotation angles": int(self.rotationAnglesEdit.text),
             "keep_temporary": False,
-            "subresolution function call": self.mercury_widget.getFunction,
             "subres_porositymodifier": subres_porositymodifier,
             "subres_shape_factor": shape_factor,
             "subres_model_name": subres_model_name,
@@ -159,6 +161,9 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "cilindrical_sample": self.cilindricalSample.isChecked(),
         }
 
+        params.update(get_pore_network_volume_data(pore_table_node))
+        return params
+
     def onSolverChanged(self, text):
         self.errorLabel.setVisible(text == "pyflowsolver")
         self.errorEdit.setVisible(text == "pyflowsolver")
@@ -171,6 +176,9 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.rotationAnglesEdit.setVisible(text == MULTI_ANGLE)
         self.generateVisualizationLabel.setVisible(text == ONE_ANGLE)
         self.generateVisualizationCheckbox.setVisible(text == ONE_ANGLE)
+
+    def setVolumeNode(self, node):
+        self.mercury_widget.setVolumeNode(node)
 
     def setParams(self, params):
         self.modelTypeComboBox.setCurrentText(params.get("model type"))

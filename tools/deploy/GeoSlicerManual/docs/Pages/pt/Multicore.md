@@ -53,3 +53,39 @@ Marque a opção que desejar executar:
 
 ### Apply all
 Aplica todos os passos de processamento, orientação e desenrolamento.
+
+## Problemas Comuns
+
+### "Could not detect core geometry"
+
+O erro "Could not detect core geometry" ocorre no módulo `Multicore` quando a interface de linha de comando `CoreGeometryCLI` falha ao detectar uma geometria de testemunho válida no volume fornecido. Isso acontece porque a CLI não consegue encontrar feições circulares (representando o testemunho) nas fatias do volume usando técnicas de processamento de imagem.
+
+Principais razões para este erro ocorrer:
+
+### 1. **Nenhum Círculo de Testemunho Detectável no Volume**
+   - A imagem do volume não contém uma estrutura de testemunho cilíndrica clara que possa ser identificada via detecção de círculos de Hough.
+   - Causas possíveis:
+     - O testemunho está obscurecido, danificado ou possui geometria irregular que não forma círculos detectáveis nas seções transversais.
+     - Baixa qualidade de imagem, ruído ou artefatos impedem que a detecção de bordas funcione corretamente.
+
+### 2. **Parâmetro de Raio do Testemunho Incorreto**
+   - O valor de `coreRadius` passado para a CLI é impreciso, fazendo com que o intervalo do raio de busca (mín/máx) não corresponda ao tamanho real do testemunho na imagem.
+   - O raio de busca é calculado como `[coreRadius - 3mm, coreRadius + 3mm]` em pixels. Se o raio real do testemunho estiver fora desse intervalo, nenhum círculo será detectado.
+   - Os usuários devem verificar se o raio do testemunho corresponde às dimensões físicas da amostra carregando o volume original e medindo o raio.
+
+### 3. **Fatias Válidas Insuficientes para Análise**
+   - A CLI descarta 20 fatias de cada extremidade do volume para evitar "pontas de testemunho destruídas", e então amostra a cada 5ª fatia.
+   - Se o volume tiver muito poucas fatias (ex: <40 no total), pode não haver fatias restantes para analisar após descartar as extremidades.
+   - Se todas as fatias amostradas falharem na detecção de geometria (ex: devido à má qualidade de imagem nessas fatias), a lista de resultados permanece vazia.
+
+### 4. **Filtragem de Detecção de Círculos**
+   - Círculos detectados são filtrados se o centro deles estiver muito próximo do centro da imagem (dentro de 10% da dimensão mínima da imagem a partir do centro). Isso serve para evitar falsos positivos de artefatos centrais.
+   - Se todos os círculos detectados forem filtrados por essa condição, nenhuma geometria válida será registrada.
+
+
+### Passos de Solução de Problemas para Usuários
+- **Verifique os Dados de Entrada**: Garanta que o volume seja uma imagem de testemunho válida com seções transversais circulares claras. Verifique as dimensões e o espaçamento do volume.
+- **Ajuste o Raio do Testemunho**: Forneça um raio de testemunho preciso em metros. Se não tiver certeza, tente uma faixa de valores.
+- **Verifique a Qualidade do Volume**: Carregue apenas a imagem original do testemunho para confirmar se ele está visível e não obscurecido.
+
+Se o erro persistir, o volume pode não ser adequado para detecção automatizada da geometria do testemunho, e intervenção manual ou módulos alternativos podem ser necessários.

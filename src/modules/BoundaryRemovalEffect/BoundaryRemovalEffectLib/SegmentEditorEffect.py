@@ -31,6 +31,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.segment2DFillOpacity = None
         self.segment2DOutlineOpacity = None
         self.previewedSegmentID = None
+        self.filterSegmentID = None
 
         # Effect-specific members
         import vtkITK
@@ -111,6 +112,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         if segmentationNode is not None:
             try:
                 segmentation = segmentationNode.GetSegmentation()
+                if self.filterSegmentID:
+                    segmentation.RemoveSegment(self.filterSegmentID)
+                    self.filterSegmentID = None
                 self.restoreSegments()
 
                 segmentIDs = vtk.vtkStringArray()
@@ -603,8 +607,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             for node in nodes.values():
                 node.SetBackgroundOpacity(1)
                 node.SetForegroundOpacity(0)
-
-        segmentationNode.GetSegmentation().RemoveSegment(self.filterSegmentID)
 
         if not self.keepFilterResultCheckBox.isChecked():
             try:

@@ -27,10 +27,11 @@ GeoSlicer is built on top of [3D Slicer](https://www.slicer.org/) medical imagin
 ## Table of Contents
 
 *   [Getting Started](#getting-started)
-    *   [Installation](#installation)
+    *   [Developers](#developers)
+    *   [How to install GeoSlicer](#how-to-install-geoslicer)
     *   [Usage](#usage)
 *   [Features](#features)
-*   [Use cases and Examples](#use-cases-and-examples)
+*   [Examples and Resources](#examples-and-resources)
 *   [Contributing](#contributing)
 *   [Community](#community)
 *   [License](#license)
@@ -40,9 +41,11 @@ GeoSlicer is built on top of [3D Slicer](https://www.slicer.org/) medical imagin
 
 This section will guide you through the process of installing and running GeoSlicer on your local machine.
 
+### Developers
+
 For instructions on how to build GeoSlicer from source, please refer to the [build guide](BUILD.md).
 
-### Installation
+### How to install GeoSlicer
 
 To get started with GeoSlicer, follow these simple steps:
 
@@ -69,9 +72,9 @@ Once you have extracted the archive, you can run GeoSlicer by executing the `Geo
 *   **3D visualization:** Visualize your data in 3D and create stunning animations.
 *   **Extensible platform:** Create your own custom modules to extend the functionality of GeoSlicer.
 
-## Use cases and examples
+## Examples and Resources
 
-You can find examples and tutorials on [LTrace's YouTube channel](https://www.youtube.com/@ltracegeo).
+For interactive tutorials and step-by-step guides, visit the [GeoSlicer Manual] (https://ltracegeo.github.io/GeoSlicerManual) or explore videos on the [LTrace YouTube channel](https://www.youtube.com/@ltracegeo).
 
 
 ## Contributing
@@ -90,7 +93,7 @@ GeoSlicer is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) f
 
 ## Citations
 
-If you use GeoSlicer in your research, please cite the following publications:
+If you use GeoSlicer in your work, please cite this repository using the right-hand side link **Cite this repository**. Below you can find recent papers that cite GeoSlicer:
 
 *   Carneiro, I., Zanellato, D., Figueiredo, L., & Bordignon, F. (2023). Comparison of geostatistical and machine learning methods for reconstructing 3D images of carbonate rocks. 6th Brazil Interpore Chapter Conference on Porous Media.
 *   Carneiro, I., Sapucaia, V., Bordignon, F., Figueiredo, L., Honório, B., & Matias, J. (2024). Application of MPS to Image Log and CoreCT Images Inpainting. 85th EAGE Annual Conference & Exhibition, (1), 1-5.

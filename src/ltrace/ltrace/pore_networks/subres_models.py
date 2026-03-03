@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 import numpy as np
 import scipy as sp
 
@@ -20,14 +21,8 @@ def estimate_pressure(radius):
 class FixedRadiusLogic:
     required_params = ("radius",)
 
-    def __init__(self):
-        pass
-
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
-        for required_param in cls.required_params:
-            params[required_param]
-
+    def get_capillary_radius_function(cls, pore_network, params):
         return lambda _: params["radius"]
 
 
@@ -39,33 +34,15 @@ class TruncatedGaussianLogic:
         "max radius",
     )
 
-    def __init__(self):
-        pass
-
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
-        for required_param in cls.required_params:
-            params[required_param]
-
-        loc = params["mean radius"]
-        scale = params["standard deviation"]
-        a_trunc = params["min radius"]
-        b_trunc = params["max radius"]
+    def get_capillary_radius_function(cls, pore_network, params):
+        subres_params = params["subres_params"]
+        loc = subres_params["mean radius"]
+        scale = subres_params["standard deviation"]
+        a_trunc = subres_params["min radius"]
+        b_trunc = subres_params["max radius"]
         a, b = (a_trunc - loc) / scale, (b_trunc - loc) / scale
         return lambda _: sp.stats.truncnorm.rvs(a, b, size=1)[0] * scale + loc
-
-    @classmethod
-    def get_capillary_pressure_function(cls, params, pore_network, scalar_volume_data):
-        for required_param in cls.required_params:
-            params[required_param]
-
-        pressure_func = cls.get_capillary_radius_function(
-            params,
-            pore_network,
-            scalar_volume_data,
-        )
-
-        return lambda _: estimate_pressure(pressure_func(None))
 
 
 class ModelBase(ABC):
@@ -80,6 +57,8 @@ class ModelBase(ABC):
 
     @classmethod
     def _get_cumulative_dist_function(cls, x, y):
+        x = np.array(x)
+        y = np.array(y)
         cumulative_y = np.zeros(x.size)
         for i in range(1, x.size):
             area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
@@ -103,13 +82,10 @@ class ModelBase(ABC):
 
 class LeverettBase(ModelBase):
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
-        for required_param in cls.required_params:
-            params[required_param]
-
-        size_x_cm = scalar_volume_data["size"]["x"] / 10
-        size_y_cm = scalar_volume_data["size"]["y"] / 10
-        size_z_cm = scalar_volume_data["size"]["z"] / 10
+    def get_capillary_radius_function(cls, pore_network, params):
+        size_x_cm = params["size"]["x"] / 10
+        size_y_cm = params["size"]["y"] / 10
+        size_z_cm = params["size"]["z"] / 10
         volume = size_x_cm * size_y_cm * size_z_cm
 
         total_pore_volume = pore_network["pore.region_volume"].sum()
@@ -144,12 +120,7 @@ class LeverettBase(ModelBase):
 
 class LeverettOldLogic(LeverettBase):
     required_params = ("J", "Sw", "corey_a", "corey_b", "model")
-    models = {
-        "k = a * phi ** b": lambda a, b, phi: a * phi**b,
-    }
-
-    def __init__(self):
-        pass
+    models = {"k = a * phi ** b": lambda a, b, phi: a * phi**b}
 
     @classmethod
     def get_pc(cls, params, porosity):
@@ -161,9 +132,6 @@ class LeverettOldLogic(LeverettBase):
 class LeverettNewLogic(LeverettBase):
     required_params = ("J", "Sw", "permeability")
 
-    def __init__(self):
-        pass
-
     @classmethod
     def get_pc(cls, params, porosity):
         Pc = (params["J"] / 2) * estimate_pressure(params["permeability"] / porosity)
@@ -171,45 +139,35 @@ class LeverettNewLogic(LeverettBase):
 
 
 class PressureCurveLogic(ModelBase):
-    required_params = ("throat radii", "capillary pressure", "dsn", "smallest_radii_multiplier")
-
-    def __init__(self):
-        pass
+    required_params = ("throat radii", "capillary pressure", "dsn", "radii_cutoff_mm")
 
     @classmethod
-    def get_capillary_radius_function(cls, params, pore_network, scalar_volume_data):
-        for required_param in cls.required_params:
-            params[required_param]
+    def get_capillary_radius_function(cls, pore_network, params):
+        subres_params = params["subres_params"]
+        if subres_params["throat radii"] is not None:
+            smallest_radii = min(params["spacing"]["x"], params["spacing"]["y"], params["spacing"]["z"])
 
-        if params["throat radii"] is not None:
-            smallest_radii = min(
-                scalar_volume_data["spacing"]["x"],
-                scalar_volume_data["spacing"]["y"],
-                scalar_volume_data["spacing"]["z"],
-            )
-
+            throat_radii_arr = np.array(subres_params["throat radii"])
             subresolution_radii_bool_index = np.logical_and(
-                params["throat radii"] > MINIMUM_THROAT_RADIUS,
-                params["throat radii"] <= params["smallest_radii_multiplier"] * smallest_radii,
+                throat_radii_arr > MINIMUM_THROAT_RADIUS,
+                throat_radii_arr <= subres_params["radii_cutoff_mm"],
             )
 
             if subresolution_radii_bool_index.sum() == 0:
                 return lambda _: smallest_radii / 2
             elif subresolution_radii_bool_index.sum() == 1:
-                return lambda _: params["throat radii"][subresolution_radii_bool_index][0]
+                return lambda _: throat_radii_arr[subresolution_radii_bool_index][0]
 
-            radius = params["throat radii"][subresolution_radii_bool_index]
+            radius = throat_radii_arr[subresolution_radii_bool_index]
+
             Pc = estimate_pressure(radius)
-            Fvol = params["dsn"][subresolution_radii_bool_index]
-        elif params["capillary pressure"] is not None:
-            Pc = params["capillary pressure"]
-            Fvol = params["dsn"]
+            f_vol = np.array(subres_params["dsn"])[subresolution_radii_bool_index]
+        elif subres_params["capillary pressure"] is not None:
+            Pc = subres_params["capillary pressure"]
+            f_vol = subres_params["dsn"]
 
         porosity_cdf = cls._get_cumulative_dist_points(pore_network["throat.subresolution_porosity"])
-        pressure_cdf = cls._get_cumulative_dist_function(
-            Pc,
-            Fvol,
-        )
+        pressure_cdf = cls._get_cumulative_dist_function(Pc, f_vol)
 
         return ModelBase._create_radius_function(porosity_cdf, pressure_cdf)
 
@@ -224,46 +182,26 @@ MODEL_DICT = {
 }
 
 
-def set_subres_model(pore_network, params):
-    scalar_volume_data = params["scalar_volume_data"]
+def get_pore_network_volume_data(pore_table_node):
+    # TODO The or operator here will garantee that old projects could be used
+    # we need to remove this in future version
+    x_size = float(pore_table_node.GetAttribute("x_size") or 1.0)
+    y_size = float(pore_table_node.GetAttribute("y_size") or 1.0)
+    z_size = float(pore_table_node.GetAttribute("z_size") or 1.0)
+    x_spacing = float(pore_table_node.GetAttribute("x_spacing") or 1.0)
+    y_spacing = float(pore_table_node.GetAttribute("y_spacing") or 1.0)
+    z_spacing = float(pore_table_node.GetAttribute("z_spacing") or 1.0)
+    extraction_algorithm = pore_table_node.GetAttribute("extraction_algorithm")
+    is_multiscale = pore_table_node.GetAttribute("is_multiscale") == "True"
 
-    subres_model = params["subres_model_name"]
-    subres_params = params["subres_params"]
-
-    if (subres_model == "Throat Radius Curve" or subres_model == "Pressure Curve") and subres_params:
-        subres_params = {
-            i: np.asarray(subres_params[i]) if subres_params[i] is not None else None for i in subres_params.keys()
-        }
-
-    subresolution_function = MODEL_DICT[subres_model].get_capillary_radius_function(
-        subres_params, pore_network, scalar_volume_data
-    )
-
-    return subresolution_function
-
-
-def get_scalar_volume_data(pore_table_node):
-    x_size = float(pore_table_node.GetAttribute("x_size"))
-    y_size = float(pore_table_node.GetAttribute("y_size"))
-    z_size = float(pore_table_node.GetAttribute("z_size"))
-    x_spacing = float(pore_table_node.GetAttribute("x_spacing"))
-    y_spacing = float(pore_table_node.GetAttribute("y_spacing"))
-    z_spacing = float(pore_table_node.GetAttribute("z_spacing"))
-
-    scalar_volume_data = {
-        "size": {
-            "x": x_size,
-            "y": y_size,
-            "z": z_size,
-        },
-        "spacing": {
-            "x": x_spacing,
-            "y": y_spacing,
-            "z": z_spacing,
-        },
+    volume_data = {
+        "size": {"x": x_size, "y": y_size, "z": z_size},
+        "spacing": {"x": x_spacing, "y": y_spacing, "z": z_spacing},
+        "extraction_algorithm": extraction_algorithm,
+        "is_multiscale": is_multiscale,
     }
 
-    return scalar_volume_data
+    return volume_data
 
 
 def normalize_psd(x_values, y_values, bins=50):
@@ -284,6 +222,18 @@ def normalize_psd(x_values, y_values, bins=50):
         new_bin_values[current_new_bin] += y_values[i]
     new_bin_values /= new_bin_values.sum()
 
-    new_bin_center = np.zeros(bins, dtype=np.float64)
     new_bin_center = (new_bin_edges[:-1] + new_bin_edges[1:]) / 2
     return new_bin_values, new_bin_center
+
+
+def get_subres_function(pore_network, params):
+    subres_model = params["subres_model_name"]
+    subres_params = params["subres_params"]
+    if (subres_model == "Throat Radius Curve" or subres_model == "Pressure Curve") and subres_params:
+        subres_params = {
+            i: np.asarray(subres_params[i]) if subres_params[i] is not None else None for i in subres_params.keys()
+        }
+    params.update(subres_params)
+    model_logic = MODEL_DICT[params["subres_model_name"]]
+    capillary_function = model_logic.get_capillary_radius_function(pore_network, params)
+    return capillary_function

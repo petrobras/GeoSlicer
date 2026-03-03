@@ -21,9 +21,15 @@ from string import Template
 from typing import List, Union
 
 
+class FlushStreamHandler(logging.StreamHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.addHandler(FlushStreamHandler(sys.stdout))
 
 # Non built-in modules are imported after constants definition
 
@@ -318,7 +324,9 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
         pip_call.append("--editable")
     pip_call.append(str(lib_folder))
 
-    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==25.0.1", "setuptools==61.3.1"])
+    subprocess.run(
+        [str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==25.0.1", "setuptools==61.3.1"], check=True
+    )
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
@@ -545,7 +553,12 @@ def make_archive(args, source_dir: Path, target_file_without_extension: Path) ->
         packager = "7zG" if sys.platform == "win32" else "7z"
         target = target_file_without_extension.parent / f"{target_file_without_extension.name}{ext}"
         command = [packager, "a", target.as_posix(), "-mx9", "-sfx", source_dir.as_posix()]
-        subprocess.run(command, shell=False, capture_output=True)
+        result = subprocess.run(command, shell=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"Archiving failed with return code {result.returncode}")
+            logger.error(f"STDOUT: {result.stdout}")
+            logger.error(f"STDERR: {result.stderr}")
+            result.check_returncode()  # Forces the script to raise the exception
 
     else:
         archive_format = "zip" if sys.platform == "win32" else "gztar"
@@ -804,15 +817,20 @@ def prepare_open_source_environment(args):
 
 def check_init_files() -> None:
     no_init_list = []
+    with open(DEPLOY_CONFIG) as f:
+        config = json.load(f)
+
+    init_exceptions = config.get("InitCheckExceptions", [])
+
     for d in LTRACE_PACKAGE_FOLDER.rglob("**/"):
-        if d == LTRACE_PACKAGE_FOLDER:
+        if d == LTRACE_PACKAGE_FOLDER or not d.is_dir():
+            continue
+
+        if len(list(d.glob("*.py"))) <= 0:
             continue
 
         if not Path.exists(d / "__init__.py"):
-            # Directories with data or assets don't need init files
-            if not any(
-                [x in str(d) for x in ["ltrace.egg-info", "build", "__pycache__", "assets", "Resources", "resources"]]
-            ):
+            if not any([x in str(d) for x in init_exceptions]):
                 no_init_list.append(d)
 
     if len(no_init_list) > 0:
@@ -887,6 +905,7 @@ def run(args):
                 args=args,
             )
         except Exception as error:
+            logger.exception("A critical error occurred during deployment:")
             if args.generate_public_version:
                 clean_repository_changes()
 

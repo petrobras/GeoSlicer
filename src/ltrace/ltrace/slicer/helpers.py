@@ -23,6 +23,7 @@ import traceback
 
 from ltrace import transforms
 from ltrace.slicer.node_attributes import ColorMapSelectable, NodeEnvironment, NodeTemporarity, CorrelatedNodeAttributes
+from ltrace.slicer.metadata import copy_metadata
 
 from pathlib import Path
 from skimage.segmentation import relabel_sequential
@@ -238,6 +239,8 @@ def clone_volume(
     subject_hierarchy_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     item_parent = subject_hierarchy_node.GetItemParent(subject_hierarchy_node.GetItemByDataNode(volume))
     subject_hierarchy_node.SetItemParent(subject_hierarchy_node.GetItemByDataNode(new_volume), item_parent)
+
+    copy_metadata(volume, new_volume)
 
     return new_volume
 
@@ -2174,6 +2177,7 @@ def copy_display(from_: slicer.vtkMRMLScalarVolumeNode, to: slicer.vtkMRMLScalar
     if hasattr(to_display, "AutoWindowLevelOff") and hasattr(to_display, "AutoThresholdOff"):
         to_display.AutoWindowLevelOff()
         to_display.AutoThresholdOff()
+    copy_metadata(from_, to)
 
 
 def arrayFromVisibleSegmentsBinaryLabelmap(segmentationNode, referenceVolumeNode=None):
@@ -2694,3 +2698,16 @@ def getReferenceNode(segmentatioNode):
     return segmentatioNode.GetNodeReferenceID("referenceVolume") or segmentatioNode.GetNodeReferenceID(
         "referenceImageGeometryRef"
     )
+
+
+def disableSlice3DEdges():
+    if not slicer.app.layoutManager():
+        return
+
+    for sliceName in ["Red", "Yellow", "Green"]:
+        sliceWidget = slicer.app.layoutManager().sliceWidget(sliceName)
+        if not sliceWidget:
+            continue
+
+        slicerController = sliceWidget.sliceController()
+        slicerController.setSliceEdgeVisibility3D(False)

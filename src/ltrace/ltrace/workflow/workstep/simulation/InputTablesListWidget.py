@@ -1,51 +1,22 @@
+import numpy as np
 import qt
 import slicer
 
-from MercurySimulationLib.MercurySimulationLogic import (
-    MercurySimulationLogic,
-    FixedRadiusLogic,
-    LeverettNewLogic,
-    LeverettOldLogic,
-    PressureCurveLogic,
-)
-from MercurySimulationLib.SubscaleModelWidget import (
-    SubscaleModelWidget,
-    FixedRadiusWidget,
-    LeverettNewWidget,
-    LeverettOldWidget,
-    PressureCurveWidget,
-    ThroatRadiusCurveWidget,
-)
-from ltrace.slicer_utils import dataFrameToTableNode, dataframeFromTable
-from ltrace.pore_networks.functions import geo2spy
-from ltrace.pore_networks.subres_models import get_scalar_volume_data
-
-import numpy as np
-import pandas as pd
-
-logic_models = {
-    FixedRadiusWidget.STR: FixedRadiusLogic(),
-    LeverettNewWidget.STR: LeverettNewLogic(),
-    LeverettOldWidget.STR: LeverettOldLogic(),
-    PressureCurveWidget.STR: PressureCurveLogic(),
-    ThroatRadiusCurveWidget.STR: PressureCurveLogic(),
-}
+from ltrace.pore_networks.functions_extract import geo2spy
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data, MODEL_DICT
+from ltrace.slicer_utils import dataframeFromTable
 
 
 def set_subres_model_and_params(table_node, idx, params, pressure_tables):
     pore_network = geo2spy(table_node)
-    scalar_volume_data = get_scalar_volume_data(table_node)
-
+    volume_data = get_pore_network_volume_data(table_node)
+    params.update(volume_data)
     subres_model = params["subres_model_name"]
     subres_params = params["subres_params"]
-
     if subres_model == "Pressure Curve" or subres_model == "Throat Radius Curve":
         subres_params = set_pressure_table_model(pressure_tables, subres_model, subres_params, idx)
-
-    subresolution_function = logic_models[subres_model].get_capillary_pressure_function(
-        subres_params, pore_network, scalar_volume_data
-    )
-
+    params.update(subres_params)
+    subresolution_function = MODEL_DICT[subres_model].get_capillary_pressure_function(params, pore_network)
     return subresolution_function
 
 
