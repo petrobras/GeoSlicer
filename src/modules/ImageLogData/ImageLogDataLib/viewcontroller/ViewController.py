@@ -2,6 +2,7 @@
 View controller related classes (view popup).
 """
 
+import re
 import ctk
 import qt
 import slicer
@@ -12,18 +13,30 @@ from ltrace.slicer.ui import filteredNodeComboBox
 from ltrace.slicer.widget.elided_label import ElidedLabel
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import getResourcePath
+from ImageLogDataLib.viewdata.ViewData import GraphicViewData
+from ImageLogDataLib.viewdata.ViewData import SliceViewData
+from ImageLogDataLib.view.View import CustomPlotItem
 
 
 class ViewControllerWidget(qt.QWidget):
     def __init__(self, logic, identifier, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.logic = logic
-        self.identifier = identifier
-        self.setupControllerBar()
+        self._identifier = identifier
+        self.setupControllerBar(identifier)
 
-    def setupControllerBar(self):
+    @property
+    def identifier(self):
+        return self._identifier
+
+    def changeIdentifier(self, new_id):
+        self._identifier = new_id
+        self.onIdentifierChanged(new_id)
+
+    def setupControllerBar(self, identifier):
         scaleAndControllerLayout = qt.QVBoxLayout(self)
 
+        self.setObjectName("viewControllerWidget")
         self.showScale = False
 
         scaleLabel = qt.QLabel("Horizontal/Vertical Scale: 1/1")
@@ -32,63 +45,72 @@ class ViewControllerWidget(qt.QWidget):
         scaleAndControllerLayout.addWidget(scaleLabel, 0, qt.Qt.AlignCenter)
 
         controllerBarLayout = qt.QHBoxLayout(self)
+        controllerBarLayout.setObjectName("controllerBarLayout")
         scaleAndControllerLayout.addLayout(controllerBarLayout)
 
-        settingsToolButton = qt.QToolButton()
-        settingsToolButton.setObjectName("settingsToolButton" + str(self.identifier))
-        settingsToolButton.setCheckable(True)
-        settingsToolButton.setIconSize(qt.QSize(16, 16))
+        self.settingsToolButton = qt.QToolButton()
+        self.settingsToolButton.setObjectName("settingsToolButton" + str(self.identifier))
+        self.settingsToolButton.setCheckable(True)
+        self.settingsToolButton.setIconSize(qt.QSize(16, 16))
 
         iconsRes = getResourcePath("Icons")
         settingsButtonIcon = qt.QIcon()
         settingsButtonIcon.addFile(iconsRes / "png" / "PushPinIn.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.On)
         settingsButtonIcon.addFile(iconsRes / "png" / "PushPinOut.png", qt.QSize(), qt.QIcon.Normal, qt.QIcon.Off)
-        settingsToolButton.setIcon(settingsButtonIcon)
-        controllerBarLayout.addWidget(settingsToolButton)
+        self.settingsToolButton.setIcon(settingsButtonIcon)
+        controllerBarLayout.addWidget(self.settingsToolButton)
 
-        viewLabel = ElidedLabel("View " + str(self.identifier + 1))
-        viewLabel.setObjectName("viewLabel" + str(self.identifier))
-        viewLabel.setStyleSheet("font-size: 12px; font-weight: bold")
-        viewLabel.setAlignment(qt.Qt.AlignCenter)
+        self.viewLabel = ElidedLabel("View " + str(self.identifier + 1))
+        self.viewLabel.setToolTip("Mouse drag to reposition this view.")
+        self.viewLabel.setObjectName("viewLabel" + str(self.identifier))
+        self.viewLabel.setStyleSheet("font-size: 12px; font-weight: bold")
+        self.viewLabel.setAlignment(qt.Qt.AlignCenter)
+        self.viewLabel.setMouseTracking(True)
+        self.viewLabel.setAttribute(qt.Qt.WA_TransparentForMouseEvents, False)
+        self.viewLabel.setAttribute(qt.Qt.WA_Hover, True)
+        self.viewLabel.installEventFilter(self.logic.dragAndDropViewEventFilter)
         # Scroll area to allow widget resize less than the total text length
         viewLabelScrollArea = qt.QScrollArea()
+        viewLabelScrollArea.setObjectName("viewLabelScrollArea")
         viewLabelScrollArea.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
         viewLabelScrollArea.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
         viewLabelScrollArea.setWidgetResizable(True)
         viewLabelScrollArea.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Fixed)
         viewLabelScrollArea.setFixedHeight(21)
-        viewLabelScrollArea.setWidget(viewLabel)
+        viewLabelScrollArea.setWidget(self.viewLabel)
         controllerBarLayout.addWidget(viewLabelScrollArea, 1)
 
-        settingsPopup = ctk.ctkPopupWidget(settingsToolButton)
-        settingsPopup.setStyleSheet(
+        self.settingsPopup = ctk.ctkPopupWidget(self.settingsToolButton)
+        self.settingsPopup.setStyleSheet(
             "ctkPopupWidget {background-color:#" f"{'000000' if themeIsDark() else 'AAAAAA'}" ";}"
         )
-        settingsPopup.setObjectName("settingsPopup" + str(self.identifier))
-        settingsPopup.animationEffect = 1
+        self.settingsPopup.setObjectName("settingsPopup" + str(self.identifier))
+        self.settingsPopup.installEventFilter(self.logic.dragAndDropViewEventFilter)
+        self.settingsPopup.setAcceptDrops(True)
+        self.settingsPopup.animationEffect = 1
         # settingsPopup.alignment = qt.Qt.AlignHCenter | qt.Qt.AlignBottom
-        settingsToolButton.toggled.connect(lambda toggled, settingsPopup=settingsPopup: settingsPopup.pinPopup(toggled))
-        settingsToolButton.toggled.connect(
-            lambda arg, identifier=self.identifier: self.logic.viewControllerSettingsToolButtonToggled(identifier)
-        )
-        self.settingsPopupFormLayout = qt.QFormLayout(settingsPopup)
+        self.settingsToolButton.toggled.connect(self.settingsPopup.pinPopup)
+        self.settingsToolButton.toggled.connect(self.onViewControllerSettingsToolButtonToggled)
+        self.settingsPopupFormLayout = qt.QFormLayout(self.settingsPopup)
         self.settingsPopupFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         removeViewButton = qt.QPushButton()
         removeViewButton.setToolTip("Remove this view.")
         removeViewButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "Cancel.png"))
         removeViewButton.setIconSize(qt.QSize(12, 14))
-        removeViewButton.clicked.connect(lambda arg, identifier=self.identifier: self.logic.removeView(identifier))
+        removeViewButton.clicked.connect(self.onRemoveViewButton)
         controllerBarLayout.addWidget(removeViewButton)
 
         # Primary node combo box (defines the type of view to be set)
-        primaryNodeFrame = qt.QFrame()
-        self.primaryNodeLayout = qt.QHBoxLayout(primaryNodeFrame)
+        self.primaryNodeFrame = qt.QFrame()
+        self.primaryNodeFrame.setObjectName("primaryNodeFrame")
+        self.primaryNodeLayout = qt.QHBoxLayout(self.primaryNodeFrame)
+        self.primaryNodeLayout.setObjectName("primaryNodeLayout")
         self.primaryNodeLayout.setContentsMargins(0, 0, 0, 0)
 
         nodeWarning = HelpButton("Volumes marked with gray might be unable to be displayed.")
 
-        primaryNodeComboBox = filteredNodeComboBox(
+        self.primaryNodeComboBox = filteredNodeComboBox(
             nodeTypes=[
                 "vtkMRMLScalarVolumeNode",
                 "vtkMRMLTableNode",
@@ -96,26 +118,36 @@ class ViewControllerWidget(qt.QWidget):
                 "vtkMRMLVectorVolumeNode",
             ],
         )
-        primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
-        primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
-        primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
-        primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
-        primaryNodeComboBox.addAttributeFilter(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
-        primaryNodeComboBox.setObjectName("primaryNodeComboBox" + str(self.identifier))
-        primaryNodeComboBox.view().setMinimumWidth(250)
-        primaryNodeComboBox.nodeAboutToBeRemoved.connect(
-            lambda node=primaryNodeComboBox.currentNode(), identifier=self.identifier: self.logic.onNodeAboutToBeRemoved(
-                identifier, node
-            )
-        )
-        primaryNodeComboBox.currentNodeChanged.connect(
-            lambda node=primaryNodeComboBox.currentNode(), identifier=self.identifier: self.logic.primaryNodeChanged(
-                identifier, node
-            )
-        )
-        self.primaryNodeLayout.addWidget(primaryNodeComboBox, 10)
+        self.primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
+        self.primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
+        self.primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
+        self.primaryNodeComboBox.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
+        self.primaryNodeComboBox.addAttributeFilter(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+        self.primaryNodeComboBox.setObjectName("primaryNodeComboBox" + str(self.identifier))
+        self.primaryNodeComboBox.view().setMinimumWidth(250)
+        self.primaryNodeComboBox.nodeAboutToBeRemoved.connect(self.onPrimaryNodeAboutToBeRemoved)
+        self.primaryNodeComboBox.currentNodeChanged.connect(self.onPrimaryNodeChanged)
+        self.primaryNodeLayout.addWidget(self.primaryNodeComboBox, 10)
         self.primaryNodeLayout.addWidget(nodeWarning, 1)
-        self.settingsPopupFormLayout.addRow("Data:", primaryNodeFrame)
+        self.settingsPopupFormLayout.addRow("Data:", self.primaryNodeFrame)
+
+    def onIdentifierChanged(self, newId):
+        self.primaryNodeComboBox.setObjectName("primaryNodeComboBox" + str(newId))
+        self.settingsPopup.setObjectName("settingsPopup" + str(newId))
+        self.viewLabel.setObjectName("viewLabel" + str(newId))
+        self.settingsToolButton.setObjectName("settingsToolButton" + str(newId))
+
+    def onViewControllerSettingsToolButtonToggled(self):
+        self.logic.viewControllerSettingsToolButtonToggled(self.identifier)
+
+    def onRemoveViewButton(self):
+        self.logic.removeView(self.identifier)
+
+    def onPrimaryNodeAboutToBeRemoved(self):
+        self.logic.onNodeAboutToBeRemoved(self.identifier, self.primaryNodeComboBox.currentNode())
+
+    def onPrimaryNodeChanged(self):
+        self.logic.primaryNodeChanged(self.identifier, self.primaryNodeComboBox.currentNode())
 
 
 class EmptyViewControllerWidget(ViewControllerWidget):
@@ -140,57 +172,48 @@ class SliceViewControllerWidget(ViewControllerWidget):
         Specific view popup code
         """
         # Primary node show/hide button
-        showHidePrimaryNodeButton = qt.QPushButton()
-        showHidePrimaryNodeButton.setCheckable(True)
-        showHidePrimaryNodeButton.setObjectName("showHidePrimaryNodeButton" + str(self.identifier))
-        showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
-        showHidePrimaryNodeButton.setIconSize(qt.QSize(14, 14))
-        showHidePrimaryNodeButton.setFixedWidth(30)
-        showHidePrimaryNodeButton.clicked.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.showHidePrimaryNode(identifier)
-        )
-        self.primaryNodeLayout.insertWidget(1, showHidePrimaryNodeButton)
+        self.showHidePrimaryNodeButton = qt.QPushButton()
+        self.showHidePrimaryNodeButton.setCheckable(True)
+        self.showHidePrimaryNodeButton.setObjectName("showHidePrimaryNodeButton" + str(self.identifier))
+        self.showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
+        self.showHidePrimaryNodeButton.setIconSize(qt.QSize(14, 14))
+        self.showHidePrimaryNodeButton.setFixedWidth(30)
+        self.showHidePrimaryNodeButton.clicked.connect(self.onShowHidePrimaryNodeButton)
+
+        self.primaryNodeLayout.insertWidget(1, self.showHidePrimaryNodeButton)
 
         # Segmentation node combo box
         segmentationNodeFrame = qt.QFrame()
         self.segmentationNodeLayout = qt.QHBoxLayout(segmentationNodeFrame)
         self.segmentationNodeLayout.setContentsMargins(0, 0, 0, 0)
-        segmentationNodeComboBox = slicer.qMRMLNodeComboBox()
-        segmentationNodeComboBox.setObjectName("segmentationNodeComboBox" + str(self.identifier))
-        segmentationNodeComboBox.nodeTypes = ["vtkMRMLSegmentationNode", "vtkMRMLLabelMapVolumeNode"]
-        segmentationNodeComboBox.selectNodeUponCreation = False
-        segmentationNodeComboBox.addEnabled = False
-        segmentationNodeComboBox.removeEnabled = False
-        segmentationNodeComboBox.noneEnabled = True
-        segmentationNodeComboBox.showHidden = False
-        segmentationNodeComboBox.showChildNodeTypes = False
-        segmentationNodeComboBox.setMRMLScene(slicer.mrmlScene)
-        segmentationNodeComboBox.children()[2].view().setMinimumWidth(250)
-        segmentationNodeComboBox.nodeAboutToBeRemoved.connect(
-            lambda node=segmentationNodeComboBox.currentNode(), identifier=self.identifier: self.logic.onNodeAboutToBeRemoved(
-                identifier, node
-            )
-        )
+        self.segmentationNodeComboBox = slicer.qMRMLNodeComboBox()
+        self.segmentationNodeComboBox.setObjectName("segmentationNodeComboBox" + str(self.identifier))
+        self.segmentationNodeComboBox.nodeTypes = ["vtkMRMLSegmentationNode", "vtkMRMLLabelMapVolumeNode"]
+        self.segmentationNodeComboBox.selectNodeUponCreation = False
+        self.segmentationNodeComboBox.addEnabled = False
+        self.segmentationNodeComboBox.removeEnabled = False
+        self.segmentationNodeComboBox.noneEnabled = True
+        self.segmentationNodeComboBox.showHidden = False
+        self.segmentationNodeComboBox.showChildNodeTypes = False
+        self.segmentationNodeComboBox.setMRMLScene(slicer.mrmlScene)
+        self.segmentationNodeComboBox.children()[2].view().setMinimumWidth(250)
+        self.segmentationNodeComboBox.nodeAboutToBeRemoved.connect(self.onSegmentationNodeAboutToBeRemoved)
+
         # Calling the Image Data Logic to let it decide the correct view to the newly selected segmentation node
-        segmentationNodeComboBox.currentNodeChanged.connect(
-            lambda node=segmentationNodeComboBox.currentNode(), identifier=self.identifier: self.logic.segmentationNodeChanged(
-                identifier, node
-            )
-        )
-        self.segmentationNodeLayout.addWidget(segmentationNodeComboBox)
+        self.segmentationNodeComboBox.currentNodeChanged.connect(self.onSegmentationNodeChanged)
+
+        self.segmentationNodeLayout.addWidget(self.segmentationNodeComboBox)
         self.settingsPopupFormLayout.addRow("Seg:", segmentationNodeFrame)
 
         # Segmentation node show/hide button
-        showHideSegmentationNodeButton = qt.QToolButton()
-        showHideSegmentationNodeButton.setCheckable(True)
-        showHideSegmentationNodeButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
-        showHideSegmentationNodeButton.setObjectName("showHideSegmentationNodeButton" + str(self.identifier))
-        showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
-        showHideSegmentationNodeButton.setIconSize(qt.QSize(14, 14))
-        showHideSegmentationNodeButton.setFixedWidth(30)
-        showHideSegmentationNodeButton.clicked.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.showHideSegmentationNode(identifier)
-        )
+        self.showHideSegmentationNodeButton = qt.QToolButton()
+        self.showHideSegmentationNodeButton.setCheckable(True)
+        self.showHideSegmentationNodeButton.setPopupMode(qt.QToolButton.MenuButtonPopup)
+        self.showHideSegmentationNodeButton.setObjectName("showHideSegmentationNodeButton" + str(self.identifier))
+        self.showHideSegmentationNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
+        self.showHideSegmentationNodeButton.setIconSize(qt.QSize(14, 14))
+        self.showHideSegmentationNodeButton.setFixedWidth(30)
+        self.showHideSegmentationNodeButton.clicked.connect(self.onShowHideSegmentationNodeButton)
 
         # Segmentation node opacity slider
         self.segmentationOpacitySlider = ctk.ctkSliderWidget(self)
@@ -200,42 +223,64 @@ class SliceViewControllerWidget(ViewControllerWidget):
         sliderDoubleSlider.maximum = 1
         sliderDoubleSlider.singleStep = 0.01
         sliderDoubleSlider.pageStep = 0.1
-        segmentationMenu = qt.QMenu("Segmentation", showHideSegmentationNodeButton)
+        segmentationMenu = qt.QMenu("Segmentation", self.showHideSegmentationNodeButton)
         opacityAction = qt.QWidgetAction(self.segmentationOpacitySlider)
         opacityAction.setDefaultWidget(sliderDoubleSlider)
         segmentationMenu.addAction(opacityAction)
-        showHideSegmentationNodeButton.setMenu(segmentationMenu)
-        sliderDoubleSlider.valueChanged.connect(
-            lambda value, arg=None, identifier=self.identifier: self.logic.changeOpacitySegmentationNode(
-                identifier, value
-            )
-        )
+        self.showHideSegmentationNodeButton.setMenu(segmentationMenu)
+        sliderDoubleSlider.valueChanged.connect(lambda value, arg=None: self.onSliderDoubleSliderValueChanged(value))
+
         currentSegmentationOpacity = self.logic.segmentationOpacity
         sliderDoubleSlider.setValue(currentSegmentationOpacity)
         self.logic.changeOpacitySegmentationNode(self.identifier, currentSegmentationOpacity)
 
-        self.segmentationNodeLayout.addWidget(showHideSegmentationNodeButton)
+        self.segmentationNodeLayout.addWidget(self.showHideSegmentationNodeButton)
 
         # Proportions node information
         proportionsNodeFrame = qt.QFrame()
         proportionsNodeLayout = qt.QHBoxLayout(proportionsNodeFrame)
         proportionsNodeLayout.setContentsMargins(0, 0, 0, 0)
-        proportionsNodeLineEdit = qt.QLineEdit()
-        proportionsNodeLineEdit.setObjectName("proportionsNodeLineEdit" + str(self.identifier))
-        proportionsNodeLineEdit.setReadOnly(True)
-        proportionsNodeLayout.addWidget(proportionsNodeLineEdit)
+        self.proportionsNodeLineEdit = qt.QLineEdit()
+        self.proportionsNodeLineEdit.setObjectName("proportionsNodeLineEdit" + str(self.identifier))
+        self.proportionsNodeLineEdit.setReadOnly(True)
+        proportionsNodeLayout.addWidget(self.proportionsNodeLineEdit)
 
         # Proportions node show/hide
-        showHideProportionsNodeButton = qt.QPushButton()
-        showHideProportionsNodeButton.setCheckable(True)
-        showHideProportionsNodeButton.setObjectName("showHideProportionsNodeButton" + str(self.identifier))
-        showHideProportionsNodeButton.setIconSize(qt.QSize(14, 14))
-        showHideProportionsNodeButton.setFixedWidth(30)
-        showHideProportionsNodeButton.clicked.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.showHideProportionsNode(identifier)
-        )
-        proportionsNodeLayout.addWidget(showHideProportionsNodeButton)
+        self.showHideProportionsNodeButton = qt.QPushButton()
+        self.showHideProportionsNodeButton.setCheckable(True)
+        self.showHideProportionsNodeButton.setObjectName("showHideProportionsNodeButton" + str(self.identifier))
+        self.showHideProportionsNodeButton.setIconSize(qt.QSize(14, 14))
+        self.showHideProportionsNodeButton.setFixedWidth(30)
+        self.showHideProportionsNodeButton.clicked.connect(self.onShowHideProportionsNodeButtonClicked)
+        proportionsNodeLayout.addWidget(self.showHideProportionsNodeButton)
         self.settingsPopupFormLayout.addRow("Prop:", proportionsNodeFrame)
+
+    def onShowHidePrimaryNodeButton(self):
+        self.logic.showHidePrimaryNode(self.identifier)
+
+    def onSegmentationNodeAboutToBeRemoved(self):
+        self.logic.onNodeAboutToBeRemoved(self.identifier, self.segmentationNodeComboBox.currentNode())
+
+    def onSegmentationNodeChanged(self):
+        self.logic.segmentationNodeChanged(self.identifier, self.segmentationNodeComboBox.currentNode())
+
+    def onShowHideSegmentationNodeButton(self):
+        self.logic.showHideSegmentationNode(self.identifier)
+
+    def onSliderDoubleSliderValueChanged(self, value):
+        self.logic.changeOpacitySegmentationNode(self.identifier, value)
+
+    def onShowHideProportionsNodeButtonClicked(self):
+        self.logic.showHideProportionsNode(self.identifier)
+
+    def onIdentifierChanged(self, newIdentifier):
+        self.showHideProportionsNodeButton.setObjectName("showHideProportionsNodeButton" + str(newIdentifier))
+        self.proportionsNodeLineEdit.setObjectName("proportionsNodeLineEdit" + str(newIdentifier))
+        self.segmentationOpacitySlider.setObjectName("segmentationOpacitySlider" + str(newIdentifier))
+        self.showHideSegmentationNodeButton.setObjectName("showHideSegmentationNodeButton" + str(newIdentifier))
+        self.segmentationNodeComboBox.setObjectName("segmentationNodeComboBox" + str(newIdentifier))
+        self.showHidePrimaryNodeButton.setObjectName("showHidePrimaryNodeButton" + str(newIdentifier))
+        super().onIdentifierChanged(newIdentifier)
 
 
 class GraphicViewControllerWidget(ViewControllerWidget):
@@ -249,27 +294,25 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         """
 
         # Primary table node column
-        primaryTableNodeColumnComboBox = qt.QComboBox()
-        primaryTableNodeColumnComboBox.view().setMinimumWidth(100)
-        primaryTableNodeColumnComboBox.setObjectName("primaryTableNodeColumnComboBox" + str(self.identifier))
-        primaryTableNodeColumnComboBox.currentTextChanged.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.primaryTableNodeColumnChanged(identifier)
-        )
-        self.primaryNodeLayout.addWidget(primaryTableNodeColumnComboBox, 5)
+        self.primaryTableNodeColumnComboBox = qt.QComboBox()
+        self.primaryTableNodeColumnComboBox.view().setMinimumWidth(100)
+        self.primaryTableNodeColumnComboBox.setObjectName("primaryTableNodeColumnComboBox" + str(self.identifier))
+        self.primaryTableNodeColumnComboBox.currentTextChanged.connect(self.onPrimaryTableNodeColumnComboBoxTextChanged)
+        self.primaryNodeLayout.addWidget(self.primaryTableNodeColumnComboBox, 5)
         # Primary plot type
-        primaryTableNodePlotTypeComboBox = qt.QComboBox()
-        primaryTableNodePlotTypeComboBox.setObjectName("primaryTableNodePlotTypeComboBox" + str(self.identifier))
-        primaryTableNodePlotTypeComboBox.setFixedWidth(40)
-        primaryTableNodePlotTypeComboBox.currentTextChanged.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.primaryTableNodePlotTypeChanged(identifier)
+        self.primaryTableNodePlotTypeComboBox = qt.QComboBox()
+        self.primaryTableNodePlotTypeComboBox.setObjectName("primaryTableNodePlotTypeComboBox" + str(self.identifier))
+        self.primaryTableNodePlotTypeComboBox.setFixedWidth(40)
+        self.primaryTableNodePlotTypeComboBox.currentTextChanged.connect(
+            self.onPrimaryTableNodePlotTypeComboBoxTextChanged
         )
-        self.primaryNodeLayout.addWidget(primaryTableNodePlotTypeComboBox, 0)
+        self.primaryNodeLayout.addWidget(self.primaryTableNodePlotTypeComboBox, 0)
         # Primary plot color
-        primaryTableNodePlotColorPicker = ColorPickerCell(
+        self.primaryTableNodePlotColorPicker = ColorPickerCell(
             self, self.identifier, self.logic.primaryTableNodePlotColorChanged
         )
-        primaryTableNodePlotColorPicker.setObjectName("primaryTableNodePlotColorPicker" + str(self.identifier))
-        self.primaryNodeLayout.addWidget(primaryTableNodePlotColorPicker, 0)
+        self.primaryTableNodePlotColorPicker.setObjectName("primaryTableNodePlotColorPicker" + str(self.identifier))
+        self.primaryNodeLayout.addWidget(self.primaryTableNodePlotColorPicker, 0)
 
         # Secondary table node
         secondaryTableNodeFrame = qt.QFrame()
@@ -277,53 +320,84 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         self.secondaryTableNodeLayout.setContentsMargins(0, 0, 0, 0)
 
         # Secondary table node node
-        secondaryTableNodeComboBox = filteredNodeComboBox(["vtkMRMLTableNode"])
-        secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
-        secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
-        secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
-        secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
-        secondaryTableNodeComboBox.addAttributeFilter(DataOrigin.name(), DataOrigin.IMAGE_LOG.value)
-        secondaryTableNodeComboBox.addAttributeFilter(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
-        secondaryTableNodeComboBox.setObjectName("secondaryTableNodeComboBox" + str(self.identifier))
-        secondaryTableNodeComboBox.view().setMinimumWidth(250)
-        secondaryTableNodeComboBox.nodeAboutToBeRemoved.connect(
-            lambda node=secondaryTableNodeComboBox.currentNode(), identifier=self.identifier: self.logic.onNodeAboutToBeRemoved(
-                identifier, node
-            )
+        self.primaryTableNodePlotColorPicker = filteredNodeComboBox(["vtkMRMLTableNode"])
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(DataOrigin.name(), DataOrigin.IMAGE_LOG.value)
+        self.primaryTableNodePlotColorPicker.addAttributeFilter(
+            ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value
         )
-        secondaryTableNodeComboBox.currentNodeChanged.connect(
-            lambda node=secondaryTableNodeComboBox.currentNode(), identifier=self.identifier: self.logic.secondaryTableNodeChanged(
-                identifier, node
-            )
+        self.primaryTableNodePlotColorPicker.setObjectName("secondaryTableNodeComboBox" + str(self.identifier))
+        self.primaryTableNodePlotColorPicker.view().setMinimumWidth(250)
+        self.primaryTableNodePlotColorPicker.nodeAboutToBeRemoved.connect(
+            self.onPrimaryTableNodePlotColorPickerToBeRemoved
         )
-        self.secondaryTableNodeLayout.addWidget(secondaryTableNodeComboBox, 10)
+        self.primaryTableNodePlotColorPicker.currentNodeChanged.connect(
+            self.onPrimaryTableNodePlotColorPickerNodeChanged
+        )
+        self.secondaryTableNodeLayout.addWidget(self.primaryTableNodePlotColorPicker, 10)
 
         # Secondary table node column
-        secondaryTableNodeColumnComboBox = qt.QComboBox()
-        secondaryTableNodeColumnComboBox.view().setMinimumWidth(100)
-        secondaryTableNodeColumnComboBox.setObjectName("secondaryTableNodeColumnComboBox" + str(self.identifier))
-        secondaryTableNodeColumnComboBox.currentTextChanged.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.secondaryTableNodeColumnChanged(identifier)
+        self.secondaryTableNodeColumnComboBox = qt.QComboBox()
+        self.secondaryTableNodeColumnComboBox.view().setMinimumWidth(100)
+        self.secondaryTableNodeColumnComboBox.setObjectName("secondaryTableNodeColumnComboBox" + str(self.identifier))
+        self.secondaryTableNodeColumnComboBox.currentTextChanged.connect(
+            self.secondaryTableNodeColumnComboBoxTextChanged
         )
-        self.secondaryTableNodeLayout.addWidget(secondaryTableNodeColumnComboBox, 5)
+        self.secondaryTableNodeLayout.addWidget(self.secondaryTableNodeColumnComboBox, 5)
 
         # Secondary plot type
-        secondaryTableNodePlotTypeComboBox = qt.QComboBox()
-        secondaryTableNodePlotTypeComboBox.setObjectName("secondaryTableNodePlotTypeComboBox" + str(self.identifier))
-        secondaryTableNodePlotTypeComboBox.setFixedWidth(40)
-        secondaryTableNodePlotTypeComboBox.currentTextChanged.connect(
-            lambda arg=None, identifier=self.identifier: self.logic.secondaryTableNodePlotTypeChanged(identifier)
+        self.secondaryTableNodePlotTypeComboBox = qt.QComboBox()
+        self.secondaryTableNodePlotTypeComboBox.setObjectName(
+            "secondaryTableNodePlotTypeComboBox" + str(self.identifier)
         )
-        self.secondaryTableNodeLayout.addWidget(secondaryTableNodePlotTypeComboBox, 0)
+        self.secondaryTableNodePlotTypeComboBox.setFixedWidth(40)
+        self.secondaryTableNodePlotTypeComboBox.currentTextChanged.connect(
+            self.secondaryTableNodePlotTypeComboBoxTextChanged
+        )
+
+        self.secondaryTableNodeLayout.addWidget(self.secondaryTableNodePlotTypeComboBox, 0)
 
         # Secondary plot color
-        secondaryTableNodePlotColorPicker = ColorPickerCell(
+        self.secondaryTableNodePlotColorPicker = ColorPickerCell(
             self, self.identifier, self.logic.secondaryTableNodePlotColorChanged
         )
-        secondaryTableNodePlotColorPicker.setObjectName("secondaryTableNodePlotColorPicker" + str(self.identifier))
-        self.secondaryTableNodeLayout.addWidget(secondaryTableNodePlotColorPicker, 0)
+        self.secondaryTableNodePlotColorPicker.setObjectName("secondaryTableNodePlotColorPicker" + str(self.identifier))
+        self.secondaryTableNodeLayout.addWidget(self.secondaryTableNodePlotColorPicker, 0)
 
         self.settingsPopupFormLayout.addRow("", secondaryTableNodeFrame)
+
+    def onPrimaryTableNodeColumnComboBoxTextChanged(self):
+        self.logic.primaryTableNodeColumnChanged(self.identifier)
+
+    def onPrimaryTableNodePlotTypeComboBoxTextChanged(self):
+        self.logic.primaryTableNodePlotTypeChanged(self.identifier)
+
+    def onPrimaryTableNodePlotColorPickerToBeRemoved(self):
+        self.logic.onNodeAboutToBeRemoved(self.identifier, self.primaryTableNodePlotColorPicker.currentNode())
+
+    def onPrimaryTableNodePlotColorPickerNodeChanged(self):
+        self.logic.secondaryTableNodeChanged(self.identifier, self.primaryTableNodePlotColorPicker.currentNode())
+
+    def secondaryTableNodeColumnComboBoxTextChanged(self):
+        self.logic.secondaryTableNodeColumnChanged(self.identifier)
+
+    def secondaryTableNodePlotTypeComboBoxTextChanged(self):
+        self.logic.secondaryTableNodePlotTypeChanged(self.identifier)
+
+    # Identifier has to be synchronized in the children which also have one
+    def onIdentifierChanged(self, newId):
+        self.primaryTableNodeColumnComboBox.setObjectName("primaryTableNodeColumnComboBox" + str(newId))
+        self.primaryTableNodePlotTypeComboBox.setObjectName("primaryTableNodePlotTypeComboBox" + str(newId))
+        self.primaryTableNodePlotColorPicker.setObjectName("primaryTableNodePlotColorPicker" + str(newId))
+        self.primaryTableNodePlotColorPicker.identifier = newId
+        self.secondaryTableNodeColumnComboBox.setObjectName("secondaryTableNodeColumnComboBox" + str(newId))
+        self.secondaryTableNodePlotTypeComboBox.setObjectName("secondaryTableNodePlotTypeComboBox" + str(newId))
+        self.secondaryTableNodePlotColorPicker.setObjectName("secondaryTableNodePlotColorPicker" + str(newId))
+        self.secondaryTableNodePlotColorPicker.identifier = newId
+        super().onIdentifierChanged(newId)
 
 
 class ColorPickerCell(qt.QWidget):
@@ -419,15 +493,53 @@ class ColorPickerCell(qt.QWidget):
 
 
 class ElidedLabel(qt.QLabel):
-    def paintEvent(self, event):
-        self.setToolTip(self.text)
-        painter = qt.QPainter(self)
+    def event(self, event):
+        if event.type() == qt.QEvent.Paint:
+            painter = qt.QPainter(self)
 
-        metrics = qt.QFontMetrics(self.font)
-        newWidth = self.width if self.parent() is None else self.parent().width
-        elided = metrics.elidedText(self.text, qt.Qt.ElideRight, newWidth - 8)
+            metrics = qt.QFontMetrics(self.font)
+            newWidth = self.width if self.parent() is None else self.parent().width
+            elided = metrics.elidedText(self.text, qt.Qt.ElideRight, newWidth - 8)
 
-        rect = self.rect
-        rect.setWidth(newWidth)
+            rect = self.rect
+            rect.setWidth(newWidth)
+        elif event.type() == qt.QEvent.HoverEnter:
+            current_override = qt.QApplication.overrideCursor()
+            if current_override is None or current_override.shape() != qt.Qt.OpenHandCursor:
+                qt.QApplication.setOverrideCursor(qt.Qt.OpenHandCursor)
+        elif event.type() == qt.QEvent.HoverLeave:
+            if qt.QApplication.overrideCursor() is not None:
+                qt.QApplication.restoreOverrideCursor()
+        elif event.type() == qt.QEvent.MouseButtonPress:
+            posMouse = qt.QCursor().pos()
+            imageLogDataLogic = slicer.util.getModuleLogic("ImageLogData")
+            dragViewManager = imageLogDataLogic.dragViewManager
+            viewIdUnderMouse = int(re.search(r"\d+$", self.objectName).group())  # "viewLabelN"
+            if viewIdUnderMouse >= 0:
+                drag = qt.QDrag(self)
+                mimeData = qt.QMimeData()
+                mimeData.setText("draggingView" + str(viewIdUnderMouse))
+                drag.setMimeData(mimeData)
+                drag.setDragCursor(qt.QCursor(qt.Qt.ClosedHandCursor).pixmap(), qt.Qt.MoveAction)
+                dragViewManager.viewsIdentifiersFromTo[0] = viewIdUnderMouse
+                viewWidgetUnderMouse = imageLogDataLogic.viewWidgets[viewIdUnderMouse]
+                geom = viewWidgetUnderMouse.geometry
+                dragViewManager.logViewScreenshot.setGeometry(
+                    posMouse.x() + 10, posMouse.y() + 10, geom.width(), geom.height()
+                )
+                if type(imageLogDataLogic.imageLogViewList[viewIdUnderMouse].viewData) is SliceViewData:
+                    dragViewManager.captureVtkAndDisplay(
+                        slicer.app.layoutManager()
+                        .sliceWidget(f"ImageLogSliceView{viewIdUnderMouse}")
+                        .sliceView()
+                        .renderWindow()
+                    )
+                elif type(imageLogDataLogic.imageLogViewList[viewIdUnderMouse].viewData) is GraphicViewData:
+                    plotItem = slicer.util.getModuleWidget("ImageLogData").getGraphicViewPlotItem(viewIdUnderMouse)
+                    dragViewManager.capturePyqtgraphAndDisplay(plotItem, geom.width(), geom.height(), imageLogDataLogic)
+                else:
+                    dragViewManager.displayEmpty()
+                dragViewManager.logViewScreenshot.show()
+                drag.exec_(qt.Qt.MoveAction)
 
-        painter.drawText(rect, self.alignment, elided)
+        return qt.QLabel.event(self, event)

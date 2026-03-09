@@ -14,9 +14,12 @@ from InstanceSegmenterEditorLib.widget.FilterableTableWidgets import (
 )
 from InstanceSegmenterEditorLib.widget.FilterableTableWidgets import SidewallSampleTableWidget, StopsTableWidget
 from ltrace.algorithms.measurements import (
+    GENERIC_PROPERTIES,
     sidewall_sample_instance_properties,
     generic_instance_properties,
     instance_depth,
+    crop_to_content,
+    get_2d_copy,
 )
 from ltrace.algorithms.stops import fit_line
 from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
@@ -468,8 +471,12 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
     def getInstanceType(self):
         return self.tableNode.GetAttribute("InstanceSegmenter")
 
+    def getTableGenericProperties(self):
+        tableProperties = [self.tableNode.GetColumnName(i) for i in range(self.tableNode.GetNumberOfColumns())]
+        return [1 if property in tableProperties else 0 for property in GENERIC_PROPERTIES]
+
     def applySegment(self):
-        mask = self.editedLabelMapNodeArray.copy().squeeze()
+        mask, spacing2D = get_2d_copy(self.editedLabelMapNodeArray.copy(), self.labelMapNode.GetSpacing())
         mask[mask != self.editedLabelValue] = 0
         mask[mask == self.editedLabelValue] = 1
 
@@ -495,7 +502,11 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
             ImageLogInstanceSegmenter.MODEL_IMAGE_LOG_ISLANDS in instanceType
             or ImageLogInstanceSegmenter.MODEL_IMAGE_LOG_SNOW in instanceType
         ):
-            properties = generic_instance_properties(mask, self.labelMapNode.GetSpacing())
+            croppedMask, _, offset = crop_to_content(mask, padding=3)
+
+            properties = generic_instance_properties(
+                croppedMask, self.getTableGenericProperties(), spacing2D, mask.shape, offset
+            )
             rowData = properties
             rowData["label"] = self.editedLabelValue
         else:
@@ -544,13 +555,9 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
         self.setMouseInteractionToViewTransform()
 
         self.editedLabelMapNodeArray = slicer.util.arrayFromVolume(self.labelMapNode)
-        self.editedLabelValue = label
+        self.editedLabelValue = originalLabel if originalLabel is not None else label
 
         self.originalEditedLabelMapNodeArray = self.editedLabelMapNodeArray.copy()
-
-        if originalLabel is not None:
-            self.editedLabelMapNodeArray[self.editedLabelMapNodeArray == originalLabel] = label
-            self.labelMapNode.Modified()
 
         self.rastoIJKMatrix = vtk.vtkMatrix4x4()
         self.labelMapNode.GetRASToIJKMatrix(self.rastoIJKMatrix)

@@ -1,3 +1,12 @@
+# v2.8.5 - 2026-03-05
+
+## Improvements:
+- Users can now reorder views in the Well Logs environment by dragging and dropping them. (tag_not_available)
+
+## Bug fixes:
+- Fixed a missing argument when applying a new segment in the segment instance editor. (AM-18)
+- Modified the instance editor to pass 2D cropped images and 2D spacing, improving data handling for segmented instances. (AM-18)
+
 # v2.8.4 - 2026-02-24
 
 ## Bug fixes:

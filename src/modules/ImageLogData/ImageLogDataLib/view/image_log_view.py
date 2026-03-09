@@ -59,6 +59,7 @@ class ImageLogView:
         self.primaryNode = primaryNode
         self.segmentation_node = segmentation_node
         self.widget = None
+
         self.viewData, self.table_type = self.__add_node(self.primaryNode, self.segmentation_node)
 
     def __del__(self):
@@ -73,6 +74,7 @@ class ImageLogView:
         del self.table_type
 
     def setup_widget(self, parent):
+
         if self.widget is not None:
             self.widget.clear()
             self.widget.delete()

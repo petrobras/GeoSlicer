@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>Recon CLI</title>
+  <description><![CDATA[LTrace Tomography 3D Reconstruction]]></description>
+  <version>0.0.1</version>
+  <documentation-url></documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Input/Output</label>
+    <description><![CDATA[Input/output parameters]]></description>
+    <directory>
+      <name>input_dir</name>
+      <label>Input Directory</label>
+      <channel>input</channel>
+      <description><![CDATA[Directory containing TIFFs and .log file]]></description>
+    </directory>
+    <directory>
+      <name>output_dir</name>
+      <label>Output Directory</label>
+      <flag>o</flag>
+      <longflag>output_dir</longflag>
+      <channel>output</channel>
+      <description><![CDATA[Output directory for slices]]></description>
+    </directory>
+  </parameters>
+
+  <parameters advanced="true">
+    <label>Advanced Parameters</label>
+    <file>
+      <name>log_path</name>
+      <label>Log Path</label>
+      <flag>l</flag>
+      <longflag>log_path</longflag>
+      <channel>input</channel>
+      <description><![CDATA[Specific path to the .log file if outside input_dir]]></description>
+    </file>
+    <string>
+      <name>machine</name>
+      <label>Machine</label>
+      <flag>m</flag>
+      <longflag>machine</longflag>
+      <description><![CDATA[Machine brand/model]]></description>
+      <default>Bruker Skyscan 1173</default>
+    </string>
+  </parameters>
+
+</executable>

@@ -7,10 +7,12 @@ import qt
 import logging
 import json
 import math
+import vtk
 import numpy as np
 import os
 import pyqtgraph as pg
 import traceback
+import re
 
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.debounce_caller import DebounceCaller
@@ -32,7 +34,9 @@ from ImageLogDataLib.view.image_log_view import ImageLogView
 from ImageLogDataLib.viewcontroller import *
 from ImageLogDataLib.viewdata import *
 from ImageLogDataLib.treeview.SubjectHierarchyTreeViewFilter import SubjectHierarchyTreeViewFilter
-from ImageLogDataLib.mouse_event_filter import MouseEventFilter
+from ImageLogDataLib.eventfilters.IdentifyViewMouseEventFilter import IdentifyViewMouseEventFilter
+from ImageLogDataLib.eventfilters.DragNDropViewEventFilter import DragNDropViewEventFilter
+from ImageLogDataLib.dragviewmanager import DragViewManager
 
 # Checks if closed source code is available
 try:
@@ -254,6 +258,22 @@ class ImageLogDataWidget(CustomizedDataWidget):
             curvePlot = self.logic.imageLogViewList[viewIdentifier].widget.getPlot()
             return curvePlot.get_plot_item()
 
+    def getGeometry(self, viewWidget):
+        if self.logic is None or not hasattr(self.logic, "axisItem"):
+            return qt.QRect(0, 0, 0, 0)
+
+        logGeometry = viewWidget.geometry
+
+        oldWidth = logGeometry.width()
+        oldHeight = logGeometry.height()
+        axisGeometry = self.logic.axisItem.geometry()
+
+        logGeometryXY = viewWidget.mapToGlobal(qt.QPoint(0, axisGeometry.y()))
+
+        logGeometry = qt.QRect(logGeometryXY.x(), logGeometryXY.y(), oldWidth, oldHeight)
+
+        return logGeometry
+
 
 class ViewDataEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -313,12 +333,54 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         self.__layoutViewOpen = False
         self.__observerHandlers = []
         self.layoutManagerViewPort = slicer.app.layoutManager().viewport()  # Central widget
-        self.mouseEventFilter = MouseEventFilter(self)
+        self.identifyViewMouseEventFilter = IdentifyViewMouseEventFilter(self)
+        self.dragAndDropViewEventFilter = DragNDropViewEventFilter(self)
         self.saveObserver = None
         self.configurationsNode = None
         self.imageLogLayoutViewAction = None
         self.__addImageLogViewOption()
         ApplicationObservables().environmentChanged.connect(self.__updateImageLogLayoutActionVisibility)
+
+        self.dragViewManager = DragViewManager.DragViewManager(self)
+
+    # Reorders the arrays of elements related to the layout; renames objects whose names use their order number;
+    # updates the identifiers of the viewControllerWidgets (which internally will also update names)
+    def reorderLayout(self, index_from, index_to):
+        self.imageLogViewList.insert(index_to, self.imageLogViewList.pop(index_from))
+        self.viewControllerWidgets.insert(index_to, self.viewControllerWidgets.pop(index_from))
+        for v, viewControllerWidget in enumerate(self.viewControllerWidgets):
+            self.changeViewControllerWidgetIdentifier(viewControllerWidget, v)
+        self.viewColorBarWidgets.insert(index_to, self.viewColorBarWidgets.pop(index_from))
+        for i, viewColorBarWidget in enumerate(self.viewColorBarWidgets):
+            viewColorBarWidget.setObjectName("colorBarWidget" + str(i))
+        self.viewWidgets.insert(index_to, self.viewWidgets.pop(index_from))
+        for v, viewWidget in enumerate(self.viewWidgets):
+            viewWidget.setObjectName(re.sub(r"\d+$", str(v), viewWidget.objectName))
+        self.viewSpacerWidgets.insert(index_to, self.viewSpacerWidgets.pop(index_from))
+        self.curvePlotWidgets.insert(index_to, self.curvePlotWidgets.pop(index_from))
+
+    def changeViewControllerWidgetIdentifier(self, qwidget, newIdentifier):
+        qwidget.findChild(ViewControllerWidget, "viewControllerWidget").changeIdentifier(newIdentifier)
+
+    def viewControllerWidget_PrimaryNodeComboBox(self, identifier: int):
+        from ltrace.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
+
+        widget = self.viewControllerWidgets[identifier]
+        return (
+            widget.findChild(qt.QToolButton)
+            .findChild(ctk.ctkPopupWidget)
+            .findChild(FilteredNodeComboBox, "primaryNodeComboBox" + str(identifier))
+        )
+
+    def viewControllerWidget_Label(self, identifier: int):
+        from ltrace.slicer.widget.elided_label import ElidedLabel
+
+        widget = self.viewControllerWidgets[identifier]
+        return widget.findChild(ElidedLabel, "viewLabel" + str(identifier))
+
+    def viewControllerWidget_segmentationNodeComboBox(self, identifier: int):
+        widget = self.viewControllerWidgets[identifier]
+        return widget.findChild(slicer.qMRMLNodeComboBox, "segmentationNodeComboBox" + str(identifier))
 
     def loadConfiguration(self):
         slicer.app.processEvents()
@@ -413,7 +475,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
             self.updateViewsAxis()
 
-            slicer.modules.AppContextInstance.mainWindow.installEventFilter(self.mouseEventFilter)
+            slicer.modules.AppContextInstance.mainWindow.installEventFilter(self.identifyViewMouseEventFilter)
+            slicer.modules.AppContextInstance.mainWindow.installEventFilter(self.dragAndDropViewEventFilter)
             self.layoutViewOpened.emit()
             self.__layoutViewOpen = True
             self.refreshViews("EnterEvent")
@@ -423,7 +486,8 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             if self.__layoutViewOpen is False:
                 return
 
-            slicer.modules.AppContextInstance.mainWindow.removeEventFilter(self.mouseEventFilter)
+            slicer.modules.AppContextInstance.mainWindow.removeEventFilter(self.identifyViewMouseEventFilter)
+            slicer.modules.AppContextInstance.mainWindow.removeEventFilter(self.dragAndDropViewEventFilter)
 
             self.layoutViewClosed.emit()
             self.__layoutViewOpen = False
@@ -590,15 +654,16 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewControllerWidgetLayout.addWidget(controlsFrame)
 
             viewData = self.imageLogViewList[identifier].viewData
+            viewControllerWidget = None
             if type(viewData) is EmptyViewData:
-                emptyViewControllerWidget = EmptyViewControllerWidget(self, identifier)
-                controlsLayout.addWidget(emptyViewControllerWidget)
+                viewControllerWidget = EmptyViewControllerWidget(self, identifier)
+                controlsLayout.addWidget(viewControllerWidget)
             elif type(viewData) is SliceViewData:
-                sliceViewControllerWidget = SliceViewControllerWidget(self, identifier)
-                controlsLayout.addWidget(sliceViewControllerWidget)
+                viewControllerWidget = SliceViewControllerWidget(self, identifier)
+                controlsLayout.addWidget(viewControllerWidget)
             elif type(viewData) is GraphicViewData:
-                graphicViewControllerWidget = GraphicViewControllerWidget(self, identifier)
-                controlsLayout.addWidget(graphicViewControllerWidget)
+                viewControllerWidget = GraphicViewControllerWidget(self, identifier)
+                controlsLayout.addWidget(viewControllerWidget)
 
     def setupViewWidgets(self):
         for identifier in self.getViewDataListIdentifiers():
@@ -1990,6 +2055,73 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             layoutMenu.actions()[0].triggered()  # Force triggering action to update menu icon
 
         self.imageLogLayoutViewAction.setVisible(isEnvironmentValid)
+
+    def insideExtendedIdentifierRegion(self, logGeometry, posMouse):
+        """We extend the region were we define the identifier. This way, during a drag'n'drop
+        of views, we can drop even at the label above the slice view"""
+        margin_to_cover_label = 115
+        logGeometryExtended = qt.QRect(
+            logGeometry.x(),
+            logGeometry.y() - margin_to_cover_label,
+            logGeometry.width(),
+            logGeometry.height() + margin_to_cover_label,
+        )
+        return logGeometryExtended.contains(posMouse.x(), posMouse.y())
+
+    def overElidedLabel(self, global_pos):
+        for i, widget in enumerate(self.viewControllerWidgets):
+            if qt.QApplication.widgetAt(global_pos) == self.viewControllerWidget_Label(i):
+                return i
+        return -1
+
+    def getIdentifierAt(self, x, y):
+        for identifier in self.getViewDataListIdentifiers():
+            imageLogView = self.imageLogViewList[identifier]
+
+            try:
+                viewWidget = self.viewWidgets[identifier]
+            except IndexError as error:
+                logging.debug(error)
+                continue
+
+            viewData = imageLogView.viewData
+            if type(viewData) is SliceViewData or (
+                type(viewData) is GraphicViewData
+                and (viewData.primaryTableNodeColumn != "" or viewData.secondaryTableNodeColumn != "")
+            ):
+                if viewData.primaryNodeId == None:
+                    continue
+
+                logGeometry = slicer.util.getModuleWidget("ImageLogData").getGeometry(viewWidget)
+
+                if self.insideExtendedIdentifierRegion(logGeometry, qt.QPoint(x, y)):
+                    return identifier
+                else:
+                    continue
+            elif type(viewData) is EmptyViewData:
+                if len(self.getViewDataListIdentifiers()) == 1:
+                    break
+                firstValidLogGeometry = None
+                v = 0
+                for i, viewWidget in enumerate(self.viewWidgets):
+                    if viewWidget:
+                        v = i
+                        firstValidLogGeometry = slicer.util.getModuleWidget("ImageLogData").getGeometry(viewWidget)
+                        break
+                logGeometry = qt.QRect(
+                    firstValidLogGeometry.x()
+                    - v * firstValidLogGeometry.width()
+                    + identifier * firstValidLogGeometry.width(),
+                    firstValidLogGeometry.y(),
+                    firstValidLogGeometry.width(),
+                    firstValidLogGeometry.height(),
+                )
+                if self.insideExtendedIdentifierRegion(logGeometry, qt.QPoint(x, y)):
+                    return identifier
+                else:
+                    continue
+
+        return -1
 
 
 class ImageLogDataInfo(RuntimeError):

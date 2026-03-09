@@ -1312,6 +1312,9 @@ def configure(rebuild_index=False):
 
     mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
 
+    qt.QApplication.setOverrideCursor(qt.Qt.ArrowCursor)
+    mainWindow.setAcceptDrops(True)
+
     def _startEnv():
         ApplicationObservables().applicationLoadFinished.disconnect(_startEnv)
 

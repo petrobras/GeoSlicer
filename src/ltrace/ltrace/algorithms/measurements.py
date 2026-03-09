@@ -1352,6 +1352,39 @@ def generic_instance_properties(instance_mask, selected_measurements, spacing, s
     return properties
 
 
+def get_2d_copy(image, spacing):
+    """
+    Extract a representative 2D slice from a 3D image volume based on the
+    smallest dimension of the input array.
+
+    Parameters
+    image : numpy.ndarray
+        A 3D NumPy array representing the image volume.
+    spacing : sequence of float
+        Spacing of the 3D image.
+
+    Returns
+    image2D : numpy.ndarray
+        The extracted 2D slice.
+    spacing2D : list of float
+        Spacing of the extracted 2D image.
+    """
+
+    # Get the index of the minimum array shape value to determine the direction of the slicing
+    min_index = np.argmin(image.shape)
+    if min_index == 0:
+        image2D = image[0, :, :]
+        spacing2D = [spacing[2], spacing[1]]
+    elif min_index == 1:
+        image2D = image[:, 0, :]
+        spacing2D = [spacing[2], spacing[0]]
+    elif min_index == 2:
+        image2D = image[:, :, 0]
+        spacing2D = [spacing[1], spacing[0]]
+
+    return image2D, spacing2D
+
+
 def crop_to_content(image, padding=0):
     """
     Crops the image to the minimum bounding box containing the non-zero pixels.
@@ -1378,17 +1411,7 @@ def instancesPropertiesDataFrame(labelMap, selectedMeasurements=[1, 1, 1]):
     if len(array.shape) != 3:
         raise ValueError("Invalid image type. Expected 2D image.")
 
-    # Get the index of the minimum array shape value to determine the direction of the slicing
-    min_index = np.argmin(array.shape)
-    if min_index == 0:
-        arraySliceCopy = array[0, :, :]
-        inverted_2d_spacing = [labelMap.GetSpacing()[2], labelMap.GetSpacing()[1]]
-    elif min_index == 1:
-        arraySliceCopy = array[:, 0, :]
-        inverted_2d_spacing = [labelMap.GetSpacing()[2], labelMap.GetSpacing()[0]]
-    elif min_index == 2:
-        arraySliceCopy = array[:, :, 0]
-        inverted_2d_spacing = [labelMap.GetSpacing()[1], labelMap.GetSpacing()[0]]
+    arraySliceCopy, inverted_2d_spacing = get_2d_copy(array, labelMap.GetSpacing())
 
     for label in labels:
 

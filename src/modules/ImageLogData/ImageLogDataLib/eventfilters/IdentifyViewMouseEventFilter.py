@@ -1,29 +1,14 @@
 import qt
+import slicer
 import logging
+from ImageLogDataLib.viewdata.ViewData import SliceViewData, GraphicViewData, EmptyViewData
 
-from .viewdata.ViewData import SliceViewData, GraphicViewData
 
-
-class MouseEventFilter(qt.QObject):
+class IdentifyViewMouseEventFilter(qt.QObject):
     def __init__(self, logic):
         self.dataLogic = logic
+        self.dragViewManager = None
         super().__init__(logic)
-
-    def getGeometry(self, viewWidget):
-        if self.dataLogic is None or not hasattr(self.dataLogic, "axisItem"):
-            return qt.QRect(0, 0, 0, 0)
-
-        logGeometry = viewWidget.geometry
-
-        oldWidth = logGeometry.width()
-        oldHeight = logGeometry.height()
-        axisGeometry = self.dataLogic.axisItem.geometry()
-
-        logGeometryXY = viewWidget.mapToGlobal(qt.QPoint(0, axisGeometry.y()))
-
-        logGeometry = qt.QRect(logGeometryXY.x(), logGeometryXY.y(), oldWidth, oldHeight)
-
-        return logGeometry
 
     def getCursorPhysicalPosition(self, viewWidget, imageLogView, x, y):
         width = viewWidget.geometry.width()
@@ -63,35 +48,50 @@ class MouseEventFilter(qt.QObject):
         mousePhysicalCoordinates = toolBarWidget.findChild(qt.QLabel, "MousePhysicalCoordinates")
         mousePhysicalCoordinates.setText(text)
 
+    # When user dragged a view, stayed with the mouse over the label of a view (HoverEnter event in its label),
+    # and moved the mouse to a log while the reordering was taking place. This made the HoverLeave of the label
+    # not being called.
+    def preventMouseCursorShapeStuck(self, event):
+        if not self.dragViewManager.dragging and self.dataLogic.overElidedLabel(qt.QCursor().pos()) == -1:
+            qt.QApplication.restoreOverrideCursor()
+
     def eventFilter(self, widget, event):
-        if not (isinstance(event, qt.QHoverEvent) or isinstance(event, qt.QWheelEvent)):
+        posMouse = qt.QCursor().pos()
+
+        self.dragViewManager = self.dataLogic.dragViewManager
+
+        if not (
+            isinstance(event, qt.QHoverEvent)
+            or isinstance(event, qt.QWheelEvent)
+            or isinstance(event, qt.QMouseEvent)
+            or isinstance(event, qt.QDragMoveEvent)
+        ):
             return
-        for identifier in self.dataLogic.getViewDataListIdentifiers():
+
+        # Showing information of the view at mouse position
+        identifier = self.dataLogic.getIdentifierAt(event.pos().x(), event.pos().y())
+        if identifier >= 0:
+            self.preventMouseCursorShapeStuck(event)
+
             imageLogView = self.dataLogic.imageLogViewList[identifier]
-            if imageLogView is None:
-                continue
 
             try:
                 viewWidget = self.dataLogic.viewWidgets[identifier]
             except IndexError as error:
                 logging.debug(error)
-                continue
-
-            if viewWidget is None:
-                continue
+                return False
 
             viewData = imageLogView.viewData
-            if viewData.primaryNodeId == None:
-                continue
             if (
                 type(viewData) is SliceViewData
                 or type(viewData) is GraphicViewData
                 and (viewData.primaryTableNodeColumn != "" or viewData.secondaryTableNodeColumn != "")
             ):
-                posMouse = qt.QCursor().pos()
-                logGeometry = self.getGeometry(viewWidget)
-                if not logGeometry.contains(posMouse):
-                    continue
+                if viewData.primaryNodeId == None:
+                    return False
+
+                logGeometry = slicer.util.getModuleWidget("ImageLogData").getGeometry(viewWidget)
+
                 relativePosMouseY = posMouse.y() - logGeometry.y()
                 relativePosMouseX = posMouse.x() - logGeometry.x()
                 physicalPos = self.getCursorPhysicalPosition(
@@ -99,4 +99,4 @@ class MouseEventFilter(qt.QObject):
                 )
                 value = self.getValue(imageLogView, *physicalPos)
                 self.writeCoordinates(identifier, *physicalPos, value)
-                break
+        return False
