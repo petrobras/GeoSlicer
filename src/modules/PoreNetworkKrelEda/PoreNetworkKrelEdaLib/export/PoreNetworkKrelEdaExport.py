@@ -2,7 +2,7 @@ import pandas as pd
 import qt
 import slicer
 
-from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
+from ltrace.pore_networks.simulation_parameters_node import save_dict_to_parameter_node
 from ltrace.slicer import ui
 from ltrace.slicer_utils import dataFrameToTableNode
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import KrelResultCurves
@@ -145,4 +145,4 @@ class PoreNetworkKrelEdaExportLogic:
             parameters_dict[column]["stop"] = value
             parameters_dict[column]["steps"] = 1
 
-        dict_to_parameter_node(parameters_dict, output_name)
+        save_dict_to_parameter_node(parameters_dict, output_name)

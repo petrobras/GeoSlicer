@@ -1,7 +1,9 @@
+import importlib
 import json
 import math
 import os
 import shutil
+import sys
 from multiprocessing import cpu_count
 from pathlib import Path
 
@@ -13,10 +15,10 @@ import slicer
 from tifffile import tifffile
 from functools import partial
 
+from ltrace.multiscaleLib.multiscaleSingleShotWidget import MultiscaleSingleShotWidget
 from ltrace.multiscaleLib.multiscaleResampleBox import ResampleBox
 from ltrace.slicer import helpers
-from ltrace.slicer import ui
-from ltrace.slicer import widgets
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.utils.ProgressBarProc import ProgressBarProc
@@ -82,9 +84,8 @@ class MultiScaleWidget(LTracePluginWidget):
         inputSection.collapsed = False
         inputSection.text = "Input"
 
-        self.trainingImageWidget = widgets.SingleShotInputWidget(
+        self.trainingImageWidget = MultiscaleSingleShotWidget(
             hideSoi=True,
-            hideCalcProp=False,
             allowedInputNodes=[
                 "vtkMRMLScalarVolumeNode",
                 "vtkMRMLSegmentationNode",
@@ -96,7 +97,7 @@ class MultiScaleWidget(LTracePluginWidget):
             objectNamePrefix="Training Image",
         )
 
-        self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 0)
+        self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 6)
         self.trainingImageWidget.mainInput.currentItemChanged.connect(self.onTrainingImageChange)
         self.trainingImageWidget.onReferenceSelectedSignal.connect(self.trainingImageSourceChange)
         self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(
@@ -104,7 +105,7 @@ class MultiScaleWidget(LTracePluginWidget):
         )
         self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.onTrainingImageChange)
 
-        self.hardDataWidget = widgets.SingleShotInputWidget(
+        self.hardDataWidget = MultiscaleSingleShotWidget(
             hideSoi=True,
             allowedInputNodes=[
                 "vtkMRMLScalarVolumeNode",
@@ -126,18 +127,6 @@ class MultiScaleWidget(LTracePluginWidget):
         self.hardDataWidget.autoPorosityCalcCb.stateChanged.connect(
             lambda: self.checkListItems(self.hardDataWidget.segmentListGroup[1])
         )
-
-        self.hardDataResolution = []
-        self.hardDataResolutionText = qt.QLabel("0 x 0 x 0 (mm)")
-        self.hardDataResolutionText.setToolTip(
-            "Resolution of the hard data voxel in mm. For the multiscale simulations, the units are converted to micrometers"
-        )
-        self.hardDataResolutionText.objectName = "Hard Data Resolution Label"
-        self.hardDataResolutionText.hide()
-
-        self.hardDataResolutionLabel = qt.QLabel("HD resolution:")
-        self.hardDataResolutionLabel.objectName = "hardDataLabel"
-        self.hardDataResolutionLabel.hide()
 
         self.depthTopSpinBox = qt.QDoubleSpinBox()
         self.depthTopSpinBox.setToolTip(
@@ -198,14 +187,14 @@ class MultiScaleWidget(LTracePluginWidget):
         self.previewLabel = qt.QLabel("Hard Data preview:")
         self.previewLabel.hide()
 
-        self.maskWidget = widgets.SingleShotInputWidget(
+        self.maskWidget = MultiscaleSingleShotWidget(
             hideSoi=True,
             hideCalcProp=False,
             allowedInputNodes=[
                 "vtkMRMLSegmentationNode",
                 "vtkMRMLLabelMapVolumeNode",
             ],
-            mainName="Mask image",
+            mainName="Mask Image",
             referenceName="Mask reference",
             setDefaultMargins=False,
             objectNamePrefix="Mask",
@@ -222,7 +211,6 @@ class MultiScaleWidget(LTracePluginWidget):
         inputFormLayout.addRow(self.trainingImageWidget)
         inputFormLayout.addRow("", None)
         inputFormLayout.addRow(self.hardDataWidget)
-        inputFormLayout.addRow(self.hardDataResolutionLabel, self.hardDataResolutionText)
         inputFormLayout.addRow(self.previewLabel, self.previewWidget)
         inputFormLayout.addRow("", None)
         inputFormLayout.addRow(self.maskWidget)
@@ -358,7 +346,6 @@ class MultiScaleWidget(LTracePluginWidget):
         self.ncondSpinBox = qt.QSpinBox()
         self.ncondSpinBox.setToolTip("Set number of conditiong points used in each simulation.")
         self.ncondSpinBox.setRange(1, 9999)
-        self.ncondSpinBox.setValue(16)
         self.ncondSpinBox.objectName = "conditioningsNumber"
 
         self.nrealSpinBox = qt.QSpinBox()
@@ -366,13 +353,11 @@ class MultiScaleWidget(LTracePluginWidget):
             "Set number of realizations to be done. Maximum value accepted is total number of available threads minus 1"
         )
         self.nrealSpinBox.setRange(1, 9999)
-        self.nrealSpinBox.setValue(cpu_count() - 1)
         self.nrealSpinBox.objectName = "realizationsNumber"
         self.nrealSpinBox.valueChanged.connect(self.onRealizationChange)
 
         self.maxIterationsSpinBox = qt.QSpinBox()
         self.maxIterationsSpinBox.setRange(-1, 999999)
-        self.maxIterationsSpinBox.setValue(1000)
         self.maxIterationsSpinBox.setToolTip(
             "Set the maximun number of iterations to be made during simulation. Use -1 for a full training image scan."
         )
@@ -389,10 +374,8 @@ class MultiScaleWidget(LTracePluginWidget):
         self.colocateDimensionComboBox.setToolTip("For a 3D TI make sure the order matters in the last dimensions")
         self.colocateDimensionComboBox.objectName = "colocateDimension"
 
-        max_search_value = 10000
         self.maxSearchRadiusSpinBox = qt.QDoubleSpinBox()
-        self.maxSearchRadiusSpinBox.setRange(0, max_search_value)
-        self.maxSearchRadiusSpinBox.setValue(max_search_value)
+        self.maxSearchRadiusSpinBox.setRange(0, 10000)
         self.maxSearchRadiusSpinBox.setDecimals(3)
         self.maxSearchRadiusSpinBox.setToolTip(
             "Only conditional data within a radius of max search radius is used as conditioning data."
@@ -403,7 +386,6 @@ class MultiScaleWidget(LTracePluginWidget):
         self.distanceMaxSpinBox.setRange(0, 1.0)
         self.distanceMaxSpinBox.setSingleStep(0.1)
         self.distanceMaxSpinBox.setDecimals(3)
-        self.distanceMaxSpinBox.setValue(0)
         self.distanceMaxSpinBox.setToolTip(
             "Maximum distance what will lead to accepting a conditional template match. If set to 0, it will search of a perfect match."
         )
@@ -416,6 +398,13 @@ class MultiScaleWidget(LTracePluginWidget):
         )
         self.distancePowerSpinBox.objectName = "distancePower"
 
+        resetParametersButton = qt.QPushButton("Reset parameters")
+        resetParametersButton.clicked.connect(self.setParametersDefaultValues)
+        resetParametersButton.setSizePolicy(qt.QSizePolicy.Fixed, qt.QSizePolicy.Fixed)
+        parametersResetHBox = qt.QHBoxLayout()
+        parametersResetHBox.addStretch(1)
+        parametersResetHBox.addWidget(resetParametersButton)
+
         parametersLayout.addRow("Number of conditioning points:", self.ncondSpinBox)
         parametersLayout.addRow("Number of realizations:", self.nrealSpinBox)
         parametersLayout.addRow("Number of iterations:", self.maxIterationsSpinBox)
@@ -424,6 +413,7 @@ class MultiScaleWidget(LTracePluginWidget):
         parametersLayout.addRow("Max search radius (mm):", self.maxSearchRadiusSpinBox)
         parametersLayout.addRow("Max distance (normalized):", self.distanceMaxSpinBox)
         parametersLayout.addRow("Distance power:", self.distancePowerSpinBox)
+        parametersLayout.addRow(parametersResetHBox)
 
         outputSection = ctk.ctkCollapsibleButton()
         outputSection.text = "Output"
@@ -534,8 +524,25 @@ class MultiScaleWidget(LTracePluginWidget):
         self.resampleBoxHD.localProgressBar = self.localProgressBar
         self.resampleBoxMask.localProgressBar = self.localProgressBar
 
+        self.setParametersDefaultValues()
+
+    def setParametersDefaultValues(self) -> None:
+        self.ncondSpinBox.setValue(16)
+        self.nrealSpinBox.setValue(cpu_count() - 1)
+        self.maxIterationsSpinBox.setValue(1000)
+        self.rseedSpinBox.setValue(0)
+        self.colocateDimensionComboBox.setCurrentText("X")
+        self.maxSearchRadiusSpinBox.setValue(10000)
+        self.distanceMaxSpinBox.setValue(0)
+        self.distancePowerSpinBox.setValue(0)
+
     def exit(self) -> None:
         helpers.removeTemporaryNodes()
+
+    def onReload(self) -> None:
+        importlib.reload(sys.modules["ltrace.multiscaleLib.multiscaleSingleShotWidget"])
+        importlib.reload(sys.modules["ltrace.multiscaleLib.multiscaleResampleBox"])
+        super().onReload()
 
     def cleanup(self):
         if self.logic:
@@ -677,11 +684,8 @@ class MultiScaleWidget(LTracePluginWidget):
     def onHardDataSourceChange(self, node=None):
         self.enableWrapCheckBox.enabled = False
         self.enableWrapCheckBox.setChecked(qt.Qt.Unchecked)
-        self.updateHardDataResolution(None)
         self.setPreviewValues()
         if node:
-            self.hardDataResolution = np.array(node.GetSpacing())
-            self.updateHardDataResolution(self.hardDataResolution)
             if node.GetImageData().GetDimensions()[1] == 1:
                 self.setPreviewValues(True, node)
                 self.enableWrapCheckBox.setEnabled(True)
@@ -906,13 +910,14 @@ class MultiScaleWidget(LTracePluginWidget):
         # Hard Data
         if self.hardDataWidget.mainInput.currentNode() is not None:
             hardDataReference = None
+            hardDataResolution = self.hardDataWidget.resolutions
             if len(resampledNodes) > 1:
                 hardDataNode = resampledNodes[1]
-                self.hardDataResolution = np.array(hardDataNode.GetSpacing())
+                hardDataResolution = np.array(hardDataNode.GetSpacing())
             else:
                 if isinstance(self.hardDataWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
                     hardDataNode = self.segmentationInputToLabelmap(self.hardDataWidget.mainInput.currentNode(), "_HD")
-                    self.hardDataResolution = np.array(hardDataNode.GetSpacing())
+                    hardDataResolution = np.array(hardDataNode.GetSpacing())
 
                 else:
                     hardDataNode = self.hardDataWidget.mainInput.currentNode()
@@ -923,7 +928,7 @@ class MultiScaleWidget(LTracePluginWidget):
             preprocessing["hardDataVolume"] = hardDataNode
             preprocessing["hardDataReference"] = hardDataReference
             preprocessing["hardDataValues"] = [segment + 1 for segment in self.hardDataWidget.getSelectedSegments()]
-            preprocessing["hardDataResolution"] = self.hardDataResolution
+            preprocessing["hardDataResolution"] = hardDataResolution
 
         # Mask
         elif self.maskWidget.mainInput.currentNode() is not None:
@@ -1045,16 +1050,6 @@ class MultiScaleWidget(LTracePluginWidget):
         helpers.makeNodeTemporary(labelmapVolumeNode.GetDisplayNode().GetColorNode(), hide=True)
         return labelmapVolumeNode
 
-    def updateHardDataResolution(self, spacing):
-        if spacing is not None:
-            self.hardDataResolutionText.setText(f"{spacing[0]:.3f} x {spacing[1]:.3f} x {spacing[2]:.3f} (mm)")
-            self.hardDataResolutionText.show()
-            self.hardDataResolutionLabel.show()
-        else:
-            self.hardDataResolutionText.setText("0 x 0 x 0 (mm)")
-            self.hardDataResolutionText.hide()
-            self.hardDataResolutionLabel.hide()
-
     def getPreviewSegmentationNode(self, node):
         if node.GetImageData().GetDimensions()[1] == 1:
             self.previewSegmentationNode = self.logic.generatePreview(
@@ -1146,7 +1141,6 @@ class MultiScaleWidget(LTracePluginWidget):
             displayNode.SetSegmentOpacity(id, 1 if isVisible else 0)
 
     def listItemChange(self, item, title):
-        self.trainingImageWidget.dimensionsGroup.hide()
         self.checkRunButtonState()
         if item and self.isViewOn and title == self.currentPreview:
             self.onSegmentVisibilityChange(item.text(), item.checkState() == qt.Qt.Checked)

@@ -16,6 +16,7 @@ import slicer
 
 from ltrace.pore_networks.functions_extract import _get_paired_throats_table
 from ltrace.pore_networks.processing.two_phase.two_phase_simulation import TwoPhaseSimulation
+from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
 from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
@@ -357,10 +358,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
         # Reload updated params
         with (self.job_local_path / "simulation_params_dict.json").open("r") as file:
             params = json.load(file)
-        parameters_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
-        parameters_node.SetText(json.dumps(params, indent=4))
-        parameters_node.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
-        folder_tree.CreateItem(root_dir, parameters_node)
+        parameters_node = dict_to_parameter_node(params, root_dir)
 
         def load_and_concat(pattern):
             files = list(self.job_local_path.glob(pattern))

@@ -20,10 +20,6 @@ from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import PressureResultCurves
 
 from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
-from ltrace.pore_networks.simulation_parameters_node import (
-    dataframe_to_parameter_node,
-    parameters_dict_to_dataframe,
-)
 from ltrace.slicer import ui, widgets
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from ltrace.slicer_utils import dataframeFromTable, getResourcePath

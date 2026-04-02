@@ -6,12 +6,14 @@ import ctk
 import pandas as pd
 import qt
 import slicer
+import logging
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
+from ltrace.remote.handlers.PoreNetworkKabsREVHandler import PoreNetworkKabsREVHandler
 
 try:
     from Test.PoreNetworkKabsREVTest import PoreNetworkKabsREVTest
@@ -65,6 +67,15 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
         parametersSection.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
 
         parametersLayout = qt.QFormLayout(parametersSection)
+
+        self.executionTypeLocal = qt.QRadioButton("Local")
+        self.executionTypeLocal.setChecked(True)
+        self.executionTypeRemote = qt.QRadioButton("Remote")
+
+        executionTypeLayout = qt.QHBoxLayout()
+        executionTypeLayout.addWidget(self.executionTypeLocal)
+        executionTypeLayout.addWidget(self.executionTypeRemote)
+        parametersLayout.addRow("Execution type:", executionTypeLayout)
 
         self.fractionsSpinBox = qt.QSpinBox()
         self.fractionsSpinBox.setRange(3, 500)
@@ -174,6 +185,7 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
         input_node = self.__inputSelector.currentNode()
         output_prefix = input_node.GetName() if input_node else ""
         self.__outputPrefixLineEdit.setText(output_prefix)
+        self.mercury_widget.setVolumeNode(input_node)
 
     def __onSolverChanged(self, text):
         self.errorLabel.setVisible(text == "pyflowsolver")
@@ -187,40 +199,53 @@ class PoreNetworkKabsREVWidget(LTracePluginWidget):
             slicer.util.errorDisplay("Please type an output prefix.")
             return
 
-        if self.__inputSelector.currentNode() is None:
+        input_node = self.__inputSelector.currentNode()
+        if input_node is None:
             slicer.util.errorDisplay("Please select an input node.")
             return
 
         self.__applyButton.enabled = False
         self.__cancelButton.enabled = True
 
-        input_node = self.__inputSelector.currentNode()
+        try:
+            mercury_widget_params = self.mercury_widget.getParams(input_node)
+            subres_model_name = mercury_widget_params["subres_model_name"]
+            subres_params = mercury_widget_params["subres_params"]
 
-        mercury_widget_params = self.mercury_widget.getParams(input_node)
-        subres_model_name = mercury_widget_params["subres_model_name"]
-        subres_params = mercury_widget_params["subres_params"]
+            if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
+                subres_params = {i: v.tolist() if hasattr(v, "tolist") else v for i, v in subres_params.items()}
+            mercury_widget_params["subres_params"] = subres_params
 
-        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            subres_params = {i: v.tolist() if hasattr(v, "tolist") else v for i, v in subres_params.items()}
-        mercury_widget_params["subres_params"] = subres_params
+            params = {
+                "solver": self.solverComboBox.currentText,
+                "solver_error": float(self.errorEdit.text),
+                "pressure_drop": float(self.pressureDropFloat.text),
+                "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),  # converts from mPa.s to Pa.s
+                "preconditioner": self.preconditionerComboBox.currentText,
+                "clip_check": self.clipCheck.isChecked(),
+                "clip_value": float(self.clipEdit.text),
+                "number_of_fractions": int(self.fractionsSpinBox.value),
+                "min_fraction": float(self.minFraction.text) / 100.0,
+                "is_multiscale": not input_node.IsA("vtkMRMLLabelMapVolumeNode"),
+            }
+            params.update(mercury_widget_params)
 
-        params = {
-            "solver": self.solverComboBox.currentText,
-            "solver_error": float(self.errorEdit.text),
-            "pressure_drop": float(self.pressureDropFloat.text),
-            "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),  # converts from mPa.s to Pa.s
-            "preconditioner": self.preconditionerComboBox.currentText,
-            "clip_check": self.clipCheck.isChecked(),
-            "clip_value": float(self.clipEdit.text),
-            "number_of_fractions": int(self.fractionsSpinBox.value),
-            "min_fraction": float(self.minFraction.text) / 100.0,
-        }
-
-        params.update(mercury_widget_params)
-
-        self.logic = PoreNetworkKabsREVLogic(self.parent, self.progressBar)
-        self.logic.processFinished.connect(self.__onProcessFinished)
-        self.logic.apply(self.__inputSelector.currentNode(), params, self.__outputPrefixLineEdit.text)
+            if self.executionTypeRemote.isChecked():
+                handler = PoreNetworkKabsREVHandler(input_node.GetID(), params, self.__outputPrefixLineEdit.text)
+                slicer.modules.RemoteServiceInstance.cli.run(
+                    handler,
+                    name=f"PNM Kabs REV: {self.__outputPrefixLineEdit.text}",
+                    job_type="pnmkabsrev",
+                    polling_enabled=True,
+                )
+                self.__onProcessFinished()
+            else:
+                self.logic = PoreNetworkKabsREVLogic(self.parent, self.progressBar)
+                self.logic.processFinished.connect(self.__onProcessFinished)
+                self.logic.apply(input_node, params, self.__outputPrefixLineEdit.text)
+        except Exception as e:
+            logging.error(f"An error occurred: {str(e)}")
+            self.__onProcessFinished()
 
     def __onCancelButtonClicked(self):
         if hasattr(self, "logic") and self.logic:
@@ -282,15 +307,18 @@ class PoreNetworkKabsREVLogic(LTracePluginLogic):
             return
 
         status = caller.GetStatusString()
-        if status in ["Completed", "Cancelled"]:
-            del self.cliNode
-            self.cliNode = None
-            if status == "Completed":
-                self.onFinish()
-            else:
-                folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
-                folderTree.RemoveItem(self.rootDir)
-            self.processFinished.emit()
+        if status in ["Completed", "Cancelled", "Completed with errors"]:
+            try:
+                if status != "Cancelled":
+                    self.onFinish()
+                else:
+                    folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
+                    folderTree.RemoveItem(self.rootDir)
+            except Exception as e:
+                logging.error(f"An error occurred while processing results: {str(e)}")
+            finally:
+                self.cliNode = None
+                self.processFinished.emit()
 
     def onFinish(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()

@@ -10,7 +10,7 @@ import slicer
 
 from ltrace.file_utils import read_csv
 from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
-from ltrace.pore_networks.subres_models import MODEL_DICT, estimate_radius
+from ltrace.pore_networks.subres_models import MODEL_DICT, estimate_radius, estimate_pressure
 from ltrace.pore_networks.subres_models import get_pore_network_volume_data
 from ltrace.pore_networks.subres_models import normalize_psd
 from ltrace.slicer import ui
@@ -36,12 +36,16 @@ SPACING_TO_CUTOFF_RADIUS = 2.0
 
 
 def get_volume_min_spacing_microns(volume_node):
-    scalar_volume_data = get_pore_network_volume_data(volume_node)
-    min_spacing = min(
-        scalar_volume_data["spacing"]["x"],
-        scalar_volume_data["spacing"]["y"],
-        scalar_volume_data["spacing"]["z"],
-    )
+    if volume_node.GetAttribute("x_spacing") is None and hasattr(volume_node, "GetSpacing"):
+        spacing = volume_node.GetSpacing()
+        min_spacing = min(spacing[0], spacing[1], spacing[2])
+    else:
+        scalar_volume_data = get_pore_network_volume_data(volume_node)
+        min_spacing = min(
+            scalar_volume_data["spacing"]["x"],
+            scalar_volume_data["spacing"]["y"],
+            scalar_volume_data["spacing"]["z"],
+        )
     return min_spacing * 1000
 
 
@@ -180,6 +184,11 @@ class SubscaleModelWidget(qt.QWidget):
 
         self.microscale_model_dropdown.currentTextChanged.connect(self._onUnresolvedModelChange)
 
+        self.resolution_limit_label = qt.QLabel("Image resolution limit: N/A")
+        self.resolution_limit_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+
+        formLayout.addRow(self.resolution_limit_label)
+
         subscaleBox.setLayout(formLayout)
         layout.addRow(subscaleBox)
 
@@ -240,6 +249,16 @@ class SubscaleModelWidget(qt.QWidget):
         for widget in self.parameter_widgets.values():
             if hasattr(widget, "set_volume_node"):
                 widget.set_volume_node(volume_node)
+
+        if volume_node:
+            try:
+                min_spacing = get_volume_min_spacing_microns(volume_node)
+                pressure = estimate_pressure(min_spacing / 1000.0)
+                self.resolution_limit_label.text = f"Image resolution limit: {min_spacing:.2f} µm ({pressure:.2f} Pa)"
+            except Exception:
+                self.resolution_limit_label.text = "Image resolution limit: Error"
+        else:
+            self.resolution_limit_label.text = "Image resolution limit: N/A"
 
 
 class FixedRadiusWidget(qt.QWidget):

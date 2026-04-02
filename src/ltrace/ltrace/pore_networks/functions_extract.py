@@ -46,15 +46,33 @@ def geo2spy(pore_dict, throat_dict):
     geo.update(pore_dict)
     geo.update(throat_dict)
 
-    prop_array = [re.split(r"_\d$", key)[0] for key in geo.keys()]
-    prop_dict = {i: prop_array.count(i) for i in prop_array}
-
     spy = {}
-    for prop_name, columns in prop_dict.items():
-        if columns == 1:
-            spy[prop_name] = geo[prop_name]
+    vector_keys = {}
+    scalar_keys = []
+
+    for key in geo.keys():
+        match = re.search(r"(.+)_(\d+)$", key)
+        if match:
+            base = match.group(1)
+            idx = int(match.group(2))
+            if base not in vector_keys:
+                vector_keys[base] = []
+            vector_keys[base].append(idx)
         else:
-            spy[prop_name] = np.stack([geo[f"{prop_name}_{i}"] for i in range(columns)], axis=1)
+            scalar_keys.append(key)
+
+    for base, indices in vector_keys.items():
+        indices.sort()
+        if indices == list(range(len(indices))):
+            spy[base] = np.stack([geo[f"{base}_{i}"] for i in indices], axis=1)
+        else:
+            for i in indices:
+                spy[f"{base}_{i}"] = geo[f"{base}_{i}"]
+
+    for key in scalar_keys:
+        if key in vector_keys and vector_keys[key] == list(range(len(vector_keys[key]))):
+            continue
+        spy[key] = geo[key]
 
     spy["pore.phase1"] = spy["pore.phase"] == 1
     spy["pore.phase2"] = spy["pore.phase"] == 2
@@ -634,37 +652,29 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
     ).sum()
     throat_total_volume = throat_resolved_volume + throat_subscale_volume
 
-    pn_properties["network.input_volume_porosity"] = input_volume_porosity
-    pn_properties["network.input_resolved_porosity"] = input_resolved_porosity
-    pn_properties["network.input_subscale_porosity"] = input_subscale_porosity
+    pn_properties["network.number_of_pores"] = len(pn_properties["pore.all"])
+    pn_properties["network.number_of_throats"] = len(pn_properties["throat.all"])
+
+    pn_properties["network.input_volume_porosity"] = 100 * input_volume_porosity
+    pn_properties["network.input_resolved_porosity"] = 100 * input_resolved_porosity
+    pn_properties["network.input_subscale_porosity"] = 100 * input_subscale_porosity
     pn_properties["network.input_total_volume"] = input_total_volume
     pn_properties["network.voxel_volume"] = voxel_volume
 
+    pn_properties["network.pore_resolved_porosity"] = 100 * pore_resolved_volume / input_total_volume
+    pn_properties["network.pore_subscale_porosity"] = 100 * pore_subscale_volume / input_total_volume
+    pn_properties["network.pore_total_porosity"] = 100 * pore_total_volume / input_total_volume
     pn_properties["network.pore_resolved_volume"] = pore_resolved_volume
     pn_properties["network.pore_subscale_volume"] = pore_subscale_volume
     pn_properties["network.pore_total_volume"] = pore_total_volume
-    pn_properties["network.pore_resolved_porosity"] = pore_resolved_volume / input_total_volume
-    pn_properties["network.pore_subscale_porosity"] = pore_subscale_volume / input_total_volume
-    pn_properties["network.pore_total_porosity"] = pore_total_volume / input_total_volume
 
+    pn_properties["network.throat_resolved_porosity"] = 100 * throat_resolved_volume / input_total_volume
+    pn_properties["network.throat_subscale_porosity"] = 100 * throat_subscale_volume / input_total_volume
+    pn_properties["network.throat_total_porosity"] = 100 * throat_total_volume / input_total_volume
     pn_properties["network.throat_resolved_volume"] = throat_resolved_volume
     pn_properties["network.throat_subscale_volume"] = throat_subscale_volume
     pn_properties["network.throat_total_volume"] = throat_total_volume
-    pn_properties["network.throat_resolved_porosity"] = throat_resolved_volume / input_total_volume
-    pn_properties["network.throat_subscale_porosity"] = throat_subscale_volume / input_total_volume
-    pn_properties["network.throat_total_porosity"] = throat_total_volume / input_total_volume
 
-    areas = get_throat_areas_from_labelmap(labelmap=watershed_image, voxel_size=scale)
-    areas_keys = list(areas.keys())
-    throat_area_full = np.zeros_like(pn_properties["throat.all"], dtype=np.float64) - 1
-    for i in range(len(pn_properties["throat.all"])):
-        left_conn = pn_properties["throat.conns_0"][i]
-        right_conn = pn_properties["throat.conns_1"][i]
-        key = (left_conn, right_conn)
-        if key in areas_keys:
-            throat_area_full[i] = areas[key]
-
-    pn_properties["throat.area_full"] = throat_area_full
     return pn_properties
 
 
@@ -675,6 +685,7 @@ def general_pn_extract(
     watershed_blur=[0.4, 0.8],
     is_multiscale=False,
     force_cpu=False,
+    divs=2,
 ):
     """
     Creates two table nodes describing the pore-network represented by multiphaseNode or by the watershedNode.
@@ -692,6 +703,12 @@ def general_pn_extract(
         developer mode.
     :param porosity_map:
         Numpy array with the porosity map (range 0~100).
+    :param divs: list or int
+        Number of domains each axis will be divided. Options are:
+          - scalar: it will be assigned to all axis.
+          - list: each respective axis will be divided by its
+            corresponding number in the list. For example [2, 3, 4] will
+            divide z, y and x axis to 2, 3, and 4 respectively.
 
     :return:
         Two table nodes describing the pore-network represented by multiphaseNode/watershedNode or False if method if not found or the pore-network
@@ -708,6 +725,7 @@ def general_pn_extract(
 
         multiphase_array = _phases_from_porosity_map(scalar_array)
 
+        _parallelization = {"divs": divs} if divs > 1 else None
         snow_results = snow2(
             phases=multiphase_array,
             porosity_map=scalar_array,
@@ -716,6 +734,7 @@ def general_pn_extract(
             sigma=watershed_blur,
             force_cpu=force_cpu,
             boundary_width=0,
+            parallelization=_parallelization,
         )
         pn_properties = snow_results.network
         watershed_output = snow_results.regions
@@ -774,7 +793,7 @@ def general_pn_extract(
 
     df_pores = pd.DataFrame(pn_pores)
     df_throats = pd.DataFrame(pn_throats)
-    df_network = pd.DataFrame(pn_network, index=[0])
+    df_network = pd.DataFrame([pn_network])
 
     return df_pores, df_throats, df_network, watershed_output
 
@@ -881,7 +900,33 @@ class ExtractionNodesCreator:
         self.visualization = visualization
         self.results = {}
 
-    def create(self):
+        self.network_property_map = {
+            "network.number_of_pores": "Number of Pores",
+            "network.number_of_throats": "Number of Throats",
+            "network.input_volume_porosity": "Input Volume Porosity (%)",
+            "network.input_resolved_porosity": "Input Resolved Porosity (%)",
+            "network.input_subscale_porosity": "Input Subscale Porosity (%)",
+            "network.input_total_volume": "Input Total Volume (mm³)",
+            "network.voxel_volume": "Voxel Volume (mm³)",
+            "network.pore_resolved_porosity": "Pore Resolved Porosity (%)",
+            "network.pore_subscale_porosity": "Pore Subscale Porosity (%)",
+            "network.pore_total_porosity": "Pore Total Porosity (%)",
+            "network.pore_resolved_volume": "Pore Resolved Volume (mm³)",
+            "network.pore_subscale_volume": "Pore Subscale Volume (mm³)",
+            "network.pore_total_volume": "Pore Total Volume (mm³)",
+            "network.throat_resolved_porosity": "Throat Resolved Porosity (%)",
+            "network.throat_subscale_porosity": "Throat Subscale Porosity (%)",
+            "network.throat_total_porosity": "Throat Total Porosity (%)",
+            "network.throat_resolved_volume": "Throat Resolved Volume (mm³)",
+            "network.throat_subscale_volume": "Throat Subscale Volume (mm³)",
+            "network.throat_total_volume": "Throat Total Volume (mm³)",
+        }
+
+    def create(self, parent_folder=None):
+        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+        if parent_folder is None:
+            parent_folder = folderTree.GetSceneItemID()
         required_files = ["pore_network.pkl", "throat_network.pkl", "network.pkl"]
         missing_files = []
 
@@ -895,7 +940,19 @@ class ExtractionNodesCreator:
                 f"The following required pore network files were not found: {', '.join(missing_files)}"
             )
 
-        df_pores, df_throats, df_network = [pd.read_pickle(str(self.cwd / f)) for f in required_files]
+        dict_pores, dict_throats, dict_network_raw = [pd.read_pickle(str(self.cwd / f)) for f in required_files]
+
+        dict_network = {}
+        if not dict_network_raw.empty:
+            record = dict_network_raw.iloc[0]
+            for key, value in record.items():
+                new_key = self.network_property_map.get(key)
+                if new_key:
+                    dict_network[new_key] = value
+
+        df_pores = pd.DataFrame(dict_pores)
+        df_throats = pd.DataFrame(dict_throats)
+        df_network = pd.DataFrame(list(dict_network.items()), columns=["Property", "Value"])
 
         # Handle Watershed Volume
         if os.path.isfile(str(self.cwd / "watershed.npy")):
@@ -927,6 +984,7 @@ class ExtractionNodesCreator:
         spacing = self.metadata["spacing"]
         origin = self.metadata["origin"]
 
+        ijktoras = self.metadata.get("ijktorasmatrix")
         poreOutputTable.AddNodeReferenceID("throat_table", throatOutputTable.GetID())
         poreOutputTable.SetAttribute("x_size", str(bounds[1] - bounds[0]))
         poreOutputTable.SetAttribute("y_size", str(bounds[3] - bounds[2]))
@@ -935,16 +993,15 @@ class ExtractionNodesCreator:
         poreOutputTable.SetAttribute("x_spacing", str(spacing[0]))
         poreOutputTable.SetAttribute("y_spacing", str(spacing[1]))
         poreOutputTable.SetAttribute("z_spacing", str(spacing[2]))
+        if ijktoras is not None:
+            poreOutputTable.SetAttribute("ijktoras", ";".join(str(v) for row in ijktoras for v in row))
 
         if array_watershed is not None:
             poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
             poreOutputTable.AddNodeReferenceID("watershed", output_watershed_volume.GetID())
 
-        ### Move nodes to Subject Hierarchy ###
-        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-
         # Create the specific folder for this extraction
-        currentDir = folderTree.CreateFolderItem(folderTree.GetSceneItemID(), f"{self.prefix}_Pore_Network")
+        currentDir = folderTree.CreateFolderItem(parent_folder, f"{self.prefix}_Pore_Network")
 
         # Helper to move and organize nodes
         for node in [poreOutputTable, throatOutputTable, networkOutputTable]:
@@ -963,7 +1020,7 @@ class ExtractionNodesCreator:
     def __create_tables(self, algorithm_name):
         poreOutputTable = self.__create_table("pore")
         throatOutputTable = self.__create_table("throat")
-        networkOutputTable = self.__create_table("network")
+        networkOutputTable = self.__create_table("summary")
 
         poreOutputTable.SetAttribute("extraction_algorithm", algorithm_name)
         edge_throats = "none" if (algorithm_name == "porespy") else "x"

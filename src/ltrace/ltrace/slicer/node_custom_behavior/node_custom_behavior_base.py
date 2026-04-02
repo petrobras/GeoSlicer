@@ -88,6 +88,7 @@ class NodeCustomBehaviorBase:
         """Wrapper for custom behavior before the save process is done."""
         self._beforeSave()
 
+    @abstractmethod
     def _onNodeAdded(self, node: slicer.vtkMRMLNode) -> None:
         """Abstract method for handling node behavior when a new node of matchin type is added"""
         pass
@@ -99,6 +100,7 @@ class NodeCustomBehaviorBase:
 
         self._onNodeAdded(node=node)
 
+    @abstractmethod
     def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
         """Abstract method for handling node behavior when a new node of matchin type is removed"""
         pass
@@ -109,6 +111,18 @@ class NodeCustomBehaviorBase:
             return
 
         self._onNodeRemoved(node=node)
+
+    @abstractmethod
+    def _onNodeAboutToBeRemoved(self, node: slicer.vtkMRMLNode) -> None:
+        """Abstract method for handling node behavior when a node of matching type is about to be removed"""
+        pass
+
+    def onNodeAboutToBeRemoved(self, **kwargs) -> None:
+        node = kwargs.get("node")
+        if not node:
+            return
+
+        self._onNodeAboutToBeRemoved(node=node)
 
     def updateNodeReference(self) -> None:
         """Update the node's object reference. It changes during node' saving/loading process."""

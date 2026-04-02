@@ -17,6 +17,7 @@ import vtk
 from numba import njit
 
 from ltrace.pore_networks.functions_extract import _get_paired_throats_table
+from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
 from ltrace.slicer import helpers
 from ltrace.slicer.binary_node import createBinaryNode, getBinary
 from ltrace.slicer.node_attributes import TableType
@@ -71,16 +72,38 @@ def readPolydata(filename):
 
 
 def calculateTransformNodeFromVolume(tableNode):
-    origin_attr = tableNode.GetAttribute("origin")
-    origin = [float(val) for val in origin_attr.split(";")]
-
-    transformMatrix = vtk.vtkMatrix4x4()
-    transformMatrix.SetElement(0, 3, origin[0])
-    transformMatrix.SetElement(1, 3, origin[1])
-    transformMatrix.SetElement(2, 3, origin[2])
-
     transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
-    transformNode.SetMatrixTransformToParent(transformMatrix)
+
+    refNode = tableNode.GetNodeReference("PoresLabelMap")
+    if refNode:
+        vtkTransformationMatrix = vtk.vtkMatrix4x4()
+        refNode.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
+        origin = refNode.GetOrigin()
+        for i in range(3):
+            vtkTransformationMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
+        return transformNode
+
+    ijktoras_attr = tableNode.GetAttribute("ijktoras")
+    origin_attr = tableNode.GetAttribute("origin")
+    if ijktoras_attr and origin_attr:
+        values = [float(v) for v in ijktoras_attr.split(";")]
+        transformMatrix = vtk.vtkMatrix4x4()
+        for row in range(3):
+            for col in range(4):
+                transformMatrix.SetElement(row, col, values[row * 4 + col])
+        origin = [float(v) for v in origin_attr.split(";")]
+        for i in range(3):
+            transformMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(transformMatrix)
+    elif origin_attr:
+        origin = [float(v) for v in origin_attr.split(";")]
+        transformMatrix = vtk.vtkMatrix4x4()
+        for i in range(3):
+            transformMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(transformMatrix)
+    else:
+        logging.warning(f"No spatial reference found for {tableNode.GetName()}. Using identity transform.")
 
     return transformNode
 
@@ -182,10 +205,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             )
         folderTree.SetItemExpanded(self.rootDir, False)
 
-        parametersNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
-        parametersNode.SetText(json.dumps(self.params, indent=4))
-        parametersNode.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
-        folderTree.CreateItem(self.rootDir, parametersNode)
+        dict_to_parameter_node(self.params, self.rootDir)
 
         if self.params["simulation type"] == ONE_ANGLE:
             self.createTableNodes()
@@ -295,10 +315,10 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
 
             boundingbox = {
                 "xmin": df_pores["pore.coords_0"].min(),
-                "xmax": df_pores["pore.coords_1"].max(),
-                "ymin": df_pores["pore.coords_2"].min(),
-                "ymax": df_pores["pore.coords_0"].max(),
-                "zmin": df_pores["pore.coords_1"].min(),
+                "xmax": df_pores["pore.coords_0"].max(),
+                "ymin": df_pores["pore.coords_1"].min(),
+                "ymax": df_pores["pore.coords_1"].max(),
+                "zmin": df_pores["pore.coords_2"].min(),
                 "zmax": df_pores["pore.coords_2"].max(),
             }  # mm
             bb_sizes = {i: 0.1 * (boundingbox[f"{i}max"] - boundingbox[f"{i}min"]) for i in "xyz"}
@@ -360,6 +380,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
 
         minmax = return_params["minmax"]
         number_surface_points = len(minmax)
+        transformNode = calculateTransformNodeFromVolume(self.inputTable)
         for i in range(number_surface_points):
             index = minmax[i]["index"]
             subDir = folderTree.CreateFolderItem(visualization_dir, f"{index} folder")
@@ -375,6 +396,8 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
                 model_node[prefix] = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", name)
                 model_node[prefix].SetAndObservePolyData(polydata)
                 model_node[prefix].CreateDefaultDisplayNodes()
+                model_node[prefix].SetAndObserveTransformNodeID(transformNode.GetID())
+                slicer.vtkSlicerTransformLogic().hardenTransform(model_node[prefix])
                 model_display = model_node[prefix].GetDisplayNode()
                 model_node[prefix].SetDisplayVisibility(True)
                 model_display.SetScalarVisibility(True)
@@ -398,6 +421,8 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
 
             model_node["pore_pressure"].SetDisplayVisibility(False)
             model_node["throat_flow_rate"].SetDisplayVisibility(False)
+
+        slicer.mrmlScene.RemoveNode(transformNode)
 
     def createVisualizationMultiAngleSphereModels(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -469,11 +494,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         _ = folderTree.CreateItem(sphere_dir, plane_node)
         _ = folderTree.CreateItem(sphere_dir, arrow_node)
 
-    def _create_vector_map(self, df_pores, df_throats, sizes, IJKTORAS=(-1, -1, 1)):
-        if sizes:
-            offset = [10 * sizes[axis] if IJKTORAS[i] < 0 else 0 for i, axis in enumerate(["x", "y", "z"])]
-        else:
-            offset = [0 for i, axis in enumerate(["x", "y", "z"])]
+    def _create_vector_map(self, df_pores, df_throats, sizes):
 
         points = vtk.vtkPoints()
 
@@ -490,12 +511,12 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             i0 = df_throats["throat.conns_0"][i]
             i1 = df_throats["throat.conns_1"][i]
             flow = df_throats["throat.flow"][i]
-            x0 = df_pores["pore.coords_0"][i0] * IJKTORAS[0] + offset[0]
-            y0 = df_pores["pore.coords_1"][i0] * IJKTORAS[1] + offset[1]
-            z0 = df_pores["pore.coords_2"][i0] * IJKTORAS[2] + offset[2]
-            x1 = df_pores["pore.coords_0"][i1] * IJKTORAS[0] + offset[0]
-            y1 = df_pores["pore.coords_1"][i1] * IJKTORAS[1] + offset[1]
-            z1 = df_pores["pore.coords_2"][i1] * IJKTORAS[2] + offset[2]
+            x0 = df_pores["pore.coords_0"][i0]
+            y0 = df_pores["pore.coords_1"][i0]
+            z0 = df_pores["pore.coords_2"][i0]
+            x1 = df_pores["pore.coords_0"][i1]
+            y1 = df_pores["pore.coords_1"][i1]
+            z1 = df_pores["pore.coords_2"][i1]
             xd = x1 - x0
             yd = y1 - y0
             zd = z1 - z0
@@ -555,12 +576,12 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             i0 = df_throats["throat.conns_0"][i]
             i1 = df_throats["throat.conns_1"][i]
             flow = df_throats["throat.flow"][i]
-            x0 = df_pores["pore.coords_0"][i0] * IJKTORAS[0] + offset[0]
-            y0 = df_pores["pore.coords_1"][i0] * IJKTORAS[1] + offset[1]
-            z0 = df_pores["pore.coords_2"][i0] * IJKTORAS[2] + offset[2]
-            x1 = df_pores["pore.coords_0"][i1] * IJKTORAS[0] + offset[0]
-            y1 = df_pores["pore.coords_1"][i1] * IJKTORAS[1] + offset[1]
-            z1 = df_pores["pore.coords_2"][i1] * IJKTORAS[2] + offset[2]
+            x0 = df_pores["pore.coords_0"][i0]
+            y0 = df_pores["pore.coords_1"][i0]
+            z0 = df_pores["pore.coords_2"][i0]
+            x1 = df_pores["pore.coords_0"][i1]
+            y1 = df_pores["pore.coords_1"][i1]
+            z1 = df_pores["pore.coords_2"][i1]
             xd = x1 - x0
             yd = y1 - y0
             zd = z1 - z0
@@ -737,10 +758,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     with open(str(self.cwd / "simulation_params_dict.json"), "r") as f:
                         self.params = json.load(f)
 
-                    parametersNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
-                    parametersNode.SetText(json.dumps(self.params, indent=4))
-                    parametersNode.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
-                    folderTree.CreateItem(self.rootDir, parametersNode)
+                    dict_to_parameter_node(self.params, self.rootDir)
 
                     krelResultsTableNode = createTableNode("Krel_results", "krel_simulation_results")
                     self.krelResultsTableNodeId = krelResultsTableNode.GetID()

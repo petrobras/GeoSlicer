@@ -244,3 +244,35 @@ class SlurmJobStatusMixin:
 
     def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: list):
         raise NotImplementedError("Subclasses must implement _post_sacct_progress method")
+
+
+def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], use_gpu=False, time=None):
+    python_calls = []
+    for python_cmd in python_cmd_list:
+        python_calls.append("--cmd '" + python_cmd + "'")
+    for cli_cmd in cli_cmd_list:
+        python_calls.append("--cli '" + cli_cmd + "'")
+    chained_cmds = " ".join(python_calls)
+
+    parameters_list = []
+    if use_gpu:
+        parameters_list.append("--gpu 1")
+    if time is not None:
+        parameters_list.append(f'--time "{time}"')
+    chained_parameters = " ".join(parameters_list)
+
+    main_cmd = (
+        "RPS_DIR='/atena/users/g575/containers/geoslicer'; "
+        f"bash $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif {chained_parameters} "
+        f"{chained_cmds}"
+    )
+
+    return main_cmd
+
+
+def get_job_cmd(caller, uid, main_cmd, job_remote_path):
+    opening_command = caller.jobs[uid].host.opening_command
+    full_cmd = " && ".join(
+        command for command in [opening_command, rf"cd {job_remote_path}", main_cmd] if len(command) > 0
+    )
+    return full_cmd

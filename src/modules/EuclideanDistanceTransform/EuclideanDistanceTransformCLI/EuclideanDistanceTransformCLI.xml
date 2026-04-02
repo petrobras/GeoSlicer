@@ -9,7 +9,6 @@
       <longflag>inputVolume</longflag>
       <label>Input Volume</label>
       <channel>input</channel>
-      <index>0</index>
       <description>Input binary volume.</description>
     </image>
     <image type="scalar">
@@ -17,7 +16,6 @@
       <longflag>outputVolume</longflag>
       <label>Output Volume</label>
       <channel>output</channel>
-      <index>1</index>
       <description>Output distance map volume.</description>
     </image>
   </parameters>

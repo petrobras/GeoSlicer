@@ -32,6 +32,13 @@ from ltrace.pore_networks.visualization_model import generate_model_variable_sca
 from ltrace.slicer.cli_utils import progressUpdate
 
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
 def writeDataFrame(df, path):
     df.to_pickle(str(path))
 
@@ -59,8 +66,6 @@ def onePhase(args, params):
 
     flow_array = np.zeros((1, 3), dtype="float")
     permeability_array = np.zeros((1, 3), dtype="float")
-
-    ijktoras = params.get("ijktoras", (-1, -1, 1))
 
     bb_sizes = {}
     for axis_name, axis_i in (("x", 0), ("y", 1), ("z", 2)):
@@ -147,7 +152,6 @@ def onePhase(args, params):
                 bb_sizes,
                 pore_diameters=pn_pores["pore.inscribed_diameter"],
                 throat_diameters=pn_throats["throat.equivalent_diameter"],
-                IJKTORAS=ijktoras,
             )
 
             writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
@@ -162,7 +166,7 @@ def onePhase(args, params):
                 f"pore.{in_face}"
             ].astype(int)
             border_pores_model_node, null_throats_model_node, _, _ = create_flow_model(
-                perm.project, pore_values, throat_values, bb_sizes, IJKTORAS=ijktoras
+                perm.project, pore_values, throat_values, bb_sizes
             )
             del null_throats_model_node
             writePolydata(border_pores_model_node, f"{args.tempDir}/border_pores_{inlet}_{outlet}.vtk")
@@ -242,15 +246,18 @@ def onePhaseMultiAngle(args, params):
     for counter, i in enumerate(range(number_surface_points)):
         px, py, pz = surface_points[i]
 
+        network_vec = (px, py, pz)
+        network_center = (dx, dy, dz)
+
         pore_network["pore.xmax"] = points_are_below_plane(
             pore_network["pore.coords"],
-            (px + dx, py + dy, pz + dz),
-            (-px, -py, -pz),
+            np.array(network_vec) + np.array(network_center),
+            -np.array(network_vec),
         )
         pore_network["pore.xmin"] = points_are_below_plane(
             pore_network["pore.coords"],
-            (-px + dx, -py + dy, -pz + dz),
-            (px, py, pz),
+            -np.array(network_vec) + np.array(network_center),
+            np.array(network_vec),
         )
 
         """
@@ -338,6 +345,8 @@ def twoPhaseSensibilityTest(args, params):
 
     with open(cwd / "throat_network.pkl", "rb") as f:
         throat_network = pickle.load(f)
+
+    pore_network = geo2spy(pore_network, throat_network)
 
     subradius_function = get_subres_function(pore_network, params)
 
@@ -437,7 +446,7 @@ def twoPhaseSensibilityTest(args, params):
         else:
             params["saturation_steps"] = saturation_steps_list
         with open(str(cwd / "simulation_params_dict.json"), "w") as file:
-            json.dump(params, file)
+            json.dump(params, file, cls=NumpyEncoder)
 
 
 def simulate_mercury(args, params):

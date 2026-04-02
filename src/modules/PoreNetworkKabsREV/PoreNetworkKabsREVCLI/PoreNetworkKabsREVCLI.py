@@ -7,14 +7,18 @@ from __future__ import print_function
 
 import slicer
 
+import os
 import json
 import logging
 import re
 from pathlib import Path
+import copy
 
 import mrml
 import numpy as np
 import pandas as pd
+
+from dask.distributed import Client, LocalCluster, as_completed
 
 from ltrace.pore_networks.functions_extract import general_pn_extract
 from ltrace.pore_networks.functions_simulation import get_flow_rate, single_phase_permeability
@@ -67,7 +71,7 @@ def crop_volume(array, size, translation=(0, 0, 0), is_labelmap=False):
         int(min(shape[2], center[2] + size[2] // 2)) + translation[2],
     )
 
-    cropped_array = array[zmin:zmax, ymin:ymax, xmin:xmax]
+    cropped_array = array[zmin:zmax, ymin:ymax, xmin:xmax].copy()
 
     return cropped_array
 
@@ -82,6 +86,110 @@ def readFrom(volumeFile, builder):
 
 def writeDataFrame(df, path):
     df.to_pickle(str(path))
+
+
+def process_chunk(args, volume_array=None):
+    length_fraction, translation, size, params, scale, directions, in_faces, out_faces = args
+    params = copy.deepcopy(params)
+
+    full_array = volume_array
+
+    results = {ax: [] for ax in directions}
+
+    cropped_volume = crop_volume(full_array, size, translation=translation, is_labelmap=not params["is_multiscale"])
+
+    if params["is_multiscale"]:
+        watershed_blur = {1: 0.1, 2: 0.1}
+        extract_result = general_pn_extract(
+            scalar_array=cropped_volume,
+            label_array=None,
+            watershed_blur=watershed_blur,
+            force_cpu=True,
+            is_multiscale=True,
+            scale=scale,
+            divs=1,
+        )
+    else:
+        extract_result = general_pn_extract(
+            scalar_array=None,
+            label_array=cropped_volume,
+            force_cpu=True,
+            is_multiscale=False,
+            scale=scale,
+            divs=1,
+        )
+
+    pores_df, throats_df, network_df, _ = extract_result
+
+    if pores_df.empty:
+        return results
+
+    pore_network = dfs2spy(pores_df, throats_df)
+
+    x_size = scale[0] * cropped_volume.shape[0]
+    y_size = scale[1] * cropped_volume.shape[1]
+    z_size = scale[2] * cropped_volume.shape[2]
+
+    params["scalar_volume_data"] = {}
+    params["scalar_volume_data"]["sizes"] = {
+        "x": x_size,
+        "y": y_size,
+        "z": z_size,
+    }  # In mm
+    params["scalar_volume_data"]["spacing"] = {
+        "x": scale[0],
+        "y": scale[1],
+        "z": scale[2],
+    }
+    sizes_product = x_size * y_size * z_size
+    subres_func = get_subres_function(pore_network, params)
+
+    volume_porosity = network_df["network.input_volume_porosity"][0]
+    network_porosity = network_df["network.pore_total_porosity"][0]
+
+    for inlet, outlet in ((0, 0), (1, 1), (2, 2)):
+        in_face = in_faces[inlet]
+        out_face = out_faces[outlet]
+
+        try:
+            perm, pn_pores, pn_throats = single_phase_permeability(
+                pore_network,
+                in_face,
+                out_face,
+                subresolution_function=subres_func,
+                subres_shape_factor=params["subres_shape_factor"],
+                solver=params["solver"],
+                target_error=params["solver_error"],
+                preconditioner=params["preconditioner"],
+                clip_check=params["clip_check"],
+                clip_value=params["clip_value"],
+                coord_limits=None,
+            )
+        except Exception:
+            continue
+
+        if perm == 0:
+            continue
+
+        length = 0.1 * params["scalar_volume_data"]["sizes"][in_faces[2 - inlet][0]]  # cm
+        mu = params["fluid_viscosity"]  # Pa*s
+        deltaP = params["pressure_drop"]  # Pa
+        flow_rate = get_flow_rate(pn_pores, pn_throats, viscosity=mu, pressure_drop=deltaP) / 1000  # cm^3/s
+        area = 0.1**3 * sizes_product / length  # cm^2
+        permeability = (flow_rate / area) * (mu * length / deltaP)  # cm^2
+
+        results[directions[inlet]].append(
+            (
+                100 * length_fraction,  # %
+                10 * length,  # mm
+                100 * area,  # mm^2
+                flow_rate,  # cm^3/s
+                permeability * 1.01325e11,  # mD
+                volume_porosity,  # %
+                network_porosity,  # %
+            )
+        )
+    return results
 
 
 def KabsREV(args, params):
@@ -100,10 +208,14 @@ def KabsREV(args, params):
 
     image_data = volume.GetImageData()
     dims = image_data.GetDimensions()
-    full_array = slicer.util.arrayFromVolume(volume)
+
+    volume_array = slicer.util.arrayFromVolume(volume).copy()
+
     scale = volume.GetSpacing()[::-1]
 
     length_fractions = np.linspace(params["min_fraction"], 1.00, params["number_of_fractions"])
+
+    tasks = []
     for idx, length_fraction in enumerate(length_fractions):
         size = [int(length_fraction * d) for d in dims]
 
@@ -122,102 +234,43 @@ def KabsREV(args, params):
             translations = [(0, 0, 0)]
 
         for translation in translations:
-            cropped_volume = crop_volume(
-                full_array, size, translation=translation, is_labelmap=not params["is_multiscale"]
-            )
+            tasks.append((length_fraction, translation, size, params, scale, directions, in_faces, out_faces))
 
-            # try:
-            if params["is_multiscale"]:
-                watershed_blur = {1: 0.1, 2: 0.1}
-                extract_result = general_pn_extract(
-                    scalar_array=cropped_volume,
-                    label_array=None,
-                    watershed_blur=watershed_blur,
-                    force_cpu=True,
-                    is_multiscale=True,
-                    scale=scale,
-                )
-            else:
-                extract_result = general_pn_extract(
-                    scalar_array=None,
-                    label_array=cropped_volume,
-                    force_cpu=True,
-                    is_multiscale=False,
-                    scale=scale,
-                )
-            # except Exception as err:
-            #    print(Exception, err)
+    total_tasks = len(tasks)
+    completed_tasks = 0
 
-            pores_df, throats_df, network_df, _ = extract_result
+    cpu_count = os.cpu_count() or 1
+    # Estimate memory per task using the same factor as PoreNetworkExtractor
+    BASE_MEMORY_USAGE_FACTOR = 400
+    MEMORY_LIMIT_BYTES = 8 * 1024**3  # 8 GB conservative per-worker limit
+    estimated_bytes_per_task = volume_array.nbytes * BASE_MEMORY_USAGE_FACTOR
+    n_workers_by_memory = max(1, int(MEMORY_LIMIT_BYTES / estimated_bytes_per_task))
+    n_workers = max(1, min(cpu_count // 2, n_workers_by_memory))
+    logging.info(f"Starting Dask client with cpu_count={cpu_count}, n_workers={n_workers}")
+    cluster = LocalCluster(
+        processes=True,
+        threads_per_worker=1,
+        n_workers=n_workers,
+        host="127.0.0.1",
+    )
+    client = Client(cluster)
+    volume_future = client.scatter(volume_array, broadcast=True)
 
-            if pores_df.empty:
-                continue
+    progressUpdate(value=0.1)
 
-            pore_network = dfs2spy(pores_df, throats_df)
+    futures = client.map(process_chunk, tasks, volume_array=volume_future)
 
-            x_size = scale[0] * cropped_volume.shape[0]
-            y_size = scale[1] * cropped_volume.shape[1]
-            z_size = scale[2] * cropped_volume.shape[2]
+    for _ in as_completed(futures):
+        completed_tasks += 1
+        progressUpdate(value=(0.1 + 0.8 * completed_tasks / total_tasks))
 
-            params["scalar_volume_data"] = {}
-            params["scalar_volume_data"]["sizes"] = {
-                "x": x_size,
-                "y": y_size,
-                "z": z_size,
-            }  # In mm
-            params["scalar_volume_data"]["spacing"] = {
-                "x": scale[0],
-                "y": scale[1],
-                "z": scale[2],
-            }
-            sizes_product = x_size * y_size * z_size
-            subres_func = get_subres_function(pore_network, params)
+    results = client.gather(futures)
 
-            volume_porosity = 100 * network_df["network.input_volume_porosity"][0]
-            network_porosity = 100 * network_df["network.pore_total_porosity"][0]
+    for result in results:
+        for direction, res_list in result.items():
+            permeabilities[direction].extend(res_list)
 
-            progressUpdate(value=(0.1 + 0.8 * idx / len(length_fractions)))
-
-            for inlet, outlet in ((0, 0), (1, 1), (2, 2)):
-                in_face = in_faces[inlet]
-                out_face = out_faces[outlet]
-                try:
-                    perm, pn_pores, pn_throats = single_phase_permeability(
-                        pore_network,
-                        in_face,
-                        out_face,
-                        subresolution_function=subres_func,
-                        subres_shape_factor=params["subres_shape_factor"],
-                        solver=params["solver"],
-                        target_error=params["solver_error"],
-                        preconditioner=params["preconditioner"],
-                        clip_check=params["clip_check"],
-                        clip_value=params["clip_value"],
-                        coord_limits=None,
-                    )
-                except:
-                    continue
-
-                if perm == 0:
-                    continue
-
-                length = 0.1 * params["scalar_volume_data"]["sizes"][in_faces[2 - inlet][0]]  # cm
-                mu = params["fluid_viscosity"]  # Pa*s
-                deltaP = params["pressure_drop"]  # Pa
-                flow_rate = get_flow_rate(pn_pores, pn_throats, viscosity=mu, pressure_drop=deltaP) / 1000  # cm^3/s
-                area = 0.1**3 * sizes_product / length  # cm^2
-                permeability = (flow_rate / area) * (mu * length / deltaP)  # cm^2
-                permeabilities[directions[inlet]].append(
-                    (
-                        100 * length_fraction,  # %
-                        10 * length,  # mm
-                        100 * area,  # mm^2
-                        flow_rate,  # cm^3/s
-                        permeability * 1.01325e11,  # mD
-                        volume_porosity,  # %
-                        network_porosity,  # %
-                    )
-                )
+    client.close()
 
     for i in directions:
         df = pd.DataFrame(
@@ -232,7 +285,9 @@ def KabsREV(args, params):
                 "network porosity (%)",
             ],
         )
-        df["normalized permeability"] = df["permeability (mD)"] / df["permeability (mD)"].iloc[-1]
+        if not df.empty and not df["permeability (mD)"].empty:
+            df["normalized permeability"] = df["permeability (mD)"] / df["permeability (mD)"].iloc[-1]
+
         writeDataFrame(df, cwd / f"kabs_rev_{i}.pd")
 
 

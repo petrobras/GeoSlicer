@@ -49,6 +49,7 @@ class NodeCustomBehaviorManager:
                 ),
                 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, self.__onNodeAdded),
                 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeRemovedEvent, self.__onNodeRemoved),
+                slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAboutToBeRemovedEvent, self.__onNodeAboutToBeRemoved),
             ]
         )
 
@@ -120,6 +121,24 @@ class NodeCustomBehaviorManager:
                 continue
 
             customBehavior.onNodeRemoved(node=callData)
+
+    @vtk.calldata_type(vtk.VTK_OBJECT)
+    def __onNodeAboutToBeRemoved(self, caller: object, eventId: object, callData: vtk.vtkObject):
+        """Handles node's about to be removed event."""
+        if callData is None:
+            return
+
+        if not self.__isValidBehaviorNode(callData):
+            return
+
+        for customBehavior in self.__getNodeCustomBehaviorsByNode(callData):
+            if not hasattr(customBehavior, "onNodeAboutToBeRemoved"):
+                logging.error(
+                    f"NodeCustomBehaviorManager: Invalid method 'onNodeAboutToBeRemoved' for custom behavior {customBehavior.__class__.__name__}"
+                )
+                continue
+
+            customBehavior.onNodeAboutToBeRemoved(node=callData)
 
     def __isValidBehaviorNode(self, node):
         return not issubclass(

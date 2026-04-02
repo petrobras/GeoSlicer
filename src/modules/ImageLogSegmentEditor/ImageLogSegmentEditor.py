@@ -4,6 +4,9 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
+import importlib
+import sys
+
 from ltrace.slicer_utils import *
 from ltrace.slicer.node_attributes import NodeEnvironment
 
@@ -55,9 +58,13 @@ class ImageLogSegmentEditorWidget(LTracePluginWidget):
         self.segmentEditorWidget.unorderedEffectsVisible = False
         self.segmentEditorWidget.setAutoShowSourceVolumeNode(False)
         self.segmentEditorWidget.findChild(ctk.ctkMenuButton, "Show3DButton").setVisible(False)
-        self.segmentEditorWidget.segmentationNodeChanged.connect(self.segmentationNodeOrSourceVolumeNodeChanged)
-        self.segmentEditorWidget.sourceVolumeNodeChanged.connect(self.segmentationNodeOrSourceVolumeNodeChanged)
+        self.segmentEditorWidget.segmentationNodeChanged.connect(self.onSegmentationNodeChanged)
         self.segmentEditorWidget.sourceVolumeNodeChanged.connect(self.onSourceVolumeNodeChanged)
+
+        self.segmentationComboBox = self.segmentEditorWidget.findChild(
+            slicer.qMRMLNodeComboBox, "SegmentationNodeComboBox"
+        )
+
         formLayout.addWidget(self.segmentEditorWidget)
 
         self.layout.addStretch()
@@ -83,9 +90,13 @@ class ImageLogSegmentEditorWidget(LTracePluginWidget):
             segmentationNode.SetAttribute("ImageLogSegmentation", "True")
         self.logic.imageLogDataLogic.segmentationNodeOrSourceVolumeNodeChanged(segmentationNode, sourceVolumeNode)
 
+    def onSegmentationNodeChanged(self, node):
+        self.segmentationNodeOrSourceVolumeNodeChanged()
+
     def onSourceVolumeNodeChanged(self, node):
         colorSupport = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureEffects(colorSupport=colorSupport)
+        self.segmentationNodeOrSourceVolumeNodeChanged()
 
     def configureEffects(self, colorSupport=False):
         effects = [
@@ -137,6 +148,10 @@ class ImageLogSegmentEditorWidget(LTracePluginWidget):
         self.customizedSegmentEditorWidget.cleanup()
         self.logic.imageLogDataLogic = None
         del self.logic
+
+    def onReload(self):
+        importlib.reload(sys.modules["ltrace.slicer.widget.clone_and_rename"])
+        super().onReload()
 
 
 class ImageLogSegmentEditorLogic(LTracePluginLogic):

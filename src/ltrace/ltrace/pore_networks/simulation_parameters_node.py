@@ -1,6 +1,7 @@
 import json
 import re
 
+import numpy as np
 import pandas as pd
 import slicer
 
@@ -12,12 +13,6 @@ from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
 def parameter_node_to_dict(parameterNode):
     parameters_dict = json.loads(parameterNode.GetText())
     return parameters_dict
-
-
-def dict_to_parameter_node(parameter_dict, node_name, parent_node=None, update_current_node=False):
-    return dataframe_to_parameter_node(
-        parameters_dict_to_dataframe(parameter_dict), node_name, parent_node, update_current_node
-    )
 
 
 def parameters_dict_to_dataframe(parameter_dict: dict) -> pd.DataFrame:
@@ -42,14 +37,31 @@ def parameters_dict_to_dataframe(parameter_dict: dict) -> pd.DataFrame:
     return df
 
 
+def __to_serializable_type(value):
+    if isinstance(value, np.int64):
+        return int(value)
+    else:
+        return value
+
+
 def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None, update_current_node=False):
+    parameter_dict = {}
+    for row_item in input_values_df.iterrows():
+        _, row_data = row_item
+        parameter_dict[row_data[0]] = {
+            "start": __to_serializable_type(row_data.iloc[1]),
+            "stop": __to_serializable_type(row_data.iloc[2]),
+            "steps": __to_serializable_type(row_data.iloc[3]),
+        }
+    return save_dict_to_parameter_node(parameter_dict, node_name, parent_node, update_current_node)
+
+
+def save_dict_to_parameter_node(input_values_json, node_name, parent_node=None, update_current_node=False):
     if update_current_node:
         slicer.mrmlScene.RemoveNode(parent_node)
         slicer.app.processEvents()
 
-    parameterNode = dataFrameToTableNode(input_values_df)
     newParameterNodeName = slicer.mrmlScene.GenerateUniqueName(node_name) if not update_current_node else node_name
-    parameterNode.SetName(newParameterNodeName)
     subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     if parent_node:
         itemTreeId = subjectHierarchyNode.GetItemByDataNode(parent_node)
@@ -59,6 +71,15 @@ def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None, up
             parentItemId = newParentItemId
     else:
         parentItemId = subjectHierarchyNode.GetSceneItemID()
-    subjectHierarchyNode.CreateItem(parentItemId, parameterNode)
-    parameterNode.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
+    parameterNode = dict_to_parameter_node(input_values_json, parentItemId, newParameterNodeName)
     return parameterNode
+
+
+def dict_to_parameter_node(parameter_dict, parent_dir=None, node_name="simulation_parameters"):
+    parameters_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", node_name)
+    parameters_node.SetText(json.dumps(parameter_dict, indent=4))
+    parameters_node.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
+
+    folder_tree = slicer.mrmlScene.GetSubjectHierarchyNode()
+    folder_tree.CreateItem(parent_dir, parameters_node)
+    return parameters_node

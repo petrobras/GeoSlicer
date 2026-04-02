@@ -9,9 +9,11 @@ import qt
 import slicer
 from natsort import natsorted
 
-from ltrace.slicer.helpers import getSegmentList, createLabelmapInput
+from ltrace.slicer.helpers import getSegmentList, createLabelmapInput, svgToQIcon
 from ltrace.slicer.microct import loadPCRAsTextNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+
+from ltrace.slicer_utils import getResourcePath
 
 
 def volumeInput(onChange=None, hasNone=False, nodeTypes=None, onActivation=None):
@@ -865,6 +867,18 @@ class ClickableLabel(qt.QLabel):
     def mousePressEvent(self, event):
         self.clicked.emit()
 
+    @classmethod
+    def flatSvgIconButton(cls, iconName, tooltip=None, onClick=None, iconSize=(16, 16)):
+        icon = svgToQIcon((getResourcePath("Icons") / "svg" / f"{iconName}.svg").as_posix()).pixmap(qt.QSize(*iconSize))
+
+        button = cls()
+        button.setPixmap(icon)
+        button.setToolTip(tooltip)
+        button.setCursor(qt.Qt.PointingHandCursor)
+        button.clicked.connect(onClick)
+        button.objectName = f"{iconName} Button"
+        return button
+
 
 def LineSeparator():
     line = qt.QFrame()
@@ -873,22 +887,32 @@ def LineSeparator():
     return line
 
 
-def LineSeparatorWithText(text):
+def LineSeparatorWithText(text, alignment=qt.Qt.AlignCenter):
     linetagged = qt.QFrame()
     layout = qt.QHBoxLayout(linetagged)
-
-    lineBefore = LineSeparator()
-    lineBefore.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
-    lineAfter = LineSeparator()
-    lineAfter.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
 
     label = qt.QLabel(text)
     label.setStyleSheet("color: gray; margin: 8px;")
     label.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
 
-    layout.addWidget(lineBefore)
-    layout.addWidget(label)
-    layout.addWidget(lineAfter)
+    if alignment == qt.Qt.AlignLeft:
+        lineAfter = LineSeparator()
+        lineAfter.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+        layout.addWidget(label)
+        layout.addWidget(lineAfter)
+    elif alignment == qt.Qt.AlignRight:
+        lineBefore = LineSeparator()
+        lineBefore.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+        layout.addWidget(lineBefore)
+        layout.addWidget(label)
+    else:
+        lineBefore = LineSeparator()
+        lineBefore.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+        lineAfter = LineSeparator()
+        lineAfter.setSizePolicy(qt.QSizePolicy.MinimumExpanding, qt.QSizePolicy.Fixed)
+        layout.addWidget(lineBefore)
+        layout.addWidget(label)
+        layout.addWidget(lineAfter)
 
     return linetagged
 

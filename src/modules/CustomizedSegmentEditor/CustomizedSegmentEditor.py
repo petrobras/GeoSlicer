@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -12,8 +13,9 @@ from slicer.util import VTKObservationMixin
 from CustomizedEffects.Margin import SegmentEditorMarginEffect
 from CustomizedEffects.Threshold import SegmentEditorThresholdEffect
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
-from ltrace.slicer import helpers
+from ltrace.slicer import helpers, ui
 from ltrace.slicer.node_attributes import NodeEnvironment
+from ltrace.slicer.widget.clone_and_rename import requestName, cloneNode
 
 # Checks if closed source code is available
 try:
@@ -90,6 +92,18 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         ### self.selectParameterNode()
         self.editor.setMRMLScene(slicer.mrmlScene)
 
+        self.copyAsButton = ui.ClickableLabel.flatSvgIconButton(
+            "Copy",
+            tooltip="Clone the current selected segmentation as a new segmentation and set it as current segmentation",
+            onClick=lambda: self.askNewNameAndClone(
+                self.segmentationNodeComboBox.currentNodeID, self.sourceVolumeNodeComboBox.currentNodeID
+            ),
+        )
+
+        copyButtonLayout = qt.QHBoxLayout()
+        copyButtonLayout.setContentsMargins(6, 0, 0, 0)
+        copyButtonLayout.addWidget(self.copyAsButton)
+
         # Observe editor effect registrations to make sure that any effects that are registered
         # later will show up in the segment editor widget. For example, if Segment Editor is set
         # as startup module, additional effects are registered after the segment editor widget is created.
@@ -115,7 +129,10 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.sourceVolumeNodeComboBox.currentNodeChanged.connect(self.onSourceVolumeNodeChanged)
 
         self.segmentationNodeComboBox = self.editor.findChild(slicer.qMRMLNodeComboBox, "SegmentationNodeComboBox")
+        self.segmentationNodeComboBox.currentNodeChanged.connect(self.onSegmentationNodeChanged)
         self.segmentationNodeComboBox.removeEnabled = False
+
+        self.segmentationNodeComboBox.layout().addLayout(copyButtonLayout)
 
         switchToSegmentationsButton = self.editor.findChild(qt.QToolButton, "SwitchToSegmentationsButton")
         switchToSegmentationsButton.setVisible(False)
@@ -128,6 +145,28 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndImportEvent, self.onSceneEndImport)
         self.activateEditorRegisteredCallback()
+
+    def askNewNameAndClone(self, nodeID, sourceNodeID):
+        sourceNode = helpers.tryGetNode(sourceNodeID)
+        if not sourceNode:
+            logging.warning(f"Could not find Source Node with given ID {sourceNodeID}")
+
+        try:
+            segNode = helpers.tryGetNode(nodeID)
+            if not segNode:
+                logging.warning(f"Could not find Segmentation Node with given ID {nodeID}")
+                return
+
+            suffix = self.editor.activeEffect().name if self.editor.activeEffect() else "Clone"
+            newName = segNode.GetName() + suffix if suffix.startswith("_") else segNode.GetName() + "_" + suffix
+
+            accepted, name = requestName(newName)
+            if accepted:
+                newNode = cloneNode(segNode, sourceNode, name=name)
+                self.segmentationNodeComboBox.setCurrentNode(newNode)
+        except Exception as e:
+            logging.error(f"Error cloning node: {e}")
+            slicer.util.errorDisplay("An error occurred while cloning the node")
 
     def activateEditorRegisteredCallback(self):
         self.effectFactorySingleton.effectRegistered.connect(self.editorEffectRegistered)
@@ -147,6 +186,9 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         segmentID = segmentation.GetNthSegmentID(nSegments - 1)
         newColor = distinctipy.get_colors(1, existentColors)[0]
         segmentation.GetSegment(segmentID).SetColor(newColor)
+
+    def onSegmentationNodeChanged(self, node):
+        pass
 
     def onSourceVolumeNodeChanged(self, node):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3

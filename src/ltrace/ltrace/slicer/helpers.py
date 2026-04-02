@@ -332,6 +332,30 @@ def copyAttributesTo(targetNode, sourceNode):
         targetNode.SetAttribute(attr_name, attr_value)
 
 
+def copy_attributes(from_node, to_node, attributes_list=None):
+    """
+    Copy attributes (all of them if attributes_list is None) from_node -> to_node
+    """
+    if not from_node or not to_node:
+        raise ValueError("Source and target nodes must be provided")
+    for attr_name in from_node.GetAttributeNames():
+        if (attributes_list and attr_name in attributes_list) or (not attributes_list):
+            attr_value = from_node.GetAttribute(attr_name)
+            to_node.SetAttribute(attr_name, attr_value)
+
+
+def copy_hierarchy_attributes(from_node, to_node, attributes_list=None):
+    """
+    Copy attributes (all of them if attributes_list is None) from_node hierarchy itrm -> to_node hierarchy item
+    """
+    subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    itemID = subjectHierarchyNode.GetItemByDataNode(from_node)  # the hierarchy item ID corresponding to node
+    for key in subjectHierarchyNode.GetItemAttributeNames(itemID):
+        if (attributes_list and key in attributes_list) or (not attributes_list):
+            value = subjectHierarchyNode.GetItemAttribute(itemID, key)
+            subjectHierarchyNode.SetItemAttribute(subjectHierarchyNode.GetItemByDataNode(to_node), key, value)
+
+
 def moveNodeTo(dirId, node, dirTree=None):
     """Wrapper function of CreateItem.
 
@@ -1096,17 +1120,60 @@ def autoDetectColumnType(tableNode):
         except (ValueError, TypeError):
             return False
 
-    tableWasModified = tableNode.StartModify()
-    table = tableNode.GetTable()
+    def getValueTypeLevel(value):
+        """Returns the type hierarchy level for a vtkVariant value (0:int, 1:float, 2:string)."""
+        vType = value.GetType()
 
+        if vType == vtk.VTK_INT:
+            return 0  # int
+
+        if vType == vtk.VTK_DOUBLE or vType == vtk.VTK_FLOAT:
+            return 1  # float
+
+        if vType == vtk.VTK_STRING:
+            strVal = value.ToString()
+            if not strVal.strip():
+                return 2  # Treat empty/whitespace strings as string type
+            if tryCast(strVal, int):
+                return 0  # int
+            if tryCast(strVal, float):
+                return 1  # float
+            return 2  # string
+
+        return 2  # string for any other type
+
+    table = tableNode.GetTable()
+    if table.GetNumberOfRows() == 0:
+        return
+
+    tableWasModified = tableNode.StartModify()
     for col in range(table.GetNumberOfColumns()):
         colname = table.GetColumnName(col)
-        value = table.GetValue(0, col)
-        if value.IsString():
-            if tryCast(value.ToString(), int):
-                tableNode.SetColumnType(colname, vtk.VTK_INT)
-            elif tryCast(value.ToString(), float):
-                tableNode.SetColumnType(colname, vtk.VTK_DOUBLE)
+
+        maxLevel = 0  # Start with int level (0)
+        numRows = table.GetNumberOfRows()
+        sampleSize = np.min([numRows, 100])
+
+        if numRows > 0:
+            indices = np.linspace(0, numRows - 1, sampleSize).astype(int)
+            for i in indices:
+                value = table.GetValue(i, col)
+                maxLevel = max(maxLevel, getValueTypeLevel(value))
+                if maxLevel == 2:  # Already at the highest level (string)
+                    break
+
+        # Map the determined level back to the VTK type and property string
+        if maxLevel == 0:
+            detectedVtkType = vtk.VTK_INT
+            detectedPropertyTypeStr = "int"
+        elif maxLevel == 1:
+            detectedVtkType = vtk.VTK_DOUBLE
+            detectedPropertyTypeStr = "double"
+        else:
+            detectedVtkType = vtk.VTK_STRING
+            detectedPropertyTypeStr = "String"
+
+        tableNode.SetColumnType(colname, detectedVtkType)
 
     tableNode.Modified()
     tableNode.EndModify(tableWasModified)

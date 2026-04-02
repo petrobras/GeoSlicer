@@ -9,13 +9,13 @@
 
   <parameters>
     <directory>
-      <name>model path</name>
+      <name>model_path</name>
       <longflag>model_path</longflag>
       <description>Path to the model to be used</description>
       <channel>input</channel>
     </directory>
     <directory>
-      <name>temp path</name>
+      <name>temp_path</name>
       <longflag>temp_path</longflag>
       <description>Path that hold temporary files</description>
       <channel>input</channel>
@@ -29,11 +29,11 @@
     </integer>
     <image type="scalar">
       <longflag>cond_img</longflag>
-      <name>cond img</name>
+      <name>cond_img</name>
       <channel>input</channel>
     </image>
     <string>
-      <name>injection scale</name>
+      <name>injection_scale</name>
       <longflag>injection_scale</longflag>
       <default>hd</default>
       <channel>input</channel>
@@ -114,13 +114,13 @@
     </string>
 
     <directory>
-      <name>out path</name>
+      <name>out_path</name>
       <longflag>out_path</longflag>
       <description>Path to export files</description>
       <channel>input</channel>
     </directory>
     <string>
-      <name>out name</name>
+      <name>out_name</name>
       <longflag>out_name</longflag>
     </string>
 

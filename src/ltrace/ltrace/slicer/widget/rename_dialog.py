@@ -8,6 +8,13 @@ class RenameDialog(qt.QDialog):
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() & ~qt.Qt.WindowContextHelpButtonHint)
         self.setWindowTitle("Rename Volume")
+        self.setMinimumWidth(256)
+        self.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Minimum)
+
+        layout = qt.QVBoxLayout(self)
+
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
         self.newPlotWidgetLineEdit = qt.QLineEdit()
 
@@ -23,15 +30,16 @@ class RenameDialog(qt.QDialog):
         cancelButton.clicked.connect(lambda checked: self.reject())
 
         buttonsLayout = qt.QHBoxLayout()
+        buttonsLayout.setSpacing(8)
         buttonsLayout.addWidget(okButton)
         buttonsLayout.addWidget(cancelButton)
 
         formLayout = qt.QFormLayout()
         formLayout.addRow("New name:", self.newPlotWidgetLineEdit)
-        formLayout.addRow(buttonsLayout)
-        formLayout.setVerticalSpacing(10)
+        formLayout.setVerticalSpacing(8)
 
-        self.setLayout(formLayout)
+        layout.addLayout(formLayout)
+        layout.addLayout(buttonsLayout)
 
     def showPopup(self, message):
         qt.QMessageBox.warning(self, "Error", message)

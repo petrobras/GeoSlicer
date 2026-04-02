@@ -13,8 +13,8 @@ import pandas as pd
 import slicer
 
 from ltrace.pore_networks.functions_extract import spy2geo, _get_paired_throats_table
+from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
 from ltrace.pore_networks.subres_models import normalize_psd, estimate_radius
-from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
 from ltrace.slicer_utils import tableNodeToDict
 
@@ -109,10 +109,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix} Mercury Injection Simulation")
         folderTree.SetItemExpanded(self.rootDir, False)
 
-        parametersNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", "simulation_parameters")
-        parametersNode.SetText(json.dumps(self.params, indent=4))
-        parametersNode.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
-        folderTree.CreateItem(self.rootDir, parametersNode)
+        dict_to_parameter_node(self.params, self.rootDir)
 
         pc = pd.read_pickle(str(self.cwd / "micpResults.pd"))
 

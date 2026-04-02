@@ -5,7 +5,10 @@ import slicer
 import ltrace.slicer.widget.simulation as simulation_widgets
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
 from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
-from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, parameter_node_to_dict
+from ltrace.pore_networks.simulation_parameters_node import (
+    parameter_node_to_dict,
+    save_dict_to_parameter_node,
+)
 from ltrace.pore_networks.subres_models import get_pore_network_volume_data
 from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
@@ -49,17 +52,14 @@ class TwoPhaseParametersEditDialog:
         status = dialog.exec()
 
         if status:
-            parameterValues, invalidParameter = twoPhaseWidget.getFormParams()
-            if parameterValues is None:
-                slicer.util.errorDisplay(f"Could not save parameter input. {invalidParameter} has invalid value.")
-                return 0, None
+            parameterValues = twoPhaseWidget.getParams()
 
             if self.node:
                 name = self.node.GetName()
-                outNode = dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
+                outNode = save_dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
             else:
                 name = "simulation_input_parameters"
-                outNode = dict_to_parameter_node(parameterValues, name, self.node)
+                outNode = save_dict_to_parameter_node(parameterValues, name, self.node)
 
             outNode.SetName(name)
             return status, outNode
@@ -95,6 +95,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         layout = qt.QFormLayout(self)
         self.widgets = {}
         self.labels = {}
+        self.currentNode = None
 
         # Execution mode
         optionsLayout = qt.QHBoxLayout()
@@ -300,6 +301,22 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
         self.infoLabel = qt.QLabel()
         layout.addRow(self.infoLabel)
+
+        parameterInputSaveCollapsible = ctk.ctkCollapsibleButton()
+        parameterInputSaveCollapsible.text = "Save parameters"
+        parameterInputSaveCollapsible.collapsed = True
+        self.parameterInputLineEdit = qt.QLineEdit("simulation_input_parameters")
+        parameterInputSaveButton = qt.QPushButton("Save parameters")
+        parameterInputSaveButton.clicked.connect(self.onParameterInputSave)
+        parameterInputLayout = qt.QFormLayout(parameterInputSaveCollapsible)
+        parameterInputLayout.addRow("Output parameter node name:", self.parameterInputLineEdit)
+        parameterInputLayout.addRow(parameterInputSaveButton)
+        parameterInputSaveIcon = qt.QLabel()
+        parameterInputSaveIcon.setPixmap(
+            qt.QIcon(getResourcePath("Icons") / "png" / "Save.png").pixmap(qt.QSize(13, 13))
+        )
+        if not hide_parameters_io:
+            layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
 
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
@@ -568,6 +585,12 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
             self.parameterInputLoadCollapsible.collapsed = True
             self.updateFieldsActivation()
+
+    def onParameterInputSave(self):
+        parameterValues = self.getParams(self.currentNode)
+        parameterNode = save_dict_to_parameter_node(parameterValues, self.parameterInputLineEdit.text, self.currentNode)
+        slicer.app.applicationLogic().GetSelectionNode().SetActiveTableID(parameterNode.GetID())
+        slicer.app.applicationLogic().PropagateTableSelection()
 
     def uncheckCreateSnapshot(self):
         self.widgets["create_drainage_snapshot"].set_value("F")

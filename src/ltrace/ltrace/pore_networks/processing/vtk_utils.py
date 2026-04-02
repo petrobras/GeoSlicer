@@ -35,13 +35,8 @@ def create_flow_model(
     sizes,
     pore_diameters=None,
     throat_diameters=None,
-    IJKTORAS=(-1, -1, 1),
     throat_radius_reduction=5,
 ):
-    if sizes:
-        offset = [10 * sizes[axis] if IJKTORAS[i] < 0 else 0 for i, axis in enumerate(["x", "y", "z"])]
-    else:
-        offset = [0 for i, axis in enumerate(["x", "y", "z"])]
 
     ##### Create pores #####
     coordinates = vtk.vtkPoints()
@@ -73,9 +68,9 @@ def create_flow_model(
     for pore_index in range(len(project.network["pore.all"])):
         coordinates.InsertPoint(
             pore_index,
-            project.network["pore.coords"][pore_index][0] * IJKTORAS[0] + offset[0],
-            project.network["pore.coords"][pore_index][1] * IJKTORAS[1] + offset[1],
-            project.network["pore.coords"][pore_index][2] * IJKTORAS[2] + offset[2],
+            project.network["pore.coords"][pore_index][0],
+            project.network["pore.coords"][pore_index][1],
+            project.network["pore.coords"][pore_index][2],
         )
         pore_value = pore_values[pore_index]
         pore_scalar.InsertTuple1(pore_index, pore_value)
@@ -94,9 +89,9 @@ def create_flow_model(
             second_scalar = unresolved_pore_scalar
         second_coordinates.InsertPoint(
             pore_index,
-            project.network["pore.coords"][pore_index][0] * IJKTORAS[0] + offset[0],
-            project.network["pore.coords"][pore_index][1] * IJKTORAS[1] + offset[1],
-            project.network["pore.coords"][pore_index][2] * IJKTORAS[2] + offset[2],
+            project.network["pore.coords"][pore_index][0],
+            project.network["pore.coords"][pore_index][1],
+            project.network["pore.coords"][pore_index][2],
         )
         pore_value = pore_values[pore_index]
         second_scalar.InsertTuple1(pore_index, pore_value)
@@ -178,17 +173,14 @@ def create_flow_model(
         nodes_list.append(
             (
                 throat_index * 2,
-                *[(a[0] * a[1] + a[2]) for a in zip(project.network["pore.coords"][left_pore_index], IJKTORAS, offset)],
+                *project.network["pore.coords"][left_pore_index],
             )
         )
 
         nodes_list.append(
             (
                 throat_index * 2 + 1,
-                *[
-                    (a[0] * a[1] + a[2])
-                    for a in zip(project.network["pore.coords"][right_pore_index], IJKTORAS, offset)
-                ],
+                *project.network["pore.coords"][right_pore_index],
             )
         )
 
@@ -204,6 +196,10 @@ def create_flow_model(
         log_values_list.append((throat_index * 2, np.log10(throat_values[throat_index])))
         log_values_list.append((throat_index * 2 + 1, np.log10(throat_values[throat_index])))
         links_list.append((throat_index * 2, throat_index * 2 + 1))
+
+    finite_log_values = [v for _, v in log_values_list if np.isfinite(v)]
+    log_fallback = (np.min(finite_log_values) - 1) if finite_log_values else -1.0
+    log_values_list = [(i, v if np.isfinite(v) else log_fallback) for i, v in log_values_list]
 
     ### Create VTK data types from lists ###
     coordinates = vtk.vtkPoints()

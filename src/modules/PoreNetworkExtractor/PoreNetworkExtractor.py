@@ -465,9 +465,14 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
 
     def onFinish(self):
         metadata = self.params["metadata"]
+        inputVolumeNode = slicer.mrmlScene.GetNodeByID(self.inputNodeID)
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        inputVolumeItemID = shNode.GetItemByDataNode(inputVolumeNode)
+        parentItemID = shNode.GetItemParent(inputVolumeItemID)
+
         extraction_nodes_creator = ExtractionNodesCreator(metadata, self.cwd, self.prefix, self.visualization)
         try:
-            self.results = extraction_nodes_creator.create()
+            self.results = extraction_nodes_creator.create(parent_folder=parentItemID)
         except FileNotFoundError as e:
             error_message = str(e)
             logging.error(error_message)

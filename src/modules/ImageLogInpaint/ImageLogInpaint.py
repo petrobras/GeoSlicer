@@ -6,6 +6,8 @@ import numpy as np
 import vtk
 import slicer.util
 import json
+import importlib
+import sys
 
 from ltrace.slicer import ui
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
@@ -13,13 +15,12 @@ from ltrace.slicer.helpers import (
     createTemporaryVolumeNode,
     getCurrentEnvironment,
     moveNodeTo,
-    clone_volume,
     tryGetNode,
     NodeEnvironment,
     removeTemporaryNodes,
 )
+from ltrace.slicer.widget.clone_and_rename import CloneAndRenameWidget
 from ltrace.constants import ImageLogInpaintConst
-from CustomizedWidget.RenameDialog import RenameDialog
 from pathlib import Path
 from typing import Dict
 from slicer.parameterNodeWrapper import parameterNodeWrapper
@@ -139,37 +140,17 @@ class ImageLogInpaintWidget(LTracePluginWidget):
         self.segmentationComboBox.objectName = "segmentationNodeComboBox"
         self.segmentationComboBox.setVisible(False)
 
-        self.cloneButton = ui.ButtonWidget(
-            text="Clone Volume",
-            tooltip="Clone the input image",
-            object_name="cloneVolumeButton",
-            enabled=False,
-            onClick=self.onCloneClicked,
+        self.volumeButtons = CloneAndRenameWidget(
+            nodeType="Volume", suffix="_Inpaint", parent=self.layout.parentWidget()
         )
-
-        self.renameButton = ui.ButtonWidget(
-            text="Rename Volume",
-            tooltip="Rename the input image",
-            object_name="renameVolumeButton",
-            enabled=False,
-            onClick=self.onRenameClicked,
-        )
-
-        self.renameDialog = RenameDialog(self.layout.parentWidget())
-        self.renameDialog.objectName = "renameVolumeDialog"
+        self.volumeButtons.signalCloneNode.connect(self.onCloneSignal)
+        self.volumeButtons.signalRenameNode.connect(self.onRenameSignal)
 
         frame = qt.QFrame()
-
         formLayout = qt.QFormLayout(frame)
         formLayout.setLabelAlignment(qt.Qt.AlignRight)
 
-        buttonLayout = qt.QHBoxLayout()
-        buttonLayout.setContentsMargins(6, 0, 6, 0)
-        buttonLayout.addStretch(1)
-        buttonLayout.addWidget(self.cloneButton)
-        buttonLayout.addWidget(self.renameButton)
-
-        formLayout.addRow(buttonLayout)
+        formLayout.addWidget(self.volumeButtons)
         formLayout.addWidget(self.segmentEditorWidget)
 
         self.layout.addWidget(frame)
@@ -240,40 +221,24 @@ class ImageLogInpaintWidget(LTracePluginWidget):
 
             self.showViews(segmentation, node)
 
-            self.cloneButton.enabled = True
-            self.renameButton.enabled = True
+            self.volumeButtons.setNodeID(node.GetID())
         else:
-            self.cloneButton.enabled = False
-            self.renameButton.enabled = False
             self.clearViews()
+            self.volumeButtons.setNodeID()
 
-    def onCloneClicked(self):
-        sourceNode = self.sourceVolumeComboBox.currentNode()
+    def onCloneSignal(self, nodeID: str) -> None:
+        clonedNode = tryGetNode(nodeID)
+        if clonedNode is not None:
+            self.sourceVolumeComboBox.setCurrentNode(clonedNode)
 
-        if sourceNode is not None:
-            node = clone_volume(sourceNode, sourceNode.GetName() + "_Inpaint", as_temporary=False)
-            node.CopyReferences(sourceNode)
+    def onRenameSignal(self, nodeID: str) -> None:
+        sourceNode = tryGetNode(nodeID)
 
-            self.moveNodeTo(node, sourceNode)
-            self.sourceVolumeComboBox.setCurrentNode(node)
-
-    def onRenameClicked(self):
-        sourceNode = self.sourceVolumeComboBox.currentNode()
-
-        if sourceNode is not None:
-            self.renameDialog.setOutputName(sourceNode.GetName())
-            result = self.renameDialog.exec_()
-
-            if bool(result) and sourceNode.GetName() != self.renameDialog.getOutputName():
-                name = slicer.mrmlScene.GenerateUniqueName(self.renameDialog.getOutputName())
-                sourceNode.SetName(name)
-
-                self.clearViews()
-
-                segmentation = self.parameterNode.segmentations[sourceNode]
-                if segmentation is not None:
-                    segmentation.SetName(name + "_Segmentation")
-                    self.showViews(segmentation, sourceNode)
+        self.clearViews()
+        segmentation = self.parameterNode.segmentations.get(sourceNode)
+        if segmentation is not None:
+            segmentation.SetName(sourceNode.GetName() + "_Segmentation")
+            self.showViews(segmentation, sourceNode)
 
     def onUndoClicked(self):
         self._historyPointer = max(self._historyPointer - 1, 0)
@@ -454,7 +419,7 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             self.logic.imageLogDataLogic.addInpaintView(self._tempSegmentation, segmentation, node)
 
     def clearViews(self):
-        if self.logic.imageLogDataLogic:
+        if hasattr(self, "logic") and self.logic.imageLogDataLogic:
             for id in range(len(self.logic.imageLogDataLogic.imageLogViewList) - 1, -1, -1):
                 self.logic.imageLogDataLogic.removeView(id)
 
@@ -544,8 +509,20 @@ class ImageLogInpaintWidget(LTracePluginWidget):
     def cleanup(self):
         super().cleanup()
         self.customizedSegmentEditorWidget.cleanup()
-        slicer.mrmlScene.RemoveObserver(self.saveConfigObserver)
-        slicer.mrmlScene.RemoveObserver(self.importConfigObserver)
+        if hasattr(self, "saveConfigObserver") and self.saveConfigObserver is not None:
+            slicer.mrmlScene.RemoveObserver(self.saveConfigObserver)
+        if hasattr(self, "importConfigObserver") and self.importConfigObserver is not None:
+            slicer.mrmlScene.RemoveObserver(self.importConfigObserver)
+        self.removeObservers()
+        self.removeTempVariables()
+        self.resetVars()
+        self.clearViews()
+
+        del self.logic
+
+    def onReload(self):
+        importlib.reload(sys.modules["ltrace.slicer.widget.clone_and_rename"])
+        super().onReload()
 
 
 class ImageLogInpaintLogic(LTracePluginLogic):

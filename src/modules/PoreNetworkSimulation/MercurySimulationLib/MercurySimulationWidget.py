@@ -8,11 +8,11 @@ import slicer
 from pyqtgraph.Qt import QtCore
 from vtk.util.numpy_support import vtk_to_numpy
 
-from PoreNetworkSimulationLib.constants import *
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data
+from .SubscaleModelWidget import SubscaleModelWidget
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data, estimate_pressure
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from .SubscaleModelWidget import SubscaleModelWidget
+from PoreNetworkSimulationLib.constants import MICP
 
 
 class MercurySimulationWidget(qt.QFrame):
@@ -81,6 +81,11 @@ class MercurySimulationWidget(qt.QFrame):
         sirrSelectorLayout.addWidget(self.toggleSirrButton)
         micpFormLayout.addRow(sirrLabelWidget, sirrSelectorLayout)
 
+        self.show_resolution_lines_checkbox = qt.QCheckBox("Show resolution limit lines in plots")
+        self.show_resolution_lines_checkbox.checked = True
+        self.show_resolution_lines_checkbox.toggled.connect(self.onShowResolutionLinesToggled)
+        micpFormLayout.addRow(self.show_resolution_lines_checkbox)
+
         # plots
         pysideReportForm = shiboken2.wrapInstance(hash(micpFormLayout), pyside.QtWidgets.QFormLayout)
         self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
@@ -100,10 +105,38 @@ class MercurySimulationWidget(qt.QFrame):
             symbolBrush=(255, 100, 100),
         )
         self.micpSirrSeries.getViewBox().invertX(True)
+        self.resolutionLine = pg.InfiniteLine(
+            angle=0,
+            movable=False,
+            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            label="Resolution limit",
+            labelOpts={
+                "position": 0.1,
+                "color": (200, 200, 200),
+                "movable": True,
+                "fill": (0, 0, 0, 150),
+            },
+        )
+        self.micpPlotItem.addItem(self.resolutionLine)
+        self.resolutionLine.hide()
 
         self.pcPlotItem = self.subvolumeGraphicsLayout.addPlot(
             row=2, col=1, rowspan=1, colspan=1, left="dsn", bottom="Pc"
         )
+        self.pcResolutionLine = pg.InfiniteLine(
+            angle=90,
+            movable=False,
+            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            label="Resolution limit",
+            labelOpts={
+                "position": 0.9,
+                "color": (200, 200, 200),
+                "movable": True,
+                "fill": (0, 0, 0, 150),
+            },
+        )
+        self.pcPlotItem.addItem(self.pcResolutionLine)
+        self.pcResolutionLine.hide()
         self.pcSirrSeries = self.pcPlotItem.plot(
             name="pc_sirr",
             pen=pg.mkPen((100, 200, 100), width=2, style=QtCore.Qt.DotLine),
@@ -116,6 +149,20 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiPlotItem = self.subvolumeGraphicsLayout.addPlot(
             row=3, col=1, rowspan=1, colspan=1, left="dsn", bottom="Radius"
         )
+        self.radiiResolutionLine = pg.InfiniteLine(
+            angle=90,
+            movable=False,
+            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            label="Resolution limit",
+            labelOpts={
+                "position": 0.9,
+                "color": (200, 200, 200),
+                "movable": True,
+                "fill": (0, 0, 0, 150),
+            },
+        )
+        self.radiiPlotItem.addItem(self.radiiResolutionLine)
+        self.radiiResolutionLine.hide()
         self.radiiSirrSeries = self.radiiPlotItem.plot(
             name="radii_sirr",
             pen=pg.mkPen((150, 150, 255), width=2, style=QtCore.Qt.DotLine),
@@ -157,7 +204,29 @@ class MercurySimulationWidget(qt.QFrame):
         pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
     def setVolumeNode(self, node):
+        self.current_node = node
         self.subscaleModelWidget.setVolumeNode(node)
+        self.updateResolutionLines(node)
+
+    def updateResolutionLines(self, node):
+        if node is not None and self.show_resolution_lines_checkbox.checked:
+            volume_data = get_pore_network_volume_data(node)
+            spacing = volume_data.get("spacing", {})
+            min_spacing = min(spacing.values()) if spacing else 1.0
+            pressure = estimate_pressure(min_spacing)
+            self.resolutionLine.setValue(pressure)
+            self.resolutionLine.show()
+            self.pcResolutionLine.setValue(pressure)
+            self.pcResolutionLine.show()
+            self.radiiResolutionLine.setValue(min_spacing)
+            self.radiiResolutionLine.show()
+        else:
+            self.resolutionLine.hide()
+            self.pcResolutionLine.hide()
+            self.radiiResolutionLine.hide()
+
+    def onShowResolutionLinesToggled(self, checked):
+        self.updateResolutionLines(getattr(self, "current_node", None))
 
     def getSirrSelector(self):
         return self.sirrSelector
@@ -247,10 +316,11 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiSeries.setData(self.radius_x_values, self.radius_y_values)
 
     def getParams(self, node):
+        subscale_model_params = self.subscaleModelWidget.getParams()
         subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
         subres_params = self.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
-        subres_shape_factor = self.subscaleModelWidget.getParams()["subres_shape_factor"]
-        subres_porositymodifier = self.subscaleModelWidget.getParams()["subres_porositymodifier"]
+        subres_shape_factor = subscale_model_params["subres_shape_factor"]
+        subres_porositymodifier = subscale_model_params["subres_porositymodifier"]
 
         subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:

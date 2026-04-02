@@ -52,7 +52,6 @@ PN_PROPERTIES = {
     "pore.zmax": 1,
     "pore.zmin": 1,
     "throat.all": 1,
-    "throat.area_full": 1,
     "throat.conns": 2,
     "throat.conns_0_length": 1,
     "throat.conns_1_length": 1,

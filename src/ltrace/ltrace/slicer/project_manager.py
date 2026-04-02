@@ -491,9 +491,6 @@ class ProjectManager(qt.QObject):
         if isinstance(callData, slicer.vtkMRMLTableNode):
             if callData.GetName() == "Default mineral colors":
                 return
-
-            callData.SetDefaultColumnType("double")
-
         observer = NodeObserver(node=callData, parent=self)
         observer.modifiedSignal.connect(self.__onSceneModified)
         observer.removedSignal.connect(self.__onObservedNodeRemoved)

@@ -91,7 +91,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         self.setupSegmentation("ImageLog")
 
         self.modulesToolbar.actions()[1].setVisible(False)  # ImageLog Explorer
-        self.modulesToolbar.actions()[12].setVisible(False)  # ImageLog Segmentation
+        self.modulesToolbar.actions()[13].setVisible(False)  # ImageLog Segmentation
 
         self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
 
@@ -133,9 +133,9 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         if self.getModuleManager().currentWorkingDataType[0] == "Multiscale":
             isImageLogView = layoutID > ImageLogConst.DEFAULT_LAYOUT_ID_START_VALUE
             self.modulesToolbar.actions()[0].setVisible(not isImageLogView)  # Volume Explorer
-            self.modulesToolbar.actions()[11].setVisible(not isImageLogView)  # Volume Segmentation
+            self.modulesToolbar.actions()[12].setVisible(not isImageLogView)  # Volume Segmentation
             self.modulesToolbar.actions()[1].setVisible(isImageLogView)  # ImageLog Explorer
-            self.modulesToolbar.actions()[12].setVisible(isImageLogView)  # ImageLog Segmentation
+            self.modulesToolbar.actions()[13].setVisible(isImageLogView)  # ImageLog Segmentation
 
             if slicer.util.selectedModule() in ["CustomizedData", "ImageLogData"]:
                 slicer.util.selectModule("ImageLogData" if isImageLogView else "CustomizedData")
