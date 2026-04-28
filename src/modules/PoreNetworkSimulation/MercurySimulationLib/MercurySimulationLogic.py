@@ -14,7 +14,7 @@ import slicer
 
 from ltrace.pore_networks.functions_extract import spy2geo, _get_paired_throats_table
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
-from ltrace.pore_networks.subres_models import normalize_psd, estimate_radius
+from ltrace.pore_networks.subres_models import normalize_psd, estimate_radius, estimate_pressure, centers_to_edges
 from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
 from ltrace.slicer_utils import tableNodeToDict
 
@@ -27,6 +27,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         self.prefix = None
         self.rootDir = None
         self.results_node_id = None
+        self.params = None
 
     def run_mercury(self, inputTable, params, prefix, callback, wait=False):
         self.inputTable = inputTable
@@ -82,6 +83,13 @@ class MercurySimulationLogic(LTracePluginLogic):
             return
         self.cliNode.Cancel()
 
+    def cleanup(self):
+        if self.cliNode:
+            self.cliNode.RemoveObservers("ModifiedEvent")
+            self.cliNode = None
+
+        self.callback = None
+
     def micpCLICallback(self, caller, event):
         if caller is None:
             self.cliNode = None
@@ -90,17 +98,21 @@ class MercurySimulationLogic(LTracePluginLogic):
             return
 
         status = caller.GetStatusString()
-        if status in ["Completed", "Cancelled"]:
+        if "Completed" in status or status == "Cancelled" or status == "Error":
             logging.info(status)
-            del self.cliNode
-            self.cliNode = None
             if status == "Completed":
-                self.onFinish()
+                try:
+                    self.onFinish()
+                except Exception:
+                    logging.error(traceback.format_exc())
+                    slicer.util.errorDisplay("A problem has occurred while processing MICP simulation results.")
 
             if not self.params["keep_temporary"]:
                 shutil.rmtree(self.cwd)
 
-            self.callback(True)
+            if self.callback:
+                self.callback(True)
+            self.cleanup()
 
     def onFinish(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -127,21 +139,24 @@ class MercurySimulationLogic(LTracePluginLogic):
         _ = dataFrameToTableNode(micp_results, micpTable)
         _ = folderTree.CreateItem(self.rootDir, micpTable)
 
-        normalized_psd_x, normalized_psd_y = normalize_psd(pc.pc.to_numpy(), delta_saturation)
-        normalized_psd = pd.DataFrame({"pc": normalized_psd_y, "dsn": normalized_psd_x})
+        bins_pc = centers_to_edges(np.sort(pc.pc.to_numpy()))
+        bins_radii = centers_to_edges(np.sort(throat_radii.to_numpy()))
+
+        normalized_psd_val, normalized_psd_pc = normalize_psd(pc.pc.to_numpy(), delta_saturation, bins=bins_pc)
+        normalized_psd = pd.DataFrame({"pc": normalized_psd_pc, "dsn": normalized_psd_val})
         normPcTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Pressure")
         normPcTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normPcTableName)
         normPcTable.SetAttribute("table_type", "norm_pc")
-        self.norm_pc_table_id = micpTable.GetID()
         _ = dataFrameToTableNode(normalized_psd, normPcTable)
         _ = folderTree.CreateItem(self.rootDir, normPcTable)
 
-        normalized_radii_x, normalized_radii_y = normalize_psd(throat_radii.to_numpy(), delta_saturation)
-        normalized_radius = pd.DataFrame({"radius": normalized_radii_y, "dsn": normalized_radii_x})
+        normalized_radii_val, normalized_radii_center = normalize_psd(
+            throat_radii.to_numpy(), delta_saturation, bins=bins_radii
+        )
+        normalized_radius = pd.DataFrame({"radius": normalized_radii_center, "dsn": normalized_radii_val})
         normRadTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Radius")
         normRadTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normRadTableName)
         normRadTable.SetAttribute("table_type", "norm_radius")
-        self.norm_radius_table_id = normRadTable.GetID()
         _ = dataFrameToTableNode(normalized_radius, normRadTable)
         _ = folderTree.CreateItem(self.rootDir, normRadTable)
 
@@ -218,12 +233,15 @@ class MercurySimulationLogic(LTracePluginLogic):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
 
         def create_histogram_data(data, bins):
-            bins = np.sort(bins)
-            if bins.size < 2:
-                return np.array([]), np.array([])
-            lbin = bins[0] - (bins[1] - bins[0]) / 2
-            rbin = bins[-1] + (bins[-1] - bins[-2]) / 2
-            bins = np.concatenate(([lbin], (bins[:-1] + bins[1:]) / 2, [rbin]))
+            if not isinstance(bins, int):
+                bins = np.array(bins)
+                bins = bins[~np.isnan(bins)]
+                bins = np.unique(bins)
+                if bins.size < 2:
+                    return np.array([]), np.array([])
+                lbin = bins[0] - (bins[1] - bins[0]) / 2
+                rbin = bins[-1] + (bins[-1] - bins[-2]) / 2
+                bins = np.concatenate(([lbin], (bins[:-1] + bins[1:]) / 2, [rbin]))
             hist, bin_edges = np.histogram(data, bins=bins)
             return hist, bin_edges
 
@@ -417,24 +435,3 @@ class MercurySimulationLogic(LTracePluginLogic):
                 slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter,
                 color=(0.1, 0.75, 0.1),
             )
-
-
-def normalize_histogram(values, bin_edges, bins=100):
-    edge_min = bin_edges[0]
-    edge_max = bin_edges[-1]
-    new_bin_edges = np.linspace(edge_min, edge_max, num=bins + 1)
-    new_bin_values = np.zeros(bins, dtype=np.float64)
-    current_new_bin = 0
-    left_new_edge = new_bin_edges[current_new_bin]
-
-    for i in range(len(bin_edges) - 1):
-        left_original_edge = bin_edges[i]
-        right_original_edge = bin_edges[i + 1]
-        original_bin_mean = (left_original_edge + right_original_edge) / 2
-        while original_bin_mean > left_new_edge:
-            current_new_bin += 1
-            left_new_edge = new_bin_edges[i]
-        new_bin_values[current_new_bin] += values[i]
-    new_bin_values /= new_bin_values.sum()
-
-    return new_bin_values, new_bin_edges

@@ -3,12 +3,14 @@ import pickle
 import shutil
 import logging
 from pathlib import Path
+import re
 from typing import Any, Callable
 from datetime import datetime
 import time
 
 import slicer
 
+from ltrace.slicer.app import getApplicationVersion
 from ltrace.slicer_utils import print_debug
 from ltrace.remote.jobs import JobManager
 
@@ -261,9 +263,12 @@ def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], use_gpu=False, time=None
         parameters_list.append(f'--time "{time}"')
     chained_parameters = " ".join(parameters_list)
 
+    geoslicer_version = getApplicationVersion()
+    geoslicer_path = Path("/atena/users/dibi/containers/geoslicer/") / get_posix_friendly_version()
+    geoslicer_path_string = geoslicer_path.as_posix()
     main_cmd = (
-        "RPS_DIR='/atena/users/g575/containers/geoslicer'; "
-        f"bash $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif {chained_parameters} "
+        f'RPS_DIR="{geoslicer_path_string}"; '
+        f'bash "$RPS_DIR/scripts/rps.sh" --sif "$RPS_DIR/images/geoslicer-cli.sif" {chained_parameters} '
         f"{chained_cmds}"
     )
 
@@ -276,3 +281,7 @@ def get_job_cmd(caller, uid, main_cmd, job_remote_path):
         command for command in [opening_command, rf"cd {job_remote_path}", main_cmd] if len(command) > 0
     )
     return full_cmd
+
+
+def get_posix_friendly_version():
+    return re.sub(r"[\'*]", "", getApplicationVersion()).replace(" ", "_")

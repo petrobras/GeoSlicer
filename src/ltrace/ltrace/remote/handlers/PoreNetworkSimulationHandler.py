@@ -144,8 +144,8 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
 
                 script = " ".join(["PoreNetworkSimulationCLI.PoreNetworkSimulationCLI", argstring(cli_params)])
                 opening_command = caller.jobs[uid].host.opening_command
-                main_cmd = f"RPS_DIR='/atena/users/dibi/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --cli '{script}'"
-                full_cmd = " && ".join([opening_command, rf"cd {self.job_remote_path}", main_cmd])
+                main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script])
+                full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
                 output = client.run_command(full_cmd, verbose=True)
 

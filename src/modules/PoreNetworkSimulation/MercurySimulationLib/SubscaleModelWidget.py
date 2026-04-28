@@ -12,7 +12,7 @@ from ltrace.file_utils import read_csv
 from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
 from ltrace.pore_networks.subres_models import MODEL_DICT, estimate_radius, estimate_pressure
 from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from ltrace.pore_networks.subres_models import normalize_psd
+from ltrace.pore_networks.subres_models import normalize_psd, centers_to_edges
 from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.data_utils import dataFrameToTableNode
@@ -26,6 +26,7 @@ from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
 
 MICRON_TO_MM = 0.001
+MM_TO_MICRON = 1000
 
 # Heuristics for auto-parameter detection relative to voxel spacing
 SPACING_TO_MEAN_RADIUS = 0.5
@@ -85,6 +86,7 @@ class SubscaleModelWidget(qt.QWidget):
         for widget in (
             FixedRadiusWidget,
             TruncatedGaussianWidget,
+            LogTruncatedGaussianWidget,
             LeverettNewWidget,
             LeverettOldWidget,
             PressureCurveWidget,
@@ -289,7 +291,7 @@ class FixedRadiusWidget(qt.QWidget):
         if isinstance(params, str):
             params = ast.literal_eval(params)
 
-        self.micropore_radius.text = str(params["radius"])
+        self.micropore_radius.text = f"{MM_TO_MICRON * params['radius']:.6g}"
 
     def set_volume_node(self, volume_node):
         self.volume_node = volume_node
@@ -351,10 +353,10 @@ class TruncatedGaussianWidget(qt.QWidget):
         if isinstance(params, str):
             params = ast.literal_eval(params)
 
-        self.mean_radius.text = params["mean radius"]
-        self.micropore_std.text = params["standard deviation"]
-        self.minimum_radius.text = params["min radius"]
-        self.maximum_radius.text = params["max radius"]
+        self.mean_radius.text = f"{MM_TO_MICRON * params['mean radius']:.6g}"
+        self.micropore_std.text = f"{MM_TO_MICRON * params['standard deviation']:.6g}"
+        self.minimum_radius.text = f"{MM_TO_MICRON * params['min radius']:.6g}"
+        self.maximum_radius.text = f"{MM_TO_MICRON * params['max radius']:.6g}"
 
     def set_volume_node(self, volume_node):
         self.volume_node = volume_node
@@ -377,6 +379,82 @@ class TruncatedGaussianWidget(qt.QWidget):
         return func
 
 
+class LogTruncatedGaussianWidget(qt.QWidget):
+    STR = "Log Truncated Gaussian"
+
+    def __init__(self):
+        super().__init__()
+        layout = qt.QFormLayout(self)
+        self.logic = MODEL_DICT[self.STR]
+
+        self.mean_radius = ui.floatParam()
+        self.mean_radius.text = 1
+        layout.addRow("Mean radius (µm): ", self.mean_radius)
+
+        stdHelpButton = HelpButton(
+            "Standard deviation of the Gaussian in log-radius space (dimensionless).\n"
+            "The distribution is a truncated log-normal: the radius itself follows a\n"
+            "log-normal distribution whose underlying log(radius) has this sigma.\n"
+            "Typical values are in the order of 0.1 – 1.0."
+        )
+        self.micropore_std = ui.floatParam()
+        self.micropore_std.text = 0.5
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.micropore_std)
+        hbox.addWidget(stdHelpButton)
+        layout.addRow("Log-radius standard deviation: ", hbox)
+
+        self.minimum_radius = ui.floatParam()
+        self.minimum_radius.text = 0.1
+        layout.addRow("Min radius cutoff (µm): ", self.minimum_radius)
+
+        self.maximum_radius = ui.floatParam()
+        self.maximum_radius.text = 5
+        layout.addRow("Max radius cutoff (µm): ", self.maximum_radius)
+
+        self.volume_node = None
+        self.estimate_button = qt.QPushButton("Estimate from input volume")
+        self.estimate_button.clicked.connect(self.on_estimate_clicked)
+        layout.addRow(self.estimate_button)
+
+    def get_params(self):
+        params = {
+            "mean radius": float(self.mean_radius.text) * MICRON_TO_MM,
+            "standard deviation": float(self.micropore_std.text),
+            "min radius": float(self.minimum_radius.text) * MICRON_TO_MM,
+            "max radius": float(self.maximum_radius.text) * MICRON_TO_MM,
+        }
+        return params
+
+    def set_params(self, params):
+        if isinstance(params, str):
+            params = ast.literal_eval(params)
+
+        self.mean_radius.text = f"{MM_TO_MICRON * params['mean radius']:.6g}"
+        self.micropore_std.text = f"{params['standard deviation']:.6g}"
+        self.minimum_radius.text = f"{MM_TO_MICRON * params['min radius']:.6g}"
+        self.maximum_radius.text = f"{MM_TO_MICRON * params['max radius']:.6g}"
+
+    def set_volume_node(self, volume_node):
+        self.volume_node = volume_node
+
+    def on_estimate_clicked(self):
+        if not self.volume_node:
+            return
+        try:
+            min_spacing_microns = get_volume_min_spacing_microns(self.volume_node)
+            self.mean_radius.text = str(round(min_spacing_microns * SPACING_TO_MEAN_RADIUS, 6))
+            self.minimum_radius.text = str(round(min_spacing_microns * SPACING_TO_MIN_RADIUS, 6))
+            self.maximum_radius.text = str(round(min_spacing_microns * SPACING_TO_MAX_RADIUS, 6))
+        except Exception as e:
+            logging.debug(f"LogTruncatedGaussianWidget: Could not auto-update parameters from volume: {e}")
+
+    def get_subradius_function(self, pore_network, volume):
+        params = self.get_params()
+        func = self.logic.get_capillary_radius_function(params, pore_network, volume)
+        return func
+
+
 class ThroatRadiusCurveWidget(qt.QWidget):
     STR = "Throat Radius Curve"
 
@@ -386,11 +464,23 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         import_layout = qt.QFormLayout(self)
 
         self.throatRadiusSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
-        self.throatRadiusSelector.setToolTip("Select input (optional)")
+        self.throatRadiusSelector.setToolTip("Pick a Table node containing throat radius distribution data.")
         self.throatRadiusSelector.clearSelection()
-        self.throatRadiusSelector.setToolTip('Pick a Table node of type "pore_table".')
         self.throatRadiusSelector.objectName = "Throat Radius Curve Selector"
-        import_layout.addRow("Throat Radius Table", self.throatRadiusSelector)
+
+        tableHelpButton = HelpButton(
+            "Select a table containing the sub-resolution throat radius distribution.\n"
+            "The table should have columns representing the throat radii and the associated pore volume fractions.\n\n"
+            "The Incremental Pore Volume Fraction represents the portion of the total pore space filled with mercury "
+            "during a specific pressure interval (or associated with a throat size range). It is obtained from the "
+            "cumulative mercury saturation (S_Hg) by calculating the difference between consecutive points: "
+            "ΔSi = S_Hg(Pi) - S_Hg(Pi-1)."
+        )
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.throatRadiusSelector)
+        hbox.addWidget(tableHelpButton)
+        import_layout.addRow("Throat Radius Table", hbox)
+
         self.throatRadiusSelector.currentItemChanged.connect(self.__change_import_table)
 
         self.default_options = {
@@ -399,14 +489,24 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         }
 
         self.cboxes = {}
-        for cbox in (
-            "Volume Fraction Column",
-            "Throat Radius Column",
-        ):
-            self.cboxes[cbox] = qt.QComboBox()
-            import_layout.addRow(cbox, self.cboxes[cbox])
+        self.cboxes["Volume Fraction Column"] = qt.QComboBox()
+        self.cboxes["Volume Fraction Column"].setToolTip(
+            "Select the column containing the incremental pore volume fraction (normalized between 0 and 1).\n"
+            "This is the volume of mercury injected at each step, calculated as the difference between "
+            "consecutive saturation points: ΔSi = S_Hg(Pi) - S_Hg(Pi-1)."
+        )
+        import_layout.addRow("Volume Fraction Column (0-1)", self.cboxes["Volume Fraction Column"])
+
+        self.cboxes["Throat Radius Column"] = qt.QComboBox()
+        self.cboxes["Throat Radius Column"].setToolTip(
+            "Select the column containing the throat radii (in millimeters)."
+        )
+        import_layout.addRow("Throat Radius Column (mm)", self.cboxes["Throat Radius Column"])
 
         self.subresCutoff = floatParam(1.0)
+        self.subresCutoff.setToolTip(
+            "The maximum throat radius to be considered as sub-resolution. Values larger than this cutoff will be treated as resolved."
+        )
         import_layout.addRow("Subresolution cutoff radius (µm)", self.subresCutoff)
 
         self.volume_node = None
@@ -465,7 +565,7 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         self.throatRadiusSelector.setCurrentNode(throatRadiusNode)
         self.cboxes["Throat Radius Column"].setCurrentText(params["throat radii"])
         self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
-        self.subresCutoff.text = params["radii_cutoff_mm"] * 1000
+        self.subresCutoff.text = f"{MM_TO_MICRON * params['radii_cutoff_mm']:.6g}"
 
     def set_volume_node(self, volume_node):
         self.volume_node = volume_node
@@ -494,11 +594,22 @@ class PressureCurveWidget(qt.QWidget):
         import_layout = qt.QFormLayout(self)
 
         self.pressureCurveSelector = hierarchyVolumeInput(hasNone=True, nodeTypes=["vtkMRMLTableNode"])
-        self.pressureCurveSelector.setToolTip("Select input (optional)")
+        self.pressureCurveSelector.setToolTip("Pick a Table node containing capillary pressure distribution data.")
         self.pressureCurveSelector.clearSelection()
-        self.pressureCurveSelector.setToolTip('Pick a Table node of type "pore_table".')
         self.pressureCurveSelector.objectName = "Pressure Curve Selector"
-        import_layout.addRow("Pressure Curve Table", self.pressureCurveSelector)
+
+        tableHelpButton = HelpButton(
+            "Select a table containing the sub-resolution capillary pressure distribution.\n"
+            "The table should have columns representing the capillary pressures and the associated pore volume fractions.\n\n"
+            "The Incremental Pore Volume Fraction represents the portion of the total pore space filled with mercury "
+            "during a specific pressure interval. It is obtained from the cumulative mercury saturation (S_Hg) "
+            "by calculating the difference between consecutive points: ΔSi = S_Hg(Pi) - S_Hg(Pi-1)."
+        )
+        hbox = qt.QHBoxLayout()
+        hbox.addWidget(self.pressureCurveSelector)
+        hbox.addWidget(tableHelpButton)
+        import_layout.addRow("Pressure Curve Table", hbox)
+
         self.pressureCurveSelector.currentItemChanged.connect(self.__change_import_table)
 
         self.default_options = {
@@ -507,12 +618,19 @@ class PressureCurveWidget(qt.QWidget):
         }
 
         self.cboxes = {}
-        for cbox in (
-            "Volume Fraction Column",
-            "Throat Pressure Column",
-        ):
-            self.cboxes[cbox] = qt.QComboBox()
-            import_layout.addRow(cbox, self.cboxes[cbox])
+        self.cboxes["Volume Fraction Column"] = qt.QComboBox()
+        self.cboxes["Volume Fraction Column"].setToolTip(
+            "Select the column containing the incremental pore volume fraction (normalized between 0 and 1).\n"
+            "This is the volume of mercury injected at each step, calculated as the difference between "
+            "consecutive saturation points: ΔSi = S_Hg(Pi) - S_Hg(Pi-1)."
+        )
+        import_layout.addRow("Volume Fraction Column (0-1)", self.cboxes["Volume Fraction Column"])
+
+        self.cboxes["Throat Pressure Column"] = qt.QComboBox()
+        self.cboxes["Throat Pressure Column"].setToolTip(
+            "Select the column containing the capillary entry pressures (in Pascals)."
+        )
+        import_layout.addRow("Throat Pressure Column (Pa)", self.cboxes["Throat Pressure Column"])
 
     def __change_import_table(self, item):
         node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(item)
@@ -712,7 +830,9 @@ def importSIRR(file_path, parameter_widgets, sirr_input_selector):
         tableNode.SetName("SIRR imported MICP")
         tableNode.SetAttribute("table_type", "micp")
 
-        normalized_psd_x, normalized_psd_y = normalize_psd(df["pc"].to_numpy(), df["dsn"].to_numpy())
+        normalized_psd_x, normalized_psd_y = normalize_psd(
+            df["pc"].to_numpy(), df["dsn"].to_numpy(), bins=centers_to_edges(np.sort(df["pc"].to_numpy()))
+        )
         normalized_psd = pd.DataFrame({"pc": normalized_psd_y, "dsn": normalized_psd_x})
         normPcTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Pressure")
         normPcTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normPcTableName)
@@ -721,7 +841,9 @@ def importSIRR(file_path, parameter_widgets, sirr_input_selector):
         tableNode.SetAttribute("pc_table_id", norm_pc_table_id)
         _ = dataFrameToTableNode(normalized_psd, normPcTable)
 
-        normalized_radii_x, normalized_radii_y = normalize_psd(df["radii"].to_numpy(), df["dsn"].to_numpy())
+        normalized_radii_x, normalized_radii_y = normalize_psd(
+            df["radii"].to_numpy(), df["dsn"].to_numpy(), bins=centers_to_edges(np.sort(df["radii"].to_numpy()))
+        )
         normalized_radius = pd.DataFrame({"radius": normalized_radii_y, "dsn": normalized_radii_x})
         normRadTableName = slicer.mrmlScene.GenerateUniqueName("Normalized Radius")
         normRadTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", normRadTableName)

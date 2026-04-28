@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from ltrace.constants import SaveStatus
 from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.helpers import singleton, disableSlice3DEdges
+from ltrace.slicer.helpers import singleton, disableSlice3DEdges, saveNode
 from ltrace.slicer.node_custom_behavior.node_custom_behavior_manager import NodeCustomBehaviorManager
 from ltrace.slicer.node_custom_behavior.defs import TriggerEvent
 from ltrace.slicer.node_observer import NodeObserver
@@ -694,7 +694,7 @@ class ProjectManager(qt.QObject):
 
                 if filePath.exists() or not firstSave:
                     relativeNodeFilePath = filePath.relative_to(rootPath).as_posix()
-                    status = slicer.util.saveNode(node, relativeNodeFilePath)
+                    status = saveNode(node, relativeNodeFilePath)
                     if not status:
                         logging.error(
                             "Failed to save {} node's file at the location: {}\n{}".format(

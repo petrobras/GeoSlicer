@@ -177,18 +177,38 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
     def onChangeModel(self):
         simulation = self.simulationSelector.currentText
 
+        previousSimulation = getattr(self, "previousSimulation", None)
+        subscale_params = None
+        if previousSimulation == ONE_PHASE:
+            subscale_params = self.onePhaseSimWidget.getParams(self.inputSelector.currentNode())
+        elif previousSimulation == TWO_PHASE:
+            subscale_params = self.twoPhaseSimWidget.getParams(self.inputSelector.currentNode())
+        elif previousSimulation == MICP:
+            subscale_params = self.mercurySimWidget.getParams(self.inputSelector.currentNode())
+
         self.onePhaseSimWidget.setVisible(simulation == ONE_PHASE)
         self.twoPhaseSimWidget.setVisible(simulation == TWO_PHASE)
         self.mercurySimWidget.setVisible(simulation == MICP)
 
         self.setSnapshotVisible(self.snapshotEnabled and (simulation == TWO_PHASE))
 
+        if self.logic:
+            self.logic.cleanup()
+
         if simulation == ONE_PHASE:
             self.logic = OnePhaseSimulationLogic(self.parent, self.progressBar)
+            if subscale_params:
+                self.onePhaseSimWidget.setParams(subscale_params)
         elif simulation == TWO_PHASE:
             self.logic = TwoPhaseSimulationLogic(self.parent, self.progressBar)
+            if subscale_params:
+                self.twoPhaseSimWidget.setParams(subscale_params)
         elif simulation == MICP:
             self.logic = MercurySimulationLogic(self.parent, self.progressBar)
+            if subscale_params:
+                self.mercurySimWidget.setParams(subscale_params)
+
+        self.previousSimulation = simulation
 
     def onInputSelectorChange(self):
         input_node = self.inputSelector.currentNode()
@@ -265,17 +285,19 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
             pore_node,
             params,
             prefix=self.outputPrefix.text,
-            callback=self.applyButtonEnabled,
+            callback=self.onMicpFinished,
         )
+
+    def onMicpFinished(self, enabled):
+        self.applyButtonEnabled(enabled)
+        if enabled and self.logic and self.logic.results_node_id:
+            results_node = slicer.mrmlScene.GetNodeByID(self.logic.results_node_id)
+            if results_node:
+                self.mercurySimWidget.micpSelector.setCurrentNode(results_node)
 
     def cleanup(self):
         if self.logic is not None:
-            if hasattr(self.logic, "callback"):
-                self.logic.callback = None
-
-            if hasattr(self.logic, "progressBar"):
-                self.logic.progressBar = None
-
+            self.logic.cleanup()
             del self.logic
             self.logic = None
 

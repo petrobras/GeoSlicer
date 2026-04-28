@@ -164,3 +164,6 @@ src/modules/MicrotomRemote/PNM_Report/static/
 
 # Release application file (downloaded to build Azure VM Offer Image)
 /tools/packer/resources/geoslicer-*.tar.gz
+
+# MacOS Finder
+.DS_Store

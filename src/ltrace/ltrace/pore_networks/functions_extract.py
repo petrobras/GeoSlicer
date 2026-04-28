@@ -3,6 +3,7 @@ import os
 import re
 from typing import Optional
 
+from multiprocessing.shared_memory import SharedMemory
 import numpy as np
 import pandas as pd
 import slicer
@@ -496,7 +497,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
 
     pn_properties["pore.shape_factor"] = np.zeros((len(pn_properties["pore.all"]),))
     conns_total_area = np.zeros((len(pn_properties["pore.all"]),))
-
     for throat in range(len(pn_properties["throat.all"])):
         conn_0 = pn_properties["throat.conns_0"][throat]
         conn_1 = pn_properties["throat.conns_1"][throat]
@@ -522,7 +522,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
         pn_properties[f"{coord_name}0"] = pn_properties[f"{coord_name}2"]
         pn_properties[f"{coord_name}2"] = temp_coord
     del temp_coord
-
     labels = pn_properties["pore.region_label"]
     edge_labels = {}
     edge_labels["all"] = []
@@ -543,7 +542,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
             raise Exception  # should be impossible, but expensive to guarantee
         edge_labels["all"] = np.unique(np.append(edge_labels["all"], edge_labels[face]))
         pn_properties[face] = np.isin(labels, edge_labels[face])
-
     max_coords = [(i * scale[watershed_image.ndim-1-coord]) for coord,i in enumerate(watershed_image.shape[-1::-1])]
     # fmt: off
     for labels_list, coord_axis, new_position in (
@@ -581,7 +579,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
         pn_properties["throat.mid_length"],
     )
     pn_properties["pore.effective_volume"] = pn_properties["pore.volume"] * pn_properties["pore.subresolution_porosity"]
-
     try:
         pore_subresolution_porosity = pn_properties["pore.subresolution_porosity"]
     except KeyError:
@@ -592,7 +589,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
     # TODO (PL-2213): Create an option at interface to select random subresolution porosity instead of getting from network
     # rng = np.random.default_rng()
     # pore_subresolution_porosity = rng.random((pn_properties["pore.all"]).size)
-
     throat_phi = np.ones_like(pn_properties["throat.all"], dtype=np.float64)
     for throat_index in range(len(pn_properties["throat.all"])):
         left_index = pn_properties["throat.conns_0"][throat_index]
@@ -651,7 +647,6 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
         * pn_properties["throat.subresolution_porosity"][pn_properties["throat.phases_1"] > 1]
     ).sum()
     throat_total_volume = throat_resolved_volume + throat_subscale_volume
-
     pn_properties["network.number_of_pores"] = len(pn_properties["pore.all"])
     pn_properties["network.number_of_throats"] = len(pn_properties["throat.all"])
 
@@ -686,6 +681,7 @@ def general_pn_extract(
     is_multiscale=False,
     force_cpu=False,
     divs=2,
+    use_shared_memory=False,
 ):
     """
     Creates two table nodes describing the pore-network represented by multiphaseNode or by the watershedNode.
@@ -715,7 +711,7 @@ def general_pn_extract(
         properties could not be extracted.
     """
     if label_array is not None and np.max(label_array) <= 0:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), label_array.astype(np.int32)
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), "", None
 
     if (label_array is None) and (is_multiscale is True):
         if type(watershed_blur) is dict:
@@ -737,13 +733,30 @@ def general_pn_extract(
             parallelization=_parallelization,
         )
         pn_properties = snow_results.network
-        watershed_output = snow_results.regions
+
+        if use_shared_memory:
+            watershed_output_array, watershed_output = _create_shared_array(snow_results.regions)
+            label_array = watershed_output_array
+            watershed_output_shape = watershed_output_array.shape
+        else:
+            watershed_output = snow_results.regions
+            label_array = watershed_output
+            watershed_output_shape = watershed_output.shape
+            watershed_output_array = watershed_output
     elif is_multiscale is True:  # and label_array is not None
         if not is_contiguous(label_array):
-            watershed_output = make_contiguous(label_array)
-            label_array = watershed_output
+            label_array = make_contiguous(label_array)
+            if use_shared_memory:
+                watershed_output_array, watershed_output = _create_shared_array(label_array)
+                watershed_output_shape = watershed_output_array.shape
+            else:
+                watershed_output = label_array
+                watershed_output_shape = watershed_output.shape
+                watershed_output_array = watershed_output
         else:
+            watershed_output_array = None
             watershed_output = None
+            watershed_output_shape = None
         multiphase_array = _phases_from_porosity_map(scalar_array)
 
         pn_properties = regions_to_network_parallel(
@@ -755,31 +768,34 @@ def general_pn_extract(
         )
     else:  # is_multiscale is False and label_array is not None
         if not is_contiguous(label_array):
-            watershed_output = make_contiguous(label_array)
-            label_array = watershed_output
+            label_array = make_contiguous(label_array)
+            if use_shared_memory:
+                watershed_output_array, watershed_output = _create_shared_array(label_array)
+                watershed_output_shape = watershed_output_array.shape
+            else:
+                watershed_output = label_array
+                watershed_output_array = watershed_output
+                watershed_output_shape = watershed_output.shape
         else:
+            watershed_output_array = None
             watershed_output = None
+            watershed_output_shape = None
 
         pn_properties = regions_to_network_parallel(
             regions=label_array,
             voxel_size=scale,
             force_cpu=force_cpu,
         )
-
-    if watershed_output is not None:
-        watershed_output = watershed_output.astype(np.int32)
-
     if not pn_properties:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), watershed_output
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), "", None
     if is_multiscale is True and pn_properties["pore.subresolution_porosity"].max() <= 0.01:
         pn_properties["pore.subresolution_porosity"] *= 100
     pn_properties = _porespy_postprocessing(
         pn_properties,
-        watershed_image=(watershed_output if (watershed_output is not None) else label_array),
+        watershed_image=label_array,
         scale=scale,
         porosity_map=(scalar_array if is_multiscale else None),
     )
-
     pn_throats = {}
     pn_pores = {}
     pn_network = {}
@@ -790,12 +806,11 @@ def general_pn_extract(
             pn_throats[i] = pn_properties[i]
         elif "network." in i:
             pn_network[i] = pn_properties[i]
-
     df_pores = pd.DataFrame(pn_pores)
     df_throats = pd.DataFrame(pn_throats)
     df_network = pd.DataFrame([pn_network])
 
-    return df_pores, df_throats, df_network, watershed_output
+    return df_pores, df_throats, df_network, watershed_output, watershed_output_shape
 
 
 @njit(parallel=True)
@@ -886,8 +901,31 @@ def is_contiguous(labelmap):
         raise Exception
 
 
+def _create_shared_array(array):
+    output_memory = SharedMemory(
+        create=True,
+        size=array.size * np.int32().itemsize,
+    )
+    shared_array = np.ndarray(
+        array.shape,
+        dtype=np.int32(),
+        buffer=output_memory.buf,
+    )
+    shared_array[:, :, :] = array
+    return shared_array, output_memory
+
+
 class ExtractionNodesCreator:
-    def __init__(self, metadata, cwd, prefix, visualization):
+    def __init__(
+        self,
+        metadata,
+        cwd,
+        prefix,
+        visualization,
+        inputNodeID=None,
+        watershed_output_memory=None,
+        watershed_output_shape=None,
+    ):
         """
         :param metadata: dict containing 'spacing', 'origin', 'ijktorasmatrix', 'bounds', and 'itemTreeId'
         :param cwd: current working directory (Path object)
@@ -898,6 +936,9 @@ class ExtractionNodesCreator:
         self.cwd = cwd
         self.prefix = prefix
         self.visualization = visualization
+        self.inputNodeID = inputNodeID
+        self.watershed_output_memory = watershed_output_memory
+        self.watershed_output_shape = watershed_output_shape
         self.results = {}
 
         self.network_property_map = {
@@ -955,19 +996,21 @@ class ExtractionNodesCreator:
         df_network = pd.DataFrame(list(dict_network.items()), columns=["Property", "Value"])
 
         # Handle Watershed Volume
-        if os.path.isfile(str(self.cwd / "watershed.npy")):
-            array_watershed = np.load(str(self.cwd / "watershed.npy"))
+        if self.watershed_output_memory is not None:
+            self.shared_array = np.ndarray(
+                self.watershed_output_shape,
+                dtype=np.int32(),
+                buffer=self.watershed_output_memory.buf,
+            )
             output_watershed_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
             output_watershed_volume.CreateDefaultDisplayNodes()
-            slicer.util.updateVolumeFromArray(output_watershed_volume, array_watershed)
+            slicer.util.updateVolumeFromArray(output_watershed_volume, self.shared_array)
 
             # Apply metadata
             output_watershed_volume.SetSpacing(self.metadata["spacing"])
             output_watershed_volume.SetOrigin(self.metadata["origin"])
             vtk_matrix = slicer.util.vtkMatrixFromArray(np.array(self.metadata["ijktorasmatrix"]))
             output_watershed_volume.SetIJKToRASDirectionMatrix(vtk_matrix)
-        else:
-            array_watershed = None
 
         throatOutputTable, poreOutputTable, networkOutputTable = self.__create_tables("porespy")
 
@@ -996,7 +1039,7 @@ class ExtractionNodesCreator:
         if ijktoras is not None:
             poreOutputTable.SetAttribute("ijktoras", ";".join(str(v) for row in ijktoras for v in row))
 
-        if array_watershed is not None:
+        if self.watershed_output_memory is not None:
             poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
             poreOutputTable.AddNodeReferenceID("watershed", output_watershed_volume.GetID())
 
@@ -1008,9 +1051,10 @@ class ExtractionNodesCreator:
             itemId = folderTree.GetItemByDataNode(node)
             folderTree.SetItemParent(itemId, currentDir)
 
-        if array_watershed is not None:
+        if self.watershed_output_memory is not None:
             itemId = folderTree.GetItemByDataNode(output_watershed_volume)
             folderTree.SetItemParent(itemId, currentDir)
+            self.watershed_output_memory.close()
 
         if self.visualization:
             self.results["model_nodes"] = visualize_network(poreOutputTable, throatOutputTable, self.metadata)

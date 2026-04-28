@@ -4,8 +4,10 @@ import os
 import shutil
 from pathlib import Path
 from typing import Tuple, Union
+from multiprocessing.shared_memory import SharedMemory
 
 import ctk
+import numpy as np
 import qt
 import slicer
 import slicer.util
@@ -371,6 +373,8 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         self.results = {}
         self.visualization = False
         self.params = None
+        self.watershed_output_memory = None
+        self.watershed_output_shape = None
 
     def extract(
         self,
@@ -382,25 +386,27 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         watershed_blur: list,
         localMode: bool,
     ) -> Union[Tuple[slicer.vtkMRMLTableNode, slicer.vtkMRMLTableNode], bool]:
-        self.params = {"prefix": prefix, "method": method}
-
+        self.cwd = Path(slicer.util.tempDirectory())
         self.visualization = visualization
         self.localMode = localMode
+        self.prefix = prefix
+        self.params = {"prefix": prefix, "method": method, "watershed_blur": watershed_blur}
+        cliParams = {"cwd": str(self.cwd)}
+        self.watershed_output_memory = None
 
         self.inputNodeID = inputVolumeNode.GetID()
-        self.labelNodeID = None
-        if inputLabelMap:
+        if inputLabelMap is not None:
             self.labelNodeID = inputLabelMap.GetID()
+        else:
+            self.labelNodeID = None
 
         if inputVolumeNode.IsA("vtkMRMLLabelMapVolumeNode") and inputLabelMap is None:
             self.params["is_multiscale"] = False
-        elif inputVolumeNode:
+        elif inputVolumeNode.IsA("vtkMRMLScalarVolumeNode"):
             self.params["is_multiscale"] = True
         else:
             logging.warning("Not a valid input.")
             return
-
-        self.params["watershed_blur"] = watershed_blur
 
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         ijkToRasMatrix = vtk.vtkMatrix4x4()
@@ -418,14 +424,72 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
 
         self.params.update({"metadata": metadata})
 
-        self.cwd = Path(slicer.util.tempDirectory())
-        self.prefix = prefix
+        self.params["scale"] = str(inputVolumeNode.GetSpacing()[::-1])
+
+        if self.params["is_multiscale"] is False:
+            self.scalar_memory = None
+            label_array = slicer.util.arrayFromVolume(inputVolumeNode)
+            self.label_memory = SharedMemory(
+                create=True,
+                size=label_array.size * label_array.dtype.itemsize,
+            )
+            label_dtype = label_array.dtype.str
+            label_shape = str(label_array.shape)
+            shared_label_array = np.ndarray(
+                tuple(int(i) for i in label_shape[1:-1].split(", ")),
+                dtype=label_dtype,
+                buffer=self.label_memory.buf,
+            )
+            shared_label_array[:, :, :] = label_array
+            self.params["label_dtype"] = label_dtype
+            self.params["label_shape"] = label_shape
+            cliParams["label"] = self.label_memory.name
+
+        elif self.params["is_multiscale"] is True:
+            scalar_array = slicer.util.arrayFromVolume(inputVolumeNode)
+            self.scalar_memory = SharedMemory(
+                create=True,
+                size=scalar_array.size * scalar_array.dtype.itemsize,
+            )
+            scalar_dtype = scalar_array.dtype.str
+            scalar_shape = str(scalar_array.shape)
+            shared_scalar_array = np.ndarray(
+                tuple(int(i) for i in scalar_shape[1:-1].split(", ")),
+                dtype=scalar_dtype,
+                buffer=self.scalar_memory.buf,
+            )
+            shared_scalar_array[:, :, :] = scalar_array
+            self.params["scalar_dtype"] = scalar_dtype
+            self.params["scalar_shape"] = scalar_shape
+            cliParams["scalar"] = self.scalar_memory.name
+
+            if inputLabelMap:
+                label_array = slicer.util.arrayFromVolume(inputLabelMap)
+                self.label_memory = SharedMemory(
+                    create=True,
+                    size=label_array.size * label_array.dtype.itemsize,
+                )
+                label_dtype = label_array.dtype.str
+                label_shape = str(label_array.shape)
+                shared_label_array = np.ndarray(
+                    tuple(int(i) for i in label_shape[1:-1].split(", ")),
+                    dtype=label_dtype,
+                    buffer=self.label_memory.buf,
+                )
+                shared_label_array[:, :, :] = label_array
+                self.params["label_dtype"] = label_dtype
+                self.params["label_shape"] = label_shape
+                cliParams["label"] = self.label_memory.name
+            else:
+                self.label_memory = None
 
         if localMode:
-            cliParams = {"cwd": str(self.cwd)}
-            cliParams["volume"] = self.inputNodeID
-            if self.labelNodeID:
-                cliParams["label"] = self.labelNodeID
+            self.semaphore_shm = SharedMemory(
+                create=True,
+                size=1,
+            )
+            self.semaphore_shm.buf[0] = 0
+            cliParams["semaphore"] = self.semaphore_shm.name
             with open(str(self.cwd / "extractor_params_dict.json"), "w") as file:
                 json.dump(self.params, file)
             self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
@@ -452,6 +516,14 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         if self.cliNode is None:
             return
 
+        if self.semaphore_shm.buf[0] == 1:
+            with open(str(self.cwd / "shm_info.txt"), "r", encoding="utf-8") as f:
+                watershed_output_name = f.readline().strip()
+                watershed_output_shape = tuple(map(int, f.readline().split()))
+            self.watershed_output_memory = SharedMemory(watershed_output_name)
+            self.watershed_output_shape = watershed_output_shape
+            self.semaphore_shm.buf[0] = 2
+
         status = caller.GetStatusString()
         if status in ["Completed", "Cancelled", "Completed with errors"]:
             logging.info(status)
@@ -470,7 +542,15 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         inputVolumeItemID = shNode.GetItemByDataNode(inputVolumeNode)
         parentItemID = shNode.GetItemParent(inputVolumeItemID)
 
-        extraction_nodes_creator = ExtractionNodesCreator(metadata, self.cwd, self.prefix, self.visualization)
+        extraction_nodes_creator = ExtractionNodesCreator(
+            metadata,
+            self.cwd,
+            self.prefix,
+            self.visualization,
+            self.inputNodeID,
+            self.watershed_output_memory,
+            self.watershed_output_shape,
+        )
         try:
             self.results = extraction_nodes_creator.create(parent_folder=parentItemID)
         except FileNotFoundError as e:
@@ -481,6 +561,8 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             # Catch-all for other potential issues during node creation
             logging.error(f"Unexpected error creating nodes: {str(e)}")
             slicer.util.errorDisplay(f"An error occurred: {str(e)}")
+        if self.watershed_output_memory is not None:
+            self.watershed_output_memory.close()
 
 
 class PoreNetworkExtractorError(RuntimeError):

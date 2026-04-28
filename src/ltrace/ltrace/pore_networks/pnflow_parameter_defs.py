@@ -171,6 +171,15 @@ PARAMETERS = {
         "false_value": "//",
         "default_values": {"": True},
     },
+    "batch_invasions": {
+        "display_name": "Use batch invasion",
+        "layout": "options",
+        "dtype": "singlecheckbox",
+        "true_value": "T",
+        "false_value": "F",
+        "default_value": False,
+        "enabled": True,
+    },
     "create_sequence": {
         "display_name": "Create animation node",
         "layout": "options",

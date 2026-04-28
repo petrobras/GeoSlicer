@@ -184,4 +184,6 @@ In the case of a multiscale network, since the subscale radii cannot be determin
 - _Pressure Curve_ and _Throat Radius Curve_: Assigns subresolution radii based on the curve obtained from a mercury injection experiment. The inlet pressure data can be used by volume fraction, or the equivalent radius can be used as a function of volume fraction;
 ![Figure 18a](../../assets/images/PoreNetworkSimulationSubscalePressure.png)![Figure 18b](../../assets/images/PoreNetworkSimulationSubscaleRadius.png)
 
+Both models require a table containing the **Incremental Pore Volume Fraction** ($\Delta S_i$). This parameter represents the portion of the total pore space that is filled with mercury during a specific pressure interval (or, equivalently, the volume associated with a specific range of throat sizes). It is obtained from the experimental Mercury Intrusion Capillary Pressure (MICP) cumulative saturation ($S_{Hg}$) by calculating the difference between consecutive points: $\Delta S_{i} = S_{Hg}(P_{i}) - S_{Hg}(P_{i-1})$. This fraction is used to weight the sub-resolution capillary functions, ensuring that the simulated mercury injection matches the experimental distribution of the sample.
+
 The chosen subscale model has no impact on uniescalar network simulations, since all radii are already determined.  

@@ -18,7 +18,7 @@ class GeologEnv(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Geolog Integration"
-        self.parent.categories = ["Tools", "Multiscale"]
+        self.parent.categories = ["Tools", "Multiscale", "ImageLog"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.setHelpUrl("Multiscale/GeologIntegration/GeologEnv.html")
 

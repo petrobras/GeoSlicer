@@ -23,6 +23,7 @@ from ltrace.slicer.helpers import (
     safe_convert_array,
     getCurrentEnvironment,
     checkUniqueNames,
+    saveNode,
 )
 from ltrace.slicer.node_attributes import TableDataOrientation, NodeEnvironment
 from ltrace.slicer_utils import *
@@ -539,7 +540,7 @@ class ExportLogic(LTracePluginLogic):
             node = createTemporaryNode(slicer.vtkMRMLScalarVolumeNode, "converted")
             slicer.util.updateVolumeFromArray(node, array)
 
-            success = slicer.util.saveNode(node, str(path))
+            success = saveNode(node, str(path))
             removeTemporaryNodes()
 
             if not success:

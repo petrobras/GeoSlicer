@@ -119,7 +119,7 @@ def process_chunk(args, volume_array=None):
             divs=1,
         )
 
-    pores_df, throats_df, network_df, _ = extract_result
+    pores_df, throats_df, network_df, _, _ = extract_result
 
     if pores_df.empty:
         return results

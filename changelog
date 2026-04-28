@@ -1,3 +1,41 @@
+# v2.8.7 - 2026-04-27
+
+## Highlights:
+- Integrate Geolog into the ImageLog toolbar (AM-12)
+
+## Bug fixes:
+- Resolve "buffer too small for requested array" error in extraction.
+- Fix traceback when `use_shared_memory` is false.
+- Address general PNM extraction when no watershed output is present.
+- Correct remote extraction issues.
+- Fix issues with batch invasion.
+- Resolve missing variable errors and ensure correct conversion back to microns when importing Subscale parameters.
+- Unify status checks and restore Apply and progress functionality.
+- Protect `onFinish` logic with try-except blocks.
+
+# v2.8.6 - 2026-04-02
+
+## Improvements:
+- Added a standalone widget with clone and rename buttons for manual segmentation in ImageLog and Volumes. (AM-22)
+- Introduced a custom widget for the Multiscale environment to display resolution text for training images and masks. (AM-25)
+- Improved the handling of table nodes in the table view before deletion. (PL-3010)
+- Enhanced the `onNodeAboutToBeRemoved` method to manage multiple open table views. (PL-3010)
+- Standardized the instance editor in the segment editor to pass 2D cropped images and spacing. (AM-18)
+- Implemented deterministic logic for auto-detecting column types in tables. (PL-3069)
+- Unified `rps.sh` calls for remote operations in `remote/utils.py`. (PL-3092)
+- Unified `rps.sh` calls within the KabsREVHandler. (PL-3027)
+
+## Bug fixes:
+- Fixed KabsREV to not call external IP and improved resolution limit retrieval. (PL-3132)
+- Fixed an issue with missing arguments when applying new segments in the segment instance editor. (AM-18)
+- Clipped log flow values in model nodes to prevent VTK corruption. (PL-3115)
+- Fixed Kabs REV subscale parameters and extraction updates. (PL-3115)
+- Fixed Geo2Spy conversion and its use in two-phase simulations. (PL-3103)
+- Fixed KabsREV UI restart after a "Complete with errors" state. (PL-3103)
+- Fixed extraction results localization in the tree. (PL-3103)
+- Fixed Kabs model nodes orientation. (PL-3103)
+- Added fallbacks for tables without schemas and when paths are not absolute. (PL-3069)
+
 # v2.8.5 - 2026-03-05
 
 ## Improvements:

@@ -181,9 +181,23 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.mercury_widget.setVolumeNode(node)
 
     def setParams(self, params):
-        self.modelTypeComboBox.setCurrentText(params.get("model type"))
-        self.modelTypeComboBox.setCurrentText(params.get("simulation type"))
-        self.modelTypeComboBox.setCurrentText(params.get("rotation angles"))
+        if params.get("model type"):
+            self.modelTypeComboBox.setCurrentText(params.get("model type"))
+        if params.get("simulation type"):
+            self.simulationTypeComboBox.setCurrentText(params.get("simulation type"))
+        if params.get("rotation angles"):
+            self.rotationAnglesEdit.text = params.get("rotation angles")
+        if params.get("solver"):
+            self.solverComboBox.setCurrentText(params.get("solver"))
+        if params.get("solver_error"):
+            self.errorEdit.text = params.get("solver_error")
+        if params.get("pressure_drop"):
+            self.pressureDropFloat.text = params.get("pressure_drop")
+        if params.get("fluid_viscosity"):
+            self.fluidViscosityFloat.text = params.get("fluid_viscosity") * 1000  # converts from Pa.s to mPa.s
+        if params.get("cilindrical_sample"):
+            self.cilindricalSample.setChecked(params.get("cilindrical_sample"))
+
         mercury_params = {
             "subres_model_name": params.get("subres_model_name"),
             "subres_params": params.get("subres_params"),

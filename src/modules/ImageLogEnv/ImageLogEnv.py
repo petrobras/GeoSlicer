@@ -18,7 +18,7 @@ class ImageLogEnv(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Image Log Environment"
-        self.parent.categories = ["Environment", "ImageLog"]
+        self.parent.categories = ["Environment", "ImageLog", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
         self.parent.helpText = ""
@@ -41,6 +41,8 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         relatedModules = self.getModuleManager().fetchByCategory([self.category])
 
         addAction(relatedModules["ImageLogData"], self.modulesToolbar)
+
+        addAction(relatedModules["GeologEnv"], self.modulesToolbar)
 
         # Imports and Export
         addAction(relatedModules["ImageLogImport"], self.modulesToolbar)

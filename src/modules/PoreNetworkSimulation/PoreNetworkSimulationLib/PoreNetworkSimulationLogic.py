@@ -118,6 +118,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         self.results = {}
         self.caDistributionTableDir = None
         self.visualization = False
+        self.params = None
 
     def run_1phase(self, inputTable, params, prefix, callback, wait=False):
         self.inputTable = inputTable
@@ -173,6 +174,13 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             return
         self.cliNode.Cancel()
 
+    def cleanup(self):
+        if self.cliNode:
+            self.cliNode.RemoveObservers("ModifiedEvent")
+            self.cliNode = None
+
+        self.callback = None
+
     def onePhaseCLICallback(self, caller, event):
         if caller is None:
             self.cliNode = None
@@ -181,17 +189,22 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             return
 
         status = caller.GetStatusString()
-        if status in ["Completed", "Cancelled"]:
+        if "Completed" in status or status == "Cancelled" or status == "Error":
             logging.info(status)
-            del self.cliNode
-            self.cliNode = None
             if status == "Completed":
-                time.sleep(1)  # TODO como resolve sem precisar?
-                self.onFinish()
+                try:
+                    time.sleep(1)  # TODO como resolve sem precisar?
+                    self.onFinish()
+                except Exception:
+                    logging.error(traceback.format_exc())
+                    slicer.util.errorDisplay("A problem has occurred while processing one-phase simulation results.")
+
             if not self.params["keep_temporary"]:
                 shutil.rmtree(self.cwd)
 
-            self.callback(True)
+            if self.callback:
+                self.callback(True)
+            self.cleanup()
 
     def onFinish(self):
         folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -672,6 +685,9 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         self.cliNode = None
         self.progressBar = progressBar
         self.prefix = None
+        self.krelResultsTableNodeId = None
+        self.krelCycleTableNodesId = []
+        self.params = None
 
     def run_2phase(self, pore_node, snapshot_node, params, prefix, callback, wait=False):
         self.start_time = time.time()
@@ -742,10 +758,8 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         if self.cliNode is None:
             return
         status = caller.GetStatusString()
-
-        if "Completed" in status or status == "Cancelled":
+        if "Completed" in status or status == "Cancelled" or status == "Error":
             logging.info(status)
-            self.cliNode = None
             if status == "Completed":
                 try:
                     folderTree = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -793,8 +807,10 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     self.removeNodes()
                     logging.error(traceback.format_exc())
                     slicer.util.errorDisplay("A problem has occurred during the simulation.")
+
+            if self.callback:
+                self.callback(True)
             self.cleanup()
-            self.callback(True)
 
     #  utils
     def updateTableFromDataFrame(self, tableNode, dataFrameFileName):
@@ -864,9 +880,15 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         slicer.mrmlScene.GetSubjectHierarchyNode().RemoveItem(self.rootDir)
 
     def cleanup(self):
+        if self.cliNode:
+            self.cliNode.RemoveObservers("ModifiedEvent")
+            self.cliNode = None
+
+        self.callback = None
+
         # Remove created files if told to do so
-        if not self.params["keep_temporary"] == "T":
-            shutil.rmtree(self.cwd)
+        if self.params and not self.params.get("keep_temporary") == "T":
+            shutil.rmtree(self.cwd, ignore_errors=True)
 
     def createModelNode(self, node_name, polydata, saturation_steps, simulation_id):
         data_table_id_list = []

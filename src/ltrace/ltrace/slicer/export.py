@@ -15,6 +15,7 @@ from ltrace.slicer.helpers import (
     createTemporaryNode,
     removeTemporaryNodes,
     safe_convert_array,
+    saveNode,
 )
 from ltrace.slicer.node_attributes import TableDataOrientation
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
@@ -236,7 +237,7 @@ def exportScalarVolume(node, rootPath, nodePath, format, name=None, imageType=No
         node = createTemporaryNode(slicer.vtkMRMLScalarVolumeNode, "converted")
         slicer.util.updateVolumeFromArray(node, array)
 
-        success = slicer.util.saveNode(node, str(path))
+        success = saveNode(node, str(path))
         removeTemporaryNodes()
 
         if not success:

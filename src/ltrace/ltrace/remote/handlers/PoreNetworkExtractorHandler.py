@@ -77,7 +77,7 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
                 slicer.util.exportNode(label_node, label_node_path, world=True)
 
             self.cli_params = {
-                "volume": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
+                "scalar": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
                 "cwd": str(self.job_remote_path),
             }
             if self.label_node_id:
@@ -93,8 +93,8 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
         try:
             script = " ".join(["PoreNetworkExtractorCLI.PoreNetworkExtractorCLI", argstring(self.cli_params)])
             opening_command = caller.jobs[uid].host.opening_command
-            main_cmd = f"RPS_DIR='/atena/users/dibi/containers/geoslicer'; sh $RPS_DIR/scripts/rps.sh --sif $RPS_DIR/images/geoslicer-cli.sif --cli '{script}'"
-            full_cmd = " && ".join([opening_command, rf"cd {self.job_remote_path}", main_cmd])
+            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script])
+            full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
             output = client.run_command(full_cmd, verbose=True)
 

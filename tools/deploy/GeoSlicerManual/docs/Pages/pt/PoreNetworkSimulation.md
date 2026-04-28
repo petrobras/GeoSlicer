@@ -185,4 +185,6 @@ No caso da rede multiescalar, como os raios da subescala não podem ser determin
 - _Pressure Curve_ e _Throat Radius Curve_: Atribui os raios da subresolução com base na curva obtida por um experimento de injeção de mercúrio. Pode ser utilizado o dado da pressão de entrada pela fração do volume, ou então o raio equivalente em função da fração de volume;
 ![Figura 18a](../../assets/images/PoreNetworkSimulationSubscalePressure.png)![Figura 18b](../../assets/images/PoreNetworkSimulationSubscaleRadius.png)
 
+Ambos os modelos exigem uma tabela contendo a **Fração Incremental do Volume de Poros** ($\Delta S_i$). Esse parâmetro representa a porção do espaço poroso total que é preenchida com mercúrio durante um intervalo de pressão específico (ou, equivalentemente, o volume associado a uma faixa específica de tamanhos de garganta). Ele é obtido a partir da saturação cumulativa ($S_{Hg}$) experimental de Pressão Capilar por Intrusão de Mercúrio (MICP), calculando a diferença entre pontos consecutivos: $\Delta S_{i} = S_{Hg}(P_{i}) - S_{Hg}(P_{i-1})$. Esta fração é usada para ponderar as funções capilares de sub-resolução, garantindo que a injeção de mercúrio simulada corresponda à distribuição experimental da amostra.
+
 O modelo de subescala escolhido não tem impacto nas simulações de redes uniescalares, uma vez que todos os raios já estão determinados. 

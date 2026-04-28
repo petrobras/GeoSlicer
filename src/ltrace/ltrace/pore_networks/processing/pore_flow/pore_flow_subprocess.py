@@ -101,6 +101,7 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             "skip_2nd_drainage": False,
             "enforced_swi_1": params["enforced_swi_1"],
             "enforced_swi_2": params["enforced_swi_2"],
+            "batch_invasions": "partial" if params["batch_invasions"] == "T" else "none",
         }
 
         generate_vtu = params["create_sequence"] == "T"
@@ -139,7 +140,8 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             node2_file.close()
             node3_file.close()
 
-            pn = openpnm.io.network_from_statoil(".", "Image")
+            openpn = openpnm.io.network_from_statoil(".", "Image")
+            pn = ppf.network.PoreNetwork.from_openpnm(openpn)
             pn["pore.N"], pn["throat.N"] = PoreFlowSubprocess.__get_n_from_statoil(pn, link3, node3)
 
             if params["create_drainage_snapshot"] == "T":

@@ -25,6 +25,7 @@ from PoreNetworkSimulation import (
     MercurySimulationLogic,
 )
 from ltrace.slicer import data_utils as du
+from ltrace.slicer.helpers import saveNode
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePluginLogic
 from ltrace.utils.ProgressBarProc import ProgressBarProc
@@ -616,13 +617,13 @@ class ReportLogic(LTracePluginLogic):
     def save_node_data(self, folder, key, node):
         if isinstance(node, slicer.vtkMRMLScalarVolumeNode) or isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
             name = f"{folder}/{self.outputPrefix}/{key}.nrrd"
-            slicer.util.saveNode(node, name)
+            saveNode(node, name)
             file_size = os.path.getsize(name)
             if file_size > 200000000:
                 self.downscale_volume_node(node, name)
         elif isinstance(node, slicer.vtkMRMLTableNode):
             name = f"{folder}/{self.outputPrefix}/{key}.tsv"
-            slicer.util.saveNode(node, name)
+            saveNode(node, name)
         elif isinstance(node, slicer.vtkMRMLModelNode):
             name = self.save_model_node(folder, key, node)
 
@@ -651,7 +652,7 @@ class ReportLogic(LTracePluginLogic):
         resample_logic.run(parameters, cli_wait=True)
 
         node_downscaled = slicer.util.getNode(node.GetName() + "_" + parameters.outputSuffix)
-        slicer.util.saveNode(node_downscaled, name)
+        saveNode(node_downscaled, name)
 
     def save_model_node(self, folder, key, node):
         name = f"{folder}/{self.outputPrefix}/{key}.vtk"

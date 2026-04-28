@@ -9,10 +9,18 @@ from pyqtgraph.Qt import QtCore
 from vtk.util.numpy_support import vtk_to_numpy
 
 from .SubscaleModelWidget import SubscaleModelWidget
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data, estimate_pressure
+from ltrace.pore_networks.subres_models import (
+    get_pore_network_volume_data,
+    estimate_pressure,
+    rebin_psd_log_uniform,
+    make_log_uniform_bins,
+)
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from PoreNetworkSimulationLib.constants import MICP
+
+PA_TO_PSI = 0.000145038  # 1 Pa = 0.000145038 psi
+MM_TO_UM = 1000  # 1 mm = 1000 µm
 
 
 class MercurySimulationWidget(qt.QFrame):
@@ -81,11 +89,6 @@ class MercurySimulationWidget(qt.QFrame):
         sirrSelectorLayout.addWidget(self.toggleSirrButton)
         micpFormLayout.addRow(sirrLabelWidget, sirrSelectorLayout)
 
-        self.show_resolution_lines_checkbox = qt.QCheckBox("Show resolution limit lines in plots")
-        self.show_resolution_lines_checkbox.checked = True
-        self.show_resolution_lines_checkbox.toggled.connect(self.onShowResolutionLinesToggled)
-        micpFormLayout.addRow(self.show_resolution_lines_checkbox)
-
         # plots
         pysideReportForm = shiboken2.wrapInstance(hash(micpFormLayout), pyside.QtWidgets.QFormLayout)
         self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
@@ -94,10 +97,11 @@ class MercurySimulationWidget(qt.QFrame):
 
         # SIRR Plots (Background)
         self.micpPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=1, col=1, rowspan=1, colspan=1, left="Pc", bottom="Shg"
+            row=1, col=1, rowspan=1, colspan=1, left="Pressure (Pa)", bottom="Mercury saturation"
         )
+        self.micpLegend = self.micpPlotItem.addLegend(offset=(-10, 10))
         self.micpSirrSeries = self.micpPlotItem.plot(
-            name="micp_sirr",
+            name="Reference",
             pen=pg.mkPen((255, 100, 100), width=2, style=QtCore.Qt.DotLine),
             symbol="t",
             symbolPen=(255, 100, 100),
@@ -121,8 +125,9 @@ class MercurySimulationWidget(qt.QFrame):
         self.resolutionLine.hide()
 
         self.pcPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=2, col=1, rowspan=1, colspan=1, left="dsn", bottom="Pc"
+            row=2, col=1, rowspan=1, colspan=1, left="Pore volume fraction (%)", bottom="Pressure (Pa)"
         )
+        self.pcLegend = self.pcPlotItem.addLegend(offset=(-10, 10))
         self.pcResolutionLine = pg.InfiniteLine(
             angle=90,
             movable=False,
@@ -138,7 +143,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.pcPlotItem.addItem(self.pcResolutionLine)
         self.pcResolutionLine.hide()
         self.pcSirrSeries = self.pcPlotItem.plot(
-            name="pc_sirr",
+            name="Reference",
             pen=pg.mkPen((100, 200, 100), width=2, style=QtCore.Qt.DotLine),
             symbol="t",
             symbolPen=(100, 200, 100),
@@ -147,8 +152,9 @@ class MercurySimulationWidget(qt.QFrame):
         )
 
         self.radiiPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=3, col=1, rowspan=1, colspan=1, left="dsn", bottom="Radius"
+            row=3, col=1, rowspan=1, colspan=1, left="Pore volume fraction (%)", bottom="Radius (mm)"
         )
+        self.radiiLegend = self.radiiPlotItem.addLegend(offset=(10, 10))
         self.radiiResolutionLine = pg.InfiniteLine(
             angle=90,
             movable=False,
@@ -164,7 +170,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiPlotItem.addItem(self.radiiResolutionLine)
         self.radiiResolutionLine.hide()
         self.radiiSirrSeries = self.radiiPlotItem.plot(
-            name="radii_sirr",
+            name="Reference",
             pen=pg.mkPen((150, 150, 255), width=2, style=QtCore.Qt.DotLine),
             symbol="t",
             symbolPen=(150, 150, 255),
@@ -174,7 +180,7 @@ class MercurySimulationWidget(qt.QFrame):
 
         # Simulation Plots (Foreground)
         self.micpSeries = self.micpPlotItem.plot(
-            name="micp",
+            name="Simulation",
             pen=pg.mkPen("r", width=2, style=QtCore.Qt.DashLine),
             symbol="o",
             symbolPen="r",
@@ -182,7 +188,7 @@ class MercurySimulationWidget(qt.QFrame):
             symbolBrush="r",
         )
         self.pcSeries = self.pcPlotItem.plot(
-            name="pc",
+            name="Simulation",
             pen=pg.mkPen("g", width=2, style=QtCore.Qt.DashLine),
             symbol="o",
             symbolPen="g",
@@ -190,7 +196,7 @@ class MercurySimulationWidget(qt.QFrame):
             symbolBrush="g",
         )
         self.radiiSeries = self.radiiPlotItem.plot(
-            name="radii",
+            name="Simulation",
             pen=pg.mkPen((50, 50, 255), width=2, style=QtCore.Qt.DashLine),
             symbol="o",
             symbolPen=(50, 50, 255),
@@ -198,15 +204,118 @@ class MercurySimulationWidget(qt.QFrame):
             symbolBrush=(50, 50, 255),
         )
 
-        self.micpPlotItem.addLegend()
-        self.pcPlotItem.addLegend()
-        self.radiiPlotItem.addLegend()
         pysideReportForm.addRow(self.subvolumeGraphicsLayout)
+
+        # Plot options collapsible
+        self.plotOptionsCollapsible = ctk.ctkCollapsibleButton()
+        self.plotOptionsCollapsible.text = "Plot options"
+        self.plotOptionsCollapsible.collapsed = True
+        self.plotOptionsCollapsible.flat = True
+        micpFormLayout.addRow(self.plotOptionsCollapsible)
+        plotOptionsLayout = qt.QFormLayout(self.plotOptionsCollapsible)
+
+        self.show_resolution_lines_checkbox = qt.QCheckBox()
+        self.show_resolution_lines_checkbox.checked = True
+        self.show_resolution_lines_checkbox.toggled.connect(self.onShowResolutionLinesToggled)
+        plotOptionsLayout.addRow("Show resolution limit:", self.show_resolution_lines_checkbox)
+
+        self.show_legend_checkbox = qt.QCheckBox()
+        self.show_legend_checkbox.checked = True
+        self.show_legend_checkbox.toggled.connect(self.onToggleLegend)
+        plotOptionsLayout.addRow("Show legend:", self.show_legend_checkbox)
+
+        # Unit selector
+        self.pressureUnitGroup = qt.QButtonGroup(self)
+        self.paRadioButton = qt.QRadioButton("Pa")
+        self.paRadioButton.setChecked(True)
+        self.psiRadioButton = qt.QRadioButton("psi")
+        self.pressureUnitGroup.addButton(self.paRadioButton)
+        self.pressureUnitGroup.addButton(self.psiRadioButton)
+        pressureUnitLayout = qt.QHBoxLayout()
+        pressureUnitLayout.addWidget(self.paRadioButton)
+        pressureUnitLayout.addWidget(self.psiRadioButton)
+        pressureUnitLayout.addStretch()
+        self.paRadioButton.toggled.connect(self.onUnitChanged)
+        plotOptionsLayout.addRow("Pressure unit:", pressureUnitLayout)
+
+        self.radiusUnitGroup = qt.QButtonGroup(self)
+        self.mmRadioButton = qt.QRadioButton("mm")
+        self.umRadioButton = qt.QRadioButton("µm")
+        self.umRadioButton.setChecked(True)
+        self.radiusUnitGroup.addButton(self.mmRadioButton)
+        self.radiusUnitGroup.addButton(self.umRadioButton)
+        radiusUnitLayout = qt.QHBoxLayout()
+        radiusUnitLayout.addWidget(self.mmRadioButton)
+        radiusUnitLayout.addWidget(self.umRadioButton)
+        radiusUnitLayout.addStretch()
+        self.mmRadioButton.toggled.connect(self.onUnitChanged)
+        plotOptionsLayout.addRow("Radius unit:", radiusUnitLayout)
+
+        self.logUniformRebinCheckBox = qt.QCheckBox()
+        self.logUniformRebinCheckBox.checked = False
+        self.logUniformRebinCheckBox.setToolTip("Rebin both distributions to log-uniform bins for direct comparison")
+        self.logUniformRebinCheckBox.toggled.connect(self.onLogUniformRebinToggled)
+        plotOptionsLayout.addRow("Log-uniform rebinning:", self.logUniformRebinCheckBox)
+
+        self.densityNormCheckBox = qt.QCheckBox()
+        self.densityNormCheckBox.checked = False
+        self.densityNormCheckBox.enabled = False
+        self.densityNormCheckBox.setToolTip(
+            "Normalize rebinned histogram to probability density (divide by bin width). "
+            "When off, bars show probability mass per bin."
+        )
+        self.densityNormCheckBox.toggled.connect(self.onLogUniformRebinToggled)
+        self.logUniformRebinCheckBox.toggled.connect(self.onLogUniformRebinCheckBoxToggled)
+        plotOptionsLayout.addRow("Probability density:", self.densityNormCheckBox)
+
+        # Log scale checkboxes
+        self.logPcCheckBox = qt.QCheckBox("Pressure")
+        self.logRadiiCheckBox = qt.QCheckBox("Radius")
+        self.logPcCheckBox.toggled.connect(self.onLogScaleToggled)
+        self.logRadiiCheckBox.toggled.connect(self.onLogScaleToggled)
+        self.logPcCheckBox.setChecked(True)
+        self.logRadiiCheckBox.setChecked(True)
+        logLayout = qt.QHBoxLayout()
+        logLayout.addWidget(self.logPcCheckBox)
+        logLayout.addWidget(self.logRadiiCheckBox)
+        logLayout.addStretch()
+        plotOptionsLayout.addRow("Log scale:", logLayout)
 
     def setVolumeNode(self, node):
         self.current_node = node
         self.subscaleModelWidget.setVolumeNode(node)
         self.updateResolutionLines(node)
+
+    def onUnitChanged(self):
+        pressure_unit = "Pa" if self.paRadioButton.isChecked() else "psi"
+        self.micpPlotItem.setLabel("left", f"Pressure ({pressure_unit})")
+        self.pcPlotItem.setLabel("bottom", f"Pressure ({pressure_unit})")
+
+        radius_unit = "mm" if self.mmRadioButton.isChecked() else "µm"
+        self.radiiPlotItem.setLabel("bottom", f"Radius ({radius_unit})")
+
+        self.onChangeSirrMicp()
+        self.onChangeMicp()
+        self.updateResolutionLines(getattr(self, "current_node", None))
+
+    def onLogUniformRebinCheckBoxToggled(self, checked):
+        self.densityNormCheckBox.enabled = checked
+        if not checked:
+            self.densityNormCheckBox.checked = False
+
+    def onLogUniformRebinToggled(self):
+        self.onChangeSirrMicp()
+        self.onChangeMicp()
+
+    def onLogScaleToggled(self):
+        logPc = self.logPcCheckBox.checked
+        logRadii = self.logRadiiCheckBox.checked
+
+        self.micpPlotItem.setLogMode(y=logPc)
+        self.pcPlotItem.setLogMode(x=logPc)
+        self.radiiPlotItem.setLogMode(x=logRadii)
+
+        self.updateResolutionLines(getattr(self, "current_node", None))
 
     def updateResolutionLines(self, node):
         if node is not None and self.show_resolution_lines_checkbox.checked:
@@ -214,11 +323,24 @@ class MercurySimulationWidget(qt.QFrame):
             spacing = volume_data.get("spacing", {})
             min_spacing = min(spacing.values()) if spacing else 1.0
             pressure = estimate_pressure(min_spacing)
-            self.resolutionLine.setValue(pressure)
+            if self.psiRadioButton.isChecked():
+                pressure *= PA_TO_PSI
+
+            radius = min_spacing
+            if self.umRadioButton.isChecked():
+                radius *= MM_TO_UM
+
+            logPc = self.logPcCheckBox.checked
+            logRadii = self.logRadiiCheckBox.checked
+
+            pressure_val = np.log10(pressure) if logPc else pressure
+            radius_val = np.log10(radius) if logRadii else radius
+
+            self.resolutionLine.setValue(pressure_val)
             self.resolutionLine.show()
-            self.pcResolutionLine.setValue(pressure)
+            self.pcResolutionLine.setValue(pressure_val)
             self.pcResolutionLine.show()
-            self.radiiResolutionLine.setValue(min_spacing)
+            self.radiiResolutionLine.setValue(radius_val)
             self.radiiResolutionLine.show()
         else:
             self.resolutionLine.hide()
@@ -227,6 +349,16 @@ class MercurySimulationWidget(qt.QFrame):
 
     def onShowResolutionLinesToggled(self, checked):
         self.updateResolutionLines(getattr(self, "current_node", None))
+
+    def onToggleLegend(self, checked):
+        if checked:
+            self.micpLegend.show()
+            self.pcLegend.show()
+            self.radiiLegend.show()
+        else:
+            self.micpLegend.hide()
+            self.pcLegend.hide()
+            self.radiiLegend.hide()
 
     def getSirrSelector(self):
         return self.sirrSelector
@@ -237,6 +369,7 @@ class MercurySimulationWidget(qt.QFrame):
             self.micpSeries.show()
             self.pcSeries.show()
             self.radiiSeries.show()
+            self.onChangeMicp()
         else:
             self.micpSeries.hide()
             self.pcSeries.hide()
@@ -248,41 +381,104 @@ class MercurySimulationWidget(qt.QFrame):
             self.micpSirrSeries.show()
             self.pcSirrSeries.show()
             self.radiiSirrSeries.show()
+            self.onChangeSirrMicp()
         else:
             self.micpSirrSeries.hide()
             self.pcSirrSeries.hide()
             self.radiiSirrSeries.hide()
 
+    def _rebin(self, x, y, bins_source=None):
+        """Rebin (x, y) to log-uniform bins.
+
+        y is expected in % and will be converted to fraction internally.
+        bins_source defines the bin range and count; defaults to x itself.
+
+        When the "Probability density" checkbox is checked, the returned
+        heights are divided by the linear width of each bin and re-normalized
+        to sum to 100, converting probability mass into probability density.
+        """
+        src = bins_source if bins_source is not None else x
+        src_pos = src[src > 0]
+        if src_pos.size == 0:
+            return np.array([]), np.array([])
+
+        bins = make_log_uniform_bins(src_pos.min(), src_pos.max(), n_bins=len(src))
+        hist, centers = rebin_psd_log_uniform(x, y / 100, bins)
+        if self.densityNormCheckBox.checked:
+            bin_widths = np.diff(bins)
+            if hist.size and bin_widths.size == hist.size:
+                hist = hist / bin_widths
+                hist_sum = hist.sum()
+                if hist_sum > 0:
+                    hist = (hist / hist_sum) * 100
+        return hist, centers
+
+    def _clearRefData(self):
+        """Clear the Sirr/reference series and drop any cached reference arrays."""
+        self.micpSirrSeries.clear()
+        self.pcSirrSeries.clear()
+        self.radiiSirrSeries.clear()
+        for attr in (
+            "ref_pc_values",
+            "ref_snwp_values",
+            "ref_pc_x_values",
+            "ref_pc_y_values",
+            "ref_radius_x_values",
+            "ref_radius_y_values",
+        ):
+            if hasattr(self, attr):
+                delattr(self, attr)
+
     def onChangeSirrMicp(self):
         sirr_table_node = self.sirrSelector.currentNode()
         if not sirr_table_node:
-            self.micpSirrSeries.clear()
-            self.pcSirrSeries.clear()
-            self.radiiSirrSeries.clear()
+            self._clearRefData()
             return
         pc_table_id = sirr_table_node.GetAttribute("pc_table_id")
         radius_table_id = sirr_table_node.GetAttribute("radius_table_id")
+
+        if not isinstance(pc_table_id, str) or not isinstance(radius_table_id, str):
+            self._clearRefData()
+            return
+
         pc_table = slicer.mrmlScene.GetNodeByID(pc_table_id)
         radius_table = slicer.mrmlScene.GetNodeByID(radius_table_id)
 
-        pc_points_vtk_array = sirr_table_node.GetTable().GetColumnByName("pc")
-        self.second_pc_values = vtk_to_numpy(pc_points_vtk_array)
-        snwp_points_vtk_array = sirr_table_node.GetTable().GetColumnByName("snwp")
-        self.second_snwp_values = vtk_to_numpy(snwp_points_vtk_array)
+        if not pc_table or not radius_table:
+            self._clearRefData()
+            return
 
-        pc_y_vtk_array = pc_table.GetTable().GetColumnByName("dsn")
-        self.second_pc_y_values = vtk_to_numpy(pc_y_vtk_array)
-        pc_x_vtk_array = pc_table.GetTable().GetColumnByName("pc")
-        self.second_pc_x_values = vtk_to_numpy(pc_x_vtk_array)
+        # Load reference data in base units (Pa, mm)
+        self.ref_pc_values = vtk_to_numpy(sirr_table_node.GetTable().GetColumnByName("pc")).copy()
+        self.ref_snwp_values = vtk_to_numpy(sirr_table_node.GetTable().GetColumnByName("snwp")).copy()
+        self.ref_pc_x_values = vtk_to_numpy(pc_table.GetTable().GetColumnByName("pc")).copy()
+        self.ref_pc_y_values = vtk_to_numpy(pc_table.GetTable().GetColumnByName("dsn")).copy()
+        self.ref_radius_x_values = vtk_to_numpy(radius_table.GetTable().GetColumnByName("radius")).copy()
+        self.ref_radius_y_values = vtk_to_numpy(radius_table.GetTable().GetColumnByName("dsn")).copy()
 
-        radius_y_vtk_array = radius_table.GetTable().GetColumnByName("dsn")
-        self.second_radius_y_values = vtk_to_numpy(radius_y_vtk_array)
-        radius_x_vtk_array = radius_table.GetTable().GetColumnByName("radius")
-        self.second_radius_x_values = vtk_to_numpy(radius_x_vtk_array)
+        pc_values = self.ref_pc_values.copy()
+        pc_x = self.ref_pc_x_values.copy()
+        pc_y = self.ref_pc_y_values.copy()
+        radius_x = self.ref_radius_x_values.copy()
+        radius_y = self.ref_radius_y_values.copy()
 
-        self.micpSirrSeries.setData(self.second_snwp_values, self.second_pc_values)
-        self.pcSirrSeries.setData(self.second_pc_x_values[:-1], self.second_pc_y_values[:-1])
-        self.radiiSirrSeries.setData(self.second_radius_x_values[:-1], self.second_radius_y_values[:-1])
+        if self.logUniformRebinCheckBox.checked:
+            pc_y, pc_x = self._rebin(pc_x, pc_y)
+            radius_y, radius_x = self._rebin(radius_x, radius_y)
+        else:
+            pc_x, pc_y = pc_x[:-1], pc_y[:-1]
+            radius_x, radius_y = radius_x[:-1], radius_y[:-1]
+
+        # Apply unit conversion
+        if self.psiRadioButton.isChecked():
+            pc_values *= PA_TO_PSI
+            pc_x *= PA_TO_PSI
+        if self.umRadioButton.isChecked():
+            radius_x *= MM_TO_UM
+
+        self.micpSirrSeries.setData(self.ref_snwp_values, pc_values)
+        self.pcSirrSeries.setData(pc_x, pc_y)
+        self.radiiSirrSeries.setData(radius_x, radius_y)
 
     def onChangeMicp(self):
         micp_table_node = self.micpSelector.currentNode()
@@ -293,27 +489,66 @@ class MercurySimulationWidget(qt.QFrame):
             return
         pc_table_id = micp_table_node.GetAttribute("pc_table_id")
         radius_table_id = micp_table_node.GetAttribute("radius_table_id")
+
+        if not isinstance(pc_table_id, str) or not isinstance(radius_table_id, str):
+            self.micpSeries.clear()
+            self.pcSeries.clear()
+            self.radiiSeries.clear()
+            return
+
         pc_table = slicer.mrmlScene.GetNodeByID(pc_table_id)
         radius_table = slicer.mrmlScene.GetNodeByID(radius_table_id)
 
-        pc_points_vtk_array = micp_table_node.GetTable().GetColumnByName("pc")
-        self.pc_values = vtk_to_numpy(pc_points_vtk_array)
-        snwp_points_vtk_array = micp_table_node.GetTable().GetColumnByName("snwp")
-        self.snwp_values = vtk_to_numpy(snwp_points_vtk_array)
+        if not pc_table or not radius_table:
+            return
 
-        pc_y_vtk_array = pc_table.GetTable().GetColumnByName("dsn")
-        self.pc_y_values = vtk_to_numpy(pc_y_vtk_array)
-        pc_x_vtk_array = pc_table.GetTable().GetColumnByName("pc")
-        self.pc_x_values = vtk_to_numpy(pc_x_vtk_array)
+        # Load simulation data
+        pc_values = vtk_to_numpy(micp_table_node.GetTable().GetColumnByName("pc")).copy()
+        snwp_values = vtk_to_numpy(micp_table_node.GetTable().GetColumnByName("snwp")).copy()
+        pc_x = vtk_to_numpy(pc_table.GetTable().GetColumnByName("pc")).copy()
+        pc_y = vtk_to_numpy(pc_table.GetTable().GetColumnByName("dsn")).copy()
+        radius_x = vtk_to_numpy(radius_table.GetTable().GetColumnByName("radius")).copy()
+        radius_y = vtk_to_numpy(radius_table.GetTable().GetColumnByName("dsn")).copy()
 
-        radius_y_vtk_array = radius_table.GetTable().GetColumnByName("dsn")
-        self.radius_y_values = vtk_to_numpy(radius_y_vtk_array)
-        radius_x_vtk_array = radius_table.GetTable().GetColumnByName("radius")
-        self.radius_x_values = vtk_to_numpy(radius_x_vtk_array)
+        # Load reference data in base units (Pa, mm) if available.
+        has_ref = hasattr(self, "ref_pc_x_values")
+        ref_pc_x = self.ref_pc_x_values.copy() if has_ref else None
+        ref_pc_y = self.ref_pc_y_values.copy() if has_ref else None
+        ref_radius_x = self.ref_radius_x_values.copy() if has_ref else None
+        ref_radius_y = self.ref_radius_y_values.copy() if has_ref else None
 
-        self.micpSeries.setData(self.snwp_values, self.pc_values)
-        self.pcSeries.setData(self.pc_x_values, self.pc_y_values)
-        self.radiiSeries.setData(self.radius_x_values, self.radius_y_values)
+        if self.logUniformRebinCheckBox.checked:
+            bins_source_pc = ref_pc_x
+            bins_source_radius = ref_radius_x
+            if ref_pc_x is not None:
+                ref_pc_y, ref_pc_x = self._rebin(ref_pc_x, ref_pc_y)
+                ref_radius_y, ref_radius_x = self._rebin(ref_radius_x, ref_radius_y)
+            pc_y, pc_x = self._rebin(pc_x, pc_y, bins_source=bins_source_pc)
+            radius_y, radius_x = self._rebin(radius_x, radius_y, bins_source=bins_source_radius)
+        else:
+            pc_x, pc_y = pc_x[:-1], pc_y[:-1]
+            radius_x, radius_y = radius_x[:-1], radius_y[:-1]
+            if ref_pc_x is not None:
+                ref_pc_x, ref_pc_y = ref_pc_x[:-1], ref_pc_y[:-1]
+                ref_radius_x, ref_radius_y = ref_radius_x[:-1], ref_radius_y[:-1]
+
+        # Apply unit conversion
+        if self.psiRadioButton.isChecked():
+            pc_values *= PA_TO_PSI
+            pc_x *= PA_TO_PSI
+            if ref_pc_x is not None:
+                ref_pc_x *= PA_TO_PSI
+        if self.umRadioButton.isChecked():
+            radius_x *= MM_TO_UM
+            if ref_radius_x is not None:
+                ref_radius_x *= MM_TO_UM
+
+        self.micpSeries.setData(snwp_values, pc_values)
+        self.pcSeries.setData(pc_x, pc_y)
+        self.radiiSeries.setData(radius_x, radius_y)
+        if ref_pc_x is not None:
+            self.pcSirrSeries.setData(ref_pc_x, ref_pc_y)
+            self.radiiSirrSeries.setData(ref_radius_x, ref_radius_y)
 
     def getParams(self, node):
         subscale_model_params = self.subscaleModelWidget.getParams()

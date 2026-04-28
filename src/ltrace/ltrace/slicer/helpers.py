@@ -2778,3 +2778,12 @@ def disableSlice3DEdges():
 
         slicerController = sliceWidget.sliceController()
         slicerController.setSliceEdgeVisibility3D(False)
+
+
+def saveNode(*args, **kwargs):
+    currentDir = os.getcwd()
+    os.chdir(slicer.mrmlScene.GetRootDirectory())
+    try:
+        return slicer.util.saveNode(*args, **kwargs)
+    finally:
+        os.chdir(currentDir)
