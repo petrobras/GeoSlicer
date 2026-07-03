@@ -28,7 +28,7 @@ class MercurySimulationWidget(qt.QFrame):
         "simulation type": MICP,
         "keep_temporary": False,
         "subres_model_name": "Fixed Radius",
-        "subres_params": {"radius": 1.0},
+        "subres_params": {"radius": 0.001},
         "subres_shape_factor": 0.04,
         "subres_porositymodifier": 1.0,
         "pressures": 100,
@@ -112,7 +112,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.resolutionLine = pg.InfiniteLine(
             angle=0,
             movable=False,
-            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen((200, 200, 200), width=2, style=QtCore.Qt.DashLine),
             label="Resolution limit",
             labelOpts={
                 "position": 0.1,
@@ -131,7 +131,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.pcResolutionLine = pg.InfiniteLine(
             angle=90,
             movable=False,
-            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen((200, 200, 200), width=2, style=QtCore.Qt.DashLine),
             label="Resolution limit",
             labelOpts={
                 "position": 0.9,
@@ -152,13 +152,13 @@ class MercurySimulationWidget(qt.QFrame):
         )
 
         self.radiiPlotItem = self.subvolumeGraphicsLayout.addPlot(
-            row=3, col=1, rowspan=1, colspan=1, left="Pore volume fraction (%)", bottom="Radius (mm)"
+            row=3, col=1, rowspan=1, colspan=1, left="Pore volume fraction (%)", bottom="Radius (µm)"
         )
         self.radiiLegend = self.radiiPlotItem.addLegend(offset=(10, 10))
         self.radiiResolutionLine = pg.InfiniteLine(
             angle=90,
             movable=False,
-            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen((200, 200, 200), width=2, style=QtCore.Qt.DashLine),
             label="Resolution limit",
             labelOpts={
                 "position": 0.9,
@@ -280,6 +280,8 @@ class MercurySimulationWidget(qt.QFrame):
         logLayout.addWidget(self.logRadiiCheckBox)
         logLayout.addStretch()
         plotOptionsLayout.addRow("Log scale:", logLayout)
+
+        self.onLogScaleToggled()
 
     def setVolumeNode(self, node):
         self.current_node = node
@@ -553,20 +555,23 @@ class MercurySimulationWidget(qt.QFrame):
     def getParams(self, node):
         subscale_model_params = self.subscaleModelWidget.getParams()
         subres_model_name = self.subscaleModelWidget.microscale_model_dropdown.currentText
-        subres_params = self.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
+        widget = self.subscaleModelWidget.parameter_widgets[subres_model_name]
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and hasattr(
+            widget, "_get_params_with_data"
+        ):
+            subres_params = widget._get_params_with_data()
+        else:
+            subres_params = widget.get_params()
         subres_shape_factor = subscale_model_params["subres_shape_factor"]
         subres_porositymodifier = subscale_model_params["subres_porositymodifier"]
 
         subres_params_copy = {}
         if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
             for i in subres_params.keys():
-                if subres_params[i] is not None:
-                    if isinstance(subres_params[i], np.ndarray):
-                        subres_params_copy.update({i: subres_params[i].tolist()})
-                    else:
-                        subres_params_copy.update({i: subres_params[i]})
+                if isinstance(subres_params[i], (list, np.ndarray)):
+                    subres_params_copy[i] = np.asarray(subres_params[i]).tolist()
                 else:
-                    subres_params_copy.update({i: None})
+                    subres_params_copy[i] = subres_params[i]
         else:
             subres_params_copy = subres_params
 
@@ -579,7 +584,7 @@ class MercurySimulationWidget(qt.QFrame):
             "subres_params": subres_params_copy,
             "pressures": 100,
             "save_radii_distrib_plots": True,
-            "experimental_radius": subres_params_copy.get("pore radii"),
+            "experimental_radius": subres_params_copy.get("pore radii") if subres_params_copy else None,
         }
 
         if type(node) is slicer.vtkMRMLTableNode:

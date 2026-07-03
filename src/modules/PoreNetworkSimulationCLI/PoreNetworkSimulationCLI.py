@@ -392,7 +392,14 @@ def twoPhaseSensibilityTest(args, params):
     saturation_steps_list = []
     krel_result = KrelResult()
     for i, result in enumerate(parallel.run(params["max_subprocesses"])):
-        krel_result.add_single_result(result["input_params"], result["table"])
+        input_params = result["input_params"]
+        subres = input_params.get("subres_params")
+        if isinstance(subres, dict):
+            input_params = {
+                **input_params,
+                "subres_params": {k: (None if isinstance(v, (list, np.ndarray)) else v) for k, v in subres.items()},
+            }
+        krel_result.add_single_result(input_params, result["table"])
 
         # Write results only every 10 new results
         krel_tables_len = len(krel_result.krel_tables)
@@ -478,6 +485,7 @@ def simulate_mercury(args, params):
         subres_shape_factor=params["subres_shape_factor"],
         save_tables=params["save_tables"],
     )
+    sub_network["throat.volume"] *= sub_network["throat.number_of_capilaries"]
 
     net = openpnm.io.network_from_porespy(sub_network)
 

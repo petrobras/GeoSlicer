@@ -245,7 +245,8 @@ class SubscaleModelWidget(qt.QWidget):
 
         self.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
         subscale_widget = self.parameter_widgets[params["subres_model_name"]]
-        subscale_widget.set_params(params["subres_params"])
+        if params["subres_params"] is not None:
+            subscale_widget.set_params(params["subres_params"])
 
     def setVolumeNode(self, volume_node):
         for widget in self.parameter_widgets.values():
@@ -541,19 +542,13 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         if self.throatRadiusSelector.currentNode() is None:
             return
 
-        df = dataframeFromTable(self.throatRadiusSelector.currentNode())
-        df = df.replace("", np.nan)
-        df = df.astype("float32")
-
-        Rc = df[self.cboxes["Throat Radius Column"].currentText].to_numpy()
-        Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
         cutoff_radius = float(self.subresCutoff.text) * MICRON_TO_MM
 
         return {
             "node id": self.throatRadiusSelector.currentNode().GetID(),
-            "throat radii": Rc,
+            "throat radii": self.cboxes["Throat Radius Column"].currentText,
             "capillary pressure": None,
-            "dsn": Fvol,
+            "dsn": self.cboxes["Volume Fraction Column"].currentText,
             "radii_cutoff_mm": cutoff_radius,
         }
 
@@ -563,8 +558,10 @@ class ThroatRadiusCurveWidget(qt.QWidget):
 
         throatRadiusNode = slicer.mrmlScene.GetNodeByID(params["node id"])
         self.throatRadiusSelector.setCurrentNode(throatRadiusNode)
-        self.cboxes["Throat Radius Column"].setCurrentText(params["throat radii"])
-        self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
+        if isinstance(params["throat radii"], str):
+            self.cboxes["Throat Radius Column"].setCurrentText(params["throat radii"])
+        if isinstance(params["dsn"], str):
+            self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
         self.subresCutoff.text = f"{MM_TO_MICRON * params['radii_cutoff_mm']:.6g}"
 
     def set_volume_node(self, volume_node):
@@ -579,8 +576,24 @@ class ThroatRadiusCurveWidget(qt.QWidget):
         except Exception as e:
             logging.debug(f"ThroatRadiusCurveWidget: Could not auto-update parameters from volume: {e}")
 
-    def get_subradius_function(self, pore_network, volume):
+    def _get_params_with_data(self):
         params = self.get_params()
+        if params is None:
+            return None
+        node = slicer.mrmlScene.GetNodeByID(params["node id"])
+        if node is None:
+            return params
+        df = dataframeFromTable(node)
+        df = df.replace("", np.nan)
+        df = df.astype("float32")
+        return {
+            **params,
+            "throat radii": df[params["throat radii"]].to_numpy(),
+            "dsn": df[params["dsn"]].to_numpy(),
+        }
+
+    def get_subradius_function(self, pore_network, volume):
+        params = self._get_params_with_data()
         func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 
@@ -659,18 +672,11 @@ class PressureCurveWidget(qt.QWidget):
         if self.pressureCurveSelector.currentNode() is None:
             return
 
-        df = dataframeFromTable(self.pressureCurveSelector.currentNode())
-        df = df.replace("", np.nan)
-        df = df.astype("float32")
-
-        Pc = df[self.cboxes["Throat Pressure Column"].currentText].to_numpy()
-        Fvol = df[self.cboxes["Volume Fraction Column"].currentText].to_numpy()
-
         return {
             "node id": self.pressureCurveSelector.currentNode().GetID(),
             "throat radii": None,
-            "capillary pressure": Pc,
-            "dsn": Fvol,
+            "capillary pressure": self.cboxes["Throat Pressure Column"].currentText,
+            "dsn": self.cboxes["Volume Fraction Column"].currentText,
             "radii_cutoff_mm": 1.0,
         }
 
@@ -680,11 +686,29 @@ class PressureCurveWidget(qt.QWidget):
 
         pressureCurveNode = slicer.mrmlScene.GetNodeByID(params["node id"])
         self.pressureCurveSelector.setCurrentNode(pressureCurveNode)
-        self.cboxes["Throat Pressure Column"].setCurrentText(params["capillary pressure"])
-        self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
+        if isinstance(params["capillary pressure"], str):
+            self.cboxes["Throat Pressure Column"].setCurrentText(params["capillary pressure"])
+        if isinstance(params["dsn"], str):
+            self.cboxes["Volume Fraction Column"].setCurrentText(params["dsn"])
+
+    def _get_params_with_data(self):
+        params = self.get_params()
+        if params is None:
+            return None
+        node = slicer.mrmlScene.GetNodeByID(params["node id"])
+        if node is None:
+            return params
+        df = dataframeFromTable(node)
+        df = df.replace("", np.nan)
+        df = df.astype("float32")
+        return {
+            **params,
+            "capillary pressure": df[params["capillary pressure"]].to_numpy(),
+            "dsn": df[params["dsn"]].to_numpy(),
+        }
 
     def get_subradius_function(self, pore_network, volume):
-        params = self.get_params()
+        params = self._get_params_with_data()
         func = self.logic.get_capillary_radius_function(params, pore_network, volume)
         return func
 

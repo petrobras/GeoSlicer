@@ -1,3 +1,22 @@
+# v2.8.8 - 2026-06-26
+
+## Improvements:
+- Improve robustness of CSV import by guessing encoding (PL-3114).
+- Enhance style for dashed resolution lines (PL-3167).
+- Update Pore Network Model (PNM) default values in FixedRadius and Two-phase simulations (PL-3167).
+- Set Equal Angles and Constant Difference as default models (PL-3167).
+
+## Bug fixes:
+- Address a bug affecting Krel results.
+- Fix corruption of Krel results during save/load operations (PL-3168).
+- Resolve issues in MICP, One-phase, and other sub-resolution model simulations (PL-3168).
+- Correct CDF attribution in MICP, `throat.volume` calculations in Kabs and MICP, and Kabs REV parameters (PL-3179).
+- Resolve `NoneType` attribute errors during PNM simulation (PL-3151).
+- Fix issues with network connection calculations (PL-3171).
+- Restore the "Apply" button functionality on the PNM Simulation widget (PL-3167).
+- Correct chart unit behavior at startup (PL-3167).
+- Ensure the conversion factor is correctly applied (PL-3167).
+
 # v2.8.7 - 2026-04-27
 
 ## Highlights:

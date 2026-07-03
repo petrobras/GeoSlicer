@@ -21,7 +21,7 @@ class MultistepEditWidget(qt.QBoxLayout):
         self.start.objectName = f"{self.parameter_name}_start"
         self.start.editingFinished.connect(self.onValueChanged)
         self.stop = ui.floatParam()
-        self.stop.text = kwargs["default_value"] * 2
+        self.stop.text = kwargs.get("default_stop", kwargs["default_value"] * 2)
         self.stop.objectName = f"{self.parameter_name}_stop"
         self.stop.editingFinished.connect(self.onValueChanged)
         self.steps = ui.intParam()
@@ -83,13 +83,13 @@ class MultistepEditWidget(qt.QBoxLayout):
 
     def get_start(self):
         try:
-            return float(self.start.text)
+            return float(self.start.text) * self.conversion_factor
         except ValueError:
             return None
 
     def get_stop(self):
         try:
-            return float(self.stop.text)
+            return float(self.stop.text) * self.conversion_factor
         except ValueError:
             return None
 

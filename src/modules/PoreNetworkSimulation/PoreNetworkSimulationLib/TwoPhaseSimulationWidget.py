@@ -1,4 +1,5 @@
 import ctk
+import numpy as np
 import qt
 import slicer
 
@@ -14,7 +15,7 @@ from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import getResourcePath, slicer_is_in_developer_mode
+from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
 
 
 class TwoPhaseParametersEditDialog:
@@ -499,23 +500,23 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             numpy_direction = geo_display_direction  # fallback / unexpected value
         parameters_dict["direction"] = numpy_direction
 
-        # subresolution model name & params (convert numpy arrays to lists)
+        # subresolution model name & params
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
         raw_subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
-        subres_params = {}
+        subres_params = raw_subres_params
         if (subres_model_name in ("Throat Radius Curve", "Pressure Curve")) and raw_subres_params:
-            for k in raw_subres_params.keys():
-                v = raw_subres_params[k]
-                if v is None:
-                    subres_params[k] = None
-                elif isinstance(v, (list, tuple)):
-                    subres_params[k] = list(v)
-                elif hasattr(v, "tolist"):
-                    subres_params[k] = v.tolist()
-                else:
-                    subres_params[k] = v
-        else:
-            subres_params = raw_subres_params
+            node = slicer.mrmlScene.GetNodeByID(raw_subres_params["node id"])
+            if node is not None:
+                df = dataframeFromTable(node)
+                df = df.replace("", np.nan)
+                df = df.astype("float32")
+                subres_params = dict(raw_subres_params)
+                if subres_model_name == "Throat Radius Curve":
+                    subres_params["throat radii"] = df[raw_subres_params["throat radii"]].tolist()
+                    subres_params["dsn"] = df[raw_subres_params["dsn"]].tolist()
+                else:  # Pressure Curve
+                    subres_params["capillary pressure"] = df[raw_subres_params["capillary pressure"]].tolist()
+                    subres_params["dsn"] = df[raw_subres_params["dsn"]].tolist()
 
         parameters_dict["subres_model_name"] = subres_model_name
         parameters_dict["subres_params"] = subres_params

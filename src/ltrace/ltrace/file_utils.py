@@ -98,7 +98,9 @@ def detect_csv_file_delimiter(filepath, encoding, whitelist=[",", ";"]):
         return None
 
 
-def load_and_parse_data(file_path: Path, filter_empty_columns: bool = False) -> typing.Union[pd.DataFrame, None]:
+def load_and_parse_data(
+    file_path: Path, filter_empty_columns: bool = False, delimiter: typing.Optional[str] = None
+) -> typing.Union[pd.DataFrame, None]:
     """
     Data loader that handles CSV and Excel files like SIRR.
     It automatically detects:
@@ -134,8 +136,11 @@ def load_and_parse_data(file_path: Path, filter_empty_columns: bool = False) -> 
 
     try:
         if ext == ".csv":
+            encoding = detect_file_encoding(file_path)
+            engine_value = "python" if delimiter is None else "c"
+
             # Read first without header to scan content
-            df_raw = pd.read_csv(file_path, header=None)
+            df_raw = pd.read_csv(file_path, header=None, encoding=encoding, sep=delimiter, engine=engine_value)
             header_idx = find_header_index(df_raw)
 
             decimal_char = detect_decimal_separator(df_raw.iloc[header_idx + 1 : header_idx + 6])
@@ -145,9 +150,9 @@ def load_and_parse_data(file_path: Path, filter_empty_columns: bool = False) -> 
                 file_path,
                 header=header_idx,
                 decimal=decimal_char,
-                # Heuristic to handle standard csv or brazilian csv (;)
-                sep=None,
-                engine="python",
+                encoding=encoding,
+                sep=delimiter,
+                engine=engine_value,
             )
 
         elif ext in [".xlsx", ".xls"]:

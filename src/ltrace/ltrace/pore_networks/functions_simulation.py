@@ -313,6 +313,7 @@ def single_phase_permeability(
         subres_shape_factor,
         save_tables=save_tables,
     )
+    sub_network["throat.volume"] *= sub_network["throat.number_of_capilaries"]
     sub_proj = openpnm.io.network_from_porespy(sub_network)
 
     ### Network clipping

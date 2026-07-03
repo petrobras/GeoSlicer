@@ -23,7 +23,7 @@ class FixedRadiusLogic:
 
     @classmethod
     def get_capillary_radius_function(cls, pore_network, params):
-        return lambda _: params["radius"]
+        return lambda _: params["subres_params"]["radius"]
 
 
 class TruncatedGaussianLogic:
@@ -83,14 +83,12 @@ class ModelBase(ABC):
 
     @classmethod
     def _get_cumulative_dist_function(cls, x, y):
-        x = np.array(x)
-        y = np.array(y)
-        cumulative_y = np.zeros(x.size)
-        for i in range(1, x.size):
-            area = ((y[i] + y[i - 1]) / 2) * (x[i] - x[i - 1])
-            cumulative_y[i] = cumulative_y[i - 1] + area
+        x = np.asarray(x)
+        y = np.asarray(y, dtype=float)
+        order = np.argsort(x)
+        cumulative_y = np.cumsum(y[order])
         cumulative_y /= cumulative_y[-1]
-        return {"x": x, "y": cumulative_y}
+        return {"x": x[order], "y": cumulative_y}
 
     @classmethod
     def _get_cumulative_dist_points(cls, points):
@@ -133,7 +131,7 @@ class LeverettBase(ModelBase):
         porosity_cdf = cls._get_cumulative_dist_points(pore_network["throat.subresolution_porosity"])
         pressure_cdf = cls._get_cumulative_dist_function(
             Pc[highest_pc_index],
-            params["Sw"][highest_pc_index],
+            params["subres_params"]["Sw"][highest_pc_index],
         )
 
         return ModelBase._create_radius_function(porosity_cdf, pressure_cdf)
@@ -150,8 +148,9 @@ class LeverettOldLogic(LeverettBase):
 
     @classmethod
     def get_pc(cls, params, porosity):
-        corey = cls.models[params["model"]](params["corey_a"], params["corey_b"], porosity)
-        Pc = (params["J"] / 2) * estimate_pressure(np.sqrt(corey / porosity))
+        sp = params["subres_params"]
+        corey = cls.models[sp["model"]](sp["corey_a"], sp["corey_b"], porosity)
+        Pc = (sp["J"] / 2) * estimate_pressure(np.sqrt(corey / porosity))
         return Pc
 
 
@@ -160,7 +159,8 @@ class LeverettNewLogic(LeverettBase):
 
     @classmethod
     def get_pc(cls, params, porosity):
-        Pc = (params["J"] / 2) * estimate_pressure(params["permeability"] / porosity)
+        sp = params["subres_params"]
+        Pc = (sp["J"] / 2) * estimate_pressure(sp["permeability"] / porosity)
         return Pc
 
 
@@ -170,7 +170,7 @@ class PressureCurveLogic(ModelBase):
     @classmethod
     def get_capillary_radius_function(cls, pore_network, params):
         subres_params = params["subres_params"]
-        if subres_params["throat radii"] is not None:
+        if isinstance(subres_params.get("throat radii"), (list, np.ndarray)):
             smallest_radii = min(params["spacing"]["x"], params["spacing"]["y"], params["spacing"]["z"])
 
             throat_radii_arr = np.array(subres_params["throat radii"])
@@ -188,7 +188,7 @@ class PressureCurveLogic(ModelBase):
 
             Pc = estimate_pressure(radius)
             f_vol = np.array(subres_params["dsn"])[subresolution_radii_bool_index]
-        elif subres_params["capillary pressure"] is not None:
+        elif subres_params.get("capillary pressure") is not None:
             Pc = subres_params["capillary pressure"]
             f_vol = subres_params["dsn"]
 
@@ -332,10 +332,10 @@ def get_subres_function(pore_network, params):
     subres_model = params["subres_model_name"]
     subres_params = params["subres_params"]
     if (subres_model == "Throat Radius Curve" or subres_model == "Pressure Curve") and subres_params:
-        subres_params = {
-            i: np.asarray(subres_params[i]) if subres_params[i] is not None else None for i in subres_params.keys()
+        params["subres_params"] = {
+            i: np.asarray(subres_params[i]) if isinstance(subres_params[i], (list, np.ndarray)) else subres_params[i]
+            for i in subres_params.keys()
         }
-    params.update(subres_params)
     model_logic = MODEL_DICT[params["subres_model_name"]]
     capillary_function = model_logic.get_capillary_radius_function(pore_network, params)
     return capillary_function

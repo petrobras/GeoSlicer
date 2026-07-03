@@ -7,11 +7,11 @@ PARAMETERS = {
         "layout": "cycle_1",
     },
     "enforced_pc_1": {
-        "display_name": "Final cycle Pc (Pa)",
+        "display_name": "Final cycle Pc (kPa)",
         "dtype": "multifloat",
-        "default_value": 200000.0,
+        "default_value": 1000.0,
         "layout": "cycle_1",
-        "conversion_factor": 1,
+        "conversion_factor": 1000,
     },
     "enforced_steps_1": {
         "display_name": "Sw step length",
@@ -27,11 +27,11 @@ PARAMETERS = {
         "layout": "cycle_2",
     },
     "enforced_pc_2": {
-        "display_name": "Final cycle Pc (Pa)",
+        "display_name": "Final cycle Pc (kPa)",
         "dtype": "multifloat",
-        "default_value": -200000.0,
+        "default_value": -1000.0,
         "layout": "cycle_2",
-        "conversion_factor": 1,
+        "conversion_factor": 1000,
     },
     "enforced_steps_2": {
         "display_name": "Sw step length",
@@ -342,7 +342,7 @@ for i in ("init", "second", "equil", "frac"):
         "display_name": "Model",
         "layout": i,
         "dtype": "combobox",
-        "default_value": 2,
+        "default_value": 1,
         "display_names": {
             "Model 1 (equal angles)": "1",
             "Model 2 (constant difference)": "2",
@@ -420,3 +420,4 @@ del PARAMETERS["second_contact_angle_separation"]
 # del PARAMETERS["frac_contact_model"]
 del PARAMETERS["frac_contact_angle_separation"]
 PARAMETERS["equil_contact_angle"]["default_value"] = 120.0
+PARAMETERS["equil_contact_angle"]["default_stop"] = 180.0

@@ -8,7 +8,7 @@ Before you begin, you will need to install the following tools and libraries on 
 
 ### Common Requirements (All Operating Systems)
 
--   **Python 3.9**: GeoSlicer is built on top of 3D Slicer and requires Python 3.9 for compatibility. We recommend using [Anaconda](https://www.anaconda.com/docs/getting-started/anaconda/install) to manage your Python environment.
+-   **Python 3.9**: GeoSlicer is built on top of 3D Slicer and requires Python 3.9 for compatibility. We recommend using a conda-based package manager like [miniforge](https://github.com/conda-forge/miniforge) to manage your Python environment.
     
     To create and activate a new environment with Python 3.9, run the following commands:
     

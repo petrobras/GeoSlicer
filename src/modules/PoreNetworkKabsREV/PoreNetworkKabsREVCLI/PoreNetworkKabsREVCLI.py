@@ -130,13 +130,12 @@ def process_chunk(args, volume_array=None):
     y_size = scale[1] * cropped_volume.shape[1]
     z_size = scale[2] * cropped_volume.shape[2]
 
-    params["scalar_volume_data"] = {}
-    params["scalar_volume_data"]["sizes"] = {
+    params["sizes"] = {
         "x": x_size,
         "y": y_size,
         "z": z_size,
     }  # In mm
-    params["scalar_volume_data"]["spacing"] = {
+    params["spacing"] = {
         "x": scale[0],
         "y": scale[1],
         "z": scale[2],
@@ -171,7 +170,7 @@ def process_chunk(args, volume_array=None):
         if perm == 0:
             continue
 
-        length = 0.1 * params["scalar_volume_data"]["sizes"][in_faces[2 - inlet][0]]  # cm
+        length = 0.1 * params["sizes"][in_faces[2 - inlet][0]]  # cm
         mu = params["fluid_viscosity"]  # Pa*s
         deltaP = params["pressure_drop"]  # Pa
         flow_rate = get_flow_rate(pn_pores, pn_throats, viscosity=mu, pressure_drop=deltaP) / 1000  # cm^3/s

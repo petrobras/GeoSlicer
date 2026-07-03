@@ -431,8 +431,8 @@ def get_connected_spy_network(network, in_face, out_face, coord_limits=None):
         raise ValueError(f"Face values is invalid: out_face = {out_face}")
 
     _, cluster_labels = get_clusters(network)
-    in_labels = np.unique(cluster_labels[network[f"pore.{in_face}"]])
-    out_labels = np.unique(cluster_labels[network[f"pore.{out_face}"]])
+    in_labels = np.unique(cluster_labels[network[f"pore.{in_face}"].astype(bool)])
+    out_labels = np.unique(cluster_labels[network[f"pore.{out_face}"].astype(bool)])
     common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
 
     connected_pores = network.pores()[np.isin(cluster_labels, common_labels)]

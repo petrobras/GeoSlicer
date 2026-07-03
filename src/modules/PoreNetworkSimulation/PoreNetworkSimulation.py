@@ -165,12 +165,16 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         super().onReload()
 
     def onCancelButtonClicked(self):
-        if not self.twoPhaseSimWidget.remoteQRadioButton.isChecked():
+        simulation = self.simulationSelector.currentText
+        is_remote_two_phase = simulation == TWO_PHASE and self.twoPhaseSimWidget.remoteQRadioButton.isChecked()
+        if not is_remote_two_phase:
             self.logic.cancel()
             self.applyButtonEnabled(True)
 
     def applyButtonEnabled(self, enabled):
-        if not self.twoPhaseSimWidget.remoteQRadioButton.isChecked():
+        simulation = self.simulationSelector.currentText
+        is_remote_two_phase = simulation == TWO_PHASE and self.twoPhaseSimWidget.remoteQRadioButton.isChecked()
+        if not is_remote_two_phase:
             self.applyButton.setEnabled(enabled)
             self.cancelButton.setEnabled(not enabled)
 

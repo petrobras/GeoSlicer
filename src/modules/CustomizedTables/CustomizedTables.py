@@ -1,3 +1,4 @@
+import logging
 import os
 import string
 from pathlib import Path
@@ -119,6 +120,64 @@ class CustomizedTablesWidget(LTracePluginWidget):
         self.outputColumnLineEdit.returnPressed.connect(self.onCalculatePushButtonClicked)
 
         formLayout.addWidget(self.tablesWidget)
+
+        csvImportCollapsible = ctk.ctkCollapsibleButton()
+        csvImportCollapsible.setText("Load CSV")
+        csvImportCollapsible.collapsed = True
+        formLayout.addWidget(csvImportCollapsible)
+
+        csvImportLayout = qt.QFormLayout(csvImportCollapsible)
+
+        self.csvPathEdit = ctk.ctkPathLineEdit()
+        self.csvPathEdit.nameFilters = ["CSV files (*.csv)"]
+        self.csvPathEdit.setToolTip("Select a CSV file to import as a table")
+        csvImportLayout.addRow("CSV File:", self.csvPathEdit)
+
+        self.csvDelimiterCombo = qt.QComboBox()
+        self.csvDelimiterCombo.addItems(["Auto-detect", "Comma (,)", "Semicolon (;)", "Tab (\\t)"])
+        csvImportLayout.addRow("Delimiter:", self.csvDelimiterCombo)
+
+        csvLoadButton = qt.QPushButton("Load")
+        csvLoadButton.setFixedHeight(40)
+        csvImportLayout.addRow(None, csvLoadButton)
+        csvLoadButton.clicked.connect(self.onLoadCSVClicked)
+
+    def onLoadCSVClicked(self):
+        from ltrace.file_utils import read_csv
+        from ltrace.slicer.data_utils import dataFrameToTableNode
+
+        path = self.csvPathEdit.currentPath
+        if not path:
+            slicer.util.warningDisplay("Please select a CSV file.")
+            return
+
+        delimiter_map = {
+            "Auto-detect": None,
+            "Comma (,)": ",",
+            "Semicolon (;)": ";",
+            "Tab (\\t)": "\t",
+        }
+        whitelist_map = {
+            "Auto-detect": [",", ";", "\t"],
+            "Comma (,)": [","],
+            "Semicolon (;)": [";"],
+            "Tab (\\t)": ["\t"],
+        }
+        selected = self.csvDelimiterCombo.currentText
+
+        try:
+            if delimiter_map[selected] is not None:
+                df = read_csv(Path(path), delimiter=delimiter_map[selected])
+            else:
+                df = read_csv(Path(path), whitelist=whitelist_map[selected])
+
+            tableNode = dataFrameToTableNode(df)
+            tableNode.SetName(Path(path).stem)
+            tableSelector = self.tablesWidget.findChild(slicer.qMRMLNodeComboBox, "TableNodeSelector")
+            tableSelector.setCurrentNode(tableNode)
+            logging.info(f"Loaded '{Path(path).name}' with {len(df)} rows and {len(df.columns)} columns.")
+        except Exception as e:
+            slicer.util.errorDisplay(f"Failed to load CSV: {e}")
 
     def onCalculatePushButtonClicked(self):
         tableNode = self.tablesWidget.findChild(slicer.qMRMLNodeComboBox, "TableNodeSelector").currentNode()

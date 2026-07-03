@@ -18,7 +18,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "rotation angles": 100,
         "keep_temporary": False,
         "subres_model_name": "Fixed Radius",
-        "subres_params": {"radius": 1.0},
+        "subres_params": {"radius": 0.001},
         "subres_shape_factor": 0.04,
         "subres_porositymodifier": 1.0,
         "solver": "pypardiso",
@@ -123,23 +123,20 @@ class OnePhaseSimulationWidget(qt.QFrame):
 
     def getParams(self, pore_table_node):
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
-        subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
         mercury_widget_params = self.mercury_widget.getParams(pore_table_node)
         subres_porositymodifier = mercury_widget_params["subres_porositymodifier"]
         shape_factor = mercury_widget_params["subres_shape_factor"]
 
-        subres_params_copy = {}
-        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and subres_params:
-            for i in subres_params.keys():
-                if subres_params[i] is not None:
-                    if isinstance(subres_params[i], np.ndarray):
-                        subres_params_copy.update({i: subres_params[i].tolist()})
-                    else:
-                        subres_params_copy.update({i: subres_params[i]})
-                else:
-                    subres_params_copy.update({i: None})
+        widget = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name]
+        if (subres_model_name == "Throat Radius Curve" or subres_model_name == "Pressure Curve") and hasattr(
+            widget, "_get_params_with_data"
+        ):
+            raw = widget._get_params_with_data()
+            subres_params_copy = {
+                k: np.asarray(v).tolist() if isinstance(v, (list, np.ndarray)) else v for k, v in (raw or {}).items()
+            }
         else:
-            subres_params_copy = subres_params
+            subres_params_copy = widget.get_params()
 
         params = {
             "model type": self.modelTypeComboBox.currentText,
