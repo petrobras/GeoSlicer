@@ -1,3 +1,20 @@
+# v2.8.10 - 2026-07-14
+
+## Improvements:
+- Allow segmentation without a reference to be used with custom depths (AM-110).
+- Multiscale environment will now always use hard data as reference when available, with a fallback to the color table if it has more segments (AM-30).
+- Added custom behavior to multiscale post-processing tables to rewrite .tsv files after saving the scene, ensuring correct values (AM-30).
+- Increased NMR histogram line width and refined variable names for clarity (AM-29).
+- Adjustments to Permeability Modelling, including updates to advanced parameters range limits to account for platform-specific mathematical operation differences. (PL-3172)
+
+## Bug fixes:
+- Fixed segment list passing incorrect values and improved error handling when using segmentation as input (AM-110).
+- Corrected NMR histogram colors to be transparent green with a black border (AM-29).
+- Ensured the view controller color picker button retrieves the correct color from the graph (AM-29).
+- Resolved an issue where the color widget was not properly receiving the alpha value (AM-29).
+- Resolved issues related to Permeability Modelling. (PL-3172)
+- Fix PNM extraction bug : small spacing changes lead to different networks (PL-3207)
+
 # v2.8.8 - 2026-06-26
 
 ## Improvements:

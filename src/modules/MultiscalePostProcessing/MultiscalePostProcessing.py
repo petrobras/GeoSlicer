@@ -3,12 +3,15 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
+from pathlib import Path
+from typing import Union
 
 import pandas as pd
 import numpy as np
 from ltrace.slicer import ui, helpers, widgets
 from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataFrameToTableNode
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.slicer.data_utils import dataFrameToTableNode
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer.node_attributes import ImageLogDataSelectable, TableType
 
@@ -98,8 +101,13 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
             "Select the training image to be added to the porosity per realization table"
         )
 
+        self.warningLabel = qt.QLabel("Input segmentation has no reference. Set custom depth.")
+        self.warningLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
+        self.warningLabel.hide()
+
         porosityInputLayout = qt.QFormLayout(self.porosityInputSection)
         porosityInputLayout.addRow("Realization volume:", self.realizationNodeComboBox)
+        porosityInputLayout.addRow(None, self.warningLabel)
         porosityInputLayout.addRow("Training image:", self.trainingImageComboBox)
 
         ## Input section frequency
@@ -157,9 +165,27 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.poreSegmentLabel = qt.QLabel("Pore segment:")
         self.poreSegmentLabel.hide()
 
+        self.topSpinBox = qt.QDoubleSpinBox()
+        self.topSpinBox.setSuffix(" m")
+        self.topSpinBox.setDecimals(6)
+        self.topSpinBox.objectName = "Top depth spinbox"
+        self.topSpinBox.setRange(-99999999, 999999999)
+        self.topSpinBox.valueChanged.connect(self.checkRunButtonState)
+        self.topLabel = qt.QLabel("Top depth:")
+
+        self.bottomSpinBox = qt.QDoubleSpinBox()
+        self.bottomSpinBox.setSuffix(" m")
+        self.bottomSpinBox.setDecimals(6)
+        self.bottomSpinBox.objectName = "bottom depth spinbox"
+        self.bottomSpinBox.setRange(-99999999, 999999999)
+        self.bottomSpinBox.valueChanged.connect(self.checkRunButtonState)
+        self.bottomLabel = qt.QLabel("Bottom depth:")
+
         parametersLayout = qt.QFormLayout(self.parametersSection)
         parametersLayout.addRow(self.poreValueLabel, self.porosityValueSpinBox)
         parametersLayout.addRow(self.poreSegmentLabel, self.singleShotWidget.segmentListGroup[1])
+        parametersLayout.addRow(self.topLabel, self.topSpinBox)
+        parametersLayout.addRow(self.bottomLabel, self.bottomSpinBox)
 
         # Output section
         outputSection = ctk.ctkCollapsibleButton()
@@ -213,6 +239,8 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
                 if self.isSegment
                 else [self.porosityValueSpinBox.value]
             ),
+            self.topSpinBox.value * 1000,
+            self.bottomSpinBox.value * 1000,
             self.outputPrefix.text,
             TINode,
         )
@@ -226,9 +254,10 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         return True if self.psdTableComboBox.currentNode() is not None else False
 
     def checkPorosityApply(self) -> bool:
-        if self.realizationNodeComboBox.currentNode() is not None:
+        node = self.realizationNodeComboBox.currentNode()
+        if node is not None:
             if (
-                isinstance(self.realizationNodeComboBox.currentNode(), slicer.vtkMRMLLabelMapVolumeNode)
+                isinstance(node, (slicer.vtkMRMLLabelMapVolumeNode, slicer.vtkMRMLSegmentationNode))
                 and not self.singleShotWidget.getSelectedSegments()
             ):
                 return False
@@ -241,7 +270,27 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         elif self.methodComboBox.currentText == METHODS["Frequency"]:
             isValid = self.checkFrequencyApply()
 
-        self.applyButton.enabled = isValid and self.outputPrefix.text.replace(" ", "") != ""
+        validDepths = self.checkDepthValid()
+
+        self.applyButton.enabled = isValid and self.outputPrefix.text.replace(" ", "") != "" and validDepths
+
+    def checkDepthValid(self) -> bool:
+        if self.topSpinBox.value >= self.bottomSpinBox.value:
+            helpers.highlight_error(self.topSpinBox)
+            helpers.highlight_error(self.bottomSpinBox)
+            return False
+        else:
+            self.topSpinBox.setStyleSheet("")
+            self.bottomSpinBox.setStyleSheet("")
+            return True
+
+    def changeInputError(self, state) -> None:
+        if state:
+            self.warningLabel.setStyleSheet("")
+            self.warningLabel.hide()
+        else:
+            helpers.highlight_warning(self.warningLabel)
+            self.warningLabel.show()
 
     def onRealizationNodeChange(self, itemId):
         node = self.subjectHierarchyNode.GetItemDataNode(itemId)
@@ -257,11 +306,29 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
                 )
                 self.changePoreValueSelector(True)
 
-            self.outputPrefix.text = "Porosity_per_realization_table"
+            try:
+                top, bottom = self.logic.getReferenceDepths(node)
+
+            except ValueError:
+                self.changeInputError(False)
+                self.topSpinBox.setValue(0)
+                self.bottomSpinBox.setValue(0)
+
+            else:
+                self.topSpinBox.setValue(top)
+                self.bottomSpinBox.setValue(bottom)
+                self.changeInputError(True)
+
+            finally:
+                self.outputPrefix.text = "Porosity_per_realization_table"
+
         else:
             self.singleShotWidget.mainInput.setCurrentNode(None)
-            self.changePoreValueSelector(False)
+            self.changePoreValueSelector(True)
             self.outputPrefix.text = ""
+            self.changeInputError(True)
+
+        self.checkRunButtonState()
 
     def onTrainingImageChange(self, itemId):
         node = self.subjectHierarchyNode.GetItemDataNode(itemId)
@@ -385,27 +452,28 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
         browserNode.SetAndObserveMasterSequenceNodeID(frequencySequenceNode.GetID())
         browserNode.SetIndexDisplayFormat("%.0f")
 
-    def generatePorosityPerRealization(self, input_node, poreValues, outputPrefix, trainingImageNode=None):
-        browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(input_node)
+    def generatePorosityPerRealization(
+        self,
+        inputNode: Union[slicer.vtkMRMLScalarVolumeNode, slicer.vtkMRMLLabelMapVolumeNode],
+        poreValues: list,
+        topDepth: float,
+        bottomDepth: float,
+        outputPrefix: str,
+        trainingImageNode=None,
+    ) -> slicer.vtkMRMLTableNode:
+        browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(inputNode)
         if browser_node:
-            sequence_node = browser_node.GetSequenceNode(input_node)
+            sequence_node = browser_node.GetSequenceNode(inputNode)
 
-        height = slicer.util.arrayFromVolume(input_node).shape[0]
+        height = slicer.util.arrayFromVolume(inputNode).shape[0]
         width = sequence_node.GetNumberOfDataNodes() if browser_node else 1
-        spacing = (input_node).GetSpacing()
-
-        if trainingImageNode is not None:
-            trainingImageArray = slicer.util.arrayFromVolume(trainingImageNode)
-            tiHeight = trainingImageArray.shape[0]
-            if tiHeight > height:
-                height = tiHeight
 
         headers = ["realization_" + str(x) for x in range(-1, width)]
         headers[0] = "DEPTH"
 
         poreTable = np.empty((height, width + 1))
         poreTable[:] = np.nan
-        poreTable[:, 0] = np.arange(height) * spacing[2]
+        poreTable[:, 0] = np.linspace(topDepth, bottomDepth, height)
 
         if browser_node:
             for image in range(sequence_node.GetNumberOfDataNodes()):
@@ -414,20 +482,10 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
                     poreArray.shape[1] * poreArray.shape[2]
                 )
         else:
-            poreArray = slicer.util.arrayFromVolume(input_node)
+            poreArray = slicer.util.arrayFromVolume(inputNode)
             poreTable[: poreArray.shape[0], 1] = ((np.isin(poreArray, poreValues)).sum(axis=(1, 2))) / (
                 poreArray.shape[1] * poreArray.shape[2]
             )
-
-        if trainingImageNode is not None:
-            trainingImagePorosity = np.empty(height)
-            trainingImagePorosity[:] = np.nan
-            trainingImagePorosity[:tiHeight] = ((np.isin(trainingImageArray, poreValues)).sum(axis=(1, 2))) / (
-                trainingImageArray.shape[1] * trainingImageArray.shape[2]
-            )
-
-            poreTable = np.c_[poreTable, trainingImagePorosity]
-            headers.append("TI")
 
         df = pd.DataFrame(poreTable, columns=headers)
 
@@ -436,6 +494,47 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
         result.SetAttribute(TableType.name(), TableType.POROSITY_PER_REALIZATION.value)
         result.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 
+        if trainingImageNode:
+            tiTop, tiBottom = self.getReferenceDepths(trainingImageNode)
+
+            tiTableNode = self.generatePorosityPerRealization(
+                trainingImageNode, poreValues, tiTop * 1000, tiBottom * 1000, outputPrefix=f"{outputPrefix}_TI"
+            )
+
+            result.AddNodeReferenceID("TrainingImagePorosityTable", tiTableNode.GetID())
+
         self.__AddNodeToHierarchy(result, METHODS["Porosity"])
 
         helpers.removeTemporaryNodes()
+
+        return result
+
+    def getReferenceDepths(
+        self,
+        node: Union[slicer.vtkMRMLScalarVolumeNode, slicer.vtkMRMLLabelMapVolumeNode, slicer.vtkMRMLSegmentationNode],
+    ) -> tuple[float, float]:
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            referenceNode = helpers.getSourceVolume(node)
+            if referenceNode is None:
+                raise ValueError(f"No reference found for {node.GetName()}")
+            return self.getNodeDepths(referenceNode)
+
+        return self.getNodeDepths(node)
+
+    def getNodeDepths(
+        self, node: Union[slicer.vtkMRMLScalarVolumeNode, slicer.vtkMRMLLabelMapVolumeNode]
+    ) -> tuple[float, float]:
+        origin = node.GetOrigin()
+        height = node.GetImageData().GetDimensions()[2] - 1
+        verticalSpacing = node.GetSpacing()[2]
+
+        ijkMatrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        node.GetIJKToRASDirections(ijkMatrix)
+        if ijkMatrix[2][2] == -1:
+            top = -origin[2] / 1000
+            bottom = (-origin[2] + height * verticalSpacing) / 1000
+        else:
+            bottom = (-origin[2]) / 1000
+            top = (-origin[2] - height * verticalSpacing) / 1000
+
+        return top, bottom

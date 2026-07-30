@@ -50,18 +50,6 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
             )
             column_List.remove(view_data.primaryTableNodeColumn)
 
-            if "TI" in column_List:
-                self.curve_plot.add_data(
-                    data_node=primary_node,
-                    x_parameter="TI",
-                    y_parameter="DEPTH",
-                    plot_type=primary_plot_type,
-                    color="#0000FF",
-                    symbol=primary_plot_symbol,
-                    size=10,
-                )
-                column_List.remove("TI")
-
             if column_List:
                 self.curve_plot.add_data(
                     data_node=primary_node,
@@ -144,7 +132,7 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
         return None
 
     def __on_logmode_changed(self, activated):
-        self.view_data.logMode = activated
+        self.view_data.primaryLogMode = activated
         self.signalUpdated.emit()
 
     def __get_bounding_depth_indices(self, depths, y):

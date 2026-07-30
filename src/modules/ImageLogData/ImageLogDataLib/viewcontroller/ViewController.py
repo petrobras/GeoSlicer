@@ -7,7 +7,7 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer.helpers import themeIsDark
+from ltrace.slicer.helpers import themeIsDark, hex2Rgb
 from ltrace.slicer.node_attributes import TableType, ImageLogDataSelectable, DataOrigin
 from ltrace.slicer.ui import filteredNodeComboBox
 from ltrace.slicer.widget.elided_label import ElidedLabel
@@ -320,24 +320,20 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         self.secondaryTableNodeLayout.setContentsMargins(0, 0, 0, 0)
 
         # Secondary table node node
-        self.primaryTableNodePlotColorPicker = filteredNodeComboBox(["vtkMRMLTableNode"])
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(DataOrigin.name(), DataOrigin.IMAGE_LOG.value)
-        self.primaryTableNodePlotColorPicker.addAttributeFilter(
+        self.secondaryTableNodeComboBox = filteredNodeComboBox(["vtkMRMLTableNode"])
+        self.secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
+        self.secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.MEAN_IN_DEPTH.value)
+        self.secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.BASIC_PETROPHYSICS.value)
+        self.secondaryTableNodeComboBox.addAttributeFilter(TableType.name(), TableType.IMAGE_LOG.value)
+        self.secondaryTableNodeComboBox.addAttributeFilter(DataOrigin.name(), DataOrigin.IMAGE_LOG.value)
+        self.secondaryTableNodeComboBox.addAttributeFilter(
             ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value
         )
-        self.primaryTableNodePlotColorPicker.setObjectName("secondaryTableNodeComboBox" + str(self.identifier))
-        self.primaryTableNodePlotColorPicker.view().setMinimumWidth(250)
-        self.primaryTableNodePlotColorPicker.nodeAboutToBeRemoved.connect(
-            self.onPrimaryTableNodePlotColorPickerToBeRemoved
-        )
-        self.primaryTableNodePlotColorPicker.currentNodeChanged.connect(
-            self.onPrimaryTableNodePlotColorPickerNodeChanged
-        )
-        self.secondaryTableNodeLayout.addWidget(self.primaryTableNodePlotColorPicker, 10)
+        self.secondaryTableNodeComboBox.setObjectName("secondaryTableNodeComboBox" + str(self.identifier))
+        self.secondaryTableNodeComboBox.view().setMinimumWidth(250)
+        self.secondaryTableNodeComboBox.nodeAboutToBeRemoved.connect(self.onSecondaryTableNodeComboBoxToBeRemoved)
+        self.secondaryTableNodeComboBox.currentNodeChanged.connect(self.onSecondaryTableNodeComboBoxChanged)
+        self.secondaryTableNodeLayout.addWidget(self.secondaryTableNodeComboBox, 10)
 
         # Secondary table node column
         self.secondaryTableNodeColumnComboBox = qt.QComboBox()
@@ -375,11 +371,11 @@ class GraphicViewControllerWidget(ViewControllerWidget):
     def onPrimaryTableNodePlotTypeComboBoxTextChanged(self):
         self.logic.primaryTableNodePlotTypeChanged(self.identifier)
 
-    def onPrimaryTableNodePlotColorPickerToBeRemoved(self):
-        self.logic.onNodeAboutToBeRemoved(self.identifier, self.primaryTableNodePlotColorPicker.currentNode())
+    def onSecondaryTableNodeComboBoxToBeRemoved(self):
+        self.logic.onNodeAboutToBeRemoved(self.identifier, self.secondaryTableNodeComboBox.currentNode())
 
-    def onPrimaryTableNodePlotColorPickerNodeChanged(self):
-        self.logic.secondaryTableNodeChanged(self.identifier, self.primaryTableNodePlotColorPicker.currentNode())
+    def onSecondaryTableNodeComboBoxChanged(self):
+        self.logic.secondaryTableNodeChanged(self.identifier, self.secondaryTableNodeComboBox.currentNode())
 
     def secondaryTableNodeColumnComboBoxTextChanged(self):
         self.logic.secondaryTableNodeColumnChanged(self.identifier)
@@ -393,6 +389,7 @@ class GraphicViewControllerWidget(ViewControllerWidget):
         self.primaryTableNodePlotTypeComboBox.setObjectName("primaryTableNodePlotTypeComboBox" + str(newId))
         self.primaryTableNodePlotColorPicker.setObjectName("primaryTableNodePlotColorPicker" + str(newId))
         self.primaryTableNodePlotColorPicker.identifier = newId
+        self.secondaryTableNodeComboBox.setObjectName("secondaryTableNodeComboBox" + str(newId))
         self.secondaryTableNodeColumnComboBox.setObjectName("secondaryTableNodeColumnComboBox" + str(newId))
         self.secondaryTableNodePlotTypeComboBox.setObjectName("secondaryTableNodePlotTypeComboBox" + str(newId))
         self.secondaryTableNodePlotColorPicker.setObjectName("secondaryTableNodePlotColorPicker" + str(newId))
@@ -420,8 +417,8 @@ class ColorPickerCell(qt.QWidget):
         layout.setAlignment(qt.Qt.AlignCenter)
         layout.setContentsMargins(0, 0, 0, 0)
         self.histogramMode = False
-        self.currentColor = color
-        self.currentValue = 1.0
+        self.currentColor = qt.QColor(color)
+        self.histogramScaleValue = 1.0
         self.clicked = lambda color: None
 
         def onClicked():
@@ -435,18 +432,20 @@ class ColorPickerCell(qt.QWidget):
                 self.spinBox = qt.QDoubleSpinBox()
                 self.spinBox.setDecimals(2)
                 self.spinBox.setRange(0.01, 10000.0)
-                self.spinBox.setValue(self.currentValue)
+                self.spinBox.setValue(self.histogramScaleValue)
                 layoutVertGroup.addWidget(self.spinBox)
                 groupBox.setLayout(layoutVertGroup)
-                self.colordialog = qt.QColorDialog(qt.QColor(self.currentColor))
-                self.colordialog.setOptions(qt.QColorDialog.DontUseNativeDialog)
-                layoutVert.addWidget(self.colordialog)
+                self.colorDialog = qt.QColorDialog()
+                self.colorDialog.setOption(qt.QColorDialog.ShowAlphaChannel)
+                self.colorDialog.setOption(qt.QColorDialog.DontUseNativeDialog)
+                self.colorDialog.setCurrentColor(self.currentColor)
+                layoutVert.addWidget(self.colorDialog)
                 self.colorWidget.setLayout(layoutVert)
                 self.colorWidget.show()
-                self.colordialog.accepted.connect(self.okWindow)
-                self.colordialog.rejected.connect(self.cancelWindow)
+                self.colorDialog.accepted.connect(self.okWindow)
+                self.colorDialog.rejected.connect(self.cancelWindow)
             else:
-                color = qt.QColorDialog.getColor(qt.QColor(self.currentColor))
+                color = qt.QColorDialog.getColor(self.currentColor)
                 if color.isValid():
                     self.button.setStyleSheet(
                         "QPushButton {"
@@ -461,32 +460,35 @@ class ColorPickerCell(qt.QWidget):
 
     def okWindow(self):
         self.colorWidget.close()  # close widget
-        color = self.colordialog.selectedColor()
-        self.currentValue = self.spinBox.value
-        self.button.setStyleSheet(
-            "QPushButton {"
-            "font-size:11px;"
-            f"color:{color};"
-            f"background-color:{color};"
-            "border: 2px solid #222222 }"
-        )
-        self.callback(self.identifier, color.name(), self.currentValue)
+        color = self.colorDialog.selectedColor()
+        self.histogramScaleValue = self.spinBox.value
+        rgba = f"rgba({color.red()}, {color.green()}, {color.blue()}, {color.alpha()})"
+        self.setButtonColor(rgba)
+        self.callback(self.identifier, f"{color.name()}{color.alpha():02X}", self.histogramScaleValue)
 
     def cancelWindow(self):
         self.colorWidget.close()  # close widget
 
     def setColor(self, color):
+        colorRgba = hex2Rgb(color, normalize=False)
+        red, green, blue = (colorRgba[0], colorRgba[1], colorRgba[2])
+        if len(colorRgba) == 4:
+            alpha = colorRgba[3]
+        else:
+            alpha = 255
+        rgba = f"rgba({red}, {green}, {blue}, {alpha})"
+
+        self.setButtonColor(rgba)
+
+        self.currentColor = qt.QColor(red, green, blue, alpha)
+
+    def setButtonColor(self, rgba: str) -> None:
         self.button.setStyleSheet(
-            "QPushButton {"
-            "font-size:11px;"
-            f"color:{color};"
-            f"background-color:{color};"
-            "border: 2px solid #222222 }"
+            "QPushButton {" "font-size:11px;" f"color:{rgba};" f"background-color:{rgba};" "border: 2px solid #222222 }"
         )
-        self.currentColor = color
 
     def setHistogramScaleValue(self, scaleValue):
-        self.currentValue = scaleValue
+        self.histogramScaleValue = scaleValue
 
     def setHistogramMode(self, mode):
         self.histogramMode = mode

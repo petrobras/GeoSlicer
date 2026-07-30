@@ -56,9 +56,9 @@ class SliceViewData(ViewData):
 class GraphicViewData(ViewData):
     VIEW_NAME_PREFIX = "ImageLogGraphicView"
 
-    def __init__(self):
+    def __init__(self, primaryColor="#000000"):
         super().__init__()
-        primaryColor = "#000000"
+        primaryColor = primaryColor
         secondaryColor = "#FF0000"
         self.primaryTableNodeColumnList = []
         self.primaryTableNodeColumn = ""
@@ -72,7 +72,8 @@ class GraphicViewData(ViewData):
         self.secondaryTableNodePlotType = LINE_PLOT_TYPE
         self.secondaryTableNodePlotColor = secondaryColor
         self.secondaryTableHistogram = False
-        self.logMode = False
+        self.primaryLogMode = False
+        self.secondaryLogMode = False
 
     def to_json(self):
         return {
@@ -88,7 +89,8 @@ class GraphicViewData(ViewData):
             "secondaryTableNodePlotType": self.secondaryTableNodePlotType,
             "secondaryTableNodePlotColor": self.secondaryTableNodePlotColor,
             "secondaryTableHistogram": self.secondaryTableHistogram,
-            "logMode": self.logMode,
+            "primaryLogMode": self.primaryLogMode,
+            "secondaryLogMode": self.secondaryLogMode,
         }
 
 

@@ -93,6 +93,7 @@
   </parameters>
 
   <parameters advanced="false">
+    <label>Output</label>
     <table>
       <name>outputVolume</name>
       <longflag>outputvolume</longflag>
@@ -112,6 +113,42 @@
       <description><![CDATA[.....]]></description>
       <channel>input</channel>
       <default>-999.25</default>
+    </double>
+   
+    <integer>
+      <name>fractionSmoothingWindowSize</name>
+      <label>Fraction Smoothing Window Size</label>
+      <longflag>fractionSmoothingWindowSize</longflag>
+      <description><![CDATA[Fraction Smoothing Window Size]]></description>
+      <channel>input</channel>
+      <default>10</default>
+    </integer>
+
+    <double>
+      <name>excessKFractionThreshold</name>
+      <longflag>excessKFractionThreshold</longflag>
+      <label>Excess-K Fraction Threshold</label>
+      <description><![CDATA[Excess-K Fraction Threshold]]></description>
+      <channel>input</channel>
+      <default>1.0</default>
+    </double>
+        
+    <boolean>
+      <name>useMatrixKPlugErrorTerm</name>
+      <longflag>useMatrixKPlugErrorTerm</longflag>
+      <label>Use Matrix-K Plug Error Term</label>
+      <description><![CDATA[Use Matrix-K Plug Error Term.]]></description>
+      <channel>input</channel>
+      <default></default>
+    </boolean>
+
+    <double>
+      <name>excessKPowerParamater</name>
+      <longflag>excessKPowerParamater</longflag>
+      <label>Excess-K Power Paramater</label>
+      <description><![CDATA[Excess-K Power Paramater]]></description>
+      <channel>input</channel>
+      <default>1.0</default>
     </double>
   </parameters>
 

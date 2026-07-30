@@ -136,7 +136,8 @@ class KdsOptimizationWidget(qt.QWidget):
         self.table.setHorizontalHeaderLabels(self.HEADER)
         self.table.horizontalHeader().setSectionResizeMode(qt.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(False)
-        self._tableCellHandler = KdsOptimizationTableCellHandler(self.table)
+        self._tableCellHandler = KdsOptimizationTableCellHandler(self, self.table)
+        self._tableCellHandler.cellChanged.connect(self.__emitTableUpdated)
 
         # Define the same size for all columns
         for i in range(self.table.columnCount):
@@ -151,7 +152,7 @@ class KdsOptimizationWidget(qt.QWidget):
         self.removeButton.clicked.connect(self.__onRemoveButtonClicked)
 
         # Weight value
-        self.weightSpinBox = ui.numberParam(vrange=(0, sys.float_info.max), value=1.0)
+        self.weightSpinBox = ui.numberParam(vrange=(0, sys.float_info.max), value=1.00, decimals=2)
         formLayout = qt.QFormLayout()
         formLayout.addRow("Weight", self.weightSpinBox)
 
@@ -178,6 +179,9 @@ class KdsOptimizationWidget(qt.QWidget):
             self.table.setItem(self.table.rowCount - 1, 3, qt.QTableWidgetItem(str(dialog.model.kRo)))
             self.table.blockSignals(state)
 
+        self.__emitTableUpdated()
+
+    def __emitTableUpdated(self) -> None:
         df = tableWidgetToDataFrame(self.table)
         self.tableUpdated.emit(df)
 
@@ -196,8 +200,7 @@ class KdsOptimizationWidget(qt.QWidget):
         for row in rowSet:
             self.table.removeRow(row)
 
-        df = tableWidgetToDataFrame(self.table)
-        self.tableUpdated.emit(df)
+        self.__emitTableUpdated()
         self.table.setCurrentCell(-1, -1)
 
     def setTableData(self, df: pd.DataFrame = None):
@@ -215,18 +218,27 @@ class KdsOptimizationWidget(qt.QWidget):
             self.table.setItem(self.table.rowCount - 1, 3, qt.QTableWidgetItem(str(row.iloc[3])))
 
 
-class KdsOptimizationTableCellHandler:
+class KdsOptimizationTableCellHandler(qt.QObject):
     """Class to handle Kds Optimization Table cells user's iteraction"""
 
     START_DEPTH_COLUMN = 0
     STOP_DEPTH_COLUMN = 1
+    cellChanged = qt.Signal()
 
-    def __init__(self, table: qt.QTableWidget) -> None:
+    def __init__(self, parent: qt.QObject, table: qt.QTableWidget) -> None:
+        super().__init__(parent)
         self.currentCell = None
         self.previousValue = None
         self.table = table
         self.table.cellChanged.connect(self.__onCellChanged)
         self.table.currentCellChanged.connect(self.__onCurrentCellChanged)
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        if self.table is not None:
+            self.table.cellChanged.disconnect(self.__onCellChanged)
+            self.table.currentCellChanged.disconnect(self.__onCurrentCellChanged)
+            self.table = None
 
     def restore(self) -> None:
         """Restore the previous value"""
@@ -279,6 +291,7 @@ class KdsOptimizationTableCellHandler:
             return
 
         self.previousValue = self.currentCell.text()
+        self.cellChanged.emit()
 
     def __onCurrentCellChanged(self, currentRow: int, currentColumn: int, previousRow: int, previousColumn: int):
         """Handle current cell changed event. Used to store the reference from the selected cell item object.

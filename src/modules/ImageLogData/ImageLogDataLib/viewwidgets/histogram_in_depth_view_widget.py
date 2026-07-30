@@ -230,7 +230,7 @@ class PlotWidget(QtWidgets.QWidget):
             # Set pen color and scales
             colorRgb = hex2Rgb(self.__color, normalize=False)
             brush = pg.mkBrush(colorRgb)
-            pen = pg.mkPen(colorRgb, width=0.01)
+            pen = pg.mkPen("k", width=1)
             maxDepth, minDepth = self.getDataRange()
 
             scale_plot = self.__scaleHistogram
@@ -276,7 +276,6 @@ class PlotWidget(QtWidgets.QWidget):
 
         # Apply plot customization
         self._plotItem.showGrid(x=True, y=True)
-        self._plotItem.showAxis("bottom", True)
         self._plotItem.invertY(True)
 
     def updateSecondPlot(self):

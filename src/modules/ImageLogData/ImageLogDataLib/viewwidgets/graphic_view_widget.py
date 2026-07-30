@@ -66,7 +66,7 @@ class GraphicViewWidget(BaseViewWidget):
                 view_box=SECONDARY_VIEW_BOX,
             )
 
-        if view_data.logMode:
+        if view_data.primaryLogMode:
             self.curve_plot._plot_item.ctrl.logXCheck.setCheckState(PySide2.QtCore.Qt.Checked)
 
         self.curve_plot._plot_item.signalLogMode.connect(self.__on_logmode_changed)
@@ -126,8 +126,11 @@ class GraphicViewWidget(BaseViewWidget):
         return None
 
     def __on_logmode_changed(self, activated):
-        self.view_data.logMode = activated
+        self.view_data.primaryLogMode = activated
+        if self.view_data.secondaryTableNodeId is None:
+            self.view_data.secondaryLogMode = activated
         self.signalUpdated.emit()
+        self.curve_plot._plot_item.getViewBox().getMenu().close()
 
     def __get_bounding_depth_indices(self, depths, y):
         index_pairs = []

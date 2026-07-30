@@ -1593,9 +1593,10 @@ def getDepthArrayFromVolume(volumeNode):
     else:
         bounds = np.zeros((6))
         volumeNode.GetBounds(bounds)
+        spacingz = volumeNode.GetSpacing()[-1]
         depth = bounds[4:6]
         number_of_lines = slicer.util.arrayFromVolume(volumeNode).shape[0]
-        depthArray = np.linspace(depth[0], depth[-1], number_of_lines)
+        depthArray = np.linspace(depth[0] + spacingz / 2, depth[-1] - spacingz / 2, number_of_lines)
         depthArray = depthArray / -1000
         return depthArray
 
@@ -2787,3 +2788,66 @@ def saveNode(*args, **kwargs):
         return slicer.util.saveNode(*args, **kwargs)
     finally:
         os.chdir(currentDir)
+
+
+def isSegmentIdEmpty(
+    segmentationNode: slicer.vtkMRMLSegmentationNode, segmentId: str = None, segmentName: str = None
+) -> bool:
+    """
+    Checks if a specific segment exists within a segmentation array.
+    """
+    if segmentationNode is None:
+        raise ValueError("A valid vtkMRMLSegmentationNode must be provided.")
+
+    if segmentId is None and segmentName is None:
+        raise ValueError("segmentId or segmentName must be provided")
+
+    if segmentId is None:
+        segmentId = segmentationNode.GetSegmentation().GetSegmentIdBySegmentName(segmentName)
+
+    binaryLabelmap = slicer.vtkOrientedImageData()
+    success = segmentationNode.GetBinaryLabelmapRepresentation(segmentId, binaryLabelmap)
+    if not success:
+        return True
+
+    isEmpty = True
+    scalarRange = None
+    if success and binaryLabelmap.GetPointData().GetScalars():
+        scalarRange = binaryLabelmap.GetPointData().GetScalars().GetRange()
+        if scalarRange[1] > 0.0:
+            isEmpty = False
+
+    return isEmpty
+
+
+def isLabelMapValueEmpty(labelmapNode: slicer.vtkMRMLLabelMapVolumeNode, labelName: str) -> bool:
+    """
+    Checks if a specific label value (or name) exists within a vtkMRMLLabelMapVolumeNode array.
+    """
+    if labelmapNode is None:
+        raise ValueError("A valid vtkMRMLLabelMapVolumeNode must be provided.")
+
+    if not labelName:
+        raise ValueError("A valid 'labelName' must be provided.")
+
+    displayNode = labelmapNode.GetDisplayNode()
+    if not displayNode:
+        raise RuntimeError("Labelmap does not have a Display Node to look up names.")
+
+    colorNode = displayNode.GetColorNode()
+    if not colorNode:
+        raise RuntimeError("Labelmap Display Node does not have an associated Color Node.")
+
+    index = colorNode.GetColorIndexByName(labelName)
+
+    if index == -1:
+        raise ValueError(f"Label name '{labelName}' was not found in the color table.")
+
+    labelArray = slicer.util.arrayFromVolume(labelmapNode)
+
+    if labelArray is None:
+        return True
+
+    isEmpty = not np.any(labelArray == index)
+
+    return isEmpty

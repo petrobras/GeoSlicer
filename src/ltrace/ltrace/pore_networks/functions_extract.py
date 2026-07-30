@@ -721,7 +721,7 @@ def general_pn_extract(
 
         multiphase_array = _phases_from_porosity_map(scalar_array)
 
-        _parallelization = {"divs": divs} if divs > 1 else None
+        _parallelization = {"divs": divs} if divs > 0 else None
         snow_results = snow2(
             phases=multiphase_array,
             porosity_map=scalar_array,

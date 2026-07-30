@@ -9,7 +9,7 @@ from ImageLogDataLib.viewwidgets.porosity_per_realization_widget import Porosity
 from ImageLogDataLib.viewdata.ViewData import EmptyViewData
 from ImageLogDataLib.viewdata.ViewData import GraphicViewData
 from ImageLogDataLib.viewdata.ViewData import SliceViewData
-from ltrace.slicer.node_attributes import TableType
+from ltrace.slicer.node_attributes import TableType, HistogramGraphType
 from ltrace.slicer_utils import tableNodeToDict
 from ltrace.utils.CorrelatedLabelMapVolume import ProportionLabelMapVolume
 from ltrace.slicer.helpers import triggerNodeModified
@@ -141,7 +141,13 @@ class ImageLogView:
         elif type(node) is slicer.vtkMRMLTableNode:
             if node.GetTable().GetColumn(0) is not None:
                 table_type = self.__get_table_type(node)
-                graphicViewData = GraphicViewData()
+                is_NMR = False
+                if (
+                    table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH
+                    and self.__get_histogram_in_depth_type(node) == HistogramGraphType.NMR.value
+                ):
+                    is_NMR = True
+                graphicViewData = GraphicViewData("#00550090" if is_NMR else "#000000")
                 graphicViewData.primaryNodeId = node.GetID()
                 if table_type in [self.TABLE_TYPE_IMAGE_LOG, self.TABLE_TYPE_POROSITY_PER_REALIZATION]:
                     columns = self.__getParametersForGraphicViewData(node)
@@ -201,3 +207,11 @@ class ImageLogView:
             return self.TABLE_TYPE_HISTOGRAM_IN_DEPTH
 
         return self.TABLE_TYPE_IMAGE_LOG
+
+    def __get_histogram_in_depth_type(self, table_node: slicer.vtkMRMLTableNode) -> str:
+        if table_node.GetTable().GetRow(0).GetValue(0) == "X":
+            return HistogramGraphType.IN_DEPTH.value
+        elif table_node.GetAttribute(HistogramGraphType.name()) == HistogramGraphType.MULTI_HISTOGRAM.value:
+            return HistogramGraphType.MULTI_HISTOGRAM.value
+        else:
+            return HistogramGraphType.NMR.value

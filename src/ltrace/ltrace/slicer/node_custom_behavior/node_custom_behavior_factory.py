@@ -7,6 +7,9 @@ from ltrace.slicer.node_custom_behavior.nodes.volume_rendering_display_node impo
     VolumeRenderingDisplayNodeCustomBehavior,
 )
 from ltrace.slicer.node_custom_behavior.nodes.table_node import TableNodeCustomBehavior
+from ltrace.slicer.node_custom_behavior.nodes.porosity_per_slicer_per_realization_table_node import (
+    PorosityPerSlicePerRealizationTableNodeCustomBehavior,
+)
 from .node_custom_behavior_base import NodeCustomBehaviorBase
 from .defs import TriggerEvent
 
@@ -29,6 +32,7 @@ class NodeCustomBehaviorFactory:
         SegmentationDisplayNodeCustomBehavior,
         VolumeRenderingDisplayNodeCustomBehavior,
         TableNodeCustomBehavior,
+        PorosityPerSlicePerRealizationTableNodeCustomBehavior,
     ]
 
     @staticmethod

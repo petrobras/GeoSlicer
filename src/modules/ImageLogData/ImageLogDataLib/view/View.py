@@ -181,13 +181,12 @@ class CurvePlot(QtWidgets.QWidget):
         self.secondary_axis.linkToView(self.secondary_view_box)
         self.secondary_axis.setZValue(-10000)
 
-        log_x_action = QtGui.QAction("Log X", self.secondary_view_box.menu)
-        log_x_action.setCheckable(True)
-        log_x_action.triggered.connect(self.__set_secondary_log_mode)
+        self.secondary_log_x_action = QtGui.QAction("Log X", self.secondary_view_box.menu)
+        self.secondary_log_x_action.setCheckable(True)
+        self.secondary_log_x_action.triggered.connect(self.set_secondary_log_mode)
+        self.secondary_view_box.menu.addAction(self.secondary_log_x_action)
 
-        self.secondary_view_box.menu.addAction(log_x_action)
-
-    def __set_secondary_log_mode(self, state):
+    def set_secondary_log_mode(self, state):
         self.secondary_axis.setLogMode(state)
         for plot_info in self.__plots:
             if plot_info.view_box == SECONDARY_VIEW_BOX:
@@ -207,6 +206,10 @@ class CurvePlot(QtWidgets.QWidget):
         for plot_info in self.__plots:
             if plot_info.view_box == PRIMARY_VIEW_BOX:
                 self.__logMode(plot_info.graph_data.data, activated)
+
+        if activated != self.secondary_log_x_action.isChecked():
+            self.set_secondary_log_mode(activated)
+            self.secondary_log_x_action.setChecked(qt.Qt.Checked)
 
     def add_data(
         self,

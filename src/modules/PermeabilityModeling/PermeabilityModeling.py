@@ -6,8 +6,13 @@ import logging
 import os
 
 from ltrace.slicer import helpers, ui
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_node
-from ltrace.slicer.helpers import reset_style_on_valid_text
+from ltrace.slicer.helpers import (
+    highlight_error,
+    reset_style_on_valid_node,
+    reset_style_on_valid_text,
+    isSegmentIdEmpty,
+    isLabelMapValueEmpty,
+)
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import (
@@ -73,6 +78,7 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         self.paramsSection()
         self.measurementSection()
         self.kdsOptimizationSection()
+        self.advancedSection()
         self.outputSection()
 
         self.applyButton = ui.ButtonWidget(text="Apply", onClick=self.onApply)
@@ -199,7 +205,7 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         self.segmentedImageInput.objectName = "Segmented Image Input"
         reset_style_on_valid_node(self.segmentedImageInput)
 
-        parametersFormLayout.addRow("Well logs (.las):", self._porosityLogInput)
+        parametersFormLayout.addRow("Well logs:", self._porosityLogInput)
         parametersFormLayout.addRow("Porosity Log:", self._porosityLogComboBox)
         parametersFormLayout.addRow("Segmented Image:", self.segmentedImageInput)
 
@@ -234,16 +240,30 @@ class PermeabilityModelingWidget(LTracePluginWidget):
 
         self.modelSelector = qt.QComboBox()
         self.modelSelector.enabled = False
-        self.modelSelector.connect("currentIndexChanged(int)", lambda v: self.onNumericChanged("class1", v))
+        self.modelSelector.currentIndexChanged.connect(self.onModelSelectorChanged)
         self.modelSelector.objectName = "Macro Pore Segment Combo Box"
 
         self.missingSelector = qt.QComboBox()
         self.missingSelector.enabled = False
-        self.missingSelector.connect("currentIndexChanged(int)", lambda v: self.onNumericChanged("nullable", v))
+        self.missingSelector.currentIndexChanged.connect(self.onMissingSelectorChanged)
         self.missingSelector.objectName = "Ignored/null Segment Combo Box"
 
         parametersFormLayout.addRow("Macro Pore Segment: ", self.modelSelector)
         parametersFormLayout.addRow("Ignored/null Segment: ", self.missingSelector)
+
+    def onModelSelectorChanged(self, idx: int) -> None:
+        """Model segment selector changed event handler.
+        The index is incremented due to behavior of CLI receiving the segmentation node as a scalar volume, using a non-overlap merged segmentation array.
+        So the index 0 is not related to the first segment, but to the background.
+        """
+        self.onNumericChanged("class1", idx)
+
+    def onMissingSelectorChanged(self, idx: int) -> None:
+        """Missing segment selector changed event handler.
+        The index is incremented due to behavior of CLI receiving the segmentation node as a scalar volume, using a non-overlap merged segmentation array.
+        So the index 0 is not related to the first segment, but to the background.
+        """
+        self.onNumericChanged("nullable", idx)
 
     def measurementSection(self):
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -279,7 +299,49 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         self.kdsOptimizationWidget.addButton.objectName = "Kds Optimization Add Button"
         self.kdsOptimizationWidget.removeButton.objectName = "Kds Optimization Remove Button"
         self.kdsOptimizationWidget.weightSpinBox.objectName = "Kds Optimization Weight Spin Box"
+        self.kdsOptimizationWidget.setMinimumHeight(200)
         parametersFormLayout.addWidget(self.kdsOptimizationWidget)
+
+    def advancedSection(self):
+        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersCollapsibleButton.text = "Advanced"
+        parametersCollapsibleButton.collapsed = True
+        self.layout.addWidget(parametersCollapsibleButton)
+
+        # Layout within the dummy collapsible button
+        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+        fractionSmoothingWindowSizeSpinBox = ui.numberParamInt(vrange=(1, 1000), value=10, step=1)
+        fractionSmoothingWindowSizeSpinBox.objectName = "Fraction Smoothing Window Size Spin Box"
+        excessKFractionThresholdSpinBox = ui.numberParam(vrange=(0, 1.0), value=1.0, step=0.001, decimals=3)
+        excessKFractionThresholdSpinBox.objectName = "Excess-K Fraction Threshold Spin Box"
+        useMatrixKPlugErrorTermCheckBox = qt.QCheckBox("")
+        useMatrixKPlugErrorTermCheckBox.objectName = "Use Matrix-K Plug Error Term Check Box"
+        excessKPowerParamaterSpinBox = ui.numberParam(vrange=(0, 3.5), value=1.0, step=0.1, decimals=1)
+        excessKPowerParamaterSpinBox.objectName = "Excess-K Power Paramater Spin Box"
+
+        parametersFormLayout.addRow("Window size for fraction smoothing", fractionSmoothingWindowSizeSpinBox)
+        parametersFormLayout.addRow("Excess-K fraction threshold to exclude plugs", excessKFractionThresholdSpinBox)
+        parametersFormLayout.addRow("Use only matrix-K in plug error term", useMatrixKPlugErrorTermCheckBox)
+        parametersFormLayout.addRow("Excess-K power parameter", excessKPowerParamaterSpinBox)
+
+        # Connections
+        fractionSmoothingWindowSizeSpinBox.valueChanged.connect(self.onFractionSmoothingWindowSizeChanged)
+        excessKFractionThresholdSpinBox.valueChanged.connect(self.onExcessKFractionThresholdChanged)
+        useMatrixKPlugErrorTermCheckBox.stateChanged.connect(self.onUseMatrixKPlugErrorTermChanged)
+        excessKPowerParamaterSpinBox.valueChanged.connect(self.onExcessKPowerParamaterChanged)
+
+    def onFractionSmoothingWindowSizeChanged(self, value):
+        self.onNumericChanged("fractionSmoothingWindowSize", value)
+
+    def onExcessKFractionThresholdChanged(self, value):
+        self.onNumericChanged("excessKFractionThreshold", value)
+
+    def onUseMatrixKPlugErrorTermChanged(self, value):
+        mode = value == qt.Qt.Checked
+        self.onNumericChanged("useMatrixKPlugErrorTerm", mode)
+
+    def onExcessKPowerParamaterChanged(self, value):
+        self.onNumericChanged("excessKPowerParamater", value)
 
     def storeKdsOptimizationTable(self, df):
         node = helpers.tryGetNode(ERROR_CORRECTION_NODE_NAME)
@@ -352,6 +414,40 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         if self.outputNameLineEdit.text.strip() == "":
             highlight_error(self.outputNameLineEdit)
             return
+
+        # Check Macropore segment input
+        segmentName = self.modelSelector.currentText
+        if self.modelSelector.currentText == "":
+            highlight_error(self.modelSelector)
+            return
+
+        segmentationImageNode = self.segmentedImageInput.currentNode()
+        if (
+            segmentationImageNode is not None
+            and segmentationImageNode.IsA("vtkMRMLSegmentationNode")
+            and isSegmentIdEmpty(segmentationImageNode, segmentName=segmentName)
+        ):
+            highlight_error(self.modelSelector)
+            slicer.util.errorDisplay(
+                "Segment registered as 'Macropore' is empty. Please, check the segmentation or change the selected segment.",
+                windowTitle="Error",
+                parent=slicer.modules.AppContextInstance.mainWindow,
+            )
+            return
+        if (
+            segmentationImageNode is not None
+            and segmentationImageNode.IsA("vtkMRMLLabelMapVolumeNode")
+            and isLabelMapValueEmpty(segmentationImageNode, labelName=segmentName)
+        ):
+            highlight_error(self.modelSelector)
+            slicer.util.errorDisplay(
+                "Segment registered as 'Macropore' is empty. Please, check the segmentation or change the selected segment.",
+                windowTitle="Error",
+                parent=slicer.modules.AppContextInstance.mainWindow,
+            )
+            return
+
+        reset_style_on_valid_node(self.modelSelector)
 
         self.logic.model["outputVolumeName"] = self.outputNameLineEdit.text
 
@@ -538,4 +634,8 @@ def PermeabilityModelingModel():
         outputVolumeName=None,
         kdsOptimizationTable=None,
         kdsOptimizationWeight=None,
+        fractionSmoothingWindowSize=10,
+        excessKFractionThreshold=1.0,
+        useMatrixKPlugErrorTerm=False,
+        excessKPowerParamater=1.0,
     )

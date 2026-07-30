@@ -683,17 +683,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             ):
                 self.setupGraphicViewWidget(identifier)
 
-    # def setupViewSpacerWidgets(self):
-    #     for identifier in self.getViewDataListIdentifiers():
-    #         viewData = self.imageLogViewList[identifier].viewData
-    #         if type(viewData) is SliceViewData:
-    #             viewSpacerWidget = self.viewSpacerWidgets[identifier]
-    #             viewSpacerWidgetLayout = qt.QVBoxLayout(viewSpacerWidget)
-    #             viewSpacerWidgetLayout.setContentsMargins(0, 0, 0, 0)
-    #             viewSpacerWidgetLayout.addSpacerItem(qt.QSpacerItem(0, 20))
-    #         # else:
-    #         #     self.viewSpacerWidgets[identifier].deleteLater()  # Not used in other views
-
     def setupGraphicViewWidget(self, identifier):
         viewWidget = self.viewWidgets[identifier]
 
@@ -1344,7 +1333,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if not self.nodeAboutToBeRemoved:
             if identifier < len(self.imageLogViewList):
                 self.imageLogViewList[identifier].set_new_secondary_node(node)
-            self.refreshViews("secondaryTableNodeChanged")
+                if node:
+                    porosityReference = node.GetNodeReference("TrainingImagePorosityTable")
+                    if porosityReference is not None:
+                        self.imageLogViewList[identifier].set_new_secondary_node(porosityReference)
+
+        self.refreshViews("primaryNodeChanged")
 
     def segmentationNodeChanged(self, identifier, segmentationNode):
         if not self.nodeAboutToBeRemoved:
@@ -1936,7 +1930,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 return
 
     def logMode(self, identifier, activated):
-        self.imageLogViewList[identifier].viewData.logMode = activated
+        self.imageLogViewList[identifier].viewData.primaryLogMode = activated
         self.refreshViews("logMode")
 
     def fit(self):

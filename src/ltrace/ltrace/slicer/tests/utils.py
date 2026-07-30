@@ -4,6 +4,7 @@ import logging
 import qt
 import shutil
 import time
+import sys
 
 from datetime import datetime
 from ltrace.constants import SaveStatus
@@ -363,3 +364,23 @@ def waitCondition(condition: Callable, timeoutSec: int = 5) -> None:
     while time.perf_counter() - start < timeoutSec and not condition():
         time.sleep(0.2)
         process_events()
+
+        
+def getNodeName(node: slicer.vtkMRMLNode) -> str:
+    if node is None:
+        return "None"
+
+    return node.GetName()
+
+
+def getPlatformProjectPath(base_project_path: Union[str, Path], check_exists=True) -> Path:
+    path = Path(base_project_path)
+    parent_dir = path.parent
+    platform = "LINUX" if sys.platform.startswith("linux") else "WIN"
+    new_dir_name = f"{parent_dir.name}_{platform}"
+    new_file_name = f"{path.stem}_{platform}{path.suffix}"
+    platform_path = path.parent.parent / new_dir_name / new_file_name
+    if check_exists and not platform_path.exists():
+        return path
+    return platform_path
+

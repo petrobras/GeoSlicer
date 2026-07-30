@@ -1220,6 +1220,7 @@ class MultiScaleLogic(LTracePluginLogic):
         self.save_options = {}
         self.mask_options = {}
         self.cliObserver = None
+        self.referenceColorNodeId = None
 
     def configureOutput(self, outputPrefix):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -1461,7 +1462,11 @@ class MultiScaleLogic(LTracePluginLogic):
 
         colorNodeId = None
         if isinstance(reference_volume, slicer.vtkMRMLLabelMapVolumeNode):
-            colorNode = slicer.mrmlScene.CopyNode(reference_volume.GetDisplayNode().GetColorNode())
+            referenceColorNode = helpers.tryGetNode(self.referenceColorNodeId)
+            if referenceColorNode is None:
+                referenceColorNode = reference_volume.GetDisplayNode().GetColorNode()
+
+            colorNode = slicer.mrmlScene.CopyNode(referenceColorNode)
             helpers.makeTemporaryNodePermanent(colorNode, show=True)
             colorNode.SetName(f"{self.outputName}_colortable")
             colorNodeId = colorNode.GetID()
@@ -1560,6 +1565,7 @@ class MultiScaleLogic(LTracePluginLogic):
                     self.mask_options["trainingImageSegmentList"] = preprocessing_data["trainingImageSegmentList"]
             else:
                 TIAsReference = False
+                self.referenceColorNodeId = None
                 if "hardDataVolume" not in preprocessing_data:
                     TIAsReference = True
                 elif (
@@ -1568,7 +1574,9 @@ class MultiScaleLogic(LTracePluginLogic):
                     and len(helpers.getSegmentList(preprocessing_data["trainingDataVolume"]))
                     > len(helpers.getSegmentList(preprocessing_data["hardDataVolume"]))
                 ):
-                    TIAsReference = True
+                    self.referenceColorNodeId = (
+                        preprocessing_data["trainingDataVolume"].GetDisplayNode().GetColorNode().GetID()
+                    )
 
                 if mps_configuration["distance_measure"]:
                     reference_volume = (
