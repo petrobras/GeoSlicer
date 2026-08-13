@@ -1,4 +1,4 @@
-from abc import abstractclassmethod
+from abc import abstractclassmethod, abstractmethod
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
@@ -22,7 +22,7 @@ class BasePlotWidget(QtWidgets.QDialog):
         self.setWindowModality(QtCore.Qt.WindowModality.NonModal)
         self.setWindowTitle(f"{plotType}: {plotLabel}")
         self.setWindowIcon(QtGui.QIcon(str(WINDOWN_ICON)))
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowType.WindowContextHelpButtonHint)
 
         self.__type = plotType
         self.__label = plotLabel
@@ -43,14 +43,16 @@ class BasePlotWidget(QtWidgets.QDialog):
     def label(self):
         return self.__label
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def setupUi(self):
         """Handles the dialog's layout setup.
         Use this method to initialize all the dialogs necessary widgets
         """
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def appendData(self, dataNode):
         """Handles data insertion to the plot's widget.
 

@@ -39,10 +39,10 @@ class PixelSizeEditor(qt.QWidget):
         self.scaleSizePxRuler.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "AnnotationDistance.png"))
         self.scaleSizePxRuler.connect("clicked()", self.onScaleSizeRulerButtonClicked)
         self.scaleSizePxFrame = qt.QFrame()
-        scaleSizePxLayout = qt.QHBoxLayout(self.scaleSizePxFrame)
-        scaleSizePxLayout.setContentsMargins(0, 0, 0, 0)
-        scaleSizePxLayout.addWidget(self.scaleSizePxLineEdit)
-        scaleSizePxLayout.addWidget(self.scaleSizePxRuler)
+        self.scaleSizePxLayout = qt.QHBoxLayout(self.scaleSizePxFrame)
+        self.scaleSizePxLayout.setContentsMargins(0, 0, 0, 0)
+        self.scaleSizePxLayout.addWidget(self.scaleSizePxLineEdit)
+        self.scaleSizePxLayout.addWidget(self.scaleSizePxRuler)
         self.loadFormLayout.addRow("Scale size (px):", self.scaleSizePxFrame)
 
         self.scaleSizeMmLineEdit = qt.QLineEdit()
@@ -64,9 +64,13 @@ class PixelSizeEditor(qt.QWidget):
         self.loadFormLayout.addRow(None, self.savePixelSizeButton)
         self.savePixelSizeButton.clicked.connect(self.__on_save_button_clicked)
 
-        self.__set_retain_size_when_hidden(self.loadFormLayout.labelForField(self.scaleSizePxFrame), True)
-        self.__set_retain_size_when_hidden(self.loadFormLayout.labelForField(self.scaleSizeMmLineEdit), True)
-        self.__set_retain_size_when_hidden(self.loadFormLayout.labelForField(self.imageSpacingLineEdit), True)
+        self.scaleSizePxLabel = self.loadFormLayout.labelForField(self.scaleSizePxFrame)
+        self.scaleSizeMmLabel = self.loadFormLayout.labelForField(self.scaleSizeMmLineEdit)
+        self.imageSpacingLabel = self.loadFormLayout.labelForField(self.imageSpacingLineEdit)
+
+        self.__set_retain_size_when_hidden(self.scaleSizePxLabel, True)
+        self.__set_retain_size_when_hidden(self.scaleSizeMmLabel, True)
+        self.__set_retain_size_when_hidden(self.imageSpacingLabel, True)
 
     def onScaleSizeRulerButtonClicked(self):
         def finish_callback(caller_markup, point_index=None):
@@ -80,7 +84,7 @@ class PixelSizeEditor(qt.QWidget):
         def finish_criterion(caller_markup, point_index=None):
             return caller_markup.get_number_of_selected_points() >= 2
 
-        self.markup = MarkupLine(finish_callback=finish_callback, finish_criterion=finish_criterion)
+        self.markup = MarkupLine(finish_callback=finish_callback, finish_criterion=finish_criterion, parent=self)
         self.markup.start_picking()
 
     def reset(self):

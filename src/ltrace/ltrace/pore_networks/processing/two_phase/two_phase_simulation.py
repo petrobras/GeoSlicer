@@ -1,3 +1,4 @@
+from functools import partial
 import itertools
 from pathlib import Path
 import random
@@ -134,8 +135,8 @@ class TwoPhaseSimulation:
                 expanded[f"{param}_right"] = "T" if right_val == "1" else "F"
                 expanded[param] = values
             elif isinstance(values, dict) and all(k in values for k in ("start", "stop", "steps")):
-                start = values["start"]
-                stop = values["stop"]
+                start = values["start"] * values.get("conversion_factor", 1)
+                stop = values["stop"] * values.get("conversion_factor", 1)
                 steps = values["steps"]
                 if steps == 1:
                     expanded[param] = start
@@ -211,9 +212,10 @@ class SimulationSubprocessManager:
         self.statoil_file_strings = statoil_file_strings
 
         self.subprocess_id_count = 0
+        self.subprocess_progress = np.full(self.num_tests, 0, np.float64)
 
     def run_simulations(self, params_list, snapshot_file, max_subprocesses=8):
-        LOOP_REFRESH_RATE_S = 0.01
+        LOOP_REFRESH_RATE_S = 1
         SUBPROCESS_RETRY_LIMIT = 0
 
         params_iterator = iter(params_list)
@@ -221,13 +223,15 @@ class SimulationSubprocessManager:
         running_subprocesses = []
         finished_subprocesses = []
 
-        i = 0
         while True:
             # Listening to allocate slots for new processes to be started
             for j, subprocess in enumerate(running_subprocesses):
                 if subprocess.is_finished():
                     running_subprocesses[j] = None
                     finished_subprocesses.append(subprocess)
+                elif subprocess.has_progress_changed():
+                    cycle, progress = subprocess.get_progress()
+                    self._progress_callback(subprocess.get_id(), cycle, progress)
                 elif (
                     self.timeout_enabled
                     and self.simulator == PNFLOW
@@ -254,8 +258,7 @@ class SimulationSubprocessManager:
                     subprocess.cwd,
                     subprocess.get_snapshot_file(),
                 )
-                i += 1
-                progressUpdate(value=0.1 + (i / self.num_tests) * 0.85)
+                self.__update_progress(subprocess.get_id(), 1.0)
                 yield simulation_result
             finished_subprocesses = []
 
@@ -311,3 +314,18 @@ class SimulationSubprocessManager:
         characters = string.ascii_letters
         directory_name = "".join(random.choices(characters, k=length))
         return directory_name
+
+    def _progress_callback(self, subprocess_id, cycle_number, cycle_progress):
+        progress = (cycle_number - 1 + cycle_progress) / 3
+        self.__update_progress(subprocess_id, progress)
+
+    def __update_progress(self, subprocess_id, progress):
+        INITIAL_PROGRESS = 0.1
+        EXECUTION_PROGRESS = 0.85
+
+        self.subprocess_progress[subprocess_id] = progress
+
+        current_simulations_progress = self.subprocess_progress.sum() / self.num_tests
+        current_execution_progress = current_simulations_progress * EXECUTION_PROGRESS
+        current_progress = INITIAL_PROGRESS + current_execution_progress
+        progressUpdate(current_progress)

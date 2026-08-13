@@ -8,10 +8,24 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Any, List
 
+import numpy as np
 import slicer
 
 from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
 from ltrace.remote import utils as slurm_utils
+from ltrace.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_DISCONNECTED,
+    JOB_EVENT_PROGRESS,
+    JOB_EVENT_START,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_DEPLOYING,
+    JOB_STATE_FAILED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+)
 from ltrace.remote.jobs import JobManager
 from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
 
@@ -20,19 +34,16 @@ _1hour = 3600  # seconds
 
 class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
     JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
-    if platform.system() == "Windows":
-        JOBS_LOCAL_PATH = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\GEOSLICER\jobs")
-    else:
-        JOBS_LOCAL_PATH = Path("/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
-    def __init__(self, input_node_id, label_node_id, visualization, params) -> None:
+    def __init__(self, input_node_id, label_node_id, visualization, params, parallel_params) -> None:
         super().__init__(timeout_seconds=_1hour)
 
         self.input_node_id = input_node_id
         self.label_node_id = label_node_id
         self.visualization = visualization
         self.params = params
+        self.parallel_params = parallel_params
 
         self.job_remote_path = None
         self.job_local_path = None
@@ -41,11 +52,12 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
         self.last_slurm_out_size = 0
 
         self.__action_map = {
-            "DEPLOY": self.deploy,
-            "START": self.start,
-            "PROGRESS": self.progress,
-            "CANCEL": self.cancel,
-            "COLLECT": self.collect,
+            JOB_EVENT_DEPLOY: self.deploy,
+            JOB_EVENT_DISCONNECTED: self.disconnected,
+            JOB_EVENT_START: self.start,
+            JOB_EVENT_PROGRESS: self.progress,
+            JOB_EVENT_CANCEL: self.cancel,
+            JOB_EVENT_COLLECT: self.collect,
         }
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
@@ -57,9 +69,10 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
 
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
-            job_dir_name = JobManager.dirname(caller.jobs[uid])
+            job_executor = caller.jobs[uid]
+            job_dir_name = JobManager.dirname(job_executor)
             self.job_remote_path = self.JOBS_REMOTE_PATH / job_dir_name
-            self.job_local_path = self.JOBS_LOCAL_PATH / job_dir_name
+            self.job_local_path = job_executor.host.get_mounted_path() / job_dir_name
             self.temp_path = self.JOBS_REMOTE_PATH / job_dir_name / "temp"
 
             client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
@@ -79,58 +92,72 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             self.cli_params = {
                 "scalar": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
                 "cwd": str(self.job_remote_path),
+                "divs": self.parallel_params["divs"],
             }
             if self.label_node_id:
                 self.cli_params["label"] = str(self.job_remote_path / f"{self.label_node_id}.nrrd")
 
-            caller.set_state(uid, "DEPLOYING", 10, message="Configuration done. Starting job deployment.")
-            caller.schedule(uid, "START")
-        except Exception:
-            traceback.print_exc()
-
-    def start(self, caller: JobManager, uid: str, client: Any = None):
-        ts_start = datetime.now().timestamp()
-        try:
-            script = " ".join(["PoreNetworkExtractorCLI.PoreNetworkExtractorCLI", argstring(self.cli_params)])
-            opening_command = caller.jobs[uid].host.opening_command
-            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script])
-            full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
-
-            output = client.run_command(full_cmd, verbose=True)
-
-            match = self.JOB_ID_PATTERN.search(output["stdout"])
-            if not match:
-                caller.set_state(uid, "FAILED", 100, message=f"Failed to match job id.")
-                caller.persist(uid)
-                return
-            self.slurm_job_ids.append(match.group(1))
+            if self.parallel_params["slurm_jobs"] > 1:
+                self.cli_params["slurm"] = ""
+                self.cli_params["slurm_jobs"] = self.parallel_params["slurm_jobs"]
+                self.cli_params["slurm_cores"] = self.parallel_params["slurm_cores"]
+                self.cli_params["slurm_memory"] = self.parallel_params["slurm_memory"]
 
             details = {
                 "input_node_id": self.input_node_id,
                 "label_node_id": self.label_node_id,
                 "visualization": self.visualization,
                 "params": self.params,
+                "parallel_params": self.parallel_params,
                 "job_remote_path": str(self.job_remote_path),
                 "job_local_path": str(self.job_local_path),
-                "slurm_job_ids": self.slurm_job_ids,
-                "command": full_cmd,
                 "cli_params": self.cli_params,
             }
             caller.set_state(
+                uid, JOB_STATE_DEPLOYING, 10, message="Configuration done. Starting job deployment.", details=details
+            )
+            caller.schedule(uid, JOB_EVENT_START)
+        except Exception:
+            traceback.print_exc()
+            caller.set_state(uid, "FAILED", 100, message=f"Failed to deploy job.")
+
+    def start(self, caller: JobManager, uid: str, client: Any = None):
+        ts_start = datetime.now().timestamp()
+        try:
+            script = " ".join(["PoreNetworkExtractorCLI.PoreNetworkExtractorCLI", argstring(self.cli_params)])
+            host = caller.jobs[uid].host
+            remote_version = host.get_remote_version()
+            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
+            full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
+
+            output = client.run_command(full_cmd, verbose=True)
+
+            match = self.JOB_ID_PATTERN.search(output["stdout"])
+            if not match:
+                caller.set_state(uid, JOB_STATE_FAILED, 100, message=f"Failed to match job id.")
+                caller.persist(uid)
+                return
+            self.slurm_job_ids.append(match.group(1))
+
+            details = {
+                "slurm_job_ids": self.slurm_job_ids,
+                "command": full_cmd,
+            }
+            caller.set_state(
                 uid,
-                "PENDING",
+                JOB_STATE_PENDING,
                 10,
                 message=f"Job submitted for extraction.",
                 start_time=ts_start,
                 details=details,
             )
             caller.persist(uid)
-            caller.schedule(uid, "PROGRESS")
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
         except Exception:
             traceback.print_exc()
             caller.set_state(
                 uid,
-                "FAILED",
+                JOB_STATE_FAILED,
                 100,
                 start_time=ts_start,
                 end_time=datetime.now().timestamp(),
@@ -139,52 +166,46 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             caller.persist(uid)
 
     def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: List[dict]):
-        try:
-            job_status = slurm_utils.sacct(client, self.slurm_job_ids)
-            if slurm_utils.all_done(job_status):
-                failed_jobs = []
-                for job_id in self.slurm_job_ids:
-                    slurm_out = self.job_local_path / f"slurm-{job_id}.out"
-                    progress_pct = self.read_last_progress(slurm_out)
-                    if progress_pct < 100:
-                        failed_jobs.append(
-                            {"job_id": job_id, "last_progress": progress_pct, "slurm_out": str(slurm_out)}
-                        )
+        job_status = slurm_utils.sacct(client, self.slurm_job_ids)
+        if slurm_utils.all_done(job_status):
+            failed_jobs = []
+            for job_id in self.slurm_job_ids:
+                slurm_out = self.job_local_path / f"slurm-{job_id}.out"
+                progress_pct = self.read_last_progress(slurm_out)
+                if progress_pct < 100:
+                    failed_jobs.append({"job_id": job_id, "last_progress": progress_pct, "slurm_out": str(slurm_out)})
 
-                if failed_jobs:
-                    failed_ids = ", ".join([f["job_id"] for f in failed_jobs])
-                    caller.set_state(
-                        uid,
-                        "FAILED",
-                        100,
-                        message=f"The following jobs did not complete: {failed_ids}.",
-                        details={"failed_jobs": failed_jobs},
-                        end_time=datetime.now().timestamp(),
-                    )
-                    caller.persist(uid)
-                    return
-
+            if failed_jobs:
+                failed_ids = ", ".join([f["job_id"] for f in failed_jobs])
                 caller.set_state(
-                    uid, "COMPLETED", 100, message="All jobs completed.", end_time=datetime.now().timestamp()
+                    uid,
+                    JOB_STATE_FAILED,
+                    100,
+                    message=f"The following jobs did not complete: {failed_ids}.",
+                    details={"failed_jobs": failed_jobs},
+                    end_time=datetime.now().timestamp(),
                 )
                 caller.persist(uid)
                 return
-            elif slurm_utils.any_running(job_status):
-                total_progress = 0
-                count = 0
-                for job_id in self.slurm_job_ids:
-                    slurm_out = self.job_local_path / f"slurm-{job_id}.out"
-                    total_progress += self.read_last_progress(slurm_out)
-                    count += 1
-                avg_progress = max(total_progress / count, 10) if count > 0 else 10
-                caller.set_state(uid, "RUNNING", avg_progress)
-                caller.schedule(uid, "PROGRESS")
-            else:
-                caller.set_state(uid, "PENDING", 10)
-                caller.schedule(uid, "PROGRESS")
-        except Exception as e:
-            traceback.print_exc()
-            logging.debug(f"Error in progress: {repr(e)}")
+
+            caller.set_state(
+                uid, JOB_STATE_COMPLETED, 100, message="All jobs completed.", end_time=datetime.now().timestamp()
+            )
+            caller.persist(uid)
+            return
+        elif slurm_utils.any_running(job_status):
+            total_progress = 0
+            count = 0
+            for job_id in self.slurm_job_ids:
+                slurm_out = self.job_local_path / f"slurm-{job_id}.out"
+                total_progress += self.read_last_progress(slurm_out)
+                count += 1
+            avg_progress = max(total_progress / count, 10) if count > 0 else 10
+            caller.set_state(uid, JOB_STATE_RUNNING, avg_progress)
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
+        else:
+            caller.set_state(uid, JOB_STATE_PENDING, 10)
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
 
     def read_last_progress(self, slurm_out_file_path):
         last_progress = 0.1
@@ -226,8 +247,21 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
         metadata = self.params["metadata"]
+
+        watershed_output_array = None
+        watershed_path = Path(self.job_local_path) / "watershed.npy"
+        if watershed_path.exists():
+            try:
+                watershed_output_array = np.load(str(watershed_path)).astype(np.int32)
+            except Exception:
+                logging.exception(f"Failed to load watershed volume from {watershed_path}")
+
         extraction_nodes_creator = ExtractionNodesCreator(
-            metadata, self.job_local_path, self.params["prefix"], self.visualization
+            metadata,
+            self.job_local_path,
+            self.params["prefix"],
+            self.visualization,
+            watershed_output_array=watershed_output_array,
         )
         try:
             self.results = extraction_nodes_creator.create()

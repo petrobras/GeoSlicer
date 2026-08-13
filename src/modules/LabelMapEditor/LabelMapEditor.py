@@ -650,6 +650,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
             update_instruction=update_instruction,
             cancel_callback=cancel_callback,
             after_finish_callback=after_finish_callback,
+            parent=self.parent,
         )
         self.markup.start_picking()
         self._enable_controls(False)
@@ -742,6 +743,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
             update_instruction=update_instruction,
             cancel_callback=cancel_callback,
             after_finish_callback=after_finish_callback,
+            parent=self.parent,
         )
         self.markup.start_picking()
         self._enable_controls(False)

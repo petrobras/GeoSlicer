@@ -16,6 +16,23 @@ class Slice:
     def node(self):
         return self._node
 
+    @property
+    def orientation(self):
+        return self._node.GetOrientation()
+
+    def set_orientation(self, name):
+        self._node.SetOrientation(name)
+
+    @property
+    def offset(self):
+        return self._logic.GetSliceOffset()
+
+    def set_offset(self, value):
+        self._logic.SetSliceOffset(value)
+
+    def snap_to_ijk(self):
+        self._logic.SnapSliceOffsetToIJK()
+
     def set_bg(self, volume_node):
         self._composite.SetBackgroundVolumeID(volume_node.GetID())
 
@@ -67,20 +84,26 @@ def get_volume_extents_in_slice_view(volume_node, slice_obj: Slice):
 
     vol_ext = volume_node.GetImageData().GetExtent()
 
-    k_slice_index = int(round((min_ijk[2] + max_ijk[2]) / 2))
-    k_slice_index = max(vol_ext[4], k_slice_index)
-    k_slice_index = min(vol_ext[5], k_slice_index)
+    # The view collapses along whichever IJK axis is most aligned with the slice
+    # normal (column 2 of XYToIJK), not necessarily K -- e.g. an XZ or YZ slice
+    # collapses along J or I instead.
+    normal_axis = int(np.argmax([abs(xy_to_ijk.GetElement(r, 2)) for r in range(3)]))
 
-    extent = [
-        int(max(vol_ext[0], np.floor(min_ijk[0]))),
-        int(min(vol_ext[1], np.ceil(max_ijk[0]))),
-        int(max(vol_ext[2], np.floor(min_ijk[1]))),
-        int(min(vol_ext[3], np.ceil(max_ijk[1]))),
-        k_slice_index,
-        k_slice_index,
-    ]
+    slice_index = int(round((min_ijk[normal_axis] + max_ijk[normal_axis]) / 2))
+    slice_index = max(vol_ext[2 * normal_axis], slice_index)
+    slice_index = min(vol_ext[2 * normal_axis + 1], slice_index)
 
-    if extent[0] > extent[1] or extent[2] > extent[3]:
+    extent = [0, 0, 0, 0, 0, 0]
+    for axis in range(3):
+        if axis == normal_axis:
+            extent[2 * axis] = slice_index
+            extent[2 * axis + 1] = slice_index
+        else:
+            extent[2 * axis] = int(max(vol_ext[2 * axis], np.floor(min_ijk[axis])))
+            extent[2 * axis + 1] = int(min(vol_ext[2 * axis + 1], np.ceil(max_ijk[axis])))
+
+    in_plane_axes = [axis for axis in range(3) if axis != normal_axis]
+    if any(extent[2 * axis] > extent[2 * axis + 1] for axis in in_plane_axes):
         return [0, 0, 0, 0, 0, 0]
 
     extent[1] += 1

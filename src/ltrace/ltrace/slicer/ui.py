@@ -1,4 +1,5 @@
 import logging
+import os
 import textwrap
 from functools import reduce
 from pathlib import Path
@@ -609,11 +610,12 @@ class DirOrFileWidget(qt.QWidget):
         self.path = self.getDefaultPath()
 
     def getDefaultPath(self):
-        return slicer.app.settings().value(self.settingKey, "")
+        path = slicer.app.settings().value(self.settingKey, "")
+        return path if os.path.exists(path) else ""
 
     def _updateLastPath(self):
         newPath = self.pathLineEdit.text
-        if Path(newPath).exists():
+        if os.path.exists(newPath):
             slicer.app.settings().setValue(self.settingKey, newPath)
         if newPath != self.lastPath:
             self.pathSelected.emit(newPath)
@@ -760,14 +762,6 @@ def numberParamInt(vrange=(0, 0), value=0, step=1):
     param.setRange(*vrange)
     param.singleStep = step
     param.value = value
-
-    edit = param.findChild(qt.QLineEdit)
-    validator = qt.QDoubleValidator(edit)
-    locale = qt.QLocale()
-    locale.setNumberOptions(qt.QLocale.RejectGroupSeparator)
-    validator.setLocale(locale)
-    edit.setValidator(validator)
-
     return param
 
 
@@ -937,3 +931,93 @@ def pcrFromFile(targetNode):
             raise RuntimeError("Failed to load PCR file")
 
     raise ValueError("No file selected")
+
+
+def intListParam(values=[0], maxLen=None):
+    if maxLen and maxLen < len(values):
+        raise ValueError("Length of 'values' cannot be greater than 'maxLen'")
+
+    widget = qt.QLineEdit()
+
+    if maxLen:
+        regex = "^[0-9]+(,\s{0,1}[0-9]+){0," + str(maxLen - 1) + "}$"
+    else:
+        regex = "^[0-9]+(,\s{0,1}[0-9]+)*$"
+
+    validator = qt.QRegExpValidator(qt.QRegExp(regex), widget)
+
+    widget.setValidator(validator)
+    widget.text = str(", ".join(str(s) for s in values))
+
+    return widget
+
+
+def IconButtonWidget(
+    onClick=None,
+    text="",
+    icon=qt.QIcon(getResourcePath("Icons") / "png" / "Run.png"),
+    iconSize=None,
+    tooltip="",
+    enabled=True,
+    objectName=None,
+    iconAtLeft=True,
+):
+    button = qt.QPushButton(icon, text)
+    button.toolTip = tooltip
+    button.enabled = enabled
+
+    if iconSize:
+        button.setIconSize(qt.QSize(iconSize[0], iconSize[1]))
+
+    if objectName:
+        button.objectName = objectName
+
+    if not iconAtLeft:
+        button.setLayoutDirection(qt.Qt.RightToLeft)
+
+    if callable(onClick):
+        button.clicked.connect(onClick)
+
+    return button
+
+
+def collapsibleButton(
+    text,
+    collapsed=False,
+    flat=False,
+    sizePolicy=None,
+):
+    collapsibleButton = ctk.ctkCollapsibleButton()
+    collapsibleButton.text = text
+    collapsibleButton.collapsed = collapsed
+    collapsibleButton.flat = flat
+
+    if sizePolicy:
+        collapsibleButton.setSizePolicy(sizePolicy[0], sizePolicy[1])
+
+    return collapsibleButton
+
+
+class SearchableCombobox(qt.QComboBox):
+    def __init__(self, toolTip="", objectName="", parent=None):
+        super().__init__(parent)
+
+        self.selectedIndex = 0
+
+        self.objectName = objectName
+        self.setToolTip(toolTip)
+        self.setEditable(True)
+        self.setInsertPolicy(qt.QComboBox.NoInsert)
+        self.completer().setCompletionMode(qt.QCompleter.PopupCompletion)
+        self.completer().setFilterMode(qt.Qt.MatchContains)
+        self.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
+        self.currentIndexChanged.connect(self.__onItemSelected)
+
+    def __onItemSelected(self, index):
+        self.selectedIndex = index
+        self.lineEdit().setCursorPosition(0)
+
+    def focusOutEvent(self, event):
+        self.setCurrentIndex(self.selectedIndex)
+        self.lineEdit().setCursorPosition(0)
+        qt.QComboBox.focusOutEvent(self, event)

@@ -14,9 +14,10 @@ class SliceViewWidget(BaseViewWidget):
         self.primaryNode = primaryNode
 
         sliceCompositeNode = self.viewWidget.sliceLogic().GetSliceCompositeNode()
-        sliceCompositeNode.SetBackgroundVolumeID(primaryNode.GetID())
-        sliceCompositeNode.SetBackgroundOpacity(not viewData.primaryNodeHidden)
-        if viewData.primaryNodeHidden is False:
+        if viewData.primaryNodeHidden:
+            sliceCompositeNode.SetBackgroundVolumeID(None)
+        else:
+            sliceCompositeNode.SetBackgroundVolumeID(primaryNode.GetID())
             self.viewWidget.sliceController().fitSliceToBackground()
             if (
                 type(primaryNode) is slicer.vtkMRMLScalarVolumeNode

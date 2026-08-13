@@ -52,6 +52,7 @@ class PoreNetworkSimulation(LTracePlugin):
 class PoreNetworkSimulationWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
+        self.setModuleMinimumWidth(340)
         self.progressBar = LocalProgressBar()
         self.logic = None
 

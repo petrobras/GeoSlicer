@@ -90,7 +90,7 @@ class MercurySimulationWidget(qt.QFrame):
         micpFormLayout.addRow(sirrLabelWidget, sirrSelectorLayout)
 
         # plots
-        pysideReportForm = shiboken2.wrapInstance(hash(micpFormLayout), pyside.QtWidgets.QFormLayout)
+        self.pysideReportForm = shiboken2.wrapInstance(hash(micpFormLayout), pyside.QtWidgets.QFormLayout)
         self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
         self.subvolumeGraphicsLayout.setMinimumHeight(600)
         self.subvolumeGraphicsLayout.setMinimumWidth(100)
@@ -102,7 +102,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.micpLegend = self.micpPlotItem.addLegend(offset=(-10, 10))
         self.micpSirrSeries = self.micpPlotItem.plot(
             name="Reference",
-            pen=pg.mkPen((255, 100, 100), width=2, style=QtCore.Qt.DotLine),
+            pen=pg.mkPen((255, 100, 100), width=2, style=QtCore.Qt.PenStyle.DotLine),
             symbol="t",
             symbolPen=(255, 100, 100),
             symbolSize=8,
@@ -113,6 +113,20 @@ class MercurySimulationWidget(qt.QFrame):
             angle=0,
             movable=False,
             pen=pg.mkPen((200, 200, 200), width=2, style=QtCore.Qt.DashLine),
+            label="Resolution limit",
+            labelOpts={
+                "position": 0.1,
+                "color": (200, 200, 200),
+                "movable": True,
+                "fill": (0, 0, 0, 150),
+            },
+        )
+        self.micpPlotItem.addItem(self.resolutionLine)
+        self.resolutionLine.hide()
+        self.resolutionLine = pg.InfiniteLine(
+            angle=0,
+            movable=False,
+            pen=pg.mkPen((200, 200, 200), width=1, style=QtCore.Qt.DashLine),
             label="Resolution limit",
             labelOpts={
                 "position": 0.1,
@@ -144,7 +158,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.pcResolutionLine.hide()
         self.pcSirrSeries = self.pcPlotItem.plot(
             name="Reference",
-            pen=pg.mkPen((100, 200, 100), width=2, style=QtCore.Qt.DotLine),
+            pen=pg.mkPen((100, 200, 100), width=2, style=QtCore.Qt.PenStyle.DotLine),
             symbol="t",
             symbolPen=(100, 200, 100),
             symbolSize=8,
@@ -171,7 +185,7 @@ class MercurySimulationWidget(qt.QFrame):
         self.radiiResolutionLine.hide()
         self.radiiSirrSeries = self.radiiPlotItem.plot(
             name="Reference",
-            pen=pg.mkPen((150, 150, 255), width=2, style=QtCore.Qt.DotLine),
+            pen=pg.mkPen((150, 150, 255), width=2, style=QtCore.Qt.PenStyle.DotLine),
             symbol="t",
             symbolPen=(150, 150, 255),
             symbolSize=8,
@@ -181,7 +195,7 @@ class MercurySimulationWidget(qt.QFrame):
         # Simulation Plots (Foreground)
         self.micpSeries = self.micpPlotItem.plot(
             name="Simulation",
-            pen=pg.mkPen("r", width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen("r", width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="o",
             symbolPen="r",
             symbolSize=8,
@@ -189,7 +203,7 @@ class MercurySimulationWidget(qt.QFrame):
         )
         self.pcSeries = self.pcPlotItem.plot(
             name="Simulation",
-            pen=pg.mkPen("g", width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen("g", width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="o",
             symbolPen="g",
             symbolSize=8,
@@ -197,14 +211,14 @@ class MercurySimulationWidget(qt.QFrame):
         )
         self.radiiSeries = self.radiiPlotItem.plot(
             name="Simulation",
-            pen=pg.mkPen((50, 50, 255), width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen((50, 50, 255), width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="o",
             symbolPen=(50, 50, 255),
             symbolSize=8,
             symbolBrush=(50, 50, 255),
         )
 
-        pysideReportForm.addRow(self.subvolumeGraphicsLayout)
+        self.pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
         # Plot options collapsible
         self.plotOptionsCollapsible = ctk.ctkCollapsibleButton()

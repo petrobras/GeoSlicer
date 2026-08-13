@@ -13,6 +13,8 @@ icon: PoreNetworkExtractor
 ---
 {{ include_markdown("PoreNetworkProduction") }}
 ---
+{{ include_markdown("PoreNetworkRemoteWorkflow") }}
+---
 # Fluxos
 {{ include_markdown("PNMFlowKabs") }}
 ---

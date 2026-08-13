@@ -153,7 +153,7 @@ class GeneralizedVariogram(DirectionalVariogram):
             self._propagate_obs_sigma()
 
     def _calc_direction_mask_data(self, force=False):
-        """
+        r"""
         Calculate directional mask data. WARNING: logic differs from original
         scikit-geostat version, as azimuth is measured from y axis (not x).
         For this, the angles between the vector between the two points, and north

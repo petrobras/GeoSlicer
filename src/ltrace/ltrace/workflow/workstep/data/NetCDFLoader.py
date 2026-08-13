@@ -59,7 +59,7 @@ class NetCDFLoader(Workstep):
             return datasets
 
         for path in Path(self.input_directory).glob("*.nc"):
-            dataset = xr.open_dataset(str(path))
+            dataset = xr.open_dataset(str(path), engine="h5netcdf")
             images_to_load = []
             if not re.search(self.file_filter, str(path.name)):
                 continue

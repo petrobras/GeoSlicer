@@ -5,18 +5,30 @@ import os
 
 from collections import OrderedDict
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 
 import qt
 import slicer
 
-from ltrace.remote.connections import JobExecutor
+from ltrace.remote.connections import ConnectionManager, JobExecutor
+from ltrace.remote.constants import (
+    JOB_EVENT_COLLECT,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_IDLE,
+    JOB_STATE_NOTCONNECTED,
+    JOB_STATE_RUNNING,
+)
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.targets import Host
 from ltrace.slicer import ui
 from ltrace.slicer.widget.elided_label import ElidedLabel
+from ltrace.slicer.widget.search_filter_bar import SearchFilterBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+
+# Checks if closed source code is available
+try:
+    from Test.JobMonitorTest import JobMonitorTest
+except ImportError:
+    JobMonitorTest = None
 
 
 def prettydt(dtt: datetime):
@@ -28,6 +40,92 @@ def prettydt(dtt: datetime):
         dt_fmt = "%d %B, %Y" if dt.year != today_dt.year else "%d %B"
 
     return dtt.strftime(dt_fmt)
+
+
+KNOWN_FLAGS = {"@host", "@name", "@status", "@address", "@protocol", "@uid", "@type"}
+CANCEL_DISABLED_STATES = {JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED, "GHOST"}
+
+
+@dataclass
+class JobSearchQuery:
+    host_filter: str = None
+    name_filter: str = None
+    status_filter: str = None
+    address_filter: str = None
+    protocol_filter: str = None
+    uid_filter: str = None
+    type_filter: str = None
+    free_text: str = ""
+
+    @classmethod
+    def parse(cls, text: str) -> "JobSearchQuery":
+        tokens = text.split()
+        filters = {
+            "@host": None,
+            "@name": None,
+            "@status": None,
+            "@address": None,
+            "@protocol": None,
+            "@uid": None,
+            "@type": None,
+        }
+        free_parts = []
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            if token.lower() in KNOWN_FLAGS and i + 1 < len(tokens):
+                filters[token.lower()] = tokens[i + 1]
+                i += 2
+            else:
+                free_parts.append(token)
+                i += 1
+
+        return cls(
+            host_filter=filters["@host"],
+            name_filter=filters["@name"],
+            status_filter=filters["@status"],
+            address_filter=filters["@address"],
+            protocol_filter=filters["@protocol"],
+            uid_filter=filters["@uid"],
+            type_filter=filters["@type"],
+            free_text=" ".join(free_parts),
+        )
+
+    @staticmethod
+    def _contains(needle, haystack):
+        if needle is None:
+            return True
+        if haystack is None:
+            return False
+        return needle.lower() in str(haystack).lower()
+
+    def matches(self, job: JobExecutor) -> bool:
+        if not self._contains(self.host_filter, job.host.name):
+            return False
+        if not self._contains(self.name_filter, job.name):
+            return False
+        if not self._contains(self.status_filter, job.status):
+            return False
+        if self.address_filter is not None:
+            if not self._contains(self.address_filter, getattr(job.host, "address", None)):
+                return False
+        if self.protocol_filter is not None:
+            if not self._contains(self.protocol_filter, getattr(job.host, "protocol", None)):
+                return False
+        if not self._contains(self.uid_filter, job.uid):
+            return False
+        if not self._contains(self.type_filter, getattr(job, "job_type", None)):
+            return False
+        if self.free_text:
+            label = f"{job.name} (Host: {job.host.name})".lower()
+            if self.free_text.lower() not in label:
+                return False
+        return True
+
+
+def should_allow_cancel(status: str, host_connected: bool) -> bool:
+    return status not in CANCEL_DISABLED_STATES and host_connected
 
 
 class ThreeWayQuestion(qt.QMessageBox):
@@ -111,6 +209,7 @@ class JobListItemWidget(qt.QWidget):
         layout.addLayout(iconBlock)
         layout.addLayout(frontBlock)
         layout.addLayout(menuBlock)
+        self.allowCancel = True
         self.update(job)
 
     # def getIcon(self):
@@ -170,6 +269,7 @@ class JobListItemWidget(qt.QWidget):
         menu.addSeparator()
         cancelAction = menu.addAction("Cancel/Delete")
         cancelAction.triggered.connect(self.onDeleteResults)
+        cancelAction.enabled = self.allowCancel
         menu.exec_(location)
 
     def showMessageAboutJobAging(self):
@@ -206,6 +306,8 @@ class JobListItemWidget(qt.QWidget):
             self.allowLoadData = False
             self.allowRestart = False
 
+        self.allowCancel = should_allow_cancel(job.status, ConnectionManager.check_host(job.host))
+
         if JobMonitorLogic.mustIndicateAging(job):
             self.iconBtn.visible = True
 
@@ -223,14 +325,6 @@ class JobListItemWidget(qt.QWidget):
             self.cancelled.emit(True)
 
 
-@dataclass
-class JobListFilter:
-    hostname: str = None
-    status: str = None
-    name: str = None
-    jobid: str = None
-
-
 class JobMonitor(LTracePlugin):
     # Plugin info
     SETTING_KEY = "JobMonitor"
@@ -246,32 +340,9 @@ class JobMonitor(LTracePlugin):
         self.parent.acknowledgementText = ""
         self.setHelpUrl("GettingStarted/RemoteComputing.html")
 
-        self.filter = JobListFilter()
-
     @classmethod
     def readme_path(cls):
         return str(cls.MODULE_DIR / "README.md")
-
-    # def setFilter(self, filter: JobListFilter):
-    #     self.filter = filter
-    #     self.updateList()
-
-    # def filterItem(self, item: JobListItemWidget):
-    #     data = item.data(qt.Qt.UserRole)
-    #     if self.filter.hostname and self.filter.hostname not in data.host.name:
-    #         return True
-    #     if self.filter.status and self.filter.status == data.status:
-    #         return True
-    #     if self.filter.name and self.filter.name not in data.name:
-    #         return True
-    #     if self.filter.jobid and self.filter.jobid not in data.id:
-    #         return True
-    #     return False
-
-    # def updateList(self):
-    #     for nth in range(self.count):
-    #         item = self.item(nth)
-    #         item.setHidden(self.filterItem(item))
 
 
 def jobInfo(job) -> str:
@@ -345,12 +416,20 @@ class DetailsDialog(qt.QDialog):
     def __init__(self, job: JobExecutor, parent=None) -> None:
         super().__init__(parent)
 
-        layout = qt.QGridLayout(self)
-        layout.setMargin(0)
+        self.setWindowTitle(f"Job Details - {job.name}")
+        self.setMinimumSize(400, 300)
+        self.resize(800, 600)
+        self.setWindowFlags(qt.Qt.Window | qt.Qt.WindowMaximizeButtonHint | qt.Qt.WindowCloseButtonHint)
 
-        self.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
+        # Enable the easy-to-grab corner for resizing
+        self.setSizeGripEnabled(True)
+
+        layout = qt.QGridLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.view = DetailsWidget()
+        self.view.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+
         layout.addWidget(self.view, 0, 0)
 
         self.view.update(job)
@@ -374,6 +453,7 @@ class JobMonitorWidget(LTracePluginWidget):
     def cleanup(self):
         super().cleanup()
         if self.logic is not None:
+            self.logic.stop()
             self.logic.deleteLater()
 
     def onReload(self) -> None:
@@ -403,29 +483,19 @@ class JobMonitorWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        # self.layout.addWidget(self.buildHeader())
+        self.searchFilterBar = SearchFilterBar()
+        self.layout.addWidget(self.searchFilterBar)
 
         self.jobListWidget = JobListWidget()
         self.layout.addWidget(self.jobListWidget)
         self.layout.addStretch(1)
 
         self.jobListWidget.itemDoubleClicked.connect(self.someMethod)
+        self.searchFilterBar.searchChanged.connect(self.applyFilter)
+        self.searchFilterBar.sortChanged.connect(self.applySorting)
+        self.searchFilterBar.resumeRequested.connect(self.resumeVisibleJobs)
 
         self.update()
-
-        # self.hostSelector.addItem("All", None)
-
-    def buildHeader(self):
-        widget = qt.QWidget()
-        layout = qt.QHBoxLayout(widget)
-        layout.addWidget(qt.QLabel("Host:"))
-        self.hostSelector = qt.QComboBox()
-        self.hostSelector.setMinimumWidth(128)
-        layout.addWidget(self.hostSelector)
-        self.searchBar = qt.QLineEdit()
-        self.searchBar.setPlaceholderText("Search by ID, job name, or host")
-        layout.addWidget(self.searchBar)
-        return widget
 
     def addJob(self, job: JobExecutor):
         item = qt.QListWidgetItem(self.jobListWidget)
@@ -440,20 +510,23 @@ class JobMonitorWidget(LTracePluginWidget):
         itemWidget.loadResults.connect(lambda _, item_=item, job_=job: self.loadResults(item_, job_))
         itemWidget.errorClick.connect(lambda _, job_=job: self.errorOnClick(job_))
 
-        self.listedJobs[job.uid] = item
+        self.listedJobs[job.uid] = (item, job)
+        self._applyFilterToItem(item, job)
 
     def updateJob(self, job: JobExecutor):
         if job.uid in self.listedJobs:
-            item = self.listedJobs[job.uid]
+            item, _ = self.listedJobs[job.uid]
+            self.listedJobs[job.uid] = (item, job)
             itemWidget = self.jobListWidget.itemWidget(item)
             itemWidget.update(job)
+            self._applyFilterToItem(item, job)
         else:
             self.addJob(job)
 
     def clearJob(self, job: JobExecutor):
         try:
             if job and job.uid in self.listedJobs:
-                item = self.listedJobs[job.uid]
+                item, _ = self.listedJobs[job.uid]
                 self.jobListWidget.takeItem(self.jobListWidget.row(item))
                 del self.listedJobs[job.uid]
         except Exception as e:
@@ -461,12 +534,50 @@ class JobMonitorWidget(LTracePluginWidget):
 
     def forceDelete(self, uid: str):
         try:
-            item = self.listedJobs[uid]
+            item, _ = self.listedJobs[uid]
             self.jobListWidget.takeItem(self.jobListWidget.row(item))
             del self.listedJobs[uid]
             JobManager.remove(uid)
         except KeyError:
             logging.error(f"Job {uid} does not exist")
+
+    def _currentQuery(self):
+        return JobSearchQuery.parse(self.searchFilterBar.text())
+
+    def _applyFilterToItem(self, item, job):
+        item.setHidden(not self._currentQuery().matches(job))
+
+    def applyFilter(self, text):
+        query = JobSearchQuery.parse(text)
+        for uid, (item, job) in self.listedJobs.items():
+            item.setHidden(not query.matches(job))
+
+    def _sortedJobs(self):
+        jobs = [job for uid, (item, job) in self.listedJobs.items()]
+        sort_mode = self.searchFilterBar.sortMode
+        if sort_mode == SearchFilterBar.SORT_NAME_ASC:
+            jobs.sort(key=lambda j: j.name.lower())
+        elif sort_mode == SearchFilterBar.SORT_NAME_DESC:
+            jobs.sort(key=lambda j: j.name.lower(), reverse=True)
+        elif sort_mode == SearchFilterBar.SORT_STATUS:
+            jobs.sort(key=lambda j: j.status.lower())
+        elif sort_mode == SearchFilterBar.SORT_NEWEST:
+            jobs.sort(key=lambda j: j.start_time or 0, reverse=True)
+        elif sort_mode == SearchFilterBar.SORT_OLDEST:
+            jobs.sort(key=lambda j: j.start_time or 0)
+        return jobs
+
+    def applySorting(self):
+        jobs = self._sortedJobs()
+        self.listedJobs = {}
+        self.jobListWidget.clear()
+        for job in jobs:
+            self.addJob(job)
+
+    def resumeVisibleJobs(self):
+        for uid, (item, job) in self.listedJobs.items():
+            if not item.isHidden() and job.status in (JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED):
+                self.logic.loadResults(job)
 
     def loadResults(self, item: qt.QListWidgetItem, job: JobExecutor):
         self.logic.loadResults(job)
@@ -484,9 +595,6 @@ class JobMonitorWidget(LTracePluginWidget):
 
     def errorOnClick(self, job: JobExecutor):
         slicer.util.errorDisplay(f"Error on job {job.name}: {job.message}")
-
-    def addHost(self, host: Host):
-        self.hostSelector.addItem(host.name, host)
 
     def someMethod(self, item):
         pass
@@ -531,13 +639,9 @@ class JobMonitorLogic(LTracePluginLogic):
         self.timer.timeout.connect(self.updater)
         self.timer.start()
 
-        self.destroyed.connect(self.__del__)
-
-    def __del__(self):
+    def stop(self):
         if self.timer is not None:
             self.timer.stop()
-            self.timer.deleteLater()
-
         self.widget = None
 
     def updater(self):
@@ -566,11 +670,11 @@ class JobMonitorLogic(LTracePluginLogic):
         job.process("CANCEL", JobManager, JobManager.connections)
 
     def loadResults(self, job):
-        if job.status == "COMPLETED":
-            job.process("COLLECT", JobManager, JobManager.connections)
-        elif job.status == "RUNNING" and job.polling_enabled:
-            job.process("COLLECT", JobManager, JobManager.connections)
-        elif job.status == "IDLE":
+        if job.status == JOB_STATE_COMPLETED:
+            job.process(JOB_EVENT_COLLECT, JobManager, JobManager.connections)
+        elif job.status == JOB_STATE_RUNNING and job.polling_enabled:
+            job.process(JOB_EVENT_COLLECT, JobManager, JobManager.connections)
+        elif job.status == JOB_STATE_IDLE or job.status == JOB_STATE_NOTCONNECTED:
             slicer.modules.RemoteServiceInstance.cli.resume(job)
 
     @staticmethod

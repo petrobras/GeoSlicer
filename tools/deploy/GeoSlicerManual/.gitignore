@@ -1,0 +1,10 @@
+# Build output
+/site/
+
+# Third-party front-end libraries fetched at build time by vendor_assets.py
+# (Mermaid, MathJax). Not committed — regenerated on build. See README.
+/docs/assets/vendor/
+
+# Python
+__pycache__/
+*.pyc

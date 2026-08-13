@@ -1,5 +1,13 @@
 from typing import Any
 
+from ltrace.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_PROGRESS,
+    JOB_STATE_RUNNING,
+    JOB_STATE_CANCELLED,
+)
 from ltrace.remote.jobs import JobManager
 
 NFS_MOUNTED_FOLDER = "//dfs.petrobras.biz/cientifico/cenpes/res/"
@@ -15,10 +23,10 @@ class MonaiLabelServerHandler:
         self.dataset_folder = kwargs.get("dataset_folder")
 
         self.__action_map = {
-            "DEPLOY": self.deploy,
-            "PROGRESS": self.progress,
-            "CANCEL": self.cancel,
-            "COLLECT": self.collect,
+            JOB_EVENT_DEPLOY: self.deploy,
+            JOB_EVENT_PROGRESS: self.progress,
+            JOB_EVENT_CANCEL: self.cancel,
+            JOB_EVENT_COLLECT: self.collect,
         }
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
@@ -39,14 +47,14 @@ class MonaiLabelServerHandler:
 
         out = client.run_command(f"sbatch {NFS_REMOTE_FOLDER}{SCRIPT} {self.app_folder} {self.dataset_folder}")
 
-        caller.set_state(uid, "RUNNING", 100.0, message="Monai server is running.")
+        caller.set_state(uid, JOB_STATE_RUNNING, 100.0, message="Monai server is running.")
         caller.persist(uid)
-        caller.schedule(uid, "PROGRESS")
+        caller.schedule(uid, JOB_EVENT_PROGRESS)
 
     def progress(self, caller: JobManager, uid: str, client: Any, **kwargs):
         out = client.run_command("squeue -hu $USER")
         if out["stdout"].replace("\n", "") == "":
-            caller.set_state(uid, "CANCELLED", 0.0)
+            caller.set_state(uid, JOB_STATE_CANCELLED, 0.0)
             caller.persist(uid)
         else:
             if out["stdout"].replace("\n", "").split(" ")[26] == "R" and self.node_ip == None:
@@ -59,15 +67,15 @@ class MonaiLabelServerHandler:
                     "appPath": self.app_folder,
                     "datasetPath": self.dataset_folder,
                 }
-                caller.set_state(uid, "RUNNING", 100.0, message="Monai server is running.", details=details)
+                caller.set_state(uid, JOB_STATE_RUNNING, 100.0, message="Monai server is running.", details=details)
                 caller.persist(uid)
 
-            caller.set_state(uid, "RUNNING", 100.0)
-            caller.schedule(uid, "PROGRESS")
+            caller.set_state(uid, JOB_STATE_RUNNING, 100.0)
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
 
     def cancel(self, caller: JobManager, uid: str, client: Any, **kwargs):
         out = client.run_command("scancel -n monailabel")
-        caller.set_state(uid, "CANCELLED", 0.0)
+        caller.set_state(uid, JOB_STATE_CANCELLED, 0.0)
         caller.remove(uid)
 
     def collect(self, caller: JobManager, uid: str, client: Any, **kwargs):

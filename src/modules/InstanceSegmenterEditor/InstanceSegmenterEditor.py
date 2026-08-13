@@ -22,7 +22,8 @@ from ltrace.algorithms.measurements import (
     get_2d_copy,
 )
 from ltrace.algorithms.stops import fit_line
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
+from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
@@ -441,6 +442,9 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
             slicer.mrmlScene, self.labelMapNode, self.labelMapNode.GetName() + "_" + outputSuffix
         )
         updatedLabelMapNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+        copy_metadata(self.labelMapNode, updatedLabelMapNode)
+        copy_hierarchy_attributes(self.labelMapNode, updatedLabelMapNode)
+        updatedLabelMapNode.CopyReferences(self.labelMapNode)
 
         updatedDataFrame = dataFrame
         updatedDataFrame = updatedDataFrame.drop(

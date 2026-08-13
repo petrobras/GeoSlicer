@@ -128,6 +128,7 @@ def generic_deploy(
     # getting the 3D Slicer version
     slicer_version = get_slicer_version(slicer_dir)
     logger.info("Slicer version " + str(slicer_version))
+    apply_pre_patches(slicer_dir, slicer_version)
 
     if not fast_and_dirty:
         logger.info("Uninstalling local packages")
@@ -193,6 +194,18 @@ def generic_deploy(
     logger.info("Copying notebooks")
     copy_notebooks(slicer_dir, modules_package_folder)
 
+    if args.plugin_to_geolog:
+        subprocess.run(
+            [
+                sys.executable,
+                "./tools/deploy/Geolog/plugin_to_geolog.py",
+                "--geolog-path",
+                args.plugin_to_geolog,
+                "--geoslicer-path",
+                slicer_dir,
+            ]
+        )
+
     logger.info("Applying patches")
     apply_patches(slicer_dir, slicer_version)
 
@@ -210,9 +223,49 @@ def generic_deploy(
                 # when trying to remove the file from the older path
                 pass
 
+        sign_code(args, archive_folder_name)
+
         if not fast_and_dirty and not args.disable_archiving:
             logger.info("Archiving")
             make_archive(args, archive_folder_name, slicer_archive.with_name(version_name))
+
+
+def sign_code(args: argparse.Namespace, archive_folder_name: Path) -> None:
+    if not args.code_signed:
+        logger.info("Skipping code signing process.")
+        return
+
+    if not sys.platform.startswith("win32"):
+        logger.info("Skipping code signing due to platform incompatibility.")
+        return
+
+    logger.info("Remote code signing...")
+    exe_to_sign = archive_folder_name / f"{APP_NAME}.exe"
+    if exe_to_sign.exists():
+        codesign_script = SLICERLTRACE_REPO_FOLDER / "tools" / "pipeline" / "remote_codesign.py"
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(codesign_script),
+                    "--server",
+                    args.codesign_server,
+                    "--user",
+                    args.codesign_user,
+                    "--key",
+                    args.codesign_key,
+                    "--port",
+                    str(args.codesign_port),
+                    "--exe",
+                    str(exe_to_sign),
+                ],
+                check=True,
+            )
+            logger.info("Code signing successful.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Code signing failed: {e}. {traceback.format_exc()}. Skipping code signing.")
+    else:
+        logger.error(f"Executable not found at {exe_to_sign}. Skipping code signing.")
 
 
 def parse_output_dir(args: argparse.Namespace) -> Union[Path, None]:
@@ -258,7 +311,7 @@ def copy_extensions(slicer_dir, extensions, location, ignore=None):
         current_dir = extensions_dir / location / source_dir.name
 
         if current_dir.exists():
-            shutil.rmtree(current_dir, onerror=make_directory_writable)
+            shutil.rmtree(current_dir, onexc=make_directory_writable)
 
         shutil.copytree(source_dir, current_dir, ignore=ignore)
 
@@ -324,9 +377,7 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
         pip_call.append("--editable")
     pip_call.append(str(lib_folder))
 
-    subprocess.run(
-        [str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==25.0.1", "setuptools==61.3.1"], check=True
-    )
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--upgrade", "pip==25.3", "setuptools==80.10.1"])
     runResult = subprocess.run(pip_call)
     runResult.check_returncode()
 
@@ -390,7 +441,7 @@ def copy_notebooks(slicer_dir, modules_package_folder):
     notebooks_dir = modules_package_folder / "Notebooks"
     target_dir = slicer_dir / "Notebooks"
     if target_dir.exists():
-        shutil.rmtree(target_dir, onerror=make_directory_writable)
+        shutil.rmtree(target_dir, onexc=make_directory_writable)
 
     copy_file_or_tree(notebooks_dir, target_dir, exist_ok=True)
 
@@ -454,19 +505,28 @@ def _update_slicer_version_placeholders(source, slicer_version, repo_folder):
         f.write(newText)
 
 
-def apply_patches(slicer_dir, slicer_version):
+def apply_patches(slicer_dir, slicer_version, config_key="Patches"):
     with open(DEPLOY_CONFIG) as f:
         config = json.JSONDecoder().decode(f.read())
 
     platform = "linux" if sys.platform.startswith("linux") else sys.platform
-    patches = config["Patches"].get(platform, [])
+    patches = config[config_key].get(platform, [])
     for patch_folder_name, target_folder, strip_folders in patches:
         patch_folder = THIS_FOLDER / "Patches" / patch_folder_name
         target_folder = Template(target_folder).substitute(slicer_dir=f"{APP_NAME}-{slicer_version}")
         target_folder = slicer_dir / Path(target_folder)
         for patch_file in sorted(patch_folder.glob("*.patch")):
+            print(f"Applying patch {patch_file} to {target_folder}")
             patch_set = patch.fromfile(patch_file)
-            patch_set.apply(strip=strip_folders, root=target_folder)
+            if patch_set:
+                patch_set.apply(strip=strip_folders, root=target_folder)
+
+
+def apply_pre_patches(slicer_dir, slicer_version):
+    try:
+        apply_patches(slicer_dir, slicer_version, config_key="PrePatches")
+    except Exception as e:
+        logger.exception(f"Error applying pre-patches: {e}")
 
 
 def rename_executable(slicer_dir):
@@ -485,13 +545,13 @@ def rename_executable(slicer_dir):
 
 def copy_windows_dlls(slicer_dir):
     files_to_copy = []
-    cuda_path_environment = os.environ.get("CUDA_PATH_V11_6")
+    cuda_path_environment = os.environ.get("CUDA_PATH_V12_1")
     if cuda_path_environment is None:
-        raise RuntimeError("CUDA_PATH_V11_6 environment variable not defined")
+        raise RuntimeError("CUDA_PATH_V12_1 environment variable not defined")
 
     cuda_bin = Path(cuda_path_environment) / "bin"
     if not cuda_bin.is_dir():
-        raise RuntimeError("CUDA_PATH_V11_6 points to an invalid directory")
+        raise RuntimeError("CUDA_PATH_V12_1 points to an invalid directory")
 
     for dll in cuda_bin.glob("*.dll"):
         if dll.name in ["cudart32_110.dll"]:
@@ -502,7 +562,7 @@ def copy_windows_dlls(slicer_dir):
     if len(re.findall(r"cudnn64_\d+.dll", ",".join(dll.name for dll in files_to_copy))) == 0:
         raise RuntimeError("cudnn64_*.dll not found")
 
-    vs_path_candidates = [i["installationPath"] for i in vswhere.find()]
+    vs_path_candidates = [i["installationPath"] for i in vswhere.find(products="*")]
     version_paths = []
     for vs_path in vs_path_candidates:
         msvc_path = Path(vs_path, "VC", "Redist", "MSVC")
@@ -592,7 +652,7 @@ def make_directory_writable(func=None, path=None, exc_info=None):
 
     If the error is for another reason it re-raises the error.
 
-    Usage : ``shutil.rmtree(path, onerror=make_directory_writable)``
+    Usage : ``shutil.rmtree(path, onexc=make_directory_writable)``
     """
     if path is None:
         raise RuntimeError("Invalid path.")
@@ -610,7 +670,7 @@ def remove_directory_recursively(path: Path):
         return
 
     make_directory_writable(path=path.as_posix())
-    shutil.rmtree(path.as_posix(), onerror=make_directory_writable)
+    shutil.rmtree(path.as_posix(), onexc=make_directory_writable)
 
 
 def commit_to_opensource_repository(args, force):
@@ -687,7 +747,8 @@ def commit_to_opensource_repository(args, force):
             public_remote_repository_name, local_public_master_branch_name + ":" + remote_public_master_branch_name
         )
         logger.info(
-            f"Git push executed succesfully! Cleaning environment and checking out to previously branch: {origin_reference}"
+            f"Git push executed succesfully! Cleaning environment and checking out to "
+            f"previously branch: {origin_reference}"
         )
     except git.exc.GitCommandError as error:
         logger.info(f"Unable to execute git commands:\n{error}")
@@ -720,7 +781,7 @@ def remove_large_files_from_public_repository(args) -> None:
         if path.is_file():
             path.unlink()
         else:
-            shutil.rmtree(path.as_posix(), onerror=make_directory_writable)
+            shutil.rmtree(path.as_posix(), onexc=make_directory_writable)
 
 
 def remove_closed_source_files(args):
@@ -759,7 +820,7 @@ def remove_module_test_directories(args):
         if not path.is_dir():
             continue
 
-        shutil.rmtree(path, onerror=make_directory_writable)
+        shutil.rmtree(path, onexc=make_directory_writable)
 
 
 def add_open_source_files():
@@ -820,7 +881,7 @@ def check_init_files() -> None:
     with open(DEPLOY_CONFIG) as f:
         config = json.load(f)
 
-    init_exceptions = config.get("InitCheckExceptions", [])
+    init_exceptions: list[str] = config.get("InitCheckExceptions", [])
 
     for d in LTRACE_PACKAGE_FOLDER.rglob("**/"):
         if d == LTRACE_PACKAGE_FOLDER or not d.is_dir():
@@ -830,7 +891,7 @@ def check_init_files() -> None:
             continue
 
         if not Path.exists(d / "__init__.py"):
-            if not any([x in str(d) for x in init_exceptions]):
+            if not any([x in d.absolute().resolve().as_posix() for x in init_exceptions]):
                 no_init_list.append(d)
 
     if len(no_init_list) > 0:
@@ -871,6 +932,27 @@ def get_version_string(version: str) -> str:
 
 
 def run(args):
+    if args.code_signed:
+        if not args.codesign_server:
+            raise ValueError(
+                "Code signing server is required when code signing is enabled. Add CODESIGN_SERVER environment variable or use --codesign-server."
+            )
+
+        if not args.codesign_user:
+            raise ValueError(
+                "Code signing user is required when code signing is enabled. Add CODESIGN_USER environment variable or use --codesign-user."
+            )
+
+        if not args.codesign_key:
+            raise ValueError(
+                "Code signing key is required when code signing is enabled. Add CODESIGN_KEY environment variable or use --codesign-key."
+            )
+
+        if not args.codesign_port:
+            raise ValueError(
+                "Code signing port is required when code signing is enabled. Add CODESIGN_SERVER_PORT environment variable or use --codesign-port."
+            )
+
     if not args.public_commit_only:
         if args.archive:
             slicer_archive = Path(args.archive).resolve().absolute()
@@ -1042,6 +1124,11 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
+        "--plugin-to-geolog",
+        help="Path to where Geolog is installed (to add GeoSlicer to the Processing menu of Geolog).",
+        default=None,
+    )
+    parser.add_argument(
         "--no-public-commit",
         action="store_true",
         help="Avoid commiting to the opensource code repository",
@@ -1064,5 +1151,31 @@ if __name__ == "__main__":
         "--output-dir",
         help="Define a path to store the application.",
         default=None,
+    )
+    parser.add_argument(
+        "--code-signed",
+        action="store_true",
+        help="Enable code signing for the Windows application.",
+        default=False,
+    )
+    parser.add_argument(
+        "--codesign-server",
+        help="Remote server address for code signing.",
+        default=os.environ.get("CODESIGN_SERVER"),
+    )
+    parser.add_argument(
+        "--codesign-user",
+        help="SSH username for code signing.",
+        default=os.environ.get("CODESIGN_USER"),
+    )
+    parser.add_argument(
+        "--codesign-key",
+        help="Path to the SSH private key for code signing.",
+        default=os.environ.get("CODESIGN_KEY"),
+    )
+    parser.add_argument(
+        "--codesign-port",
+        help="Port to the SSH server address.",
+        default=os.environ.get("CODESIGN_SERVER_PORT"),
     )
     run(parser.parse_args())

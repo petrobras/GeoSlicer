@@ -1,5 +1,7 @@
 import ast
+import warnings
 import os
+import logging
 
 
 class StopTraversal(Exception):
@@ -14,7 +16,7 @@ class CategoryVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node):
         if node.name == self.name:
-            if "LTracePlugin" in [base.id for base in node.bases]:
+            if "LTracePlugin" in [getattr(base, "id", "") for base in node.bases]:
                 self.generic_visit(node)  # Visit the children of the class
 
     def visit_Assign(self, node):
@@ -29,7 +31,7 @@ class CategoryVisitor(ast.NodeVisitor):
             ):
                 if attr.attr == "categories" and isinstance(node.value, ast.List):
                     # Extract the value (should be a list in this case)
-                    self.categories = [elt.s for elt in node.value.elts]
+                    self.categories = [elt.value for elt in node.value.elts]
                 elif attr.attr == "hidden" and isinstance(node.value, ast.Constant):
                     # Extract the value (should be a boolean in this case)
                     self.hidden = node.value.value
@@ -110,7 +112,11 @@ class ModuleInfo:
             try:
                 # Find all class definitions
                 with open(entry) as entry_file:
-                    tree = ast.parse(entry_file.read())
+                    source_code = entry_file.read()
+
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", SyntaxWarning)
+                    tree = ast.parse(source_code)
 
                 filename = os.path.basename(entry)
                 expectedClassName = os.path.splitext(filename)[0]
@@ -118,13 +124,16 @@ class ModuleInfo:
                 try:
                     visitor.visit(tree)
                 except StopTraversal:
-                    pass
+                    logging.info(
+                        f"Found module class {expectedClassName} in {entry} with categories {visitor.categories} and hidden={visitor.hidden}"
+                    )
 
                 if visitor.categories:
                     minfo = ModuleInfo(entry, categories=visitor.categories, hidden=visitor.hidden)
                     result.append(minfo)
 
             except:
+                logging.warning(f"Failed to parse {entry} as a Slicer module. It will be ignored.")
                 # Error while processing the file (e.g., syntax error),
                 # it cannot be a Slicer module.
                 # TODO(PL-2872): log the error if necessary

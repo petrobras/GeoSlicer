@@ -1,12 +1,21 @@
 from dliswriter import DLISFile, enums
 from ltrace.constants import DLISImportConst
 from ImageLogExportLib.ImageLogCSV import _arrayPartsFromNode
+from ltrace.slicer.node_attributes import CorrelatedNodeAttributes
 
 # from dliswriter.logical_record.core.eflr import origin
 import numpy as np
-import os
 import slicer
-from ltrace.slicer.helpers import getVolumeNullValue, arrayFromVisibleSegmentsBinaryLabelmap, getWellAttributeFromNode
+from ltrace.slicer.helpers import (
+    getVolumeNullValue,
+    arrayFromVisibleSegmentsBinaryLabelmap,
+    getAttributeFromNodeOrReferencedNode,
+    getHierarchyItemAttributeFromNodeOrReferencedNode,
+    tryGetNode,
+    getSourceVolume,
+)
+from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment, NodeTemporarity
+from ltrace.slicer.metadata import Metadata
 from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE
 from pathlib import Path
 import re
@@ -70,62 +79,60 @@ def extract_dlis_info_from_node(node):
 
     dlis_info["data_name"] = node.GetName()
 
-    if isinstance(node, slicer.vtkMRMLLabelMapVolumeNode) or isinstance(node, slicer.vtkMRMLSegmentationNode):
-        dlis_info["null_value"] = 0
-    else:
-        dlis_info["null_value"] = getVolumeNullValue(node)
-
     subject_hierarchy_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     item_parent = subject_hierarchy_node.GetItemParent(subject_hierarchy_node.GetItemByDataNode(node))
     directory_name = subject_hierarchy_node.GetItemName(item_parent)
 
-    dlis_info["frame_name"] = directory_name
+    frame_attr = getAttributeFromNodeOrReferencedNode(node, DLIS_FRAME_TAG)
+    if frame_attr:
+        dlis_info["frame_name"] = frame_attr
+        if frame_attr != directory_name:
+            logging.warning(
+                f"Frame implied in {node.GetName()} hierarchy ({directory_name}) is different from node's Frame"
+                f" attribute - this one ({frame_attr}) will be considered as the node's Frame."
+            )
+    else:
+        dlis_info["frame_name"] = directory_name
 
     #  well name (same code as in las.py's extract_dlis_info_from_node)
     well_from_node_name = node.GetName().split("_")[0] if len(node.GetName().split("_")) > 1 else ""
-    if node.GetAttribute(WELL_NAME_TAG) is not None:
-        dlis_info["well_name"] = node.GetAttribute(WELL_NAME_TAG)
+    well_attr = getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG)
+    if well_attr:
+        dlis_info["well_name"] = well_attr
         if well_from_node_name == "":
-            logging.info(
-                f"Node name ({node.GetName()}) doesn't have the well name ({node.GetAttribute(WELL_NAME_TAG)}) prepended to it."
-            )
-        elif node.GetAttribute(WELL_NAME_TAG) != well_from_node_name:
+            logging.info(f"Node name ({node.GetName()}) doesn't have the well name ({well_attr}) prepended to it.")
+        elif well_attr != well_from_node_name:
             logging.warning(
-                f"Well name informed in {node.GetName()} ({node.GetAttribute(WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {node.GetAttribute(WELL_NAME_TAG)} will be considered as the well name."
+                f"Well name informed in {node.GetName()} ({well_attr}) metadata is different from the well name implied by the node name ({well_from_node_name}). {well_attr} will be considered as the well name."
             )
     else:
         dlis_info["well_name"] = well_from_node_name
-        # TO-DO - MUSA-128 - We can retrieve the well name from a Segmentation node, but not from a LabelMap
-        # The correct would be to, when creating a Segmentation or LabelMap, copy its attribute from their
-        # originating volume node
-        if isinstance(node, slicer.vtkMRMLSegmentationNode) and well_from_node_name == "":
-            dlis_info["well_name"] = slicer.util.getNode(
-                node.GetNodeReferenceID("referenceImageGeometryRef")
-            ).GetAttribute(WELL_NAME_TAG)
-        if dlis_info["well_name"] != "":
+        if dlis_info["well_name"] == "":
             logging.warning(f"No well name found for {node.GetName()}.")
 
     #  units (same code as in las.py's  extract_dlis_info_from_node)
     units_search = re.search(r"\[(.*?)\]", node.GetName())
     units_from_name = units_search.group(1) if units_search else "NONE"
-    units = units_from_name
-
-    if node.GetAttribute(UNITS_TAG) is not None:
-        units = node.GetAttribute(UNITS_TAG)
+    units_attr = getAttributeFromNodeOrReferencedNode(node, UNITS_TAG)
+    if units_attr:
+        dlis_info["units"] = units_attr
         if units_from_name == "NONE":
-            logging.info(
-                f"Node name ({node.GetName()}) doesn't include its units ({node.GetAttribute(UNITS_TAG)}) in it."
-            )
-        elif node.GetAttribute(UNITS_TAG) != units_from_name:
+            logging.info(f"Node name ({node.GetName()}) doesn't include its units ({units_attr}) in it.")
+        elif units_attr != units_from_name:
             logging.warning(
-                f"Units informed in {node.GetName()} ({node.GetAttribute(UNITS_TAG)}) metadata are different from the units implied by the node name ({units_from_name}). {node.GetAttribute(UNITS_TAG)} will be considered as the units."
+                f"Units informed in {node.GetName()} ({units_attr}) metadata are different from the units implied by the node name ({units_from_name}). {units_attr} will be considered as the units."
             )
     else:
-        units = units_from_name
-        if units_from_name == "NONE":
+        dlis_info["units"] = units_from_name
+        if dlis_info["units"] == "NONE":
             logging.warning(f"No units found for {node.GetName()}. They'll be set to value 'NONE'")
 
-    dlis_info["units"] = units
+    # null_value is an extra info (i.e., not in the DLIS spec, although it is in LAS)
+
+    if isinstance(node, (slicer.vtkMRMLLabelMapVolumeNode, slicer.vtkMRMLSegmentationNode)):
+        dlis_info["null_value"] = 0
+    else:
+        dlis_info["null_value"] = getVolumeNullValue(node)
 
     return dlis_info
 
@@ -189,7 +196,7 @@ class DlisWriter:
         )
 
         data = dlis_data["data"].squeeze()
-        #######value = data.ravel().astype("float64").copy()
+        #######value = data.ravel().astype(np.float64).copy()
         # Replace nan with the default value
         nan_indexes = np.where(data == dlis_info["null_value"])  # value
         data[nan_indexes] = ANP_880_2022_DEFAULT_NULL_VALUE  # value
@@ -231,8 +238,8 @@ def assert_single_well(nodes_list):
     well_name = ""
     count_well = 0
     for node in nodes_list:
-        if getWellAttributeFromNode(node, WELL_NAME_TAG) != well_name:
-            well_name = getWellAttributeFromNode(node, WELL_NAME_TAG)
+        if getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG) != well_name:
+            well_name = getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG)
             count_well += 1
         if count_well == 2:
             raise RuntimeError("Error exporting to DLIS. You can't export nodes from different Wells to the same file.")
@@ -274,7 +281,9 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                 long_name="Measured depth",
                 data=depths,
                 units=enums.Unit.METER,
-                origin_reference=int(nodes_dict[lf_header_id][frame][0].GetAttribute(DLIS_ORIGIN_TAG)),
+                origin_reference=int(
+                    getAttributeFromNodeOrReferencedNode(nodes_dict[lf_header_id][frame][0], DLIS_ORIGIN_TAG)
+                ),
                 set_name=f"C_LF-{lf_header_id}",
             )
             channels.append(depth_channel)
@@ -290,7 +299,7 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                         node.GetName(),
                         data=data,
                         units=dlis_info["units"],
-                        origin_reference=int(node.GetAttribute(DLIS_ORIGIN_TAG)),
+                        origin_reference=int(getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)),
                         set_name=f"C_LF-{lf_header_id}",
                     )
                 )
@@ -298,7 +307,9 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                 name=frame,
                 channels=channels,
                 index_type=enums.FrameIndexType.BOREHOLE_DEPTH,
-                origin_reference=int(nodes_dict[lf_header_id][frame][0].GetAttribute(DLIS_ORIGIN_TAG)),
+                origin_reference=int(
+                    getAttributeFromNodeOrReferencedNode(nodes_dict[lf_header_id][frame][0], DLIS_ORIGIN_TAG)
+                ),
                 set_name=f"F_LF-{lf_header_id}",
             )
 
@@ -339,7 +350,7 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                     long_name="Measured depth",
                     data=depths,
                     units=enums.Unit.METER,
-                    origin_reference=int(node.GetAttribute(DLIS_ORIGIN_TAG)),
+                    origin_reference=int(getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)),
                     set_name=f"C_LF-{lf_header_id}",
                 )
 
@@ -347,7 +358,7 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                     node.GetName(),
                     data=data,
                     units=dlis_info["units"],
-                    origin_reference=int(node.GetAttribute(DLIS_ORIGIN_TAG)),
+                    origin_reference=int(getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)),
                     set_name=f"C_LF-{lf_header_id}",
                 )
 
@@ -375,7 +386,7 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                             node[j].GetName(),
                             data=data,
                             units=dlis_info["units"],
-                            origin_reference=int(node.GetAttribute(DLIS_ORIGIN_TAG)),
+                            origin_reference=int(getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)),
                             set_name=f"C_LF-{lf_header_id}",
                         )
                     )
@@ -384,7 +395,7 @@ def write_nodes(dlis_file, nodes_dict, remaining_nodes, depths_remaining, depth_
                 dlis_info["frame_name"],
                 channels=channels,
                 index_type=enums.FrameIndexType.BOREHOLE_DEPTH,
-                origin_reference=int(node.GetAttribute(DLIS_ORIGIN_TAG)),
+                origin_reference=int(getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)),
                 set_name=f"F_LF-{lf_header_id}",
             )
 
@@ -405,19 +416,26 @@ def export_dlis(
             for node2 in nodes:
                 if node is not node2:
                     if (
-                        node2.GetAttribute(WELL_NAME_TAG) == node.GetAttribute(WELL_NAME_TAG)
-                        and node2.GetAttribute(DLIS_LOGICAL_FILE_TAG) in origins_per_logical_file
-                        and node2.GetAttribute(DLIS_ORIGIN_TAG)
+                        getAttributeFromNodeOrReferencedNode(node2, WELL_NAME_TAG)
+                        == getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG)
+                        and getAttributeFromNodeOrReferencedNode(node2, DLIS_LOGICAL_FILE_TAG)
+                        in origins_per_logical_file
+                        and getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG)
                     ):
-                        node.SetAttribute(DLIS_ORIGIN_TAG, node2.GetAttribute(DLIS_ORIGIN_TAG))
+                        node.SetAttribute(DLIS_ORIGIN_TAG, getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG))
+                        # TODO (AM-11): After complete migration to the new attributes system, the SetAttribute call above can be removed
+                        Metadata(node)[DLIS_ORIGIN_TAG] = getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG)
         for node2 in remaining_nodes[lf_header_id]:
             if node is not node2:
                 if (
-                    node2.GetAttribute(WELL_NAME_TAG) == node.GetAttribute(WELL_NAME_TAG)
-                    and node2.GetAttribute(DLIS_LOGICAL_FILE_TAG) in origins_per_logical_file
-                    and node2.GetAttribute(DLIS_ORIGIN_TAG)
+                    getAttributeFromNodeOrReferencedNode(node2, WELL_NAME_TAG)
+                    == getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG)
+                    and getAttributeFromNodeOrReferencedNode(node2, DLIS_LOGICAL_FILE_TAG) in origins_per_logical_file
+                    and getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG)
                 ):
-                    node.SetAttribute(DLIS_ORIGIN_TAG, node2.GetAttribute(DLIS_ORIGIN_TAG))
+                    node.SetAttribute(DLIS_ORIGIN_TAG, getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG))
+                    # TODO (AM-11): After complete migration to the new attributes system, the SetAttribute call above can be removed
+                    Metadata(node)[DLIS_ORIGIN_TAG] = getAttributeFromNodeOrReferencedNode(node2, DLIS_ORIGIN_TAG)
 
     # Even though our code exports multiple wells correctly, GeoSlicer currently actively prevents it
     # because of usability
@@ -444,13 +462,22 @@ def export_dlis(
     subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
 
     for node in nodes_list:
-        itemID = subjectHierarchyNode.GetItemByDataNode(node)  # the hierarchy item ID corresponding to our node
-        logical_file_tag = subjectHierarchyNode.GetItemAttribute(itemID, DLIS_LOGICAL_FILE_TAG)
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node2 = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        elif isinstance(node, slicer.vtkMRMLSegmentationNode) or isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node2 = getSourceVolume(node)
+        logical_file_tag = getHierarchyItemAttributeFromNodeOrReferencedNode(node, DLIS_LOGICAL_FILE_TAG)
         header_id = logical_file_tag
         node.SetAttribute(DLIS_LOGICAL_FILE_TAG, logical_file_tag)
-        frame_tag = subjectHierarchyNode.GetItemAttribute(itemID, DLIS_FRAME_TAG)
-
+        frame_tag = getHierarchyItemAttributeFromNodeOrReferencedNode(node, DLIS_FRAME_TAG)
         node.SetAttribute(DLIS_FRAME_TAG, frame_tag)
+        # TODO (AM-11): After complete migration to the new attributes system, the corresponding SetAttribute calls above can be removed
+        Metadata(node)[DLIS_LOGICAL_FILE_TAG] = logical_file_tag
+        Metadata(node)[DLIS_FRAME_TAG] = frame_tag
+
         if frame_tag:
             if header_id not in nodes_dict:
                 nodes_dict[header_id] = {}
@@ -477,12 +504,15 @@ def export_dlis(
         origins_per_logical_file[lf_header_id] = []
         for frame_tag, nodes in frame_and_nodes.items():
             for node in nodes:
-                node_origin = node.GetAttribute(DLIS_ORIGIN_TAG)
+                node_origin = getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)
                 added_orig = None
                 if node_origin:
                     if int(node_origin) not in origins_per_logical_file[lf_header_id]:
                         added_orig = add_origin(
-                            writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), int(node_origin)
+                            writer,
+                            lf_header_id,
+                            getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG),
+                            int(node_origin),
                         )
                 else:  # Shouldn't enter here, as nodes with frame info come from DLIS - so, should have origin info also
                     logger.info(
@@ -495,9 +525,13 @@ def export_dlis(
                     try_copy_origin_attribute(node, nodes_dict, remaining_nodes, lf_header_id)
 
                     # If still not found an origin, create one
-                if not node.GetAttribute(DLIS_ORIGIN_TAG):
-                    added_orig = add_origin(writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), None)
+                if not getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG):
+                    added_orig = add_origin(
+                        writer, lf_header_id, getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG), None
+                    )
                     node.SetAttribute(DLIS_ORIGIN_TAG, str(added_orig.origin_reference))
+                    # TODO (AM-11): After complete migration to the new attributes system, the SetAttribute call above can be removed
+                    Metadata(node)[DLIS_ORIGIN_TAG] = str(added_orig.origin_reference)
 
                 if added_orig:
                     origins_per_logical_file[lf_header_id].append(added_orig.origin_reference)
@@ -506,7 +540,7 @@ def export_dlis(
         if lf_header_id not in origins_per_logical_file:
             origins_per_logical_file[lf_header_id] = []
         for node in remaining_nodes[lf_header_id]:
-            node_origin = node.GetAttribute(DLIS_ORIGIN_TAG)
+            node_origin = getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG)
             added_orig = None
             if node_origin:  # shouldn't enter here - LAS or CSV -originated nodes
                 logger.info(
@@ -515,7 +549,10 @@ def export_dlis(
                 )
                 if int(node_origin) not in origins_per_logical_file:
                     added_orig = add_origin(
-                        writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), int(node_origin)
+                        writer,
+                        lf_header_id,
+                        getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG),
+                        int(node_origin),
                     )
             else:
                 # if node didn't have origin attribute, we assume one origin per well
@@ -523,9 +560,13 @@ def export_dlis(
                 try_copy_origin_attribute(node, nodes_dict, remaining_nodes, lf_header_id)
 
                 # If still not found an origin, create one
-                if not node.GetAttribute(DLIS_ORIGIN_TAG):
-                    added_orig = add_origin(writer, lf_header_id, getWellAttributeFromNode(node, WELL_NAME_TAG), None)
+                if not getAttributeFromNodeOrReferencedNode(node, DLIS_ORIGIN_TAG):
+                    added_orig = add_origin(
+                        writer, lf_header_id, getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG), None
+                    )
                     node.SetAttribute(DLIS_ORIGIN_TAG, str(added_orig.origin_reference))
+                    # TODO (AM-11): After complete migration to the new attributes system, the SetAttribute call above can be removed
+                    Metadata(node)[DLIS_ORIGIN_TAG] = str(added_orig.origin_reference)
 
             if added_orig:
                 origins_per_logical_file[lf_header_id].append(added_orig.origin_reference)
@@ -571,7 +612,7 @@ def single_node_to_dlis(
     )
 
     origin = writer.dlisFile.logical_files[0].add_origin(
-        name="ORIGIN", well_name=getWellAttributeFromNode(node, WELL_NAME_TAG)
+        name="ORIGIN", well_name=getAttributeFromNodeOrReferencedNode(node, WELL_NAME_TAG)
     )
 
     writer.write_single_node(

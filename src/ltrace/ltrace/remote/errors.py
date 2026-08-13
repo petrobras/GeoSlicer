@@ -1,5 +1,4 @@
-""" Exceptions raise by Apps.
-"""
+"""Exceptions raise by Apps."""
 
 
 class ChannelError(Exception):
@@ -112,6 +111,27 @@ class AuthException(ChannelError):
         self.e = e
 
 
+class MissingCredentialsError(ChannelError):
+    """No credential is stored for the host (no password and no identity file).
+
+    Distinct from AuthException: there is nothing to invalidate, so the stored
+    password must NOT be deleted. The caller should prompt for login
+    (interactive) or flag the job NOT CONNECTED (polling) instead of treating
+    it as a rejected credential.
+
+    Contains:
+    reason(string)
+    e (underlying exception object)
+    hostname (string)
+    """
+
+    def __init__(self, e, hostname):
+        super().__init__()
+        self.reason = "No stored credentials (password or identity file)"
+        self.hostname = hostname
+        self.e = e
+
+
 class SSHException(ChannelError):
     """if there was any other error connecting or establishing an SSH session
 
@@ -124,6 +144,27 @@ class SSHException(ChannelError):
     def __init__(self, e, hostname):
         super().__init__()
         self.reason = "Error connecting or establishing an SSH session"
+        self.hostname = hostname
+        self.e = e
+
+
+class HostNotFoundError(ChannelError):
+    """The host address could not be resolved (DNS/name resolution failed).
+
+    Distinct from SSHException/TimeoutException: those mean a resolvable host
+    was unreachable this time (transient — worth retrying). A resolution
+    failure means the address itself could not be found, so automatic retries
+    should stop until the user fixes the address or their network.
+
+    Contains:
+    reason(string)
+    e (underlying exception object)
+    hostname (string)
+    """
+
+    def __init__(self, e, hostname):
+        super().__init__()
+        self.reason = "Host address could not be resolved"
         self.hostname = hostname
         self.e = e
 

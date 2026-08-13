@@ -2,8 +2,6 @@ import re
 
 import numpy as np
 import slicer
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
 
 from ltrace.pore_networks.krel_result import ERROR_PREFIX, INPUT_PREFIX, RESULT_PREFIX
 from ltrace.slicer_utils import dataframeFromTable
@@ -109,6 +107,9 @@ class PlotData:
         return self.error_correlation
 
     def anova(self, order):
+        import statsmodels.api as sm
+        from statsmodels.formula.api import ols
+
         df = self.get_parameters_dataframe().copy()
 
         renamed_df = df.rename(lambda x: x.replace("-", "_"), axis=1)

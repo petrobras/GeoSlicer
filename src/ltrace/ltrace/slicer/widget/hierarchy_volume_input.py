@@ -29,6 +29,7 @@ class HierarchyVolumeInput(qt.QWidget):
         self.foldersAllowed = allowFolders
 
         self.selectorWidget = slicer.qMRMLSubjectHierarchyComboBox(self)
+        self.selectorWidget.setMRMLScene(slicer.mrmlScene)
 
         self.subjectHierarchy = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.selectorWidget.setNodeTypes(nodeTypes)
@@ -58,6 +59,8 @@ class HierarchyVolumeInput(qt.QWidget):
         self.destroyed.connect(self.__del__)
 
     def __del__(self, obj: qt.QObject = None) -> None:
+        if not slicer.mrmlScene:
+            return
         slicer.mrmlScene.RemoveObserver(self.end_close_scene_observer_handler)
 
     def setMRMLScene(self, scene: slicer.mrmlScene) -> None:
@@ -94,7 +97,6 @@ class HierarchyVolumeInput(qt.QWidget):
             self.__itemSelectedHandlerConnected = False
 
     def itemChangedHandler(self, itemId):
-
         if itemId == self.__previousItemId:
             return
 
@@ -182,6 +184,7 @@ class HierarchyVolumeInput(qt.QWidget):
             self.selectorWidget.setProperty("defaultText", self.customDefaultText)
         previousStateConnected = self.__itemSelectedHandlerConnected
         self._connectItemChangedHandler()
+
         if self.selectorWidget.currentItem() != 0:
             self.selectorWidget.setCurrentItem(0)
         else:

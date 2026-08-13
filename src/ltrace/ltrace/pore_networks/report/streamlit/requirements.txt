@@ -1,0 +1,6 @@
+streamlit
+plotly
+matplotlib
+numpy==1.26.4
+pynrrd
+vtk==9.5.2

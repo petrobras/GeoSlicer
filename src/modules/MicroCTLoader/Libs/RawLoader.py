@@ -79,15 +79,15 @@ class RawLoaderWidget(qt.QFrame):
         self.imageSizeZSliderWidget.setToolTip("Set the image dimensions on the Z axis.")
         parametersFormLayout.addRow("Z dimension:", self.imageSizeZSliderWidget)
 
-        self.imageSpacingXSliderWidget = ui.numberParam((0.01, 99999.0), value=0.01, step=0.01, decimals=2)
+        self.imageSpacingXSliderWidget = ui.numberParam((0.0001, 99999.0), value=1.0, step=0.001, decimals=4)
         self.imageSpacingXSliderWidget.setToolTip("Size of a voxel along X axis in microns.")
         parametersFormLayout.addRow("X voxel size (μm):", self.imageSpacingXSliderWidget)
 
-        self.imageSpacingYSliderWidget = ui.numberParam((0.01, 99999.0), value=0.01, step=0.01, decimals=2)
+        self.imageSpacingYSliderWidget = ui.numberParam((0.0001, 99999.0), value=1.0, step=0.001, decimals=4)
         self.imageSpacingYSliderWidget.setToolTip("Size of a voxel along Y axis in microns.")
         parametersFormLayout.addRow("Y voxel size (μm):", self.imageSpacingYSliderWidget)
 
-        self.imageSpacingZSliderWidget = ui.numberParam((0.01, 99999.0), value=0.01, step=0.01, decimals=2)
+        self.imageSpacingZSliderWidget = ui.numberParam((0.0001, 99999.0), value=1.0, step=0.001, decimals=4)
         self.imageSpacingZSliderWidget.setToolTip("Size of a voxel along Z axis in microns.")
         parametersFormLayout.addRow("Z voxel size (μm):", self.imageSpacingZSliderWidget)
 
@@ -626,7 +626,7 @@ class RawLoaderLogic:
 
         # Trim sizeZ and numberOfVolumes to maximum available data size (the reader would refuse loading completely
         # if there is not enough voxel data)
-        (scalarType, numberOfComponents) = RawLoaderLogic.scalarTypeComponentFromString(pixelTypeString)
+        scalarType, numberOfComponents = RawLoaderLogic.scalarTypeComponentFromString(pixelTypeString)
         sliceSize = sizeX * sizeY * vtk.vtkDataArray.GetDataTypeSize(scalarType) * numberOfComponents
         totalHeaderSize = headerSize + skipSlices * sliceSize
         import os

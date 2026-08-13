@@ -1,37 +1,40 @@
-diff --git a/h5pyd/_hl/base.py b/h5pyd/_hl/base.py
-index 675f583..4c3b776 100644
 --- a/h5pyd/_hl/base.py
 +++ b/h5pyd/_hl/base.py
-@@ -24,6 +24,10 @@ from collections.abc import (
+@@ -23,6 +23,11 @@
+ )
  from .objectid import GroupID
  from .h5type import Reference, check_dtype, special_dtype
- 
-+from multiprocessing.shared_memory import SharedMemory
++
++import mmap
++import os
 +from humanize import naturalsize, precisedelta
 +from time import perf_counter
-+
+
  numpy_integer_types = (np.int8, np.uint8, np.int16, np.int16, np.int32, np.uint32, np.int64, np.uint64)
  numpy_float_types = (np.float16, np.float32, np.float64)
- 
-@@ -971,11 +975,44 @@ class HLObject(CommonStateObject):
+@@ -972,11 +977,47 @@
              HTTP_CHUNK_SIZE=4096
              http_chunks = []
              downloaded_bytes = 0
 +
-+            try:
-+                progress_mem = SharedMemory(name="ProgressBar")
-+                progress_data = bytes(progress_mem.buf)
-+                progress_data = progress_data[: progress_data.index(b"\x00")]
-+                progress_data = json.loads(progress_data)
-+                total_size = progress_data["total_size"]
-+                last_update = perf_counter()
-+                last_total = 0
-+            except Exception:
-+                progress_mem = None
++            progress_mem = None
++            progress_size = 0
++            shm_path = os.environ.get("GEOSLICER_PROGRESS_SHM_PATH")
++            if shm_path:
++                try:
++                    shm_file = open(shm_path, "r+b")
++                    progress_mem = mmap.mmap(shm_file.fileno(), 0)
++                    progress_size = len(progress_mem)
++                    header = bytes(progress_mem[:]).split(b"\x00", 1)[0]
++                    total_size = json.loads(header)["total_size"]
++                    last_update = perf_counter()
++                    last_total = 0
++                except Exception:
++                    progress_mem = None
              for http_chunk in rsp.iter_content(chunk_size=HTTP_CHUNK_SIZE):
 +
                  if http_chunk:  # filter out keep alive chunks
--                    self.log.info(f"got http_chunk - {len(http_chunk)} bytes")
+-                    self.log.debug(f"got http_chunk - {len(http_chunk)} bytes")
                      downloaded_bytes += len(http_chunk)
                      http_chunks.append(http_chunk)
 +                    if progress_mem is None:
@@ -51,11 +54,10 @@ index 675f583..4c3b776 100644
 +                        )
 +                        progress = downloaded_bytes * 100 / total_size
 +                        progress_dict = {"message": message, "progress": progress, "title": "Downloading"}
-+                        progress_data = json.dumps(progress_dict).encode()
-+                        progress_mem.buf[: len(progress_data)] = progress_data
++                        encoded = json.dumps(progress_dict).encode()
++                        progress_mem[:] = encoded + b"\x00" * (progress_size - len(encoded))
 +                        last_update = now
 +                        last_total = downloaded_bytes
-+
              if len(http_chunks) == 0:
                  raise IOError("no data returned")
              if len(http_chunks) == 1:

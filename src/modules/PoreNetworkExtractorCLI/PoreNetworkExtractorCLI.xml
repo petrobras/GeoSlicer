@@ -13,6 +13,15 @@
     <string>
       <longflag>semaphore</longflag>
     </string>
+
+    <integer>
+      <name>divs</name>
+      <longflag>divs</longflag>
+      <label>Volume division</label>
+      <description><![CDATA[How much times a volume must be divded in each dimension to parallelize process]]></description>
+      <default></default>
+    </integer>
+
     <string>
       <longflag>xargs</longflag>
     </string>

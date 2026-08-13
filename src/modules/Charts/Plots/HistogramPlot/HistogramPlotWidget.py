@@ -1,7 +1,7 @@
 from ..BasePlotWidget import BasePlotWidget
 from ltrace.slicer.graph_data import NodeGraphData
 
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
 from ltrace.slicer.widget.custom_color_button import CustomColorButton
@@ -32,15 +32,15 @@ class HistogramPlotWidget(BasePlotWidget):
 
     def setupUi(self):
         """Initialize widgets"""
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
 
         # Data table widget
-        self.__tableWidget = QtGui.QTableWidget()
+        self.__tableWidget = QtWidgets.QTableWidget()
         self.__tableWidget.setColumnCount(4)
         self.__tableWidget.setRowCount(0)
         self.__tableWidget.verticalHeader().setHidden(True)
-        self.__tableWidget.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
-        self.__tableWidget.horizontalHeader().setResizeMode(3, QtGui.QHeaderView.ResizeToContents)
+        self.__tableWidget.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.__tableWidget.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.__tableWidget.setHorizontalHeaderLabels(["Data", "Mean", "Std dev", "Options"])
         self.__tableWidget.setShowGrid(False)
         self.__tableWidget.setAlternatingRowColors(True)
@@ -54,27 +54,27 @@ class HistogramPlotWidget(BasePlotWidget):
         layout.addWidget(self.__graphicsLayoutWidget, 10)
 
         # Plot options
-        optionLayout = QtGui.QFormLayout()
-        self.__data_combo_box = QtGui.QComboBox()
-        self.__weight_combo_box = QtGui.QComboBox()
-        self.__bins_spin_box = QtGui.QSpinBox()
+        optionLayout = QtWidgets.QFormLayout()
+        self.__data_combo_box = QtWidgets.QComboBox()
+        self.__weight_combo_box = QtWidgets.QComboBox()
+        self.__bins_spin_box = QtWidgets.QSpinBox()
         self.__bins_spin_box.setRange(1, 999999)
         self.__bins_spin_box.setValue(10)
 
         # Minimum maximum clipping interval
-        self.__xMinField = QtGui.QLineEdit()
+        self.__xMinField = QtWidgets.QLineEdit()
         self.__xMinField.setPlaceholderText("X minimum")
-        self.__xMaxField = QtGui.QLineEdit()
+        self.__xMaxField = QtWidgets.QLineEdit()
         self.__xMaxField.setPlaceholderText("X maximum")
-        xIntervalLayout = QtGui.QHBoxLayout()
+        xIntervalLayout = QtWidgets.QHBoxLayout()
         xIntervalLayout.addWidget(self.__xMinField)
         xIntervalLayout.addWidget(self.__xMaxField)
 
-        self.__showMeanStdCheck = QtGui.QCheckBox("Show mean and standard deviation in graph")
+        self.__showMeanStdCheck = QtWidgets.QCheckBox("Show mean and standard deviation in graph")
         self.__showMeanStdCheck.setChecked(True)
 
         # Log option
-        self.__logCheckBox = QtGui.QCheckBox("Log mode")
+        self.__logCheckBox = QtWidgets.QCheckBox("Log mode")
         self.__logCheckBox.setChecked(False)
 
         optionLayout.addRow("Data", self.__data_combo_box)
@@ -132,14 +132,14 @@ class HistogramPlotWidget(BasePlotWidget):
 
         self.__updateParameterComboBox()
 
-    def __updateTableVisibleButton(self, button: QtGui.QPushButton, graphData: NodeGraphData):
+    def __updateTableVisibleButton(self, button: QtWidgets.QPushButton, graphData: NodeGraphData):
         """Updates icon of the related visible button (from the table widget)."""
         if graphData.visible is True:
             button.setIcon(QtGui.QIcon(str(VISIBLE_ICON_FILE_PATH)))
         else:
             button.setIcon(QtGui.QIcon(str(NOT_VISIBLE_ICON_FILE_PATH)))
 
-    def __toggleGraphVisible(self, button: QtGui.QPushButton, graphData: NodeGraphData):
+    def __toggleGraphVisible(self, button: QtWidgets.QPushButton, graphData: NodeGraphData):
         """Updates visible state from GraphData object."""
         graphData.visible = not graphData.visible
         self.__updateTableVisibleButton(button, graphData)
@@ -150,10 +150,10 @@ class HistogramPlotWidget(BasePlotWidget):
         self.__tableWidget.setRowCount(lastRowIndex + 1)
 
         # Options widget
-        optionsWidget = QtGui.QWidget()
+        optionsWidget = QtWidgets.QWidget()
 
         # Visible toggle button
-        visibleButton = QtGui.QPushButton("")
+        visibleButton = QtWidgets.QPushButton("")
         self.__updateTableVisibleButton(visibleButton, graphData)
         visibleButton.setFixedSize(26, 26)
         visibleButton.setIconSize(QtCore.QSize(20, 20))
@@ -167,15 +167,15 @@ class HistogramPlotWidget(BasePlotWidget):
         editButton.setDefault(False)
 
         # Remove button
-        removeButton = QtGui.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
+        removeButton = QtWidgets.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
         removeButton.setFixedSize(26, 26)
         removeButton.setIconSize(QtCore.QSize(20, 20))
         removeButton.setAutoDefault(False)
         removeButton.setDefault(False)
 
         # Options widget layout
-        optionsLayout = QtGui.QHBoxLayout()
-        optionsLayout.setSizeConstraint(QtGui.QLayout.SetMinimumSize)
+        optionsLayout = QtWidgets.QHBoxLayout()
+        optionsLayout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinimumSize)
         optionsLayout.setSpacing(5)
         optionsLayout.addWidget(visibleButton)
         optionsLayout.addWidget(editButton)
@@ -189,8 +189,8 @@ class HistogramPlotWidget(BasePlotWidget):
             lambda color, symbol, size: self.__onPlotStyleChanged(graphData, color, symbol, size)
         )
 
-        nameItem = QtGui.QTableWidgetItem(graphData.name)
-        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemIsEditable)
+        nameItem = QtWidgets.QTableWidgetItem(graphData.name)
+        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
         lastColumn = self.__tableWidget.columnCount() - 1
         self.__tableWidget.setItem(lastRowIndex, 0, nameItem)
         self.__tableWidget.setCellWidget(lastRowIndex, lastColumn, optionsWidget)
@@ -238,8 +238,8 @@ class HistogramPlotWidget(BasePlotWidget):
             if graphData.visible is False:
                 continue
 
-            self.__tableWidget.setItem(i, 1, QtGui.QTableWidgetItem(""))
-            self.__tableWidget.setItem(i, 2, QtGui.QTableWidgetItem(""))
+            self.__tableWidget.setItem(i, 1, QtWidgets.QTableWidgetItem(""))
+            self.__tableWidget.setItem(i, 2, QtWidgets.QTableWidgetItem(""))
 
             data_parameter = self.__data_combo_box.currentText()
             weight_parameter = self.__weight_combo_box.currentText()
@@ -265,7 +265,9 @@ class HistogramPlotWidget(BasePlotWidget):
 
             brush = QtGui.QBrush(translucentColor)
             xHistogram = xHistogram if self.__logCheckBox.isChecked() is False else np.log10(xHistogram)
-            curve = pg.PlotCurveItem(xHistogram, yHistogram, stepMode=True, fillLevel=0, brush=brush, pen=opaqueColor)
+            curve = pg.PlotCurveItem(
+                xHistogram, yHistogram, stepMode="center", fillLevel=0, brush=brush, pen=opaqueColor
+            )
             self.__plotItem.addItem(item=curve)
 
             if data.size == 0:
@@ -274,8 +276,8 @@ class HistogramPlotWidget(BasePlotWidget):
             mean = np.mean(data)
             std = np.std(data)
 
-            meanItem = QtGui.QTableWidgetItem("%6.6g" % mean)
-            stdItem = QtGui.QTableWidgetItem("%6.6g" % std)
+            meanItem = QtWidgets.QTableWidgetItem("%6.6g" % mean)
+            stdItem = QtWidgets.QTableWidgetItem("%6.6g" % std)
             self.__tableWidget.setItem(i, 1, meanItem)
             self.__tableWidget.setItem(i, 2, stdItem)
 
@@ -293,7 +295,7 @@ class HistogramPlotWidget(BasePlotWidget):
             mean_plus_std_pos = get_value_for_plot(mean + std)
 
             if self.__showMeanStdCheck.isEnabled() and self.__showMeanStdCheck.isChecked():
-                pen = pg.mkPen(opaqueColor, style=QtCore.Qt.DashLine)
+                pen = pg.mkPen(opaqueColor, style=QtCore.Qt.PenStyle.DashLine)
                 labelOpts = {"color": "k"}
                 self.__plotItem.addItem(pg.InfiniteLine(pos=mean_pos, pen=pen, label="x̄", labelOpts=labelOpts))
                 if mean_minus_std_pos is not None:

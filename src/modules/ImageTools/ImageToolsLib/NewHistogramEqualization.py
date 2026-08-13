@@ -60,7 +60,7 @@ class NewHistogramEqualizationLogic:
         # normalization of the pixel values
         n_ = cum_sum.max() - cum_sum.min()
         uniform_norm = norm / n_
-        uniform_norm = uniform_norm.astype("int")
+        uniform_norm = uniform_norm.astype(int)
 
         # flat histogram
         image_eq = uniform_norm[image_flattened]

@@ -32,7 +32,7 @@ class CorrelatedLabelMapVolume(ABC):
 
         self._observerHandlers.append(
             (
-                referenceNode,
+                referenceNode.GetID(),
                 referenceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.__onNodeModified),
             )
         )
@@ -48,7 +48,7 @@ class CorrelatedLabelMapVolume(ABC):
 
         self._observerHandlers.append(
             (
-                referenceNode,
+                referenceNode.GetID(),
                 referenceNode.AddObserver(
                     referenceNode.GetSegmentation().RepresentationModified, self.__onNodeModified
                 ),
@@ -56,19 +56,19 @@ class CorrelatedLabelMapVolume(ABC):
         )
         self._observerHandlers.append(
             (
-                referenceNode,
+                referenceNode.GetID(),
                 referenceNode.AddObserver(referenceNode.GetSegmentation().SegmentAdded, self.__onNodeModified),
             )
         )
         self._observerHandlers.append(
             (
-                referenceNode,
+                referenceNode.GetID(),
                 referenceNode.AddObserver(referenceNode.GetSegmentation().SegmentRemoved, self.__onNodeModified),
             )
         )
         self._observerHandlers.append(
             (
-                referenceNode,
+                referenceNode.GetID(),
                 referenceNode.AddObserver(referenceNode.GetSegmentation().SegmentModified, self.__onNodeModified),
             )
         )
@@ -101,8 +101,14 @@ class CorrelatedLabelMapVolume(ABC):
     def _cleanUp(self):
         """Clears current object's data."""
         for obj, tag in self._observerHandlers:
+            if isinstance(obj, str):  # is a node ID
+                obj = helpers.tryGetNode(obj)
+                if not obj:
+                    continue
+
             obj.RemoveObserver(tag)
 
+        self._observerHandlers.clear()
         self.__removeLabelMapNode()
         self._referenceNodeId = None
 

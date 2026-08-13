@@ -209,16 +209,16 @@ class DataPlotWidget(pg.QtWidgets.QWidget):
     def add_histogram_plot_x(self, graphData, xHistogram, yHistogram):
         color = QtGui.QColor(graphData.style.color[0], graphData.style.color[1], graphData.style.color[2], 80)
         brush = QtGui.QBrush(color)
-        curve = pg.PlotCurveItem(xHistogram, yHistogram, stepMode=True, fillLevel=0, brush=brush)
+        curve = pg.PlotCurveItem(xHistogram, yHistogram, stepMode="center", fillLevel=0, brush=brush)
         self.__xHistogramPlots.append(curve)
         self.__xHistogramPlotItem.addItem(item=curve)
 
     def add_histogram_plot_y(self, graphData, xHistogram, yHistogram):
         color = QtGui.QColor(graphData.style.color[0], graphData.style.color[1], graphData.style.color[2], 80)
         brush = QtGui.QBrush(color)
-        curve = pg.PlotCurveItem(xHistogram, yHistogram, stepMode=True, fillLevel=0, brush=brush)
+        curve = pg.PlotCurveItem(xHistogram, yHistogram, stepMode="center", fillLevel=0, brush=brush)
         self.__yHistogramPlots.append(curve)
-        curve.rotate(90)
+        curve.setRotation(90)
         self.__yHistogramPlotItem.addItem(item=curve)
 
     def add_curve_plot(self, curve_data):

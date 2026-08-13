@@ -148,6 +148,20 @@ def volume_ijk_to_ras(ijk, volume_node):
     return volume_ras_to_ijk(ijk, volume_node, as_int=False, inverse=True)
 
 
+def rasToIJK(volume, coordinatesInRAS):
+    ras_to_ijk = vtk.vtkMatrix4x4()
+    volume.GetRASToIJKMatrix(ras_to_ijk)
+    position_ijk = ras_to_ijk.MultiplyPoint([*coordinatesInRAS, 1])
+    return position_ijk[:3]
+
+
+def ijkToRAS(volume, ijkPosition):
+    ijk_to_ras = vtk.vtkMatrix4x4()
+    volume.GetIJKToRASMatrix(ijk_to_ras)
+    position_ras = ijk_to_ras.MultiplyPoint([*ijkPosition, 1])
+    return position_ras[:3]
+
+
 def getRoundedInteger(value):
     """
     :param value: Pint Quantity or a number

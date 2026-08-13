@@ -1,8 +1,9 @@
-import typing
-
 import ctk
 import qt
 import slicer
+import traceback
+import typing
+
 from ltrace.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
 from ltrace.slicer.widget.labels_table_widget import LabelsTableWidget
 from ltrace.slicer.helpers import (
@@ -13,6 +14,7 @@ from ltrace.slicer.helpers import (
 )
 from ltrace.slicer.node_attributes import ColorMapSelectable
 from ltrace.slicer.helpers import tryGetNode
+from ltrace.slicer.widget.proportions import ProportionsSection
 
 
 def setSlicesVisibilityIn3D(volume, visible):
@@ -50,8 +52,8 @@ def getSlicesVisibilityIn3D(volume):
 
 
 class ScalarVolumeWidget(qt.QWidget):
-    def __init__(self, isLabelMap, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent: qt.QWidget, isLabelMap, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
         self.isLabelMap = isLabelMap
         self.node = None
         self.browserID = None
@@ -61,17 +63,18 @@ class ScalarVolumeWidget(qt.QWidget):
         contentsFrameLayout = qt.QFormLayout(self)
         contentsFrameLayout.setLabelAlignment(qt.Qt.AlignRight)
         contentsFrameLayout.setContentsMargins(0, 0, 0, 0)
-
         self.volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
         self.sequenceModule = slicer.modules.sequences.createNewWidgetRepresentation()
 
         volumeDisplayWidget = self.volumesWidget.findChild(
             slicer.qSlicerScalarVolumeDisplayWidget, "qSlicerScalarVolumeDisplayWidget"
         )
-
         self.activeVolumeNodeSelector = self.volumesWidget.findChild(
-            slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector"
+            slicer.qMRMLSubjectHierarchyTreeView, "ActiveVolumeNodeSelector"
         )
+        assert (
+            self.activeVolumeNodeSelector is not None
+        ), "Could not find ActiveVolumeNodeSelector in the volume display widget"
 
         imageDimensionsHBoxLayout = qt.QHBoxLayout()
         self.imageDimensions1LineEdit = qt.QLineEdit()
@@ -157,6 +160,9 @@ class ScalarVolumeWidget(qt.QWidget):
         if self.isLabelMap:
             self.labelsTableWidget = LabelsTableWidget()
             contentsFrameLayout.addRow(self.labelsTableWidget)
+            contentsFrameLayout.addRow(" ", None)
+            self.propsSection = ProportionsSection()
+            contentsFrameLayout.addRow(self.propsSection)
         else:
             self.colorTableComboBox = volumeDisplayWidget.findChild(
                 slicer.qMRMLColorTableComboBox, "ColorTableComboBox"
@@ -188,7 +194,7 @@ class ScalarVolumeWidget(qt.QWidget):
             contentsFrameLayout.addRow(" ", None)
 
             self.histogramFrame = DisplayNodeHistogramFrame(
-                region_widget=self.windowLevelWidget, view_widget=self.thresholdWidget
+                parent=self, region_widget=self.windowLevelWidget, view_widget=self.thresholdWidget
             )
             self.histogramFrame.view_leeway = 0.05
             contentsFrameLayout.addRow(self.histogramFrame)
@@ -213,6 +219,7 @@ class ScalarVolumeWidget(qt.QWidget):
                 else:
                     self.labelsTableWidget.set_labelmap_node(node)
                     self.labelsTableWidget.visible = True
+                self.propsSection.setNode(node)
             else:
                 previousAutoWindowLevel = self.windowLevelWidget.autoWindowLevel
                 self.windowLevelWidget.setAutoWindowLevel(previousAutoWindowLevel)
@@ -233,7 +240,7 @@ class ScalarVolumeWidget(qt.QWidget):
 
             self.update()
         except Exception as e:
-            slicer.util.errorDisplay(f"Failed to set node: {e}")
+            slicer.util.errorDisplay(f"Failed to set node: {e}.\n{traceback.format_exc()}")
             self.node = None
             self.browserID = None
 

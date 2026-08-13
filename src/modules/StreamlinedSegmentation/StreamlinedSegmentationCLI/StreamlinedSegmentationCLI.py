@@ -79,7 +79,7 @@ def run_all_effects(lazy_data, lazy_data_host, multiple_thresholds, boundary_thr
         name: {"chunksizes": (min(128, segment_shape[0]), min(128, segment_shape[1]), min(128, segment_shape[2]))}
     }
 
-    task = dataset.to_netcdf(url, encoding=encoding, format="NETCDF4", compute=False)
+    task = dataset.to_netcdf(url, encoding=encoding, format="NETCDF4", compute=False, engine="h5netcdf")
 
     with DaskCLICallback():
         task.compute()

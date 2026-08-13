@@ -97,9 +97,7 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
         )
         inputFormLayout.addRow(self.fixedNodeInputWidget)
         reset_style_on_valid_node(self.fixedNodeInputWidget.mainInput)
-        self.fixedNodeInputWidget.segmentSelectionChanged.connect(
-            lambda: self.fixedNodeInputWidget.segmentListWidget.setStyleSheet("")
-        )
+        self.fixedNodeInputWidget.segmentSelectionChanged.connect(self.resetFixedNodeInputWidgetStylesheet)
 
         self.movingNodeInputWidget = SingleShotInputWidget(
             hideImage=True,
@@ -115,9 +113,7 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
         self.movingNodeInputWidget.onMainSelectedSignal.connect(self.movingNodeChanged)
         inputFormLayout.addRow(self.movingNodeInputWidget)
         reset_style_on_valid_node(self.movingNodeInputWidget.mainInput)
-        self.movingNodeInputWidget.segmentSelectionChanged.connect(
-            lambda: self.movingNodeInputWidget.segmentListWidget.setStyleSheet("")
-        )
+        self.movingNodeInputWidget.segmentSelectionChanged.connect(self.resetMovingNodeInputWidgetStylesheet)
 
         inputFormLayout.addRow(" ", None)
 
@@ -149,6 +145,12 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
         self.layout.addWidget(self.progressBar)
 
         self.layout.addStretch()
+
+    def resetFixedNodeInputWidgetStylesheet(self, segments: list):
+        self.fixedNodeInputWidget.segmentListWidget.setStyleSheet("")
+
+    def resetMovingNodeInputWidgetStylesheet(self, segments: list):
+        self.movingNodeInputWidget.segmentListWidget.setStyleSheet("")
 
     def movingNodeChanged(self, node):
         if node:

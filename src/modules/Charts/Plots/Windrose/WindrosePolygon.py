@@ -1,9 +1,9 @@
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import math
 
 
-class WindrosePolygonItem(QtGui.QGraphicsPolygonItem):
-    """QtGui.QGraphicsPolygonItem specialization to create a windrose bar polygon item"""
+class WindrosePolygonItem(QtWidgets.QGraphicsPolygonItem):
+    """QtWidgets.QGraphicsPolygonItem specialization to create a windrose bar polygon item"""
 
     def __init__(self, radius, alpha, *args, **kwargs):
         self.__radius = radius

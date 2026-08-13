@@ -141,8 +141,8 @@ if __name__ == "__main__":
 
     # Load MNIST Data
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train = np.expand_dims(x_train, -1).astype("float32") / 255
-    x_test = np.expand_dims(x_test, -1).astype("float32") / 255
+    x_train = np.expand_dims(x_train, -1).astype(np.float32) / 255
+    x_test = np.expand_dims(x_test, -1).astype(np.float32) / 255
 
     print("x_train shape:", x_train.shape)
     print("x_test shape:", x_test.shape)

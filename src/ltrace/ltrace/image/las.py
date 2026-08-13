@@ -12,7 +12,7 @@ from ltrace.slicer.helpers import (
     getVolumeNullValue,
     arrayFromVisibleSegmentsBinaryLabelmap,
     arrayPartsFromNode,
-    getWellAttributeFromNode,
+    getAttributeFromNodeOrReferencedNode,
 )
 
 
@@ -171,16 +171,14 @@ def extract_las_info_from_node(node):
     units_search = re.search(r"\[(.*?)\]", node.GetName())
     units_from_name = units_search.group(1) if units_search else "NONE"
     units = units_from_name
-
-    if node.GetAttribute(DLISImportConst.UNITS_TAG) is not None:
-        units = node.GetAttribute(DLISImportConst.UNITS_TAG)
+    units_attr = getAttributeFromNodeOrReferencedNode(node, DLISImportConst.UNITS_TAG)
+    if units_attr:
+        units = units_attr
         if units_from_name == "NONE":
-            logging.info(
-                f"Node name ({node.GetName()}) doesn't include its units ({node.GetAttribute(DLISImportConst.UNITS_TAG)}) in it."
-            )
-        elif node.GetAttribute(DLISImportConst.UNITS_TAG) != units_from_name:
+            logging.info(f"Node name ({node.GetName()}) doesn't include its units ({units_attr}) in it.")
+        elif units_attr != units_from_name:
             logging.warning(
-                f"Units informed in {node.GetName()} ({node.GetAttribute(DLISImportConst.UNITS_TAG)}) metadata are different from the units implied by the node name ({units_from_name}). {node.GetAttribute(DLISImportConst.UNITS_TAG)} will be considered as the units."
+                f"Units informed in {node.GetName()} ({units_attr}) metadata are different from the units implied by the node name ({units_from_name}). {units_attr} will be considered as the units."
             )
     else:
         units = units_from_name
@@ -191,15 +189,14 @@ def extract_las_info_from_node(node):
 
     #  well name
     well_from_node_name = node.GetName().split("_")[0] if len(node.GetName().split("_")) > 1 else ""
-    if getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) is not None:
-        las_info["well_name"] = getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)
+    well_attr = getAttributeFromNodeOrReferencedNode(node, DLISImportConst.WELL_NAME_TAG)
+    if well_attr:
+        las_info["well_name"] = well_attr
         if well_from_node_name == "":
-            logging.info(
-                f"Node name ({node.GetName()}) doesn't have the well name ({getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)}) prepended to it."
-            )
-        elif getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) != well_from_node_name:
+            logging.info(f"Node name ({node.GetName()}) doesn't have the well name ({well_attr}) prepended to it.")
+        elif well_attr != well_from_node_name:
             logging.warning(
-                f"Well name informed in {node.GetName()} ({getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)}) metadata is different from the well name implied by the node name ({well_from_node_name}). {getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)} will be considered as the well name."
+                f"Well name informed in {node.GetName()} ({well_attr}) metadata is different from the well name implied by the node name ({well_from_node_name}). {getAttributeFromNodeOrReferencedNode(node, DLISImportConst.WELL_NAME_TAG)} will be considered as the well name."
             )
     else:
         las_info["well_name"] = well_from_node_name
@@ -211,12 +208,11 @@ def extract_las_info_from_node(node):
         las_info["data_name"] = f"Proportions_{las_info['data_name'].split('_Proportions'   )[0]}"
 
     new_data_name = las_info["data_name"]
-    if getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG):
-        new_data_name = las_info["data_name"].replace(
-            getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG) + "_", ""
-        )
+    data_name_attr = getAttributeFromNodeOrReferencedNode(node, DLISImportConst.WELL_NAME_TAG)
+    if data_name_attr:
+        new_data_name = las_info["data_name"].replace(data_name_attr + "_", "")
     if len(new_data_name) == 0:
-        new_data_name = getWellAttributeFromNode(node, DLISImportConst.WELL_NAME_TAG)
+        new_data_name = data_name_attr
     las_info["data_name"] = new_data_name
 
     las_info["null_value"] = (

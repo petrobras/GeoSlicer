@@ -2,7 +2,13 @@
 
 O Registro serve para alinhar duas imagens de uma mesma amostra, muito utilizado em caso de lâminas (porém com outra interface) para quando se existe PP/PX. Em Micro CT geralmente utilizamos quando temos imagens da mesma amostra seca e saturada, ou quando a amostra passa por processos de limpeza.
 
-O alinhamento pode ser feito manualmente ou a partir de um algoritmo automático. Em casos simples, o automático deve ser capaz de resolver, mas em outros casos é interessante ajustar manualmente primeiro, deixando as amostras ao menos próxima da de referência e depois rodar o processo automático para fazer o ajuste fino.
+Há três métodos disponíveis, cada um adequado a uma situação:
+
+- **Registro Rápido** faz um alinhamento *global*: recupera uma rotação e translação arbitrárias, sem que os volumes precisem estar próximos de início. É específico para MicroCT, pois se apoia em suposições sobre as feições densas que as duas aquisições têm em comum. Use-o como primeira opção para pares de volumes de MicroCT (por exemplo, aquisições seca e saturada da mesma amostra).
+- **Registro Manual** é totalmente geral: você define a transformação à mão. Use-o quando os métodos automáticos não se aplicam, ou para aproximar os volumes o suficiente para o Registro Geral convergir.
+- **Registro Geral** (o registro automático baseado em BRAINSFit) não faz suposições sobre o conteúdo das imagens, mas só converge quando os volumes já estão *praticamente registrados*. Use-o para refinar um alinhamento já próximo, por exemplo, após um registro manual.
+
+Um fluxo comum é tentar o Registro Rápido primeiro, recorrer ao alinhamento manual aproximado quando ele não se aplica, e então rodar o Registro Geral para o ajuste final.
 
 ## Registro Manual
 
@@ -45,13 +51,13 @@ No entanto, a maneira mais intuitiva para se registrar a imagem é a partir dos 
 	Para comparar os volumes durante o registro, pode-se escolher um dos volumes como *foreground* e o outro como *background*, a partir da caixa de seleção no canto superior esquerdo de cada view. Ao selecionar esses dois volumes, a interface permite mudar a opacidade entre os dois pelo controle deslizante na esquerda da seleção, ou então segurando o botão Ctrl + clicando e arrastando o mouse de baixo para a cima dentro da janela de visualização. 
 	![foreground](../../assets/images/MicroCTForeground.png)
 
-## Registro Automático
+## Registro Geral
 
 ![Registro Automático](../../assets/images/MicroCTRegistroAutomatico.webp)
 
-Na interface do Registro Automático, deve-se selecionar um volume de referência e um volume que irá se mover até encontrar automaticamente a transformação necessária. As transformações serão aplicadas ao "*Moving volume*" para coincidir com o "*Fixed volume*", e o resultado será salvo em um novo volume transformado, preservando os volumes original e de referência.
+O Registro Geral é o registro automático baseado em BRAINSFit. Ele não faz suposições sobre o conteúdo das imagens, então funciona com qualquer par de volumes, mas só converge quando eles já estão *praticamente registrados*, sendo mais indicado para refinar um alinhamento produzido pelo Registro Manual. Selecione um volume de referência e um volume móvel, e a transformação é encontrada automaticamente. As transformações são aplicadas ao "*Moving volume*" para coincidir com o "*Fixed volume*", e o resultado é salvo em um novo volume transformado, preservando os volumes original e de referência.
 
-Os parâmetros utilizados no registro automático são:
+Os parâmetros utilizados no registro geral são:
 
 - *Sample Radius*: raio da amostra em milímetros. Esse raio será usado para criar uma máscara que identifica os dados relevantes para o registro.
 - *Sampling Fraction*: a fração dos voxels do Fixed volume que será usada para o registro. O valor deve ser maior que zero e menor ou igual a um. Valores mais altos aumentam o tempo de computação, mas podem resultar em maior precisão.
@@ -63,3 +69,17 @@ Os parâmetros utilizados no registro automático são:
   - *Rigid + Scale (7 DOF)*: pode fazer um outro tipo de transformação além das rígidas, ele pode aumentar ou diminuir a escala da imagem.
   - *Rigid + Scale + Skew (10 DOF)*: vai poder fazer além das transformações anteriores, um cisalhamento em diferentes direções.
   Essas fases estão em uma escala em que o primeiro tipo de transformações, com menos graus de liberdade, vai poder deformar menos a imagem original, e o último pode deformar com mais liberdade.
+
+## Registro Rápido
+
+O Registro Rápido alinha automaticamente dois volumes de MicroCT de uma mesma amostra (por exemplo, uma aquisição seca e outra saturada) casando a constelação de inclusões compactas e de alta atenuação ("blobs") visíveis em ambos. Ele recupera uma transformação rígida (rotação e translação) e é indicado para amostras que compartilham essas feições densas. Os dois volumes devem estar na mesma grade e no mesmo espaçamento de voxel.
+
+Selecione o *Fixed volume*, que permanece parado, e o *Moving volume*, que recebe a transformação de alinhamento, e clique em *Apply*. Uma barra de progresso informa a detecção de feições e o casamento, o que normalmente leva apenas alguns segundos.
+
+Em caso de sucesso:
+
+- Os volumes fixo e móvel alinhado são sobrepostos nas fatias e alternados automaticamente por transparência (a *Alignment preview*), permitindo confirmar o alinhamento: feições que permanecem no lugar enquanto a sobreposição se alterna indicam sucesso. Use *Pause*, *Show fixed* e *Show moving* para inspecionar cada volume isoladamente.
+- A matriz de transformação resultante (móvel → fixo) é exibida e pode ser copiada. A transformação é aplicada ao volume móvel de forma não destrutiva; use *Harden transform* para aplicá-la de forma permanente. Executar novamente substitui a transformação.
+
+!!! tip
+	Se o alinhamento automático falhar, o módulo explica o motivo (por exemplo, poucas feições detectadas ou nenhum alinhamento consistente encontrado) e oferece um atalho para o Registro Manual, que abre com o mesmo volume móvel já selecionado. Em casos difíceis, recomenda-se alinhar grosseiramente à mão primeiro e depois usar um método automático para o ajuste fino.

@@ -60,10 +60,10 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             # Volumes Modules
             (
                 "Volumes Pre-Processing",
-                ["CustomizedCropVolume", "CustomResampleScalarVolume", "FilteringTools"],
+                ["CropTool", "CustomResampleScalarVolume", "FilteringTools"],
             ),
             "MicrotomRemote",
-            ("Image Generation", ["MultiScale", "SinGANModule"]),
+            ("Image Generation", ["MultiScale", "RockSinGANModule"]),
             "MultiscalePostProcessing",
             ("Pore Network", ["PoreNetworkSimulation", "PoreNetworkExtractor"]),
             "BigImage",
@@ -113,6 +113,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["CustomizedSegmentEditor"],
                 modules["Segmenter"],
                 modules["SegmentInspector"],
+                modules["InteractiveSegmenter"],
             ]
         else:
             name = "Image Log"
@@ -120,6 +121,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["ImageLogSegmentEditor"],
                 modules["ImageLogInstanceSegmenter"],
                 modules["InstanceSegmenterEditor"],
+                modules["InteractiveSegmenter"],
             ]
 
         addMenu(

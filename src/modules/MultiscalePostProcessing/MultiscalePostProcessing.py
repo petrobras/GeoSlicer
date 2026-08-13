@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 import ctk
 import qt
 import slicer
@@ -14,6 +13,7 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLo
 from ltrace.slicer.data_utils import dataFrameToTableNode
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer.node_attributes import ImageLogDataSelectable, TableType
+from ltrace.slicer.widget.segment_list_widget import SegmentListWidget
 
 try:
     from Test.MultiscalePostProcessingTest import MultiscalePostProcessingTest
@@ -153,13 +153,10 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.porosityValueSpinBox.objectName = "porosityValueSpinBox"
         self.porosityValueSpinBox.setToolTip("Set the value of the segment classified as pore in the image.")
 
-        self.singleShotWidget = widgets.SingleShotInputWidget(
-            hideImage=True,
-            hideSoi=True,
-            hideCalcProp=False,
-            allowedInputNodes=["vtkMRMLLabelMapVolumeNode", "vtkMRMLSegmentationNode"],
-        )
-        self.singleShotWidget.segmentListGroup[1].itemChanged.connect(self.checkRunButtonState)
+        self.segmentListWidget = SegmentListWidget(checkable=True, hideBackground=True)
+        self.segmentListWidget.itemChanged.connect(self.checkRunButtonState)
+        self.segmentListWidget.hide()
+        self.segmentListWidget.objectName = "Segment List"
 
         self.poreValueLabel = qt.QLabel("Pore segment value:")
         self.poreSegmentLabel = qt.QLabel("Pore segment:")
@@ -183,7 +180,7 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
 
         parametersLayout = qt.QFormLayout(self.parametersSection)
         parametersLayout.addRow(self.poreValueLabel, self.porosityValueSpinBox)
-        parametersLayout.addRow(self.poreSegmentLabel, self.singleShotWidget.segmentListGroup[1])
+        parametersLayout.addRow(self.poreSegmentLabel, self.segmentListWidget)
         parametersLayout.addRow(self.topLabel, self.topSpinBox)
         parametersLayout.addRow(self.bottomLabel, self.bottomSpinBox)
 
@@ -235,7 +232,7 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.logic.generatePorosityPerRealization(
             mainNode,
             (
-                np.array(self.singleShotWidget.getSelectedSegments()) + 1
+                np.array(self.segmentListWidget.getCheckedIndexes()) + 1
                 if self.isSegment
                 else [self.porosityValueSpinBox.value]
             ),
@@ -258,7 +255,7 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         if node is not None:
             if (
                 isinstance(node, (slicer.vtkMRMLLabelMapVolumeNode, slicer.vtkMRMLSegmentationNode))
-                and not self.singleShotWidget.getSelectedSegments()
+                and not self.segmentListWidget.getCheckedIndexes()
             ):
                 return False
             return True
@@ -297,13 +294,9 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         if node:
             if type(node) is slicer.vtkMRMLScalarVolumeNode:
                 self.changePoreValueSelector(False)
-                self.singleShotWidget.mainInput.setCurrentNode(None)
+                self.segmentListWidget.setNode(None)
             else:
-                self.singleShotWidget.updateSegmentList(
-                    helpers.getSegmentList(
-                        node,
-                    )
-                )
+                self.segmentListWidget.setNode(node)
                 self.changePoreValueSelector(True)
 
             try:
@@ -323,7 +316,7 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
                 self.outputPrefix.text = "Porosity_per_realization_table"
 
         else:
-            self.singleShotWidget.mainInput.setCurrentNode(None)
+            self.segmentListWidget.setNode(None)
             self.changePoreValueSelector(True)
             self.outputPrefix.text = ""
             self.changeInputError(True)
@@ -339,12 +332,12 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.isSegment = isSegment
         if isSegment:
             self.poreSegmentLabel.show()
-            self.singleShotWidget.segmentListGroup[1].show()
+            self.segmentListWidget.show()
             self.porosityValueSpinBox.hide()
             self.poreValueLabel.hide()
         else:
             self.poreSegmentLabel.hide()
-            self.singleShotWidget.segmentListGroup[1].hide()
+            self.segmentListWidget.hide()
             self.porosityValueSpinBox.show()
             self.poreValueLabel.show()
 
@@ -461,12 +454,12 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
         outputPrefix: str,
         trainingImageNode=None,
     ) -> slicer.vtkMRMLTableNode:
-        browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(inputNode)
-        if browser_node:
-            sequence_node = browser_node.GetSequenceNode(inputNode)
+        browserNode = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(inputNode)
+        if browserNode:
+            sequenceNode = browserNode.GetSequenceNode(inputNode)
 
         height = slicer.util.arrayFromVolume(inputNode).shape[0]
-        width = sequence_node.GetNumberOfDataNodes() if browser_node else 1
+        width = sequenceNode.GetNumberOfDataNodes() if browserNode else 1
 
         headers = ["realization_" + str(x) for x in range(-1, width)]
         headers[0] = "DEPTH"
@@ -475,9 +468,9 @@ class MultiscalePostProcessingLogic(LTracePluginLogic):
         poreTable[:] = np.nan
         poreTable[:, 0] = np.linspace(topDepth, bottomDepth, height)
 
-        if browser_node:
-            for image in range(sequence_node.GetNumberOfDataNodes()):
-                poreArray = slicer.util.arrayFromVolume(sequence_node.GetNthDataNode(image))
+        if browserNode:
+            for image in range(sequenceNode.GetNumberOfDataNodes()):
+                poreArray = slicer.util.arrayFromVolume(sequenceNode.GetNthDataNode(image))
                 poreTable[: poreArray.shape[0], image + 1] = ((np.isin(poreArray, poreValues)).sum(axis=(1, 2))) / (
                     poreArray.shape[1] * poreArray.shape[2]
                 )

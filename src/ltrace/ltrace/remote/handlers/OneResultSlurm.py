@@ -12,6 +12,20 @@ import vtk
 
 from ltrace.remote.utils import argstring, sacct, SlurmJobStatusMixin
 from ltrace.remote import utils as slurm_utils
+from ltrace.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_DISCONNECTED,
+    JOB_EVENT_PROGRESS,
+    JOB_EVENT_START,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_DEPLOYING,
+    JOB_STATE_FAILED,
+    JOB_STATE_NOTCONNECTED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+)
 from ltrace.remote.jobs import JobManager
 
 import microtom
@@ -86,11 +100,12 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
         self.last_slurm_out_size = 0
 
         self.__action_map = {
-            "DEPLOY": self.deploy,
-            "START": self.start,
-            "PROGRESS": self.progress,
-            "CANCEL": self.cancel,
-            "COLLECT": self.collect,
+            JOB_EVENT_DEPLOY: self.deploy,
+            JOB_EVENT_DISCONNECTED: self.disconnected,
+            JOB_EVENT_START: self.start,
+            JOB_EVENT_PROGRESS: self.progress,
+            JOB_EVENT_CANCEL: self.cancel,
+            JOB_EVENT_COLLECT: self.collect,
         }
 
     def defineInputImageType(self, node, simulator: str):
@@ -159,8 +174,8 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
 
             self.command = f"microtom_{self.simulator} {s_args}"
 
-            caller.set_state(uid, "DEPLOYING", 0, message="Configuration done. Starting job deployment.")
-            caller.schedule(uid, "START")
+            caller.set_state(uid, JOB_STATE_DEPLOYING, 0, message="Configuration done. Starting job deployment.")
+            caller.schedule(uid, JOB_EVENT_START)
 
         except Exception as e:
             import traceback
@@ -172,7 +187,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
 
         try:
             if not self.command:
-                caller.set_state(uid, "FAILED", 0, message="Command not defined.")
+                caller.set_state(uid, JOB_STATE_FAILED, 0, message="Command not defined.")
                 return
 
             deploy_path = self.remote_dir / uid
@@ -189,7 +204,9 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             output = client.run_command(setup_cmd, verbose=True)
 
             if len(output["stderr"]) > 0:
-                caller.set_state(uid, "FAILED", 0, message="Failed to run command. Check the logs.", traceback=output)
+                caller.set_state(
+                    uid, JOB_STATE_FAILED, 0, message="Failed to run command. Check the logs.", traceback=output
+                )
                 return
 
             if self.simulator == "darcy_kabs_foam":
@@ -202,7 +219,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
 
             if not self.slurm_job_ids:
                 caller.set_state(
-                    uid, "FAILED", 100, end_time=tsnow, message="Execution failed to create a job on cluster."
+                    uid, JOB_STATE_FAILED, 100, end_time=tsnow, message="Execution failed to create a job on cluster."
                 )
                 return
 
@@ -220,11 +237,16 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             }
 
             caller.set_state(
-                uid, "PENDING", 0, message="Job submmited. Waiting for job to start.", start_time=tsnow, details=details
+                uid,
+                JOB_STATE_PENDING,
+                0,
+                message="Job submmited. Waiting for job to start.",
+                start_time=tsnow,
+                details=details,
             )
             caller.persist(uid)
 
-            caller.schedule(uid, "PROGRESS")
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
 
         except Exception as e:
             import traceback
@@ -232,7 +254,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             traceback.print_exc()
             caller.set_state(
                 uid,
-                "FAILED",
+                JOB_STATE_FAILED,
                 0,
                 start_time=tsnow,
                 end_time=tsnow,
@@ -250,7 +272,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                     if new_jobs:
                         submitted_jobs.extend(new_jobs)
 
-                    if job["state"] == "COMPLETED":
+                    if job["state"] == JOB_STATE_COMPLETED:
                         self.closed_jobs.add(job["jobid"])
 
             # Remove duplicates but keep order
@@ -260,7 +282,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                 if slurm_utils.all_failed(jobstatus):
                     caller.set_state(
                         uid,
-                        "FAILED",
+                        JOB_STATE_FAILED,
                         0,
                         message="Job(s) failed. Check the logs.",
                         end_time=datetime.now().timestamp(),
@@ -292,7 +314,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                     """job finished and got out of queue"""
                     caller.set_state(
                         uid,
-                        "COMPLETED",
+                        JOB_STATE_COMPLETED,
                         100,
                         message="Execution Completed.",
                         end_time=datetime.now().timestamp(),
@@ -302,11 +324,11 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                     caller.set_state(
                         uid, "FINISHING", 90, message="Finishing Execution. Waiting for results.", traceback=slurm_out
                     )
-                    caller.schedule(uid, "PROGRESS")
+                    caller.schedule(uid, JOB_EVENT_PROGRESS)
             else:
                 """If there is still jobs on the list, we just update their status"""
-                caller.set_state(uid, "RUNNING", 23, message="Execution in progress.")
-                caller.schedule(uid, "PROGRESS")
+                caller.set_state(uid, JOB_STATE_RUNNING, 23, message="Execution in progress.")
+                caller.schedule(uid, JOB_EVENT_PROGRESS)
 
         except Exception as e:
             # import traceback
@@ -316,7 +338,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
     def cancel(self, caller: JobManager, uid: str, client: Any = None):
         try:
             self.cleanup(caller, uid, client)
-            # caller.set_state(uid, "CANCELLED", 0, message="Execution Cancelled.")
+            # caller.set_state(uid, JOB_STATE_CANCELLED, 0, message="Execution Cancelled.")
         except:
             pass
 
@@ -338,7 +360,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             slurm_out = self.get_slurm_log(uid)
             caller.set_state(
                 uid,
-                "NOT CONNECTED",
+                JOB_STATE_NOTCONNECTED,
                 0,
                 message="Execution cannot be cancelled.",
                 traceback={"traceback": traceback, **slurm_out},

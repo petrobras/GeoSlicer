@@ -349,11 +349,13 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
             elif segmentName == "Macroporosity":
                 color = (1, 0, 0)
             else:
-                previousColors = colors[1:] if withBackground else colors
-                color = distinctipy.get_colors(1, previousColors)[0]
-
+                color = distinctipy.get_colors(1, colors)[0]
             colors.append(color)
+
+        # Ensure correct order
+        for i, (segmentName, color) in enumerate(zip(segmentNames, colors)):
             segmentation.AddEmptySegment(segmentName, segmentName, color)
+            segmentation.SetSegmentIndex(segmentName, i)
 
         self.logic.segmentNames = segmentNames
         self.logic.segmentColors = colors

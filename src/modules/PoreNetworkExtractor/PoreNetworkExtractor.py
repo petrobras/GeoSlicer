@@ -4,7 +4,6 @@ import os
 import shutil
 from pathlib import Path
 from typing import Tuple, Union
-from multiprocessing.shared_memory import SharedMemory
 
 import ctk
 import numpy as np
@@ -13,14 +12,29 @@ import slicer
 import slicer.util
 import vtk
 
-from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
+from ltrace.pore_networks.functions_extract import ExtractionNodesCreator, visualize_network
+from ltrace.pore_networks.simulation_parameters_node import (
+    parameter_node_to_dict,
+    save_dict_to_parameter_node,
+    EXTRACTOR_TYPE,
+    PNM_PARAMETER_TYPE_ATTR,
+)
 from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
+from ltrace.remote.slurm import calculate_slurm_parameters
 from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, slicer_is_in_developer_mode
+from ltrace.slicer_utils import (
+    LTracePlugin,
+    LTracePluginWidget,
+    LTracePluginLogic,
+    slicer_is_in_developer_mode,
+    getResourcePath,
+)
+from ltrace.utils.mmap_shared_memory import MmapSharedMemory
+from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
 
 try:
     from Test.PoreNetworkExtractorTest import PoreNetworkExtractorTest
@@ -59,7 +73,8 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
         super().__init__()
 
         self.text = "Parameters"
-        parametersFormLayout = qt.QFormLayout(self)
+
+        parametersFormLayout = qt.QFormLayout()
 
         # Execution mode
         optionsLayout = qt.QHBoxLayout()
@@ -73,11 +88,19 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
         parametersFormLayout.addRow("Execution Mode:", optionsLayout)
         parametersFormLayout.addRow(" ", None)
 
+        # Global Watershed Blur Info Help
+        watershedUsageHelp = HelpButton(
+            "Watershed blur options are used during multiscale extraction (when a porosity map is provided as input). \n\n"
+            "Note: For single-scale extractions where the input is already an individualized labeled pore "
+            "image (LabelMap), these parameters are bypassed."
+        )
+        parametersFormLayout.addRow("Watershed Blur Options:", watershedUsageHelp)
+
         # Watershed blur
         self.blurWidgets = []
 
         resolvedBlurHelp = HelpButton(
-            "Defines gaussian blur to be aplied to the resolved "
+            "Defines gaussian blur to be applied to the resolved "
             "phase image watershed. Values are voxel scaled, and "
             "don't depend on voxel dimension. Higher values lead "
             "to less pores on this phase."
@@ -87,16 +110,11 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
         hbox.addWidget(self.resolvedBlurEdit)
         hbox.addWidget(resolvedBlurHelp)
         self.resolvedBlurLabel = qt.QLabel("Resolved Watershed blur: ")
-        parametersFormLayout.addRow(
-            self.resolvedBlurLabel,
-            hbox,
-        )
-        self.blurWidgets.append(self.resolvedBlurEdit)
-        self.blurWidgets.append(resolvedBlurHelp)
-        self.blurWidgets.append(self.resolvedBlurLabel)
+        parametersFormLayout.addRow(self.resolvedBlurLabel, hbox)
+        self.blurWidgets.extend([self.resolvedBlurEdit, resolvedBlurHelp, self.resolvedBlurLabel])
 
         subscaleBlurHelp = HelpButton(
-            "Defines gaussian blur to be aplied to the subresolution "
+            "Defines gaussian blur to be applied to the subresolution "
             "phase image watershed. Values are voxel scaled, and "
             "don't depend on voxel dimension. Higher values lead "
             "to less pores on this phase."
@@ -105,17 +123,9 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
         hbox = qt.QHBoxLayout()
         hbox.addWidget(self.subscaleBlurEdit)
         hbox.addWidget(subscaleBlurHelp)
-        self.subscaleBlurLabel = qt.QLabel("Subresolution Watershed blur: ")
-        parametersFormLayout.addRow(
-            self.subscaleBlurLabel,
-            hbox,
-        )
-        self.blurWidgets.append(self.subscaleBlurEdit)
-        self.blurWidgets.append(subscaleBlurHelp)
-        self.blurWidgets.append(self.subscaleBlurLabel)
-
-        for widget in self.blurWidgets:
-            widget.visible = False
+        self.subscaleBlurLabel = qt.QLabel("Subres Watershed blur: ")
+        parametersFormLayout.addRow(self.subscaleBlurLabel, hbox)
+        self.blurWidgets.extend([self.subscaleBlurEdit, subscaleBlurHelp, self.subscaleBlurLabel])
 
         # Method selector
         self.methodSelector = qt.QComboBox()
@@ -127,10 +137,44 @@ class PoreNetworkExtractorParamsWidget(ctk.ctkCollapsibleButton):
 
         # Generate visualization
         self.generateVisualizationCheckbox = qt.QCheckBox()
+        self.generateVisualizationCheckbox.objectName = "Generate Visualization Checkbox"
         self.generateVisualizationCheckbox.setToolTip(
             "Enable to generate visualization model nodes. Note: For large projects, the generated model nodes may consume significant disk space when saved."
         )
         parametersFormLayout.addRow("Generate visualization:", self.generateVisualizationCheckbox)
+
+        slurmFrame = ctk.ctkCollapsibleButton()
+        slurmFrame.flat = True
+        slurmFrame.text = "Slurm"
+        slurmFormLayout = qt.QFormLayout(slurmFrame)
+        self.slurmCpusPerNode = ui.intParam(40)
+        slurmFormLayout.addRow("CPUs per node:", self.slurmCpusPerNode)
+        self.slurmMemoryPerNode = ui.intParam(350)
+        slurmFormLayout.addRow("Memory per node (GB):", self.slurmMemoryPerNode)
+
+        self.slurmJobsEdit = ui.intParam(4)
+        self.slurmJobsEdit.setEnabled(slicer_is_in_developer_mode())
+        slurmFormLayout.addRow("SLURM Jobs:", self.slurmJobsEdit)
+        self.slurmCoresEdit = ui.intParam(1)
+        self.slurmCoresEdit.setEnabled(slicer_is_in_developer_mode())
+        slurmFormLayout.addRow("SLURM Cores:", self.slurmCoresEdit)
+        self.slurmMemoryEdit = qt.QLineEdit("2GB")
+        self.slurmMemoryEdit.setEnabled(slicer_is_in_developer_mode())
+        slurmFormLayout.addRow("SLURM Memory:", self.slurmMemoryEdit)
+
+        parallelizationFormLayout = qt.QFormLayout()
+        self.divsEdit = ui.intParam(2)
+        self.chunkSizeLabel = qt.QLabel("0 MB")
+        parallelizationFormLayout.addRow("Divs:", self.divsEdit)
+        parallelizationFormLayout.addRow("Chunk size:", self.chunkSizeLabel)
+        parallelizationFormLayout.addRow(slurmFrame)
+
+        slurmFrame.setVisible(self.remoteQRadioButton.isChecked())
+        self.remoteQRadioButton.toggled.connect(lambda: slurmFrame.setVisible(self.remoteQRadioButton.isChecked()))
+
+        mainLayout = qt.QVBoxLayout(self)
+        mainLayout.addLayout(parametersFormLayout)
+        mainLayout.addLayout(parallelizationFormLayout)
 
 
 #
@@ -197,7 +241,47 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         # Parameters Area: parametersFormLayout
         #
         self.paramsWidget = PoreNetworkExtractorParamsWidget()
+        self.paramsWidget.divsEdit.editingFinished.connect(self.updateSlurmParams)
+        self.paramsWidget.slurmCpusPerNode.editingFinished.connect(self.updateSlurmParams)
+        self.paramsWidget.slurmMemoryPerNode.editingFinished.connect(self.updateSlurmParams)
         self.layout.addWidget(self.paramsWidget)
+
+        #
+        # Parameters Management Area (Load and Save together) - Placed inside parameters collapsible
+        #
+        self.loadParamsLayout = LoadParamsLayout(EXTRACTOR_TYPE, self.onParameterInputLoad)
+        self.parameterInputLoadCollapsible = self.loadParamsLayout.collapsible
+        self.parameterInputWidget = self.loadParamsLayout.parameterInputWidget
+        self.paramsWidget.layout().insertLayout(0, self.loadParamsLayout)
+
+        self.saveParamsLayout = SaveParamsLayout("extraction_input_parameters", self.onParameterInputSave)
+        self.parameterInputLineEdit = self.saveParamsLayout.lineEdit
+        self.paramsWidget.layout().insertLayout(1, self.saveParamsLayout)
+
+        #
+        # Utilities Area
+        #
+        self.utilitiesCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.utilitiesCollapsibleButton.text = "Utilities"
+        self.utilitiesCollapsibleButton.collapsed = True
+        self.layout.addWidget(self.utilitiesCollapsibleButton)
+        utilitiesLayout = qt.QVBoxLayout(self.utilitiesCollapsibleButton)
+
+        generateHintLabel = qt.QLabel("Use this utility to generate the visualization of a pore network from a table.")
+        utilitiesLayout.addWidget(generateHintLabel)
+
+        self.poreTableSelector = ui.hierarchyVolumeInput(nodeTypes=["vtkMRMLTableNode"])
+        self.poreTableSelector.addNodeAttributeIncludeFilter("table_type", "pore_table")
+        self.poreTableSelector.setToolTip("Select a pore network table to generate its visualization.")
+        self.poreTableSelector.objectName = "Pore Table Selector"
+        generateFormLayout = qt.QFormLayout()
+        generateFormLayout.addRow("Pore Table:", self.poreTableSelector)
+        utilitiesLayout.addLayout(generateFormLayout)
+
+        self.generateVisualizationButton = ui.ApplyButton(tooltip="Generate the pore network visualization.")
+        self.generateVisualizationButton.objectName = "Generate Visualization Button"
+        self.generateVisualizationButton.text = "Generate Visualization"
+        utilitiesLayout.addWidget(self.generateVisualizationButton)
 
         #
         # Output Area: outputFormLayout
@@ -214,9 +298,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         self.outputPrefix.setText("")
         self.outputPrefix.objectName = "Output Prefix"
 
-        #
         # Extract Button
-        #
         self.extractButton = ui.ApplyButton(tooltip="Extract the pore-throat network.")
         self.extractButton.objectName = "Apply Button"
 
@@ -243,6 +325,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         #
         self.extractButton.clicked.connect(self.onExtractButton)
         self.cancelButton.clicked.connect(self.onCancelButton)
+        self.generateVisualizationButton.clicked.connect(self.onGenerateVisualizationButton)
         self.onInputSelectorChange(None)
 
         # Add vertical spacer
@@ -261,6 +344,49 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         else:
             self.showJobs()
 
+    def updateSlurmParams(self):
+        # Read volume node
+        currentNode = self.inputSelector.currentNode()
+        if currentNode is None:
+            return
+        volumeArray = slicer.util.arrayFromVolume(currentNode)
+        volumeShape = np.array(volumeArray.shape)
+
+        # Set constants
+        numberOfCpusPerNode = int(self.paramsWidget.slurmCpusPerNode.text)
+        maximumMemoryPerNodeGb = int(self.paramsWidget.slurmMemoryPerNode.text)
+
+        # Estimate required resources
+        divs = int(self.paramsWidget.divsEdit.text)
+        divs = max(1, divs)
+
+        # Calculate using the standalone function
+        slurm_params = calculate_slurm_parameters(
+            volume_shape=volumeShape,
+            itemsize=volumeArray.itemsize,
+            divs=divs,
+            cpus_per_node=numberOfCpusPerNode,
+            max_memory_per_node_gb=maximumMemoryPerNodeGb,
+        )
+
+        # Extract results
+        bytesPerChunk = slurm_params["bytes_per_chunk"]
+        slurmJobs = slurm_params["slurm_jobs"]
+        slurmCores = slurm_params["slurm_cores"]
+        slurmMemory = slurm_params["slurm_memory_gb"]
+
+        # Update parameters
+        if slurmMemory > maximumMemoryPerNodeGb:
+            self.paramsWidget.slurmMemoryEdit.setStyleSheet(":enabled {color: #600000;} :disabled {color: #600000;}")
+            slurmMemory = maximumMemoryPerNodeGb
+        else:
+            self.paramsWidget.slurmMemoryEdit.setStyleSheet("")
+
+        self.paramsWidget.chunkSizeLabel.text = f"{int(bytesPerChunk // 10**6)} MB"
+        self.paramsWidget.slurmJobsEdit.text = str(slurmJobs)
+        self.paramsWidget.slurmCoresEdit.text = str(slurmCores)
+        self.paramsWidget.slurmMemoryEdit.text = f"{slurmMemory}GB"
+
     def onExtractButton(self):
         localMode = self.paramsWidget.localQRadioButton.isChecked()
         if localMode:
@@ -268,11 +394,22 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
             self.cancelButton.setEnabled(True)
             self.warningsLabel.setText("")
             self.warningsLabel.setVisible(False)
+            parallel_params = {
+                "divs": int(self.paramsWidget.divsEdit.text),
+            }
+        else:
+            parallel_params = {
+                "divs": int(self.paramsWidget.divsEdit.text),
+                "slurm_jobs": int(self.paramsWidget.slurmJobsEdit.text),
+                "slurm_cores": int(self.paramsWidget.slurmCoresEdit.text),
+                "slurm_memory": self.paramsWidget.slurmMemoryEdit.text,
+            }
 
         watershed_blur = {
-            1: float(self.paramsWidget.resolvedBlurEdit.text),
-            2: float(self.paramsWidget.subscaleBlurEdit.text),
+            "1": float(self.paramsWidget.resolvedBlurEdit.text),
+            "2": float(self.paramsWidget.subscaleBlurEdit.text),
         }
+
         self.logic.extract(
             self.inputSelector.currentNode(),
             self.poresSelector.currentNode(),
@@ -281,6 +418,7 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
             self.paramsWidget.methodSelector.currentText,
             watershed_blur,
             localMode,
+            parallel_params,
         )
 
     def setWarning(self, message):
@@ -302,18 +440,16 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
                 self.poresSelectorHelp.visible = False
                 self.poresSelector.setCurrentNode(None)
                 self.extractButton.setEnabled(True)
-                for widget in self.paramsWidget.blurWidgets:
-                    widget.visible = False
             else:
                 self.poresSelectorLabel.visible = True
                 self.poresSelector.visible = True
                 self.poresSelectorHelp.visible = True
                 self.poresSelector.setCurrentNode(None)
                 self.extractButton.setEnabled(True)
-                for widget in self.paramsWidget.blurWidgets:
-                    widget.visible = True
         else:
             self.outputPrefix.setText("")
+
+        self.updateSlurmParams()
 
     def evalPoreNode(self, node):
         isLabelMap = node.IsA("vtkMRMLLabelMapVolumeNode")
@@ -357,6 +493,139 @@ class PoreNetworkExtractorWidget(LTracePluginWidget):
         if msg.exec_() == qt.QMessageBox.Yes:
             slicer.modules.AppContextInstance.rightDrawer.show(1)
 
+    def onGenerateVisualizationButton(self):
+        poreTableNode = self.poreTableSelector.currentNode()
+        if not poreTableNode:
+            slicer.util.warningDisplay("Please select a Pore Table to generate visualization.")
+            return
+
+        # Get throat table node
+        throatTableNodeId = poreTableNode.GetNodeReferenceID("throat_table")
+        if not throatTableNodeId:
+            slicer.util.errorDisplay("Selected Pore Table does not reference a Throat Table.")
+            return
+        throatTableNode = slicer.mrmlScene.GetNodeByID(throatTableNodeId)
+        if not throatTableNode:
+            slicer.util.errorDisplay("Referenced Throat Table not found in the scene.")
+            return
+
+        # Generate metadata
+        try:
+            spacing_str = [
+                poreTableNode.GetAttribute("x_spacing"),
+                poreTableNode.GetAttribute("y_spacing"),
+                poreTableNode.GetAttribute("z_spacing"),
+            ]
+            origin_str = (
+                poreTableNode.GetAttribute("origin").split(";")
+                if poreTableNode.GetAttribute("origin")
+                else ["0.0", "0.0", "0.0"]
+            )
+
+            spacing = [float(s) for s in spacing_str]
+            origin = [float(o) for o in origin_str]
+
+            watershedNodeId = poreTableNode.GetNodeReferenceID("watershed")
+            if not watershedNodeId:
+                slicer.util.errorDisplay("Referenced Watershed Volume not found. Cannot determine geometry.")
+                return
+
+            watershedNode = slicer.mrmlScene.GetNodeByID(watershedNodeId)
+            if not watershedNode:
+                slicer.util.errorDisplay("Referenced Watershed Volume not found in the scene.")
+                return
+
+            bounds = [0.0] * 6
+            watershedNode.GetBounds(bounds)
+
+            ijkToRasMatrix = vtk.vtkMatrix4x4()
+            watershedNode.GetIJKToRASDirectionMatrix(ijkToRasMatrix)
+            ijktorasmatrix = slicer.util.arrayFromVTKMatrix(ijkToRasMatrix).tolist()
+
+            metadata = {
+                "spacing": spacing,
+                "origin": origin,
+                "ijktorasmatrix": ijktorasmatrix,
+                "bounds": bounds,
+            }
+        except (ValueError, TypeError, json.JSONDecodeError) as e:
+            slicer.util.errorDisplay(f"Failed to parse metadata from Pore Table attributes: {e}")
+            return
+
+        # Generate visualization
+        try:
+            model_nodes = visualize_network(poreTableNode, throatTableNode, metadata, prefix="")
+            if model_nodes:
+                folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+                # Find the parent of the poreTableNode to place the models alongside
+                pore_table_item_id = folderTree.GetItemByDataNode(poreTableNode)
+                parent_item_id = folderTree.GetItemParent(pore_table_item_id)
+
+                # Create a subfolder for the visualization models
+                visualization_folder_name = f"{poreTableNode.GetName()}_Visualization"
+                visualization_folder_item_id = folderTree.CreateFolderItem(parent_item_id, visualization_folder_name)
+
+                for node_type in model_nodes:
+                    for node in model_nodes[node_type]:
+                        node_item_id = folderTree.GetItemByDataNode(node)
+                        folderTree.SetItemParent(node_item_id, visualization_folder_item_id)
+                        # Make them visible
+                        node.SetDisplayVisibility(True)
+        except Exception as e:
+            slicer.util.errorDisplay(f"Error generating Pore Network Visualization: {e}")
+
+    def getParams(self):
+        parameters_dict = {
+            "execution_mode": "Local" if self.paramsWidget.localQRadioButton.isChecked() else "Remote",
+            "watershed_blur": {
+                "1": float(self.paramsWidget.resolvedBlurEdit.text),
+                "2": float(self.paramsWidget.subscaleBlurEdit.text),
+            },
+            "method": self.paramsWidget.methodSelector.currentText,
+            "generate_visualization": self.paramsWidget.generateVisualizationCheckbox.isChecked(),
+            "divs": int(self.paramsWidget.divsEdit.text),
+        }
+        return parameters_dict
+
+    def setParams(self, params):
+        if "execution_mode" in params:
+            if params["execution_mode"] == "Local":
+                self.paramsWidget.localQRadioButton.setChecked(True)
+            else:
+                self.paramsWidget.remoteQRadioButton.setChecked(True)
+
+        wb_dict = params["watershed_blur"]
+        if "1" in wb_dict:
+            self.paramsWidget.resolvedBlurEdit.text = str(wb_dict["1"])
+        if "2" in wb_dict:
+            self.paramsWidget.subscaleBlurEdit.text = str(wb_dict["2"])
+
+        if "method" in params:
+            self.paramsWidget.methodSelector.setCurrentText(params["method"])
+        if "generate_visualization" in params:
+            self.paramsWidget.generateVisualizationCheckbox.setChecked(params["generate_visualization"])
+        if "divs" in params:
+            self.paramsWidget.divsEdit.text = str(params["divs"])
+
+        self.updateSlurmParams()
+
+    def onParameterInputLoad(self):
+        selectedNode = self.parameterInputWidget.currentNode()
+        if selectedNode:
+            parameters_dict = parameter_node_to_dict(selectedNode)
+            self.setParams(parameters_dict)
+            self.parameterInputLoadCollapsible.collapsed = True
+
+    def onParameterInputSave(self):
+        parameterValues = self.getParams()
+        currentNode = self.inputSelector.currentNode()
+        parameterNode = save_dict_to_parameter_node(
+            parameterValues, self.parameterInputLineEdit.text, currentNode, node_type=EXTRACTOR_TYPE
+        )
+        slicer.app.applicationLogic().GetSelectionNode().SetActiveTableID(parameterNode.GetID())
+        slicer.app.applicationLogic().PropagateTableSelection()
+
 
 #
 # PoreNetworkExtractorLogic
@@ -385,6 +654,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         method: str,
         watershed_blur: list,
         localMode: bool,
+        parallel_params: dict = {},
     ) -> Union[Tuple[slicer.vtkMRMLTableNode, slicer.vtkMRMLTableNode], bool]:
         self.cwd = Path(slicer.util.tempDirectory())
         self.visualization = visualization
@@ -429,54 +699,27 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         if self.params["is_multiscale"] is False:
             self.scalar_memory = None
             label_array = slicer.util.arrayFromVolume(inputVolumeNode)
-            self.label_memory = SharedMemory(
-                create=True,
-                size=label_array.size * label_array.dtype.itemsize,
-            )
+            self.label_memory = MmapSharedMemory.create_array(label_array)
             label_dtype = label_array.dtype.str
             label_shape = str(label_array.shape)
-            shared_label_array = np.ndarray(
-                tuple(int(i) for i in label_shape[1:-1].split(", ")),
-                dtype=label_dtype,
-                buffer=self.label_memory.buf,
-            )
-            shared_label_array[:, :, :] = label_array
             self.params["label_dtype"] = label_dtype
             self.params["label_shape"] = label_shape
             cliParams["label"] = self.label_memory.name
 
         elif self.params["is_multiscale"] is True:
             scalar_array = slicer.util.arrayFromVolume(inputVolumeNode)
-            self.scalar_memory = SharedMemory(
-                create=True,
-                size=scalar_array.size * scalar_array.dtype.itemsize,
-            )
+            self.scalar_memory = MmapSharedMemory.create_array(scalar_array)
             scalar_dtype = scalar_array.dtype.str
             scalar_shape = str(scalar_array.shape)
-            shared_scalar_array = np.ndarray(
-                tuple(int(i) for i in scalar_shape[1:-1].split(", ")),
-                dtype=scalar_dtype,
-                buffer=self.scalar_memory.buf,
-            )
-            shared_scalar_array[:, :, :] = scalar_array
             self.params["scalar_dtype"] = scalar_dtype
             self.params["scalar_shape"] = scalar_shape
             cliParams["scalar"] = self.scalar_memory.name
 
             if inputLabelMap:
                 label_array = slicer.util.arrayFromVolume(inputLabelMap)
-                self.label_memory = SharedMemory(
-                    create=True,
-                    size=label_array.size * label_array.dtype.itemsize,
-                )
+                self.label_memory = MmapSharedMemory.create_array(label_array)
                 label_dtype = label_array.dtype.str
                 label_shape = str(label_array.shape)
-                shared_label_array = np.ndarray(
-                    tuple(int(i) for i in label_shape[1:-1].split(", ")),
-                    dtype=label_dtype,
-                    buffer=self.label_memory.buf,
-                )
-                shared_label_array[:, :, :] = label_array
                 self.params["label_dtype"] = label_dtype
                 self.params["label_shape"] = label_shape
                 cliParams["label"] = self.label_memory.name
@@ -484,12 +727,10 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
                 self.label_memory = None
 
         if localMode:
-            self.semaphore_shm = SharedMemory(
-                create=True,
-                size=1,
-            )
+            self.semaphore_shm = MmapSharedMemory.create(1)
             self.semaphore_shm.buf[0] = 0
             cliParams["semaphore"] = self.semaphore_shm.name
+            cliParams["divs"] = parallel_params["divs"]
             with open(str(self.cwd / "extractor_params_dict.json"), "w") as file:
                 json.dump(self.params, file)
             self.cliNode = slicer.cli.run(slicer.modules.porenetworkextractorcli, None, cliParams)
@@ -498,7 +739,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
         else:
             job_name = f"PNM Extract: {self.prefix}"
             self.handler = PoreNetworkExtractorHandler(
-                self.inputNodeID, self.labelNodeID, self.visualization, self.params
+                self.inputNodeID, self.labelNodeID, self.visualization, self.params, parallel_params
             )
             success = slicer.modules.RemoteServiceInstance.cli.run(self.handler, name=job_name, job_type="pnmextractor")
             if success:
@@ -520,7 +761,7 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             with open(str(self.cwd / "shm_info.txt"), "r", encoding="utf-8") as f:
                 watershed_output_name = f.readline().strip()
                 watershed_output_shape = tuple(map(int, f.readline().split()))
-            self.watershed_output_memory = SharedMemory(watershed_output_name)
+            self.watershed_output_memory = MmapSharedMemory.from_file(watershed_output_name)
             self.watershed_output_shape = watershed_output_shape
             self.semaphore_shm.buf[0] = 2
 

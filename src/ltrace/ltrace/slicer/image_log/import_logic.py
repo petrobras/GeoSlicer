@@ -17,6 +17,7 @@ from ltrace.lmath.filtering import DistributionFilter
 from ltrace.ocr import parse_pdf
 from ltrace.slicer import helpers
 from ltrace.slicer.helpers import getVolumeNullValue
+from ltrace.slicer.metadata import Metadata
 from ltrace.slicer.node_attributes import (
     ImageLogDataSelectable,
     TableType,
@@ -883,6 +884,16 @@ def add_volume_from_data(
     fr = frame if frame != "" else None
     volume_node.SetAttribute(FRAME_TAG, fr)
 
+    # After complete migration to the new attributes system, the corresponding SetAttribute calls above can be removed
+    Metadata(volume_node)[WELL_NAME_TAG] = well_name
+    if origin:
+        Metadata(volume_node)[ORIGIN_TAG] = str(origin)
+    Metadata(volume_node)[LOGICAL_FILE_TAG] = folder or ""
+    if fr:
+        Metadata(volume_node)[FRAME_TAG] = fr
+    if volume_units:
+        Metadata(volume_node)[UNITS_TAG] = volume_units
+
     volume_node.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
     codedUnit = slicer.vtkCodedEntry()
     codedUnit.SetCodeValue(units)
@@ -1036,6 +1047,16 @@ def create_depth_curves_table(
     fr = frame if frame != "" else None
     table_node.SetAttribute(FRAME_TAG, fr)
 
+    # After complete migration to the new attributes system, the corresponding SetAttribute calls above can be removed
+    Metadata(table_node)[WELL_NAME_TAG] = well_name
+    if origin:
+        Metadata(table_node)[ORIGIN_TAG] = str(origin)
+    Metadata(table_node)[LOGICAL_FILE_TAG] = folder or ""
+    if fr:
+        Metadata(table_node)[FRAME_TAG] = fr
+    if data_units:
+        Metadata(table_node)[UNITS_TAG] = data_units
+
     subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     volume_item_id = subject_hierarchy.CreateItem(root_id, table_node)
     subject_hierarchy.SetItemAttribute(volume_item_id, SCALAR_VOLUME_TYPE, WELL_PROFILE_TAG)
@@ -1104,6 +1125,16 @@ def create_depth_curves_table_from_image(
 
     data_units = units if units != "" else None
     table_node.SetAttribute(UNITS_TAG, data_units)
+
+    # After complete migration to the new attributes system, the corresponding SetAttribute calls above can be removed
+    Metadata(table_node)[WELL_NAME_TAG] = well_name
+    if origin:
+        Metadata(table_node)[ORIGIN_TAG] = str(origin)
+    Metadata(table_node)[LOGICAL_FILE_TAG] = folder or ""
+    if fr:
+        Metadata(table_node)[FRAME_TAG] = fr
+    if data_units:
+        Metadata(table_node)[UNITS_TAG] = data_units
 
     table_node.SetAttribute(TableType.name(), TableType.HISTOGRAM_IN_DEPTH.value)
     table_node.SetAttribute(TableDataTypeAttribute.name(), TableDataTypeAttribute.IMAGE_2D.value)

@@ -1,7 +1,7 @@
 from ..BasePlotWidget import BasePlotWidget
 from ltrace.slicer.graph_data import NodeGraphData
 
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
 from ltrace.slicer.widget.custom_color_button import CustomColorButton
@@ -36,15 +36,15 @@ class WindroseWidget(BasePlotWidget):
 
     def setupUi(self):
         """Initialize widgets"""
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
 
         # Data table widget
-        self.__tableWidget = QtGui.QTableWidget()
+        self.__tableWidget = QtWidgets.QTableWidget()
         self.__tableWidget.setColumnCount(2)
         self.__tableWidget.setRowCount(0)
         self.__tableWidget.verticalHeader().setHidden(True)
-        self.__tableWidget.horizontalHeader().setResizeMode(0, QtGui.QHeaderView.Stretch)
-        self.__tableWidget.horizontalHeader().setResizeMode(1, QtGui.QHeaderView.ResizeToContents)
+        self.__tableWidget.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.__tableWidget.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.__tableWidget.setHorizontalHeaderLabels(["Data", "Options"])
         self.__tableWidget.setShowGrid(False)
         self.__tableWidget.setAlternatingRowColors(True)
@@ -61,12 +61,12 @@ class WindroseWidget(BasePlotWidget):
         layout.addWidget(self.__graphicsLayoutWidget, 10)
 
         # Plot options
-        optionLayout = QtGui.QFormLayout()
-        self.__moduleParameterComboBox = QtGui.QComboBox()
-        self.__semiCirclePlotCheckBox = QtGui.QCheckBox()
+        optionLayout = QtWidgets.QFormLayout()
+        self.__moduleParameterComboBox = QtWidgets.QComboBox()
+        self.__semiCirclePlotCheckBox = QtWidgets.QCheckBox()
         self.__semiCirclePlotCheckBox.setChecked(True)
 
-        self.__sectionAngleSpinBox = QtGui.QSpinBox()
+        self.__sectionAngleSpinBox = QtWidgets.QSpinBox()
         self.__sectionAngleSpinBox.setRange(1, 360)
         self.__sectionAngleSpinBox.setValue(2)
 
@@ -184,14 +184,14 @@ class WindroseWidget(BasePlotWidget):
 
         self.__updateParameterComboBox()
 
-    def __updateTableVisibleButton(self, button: QtGui.QPushButton, graphData: NodeGraphData):
+    def __updateTableVisibleButton(self, button: QtWidgets.QPushButton, graphData: NodeGraphData):
         """Updates icon of the related visible button (from the table widget)."""
         if graphData.visible is True:
             button.setIcon(QtGui.QIcon(str(VISIBLE_ICON_FILE_PATH)))
         else:
             button.setIcon(QtGui.QIcon(str(NOT_VISIBLE_ICON_FILE_PATH)))
 
-    def __toggleGraphVisible(self, button: QtGui.QPushButton, graphData: NodeGraphData):
+    def __toggleGraphVisible(self, button: QtWidgets.QPushButton, graphData: NodeGraphData):
         """Updates visible state from GraphData object."""
         graphData.visible = not graphData.visible
         self.__updateTableVisibleButton(button, graphData)
@@ -202,10 +202,10 @@ class WindroseWidget(BasePlotWidget):
         self.__tableWidget.setRowCount(lastRowIndex + 1)
 
         # Options widget
-        optionsWidget = QtGui.QWidget()
+        optionsWidget = QtWidgets.QWidget()
 
         # Visible toggle button
-        visibleButton = QtGui.QPushButton("")
+        visibleButton = QtWidgets.QPushButton("")
         self.__updateTableVisibleButton(visibleButton, graphData)
         visibleButton.setFixedSize(26, 26)
         visibleButton.setIconSize(QtCore.QSize(20, 20))
@@ -219,15 +219,15 @@ class WindroseWidget(BasePlotWidget):
         editButton.setDefault(False)
 
         # Remove button
-        removeButton = QtGui.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
+        removeButton = QtWidgets.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
         removeButton.setFixedSize(26, 26)
         removeButton.setIconSize(QtCore.QSize(20, 20))
         removeButton.setAutoDefault(False)
         removeButton.setDefault(False)
 
         # Options widget layout
-        optionsLayout = QtGui.QHBoxLayout()
-        optionsLayout.setSizeConstraint(QtGui.QLayout.SetMinimumSize)
+        optionsLayout = QtWidgets.QHBoxLayout()
+        optionsLayout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinimumSize)
         optionsLayout.setSpacing(5)
         optionsLayout.addWidget(visibleButton)
         optionsLayout.addWidget(editButton)
@@ -241,8 +241,8 @@ class WindroseWidget(BasePlotWidget):
             lambda color, symbol, size: self.__onPlotStyleChanged(graphData, color, symbol, size)
         )
 
-        nameItem = QtGui.QTableWidgetItem(graphData.name)
-        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemIsEditable)
+        nameItem = QtWidgets.QTableWidgetItem(graphData.name)
+        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
         self.__tableWidget.setItem(lastRowIndex, 0, nameItem)
         self.__tableWidget.setCellWidget(lastRowIndex, 1, optionsWidget)
 
@@ -269,7 +269,7 @@ class WindroseWidget(BasePlotWidget):
         """
         circleRange = np.linspace(0, radius, 8)
         for r in circleRange:
-            circle = pg.QtGui.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
+            circle = pg.QtWidgets.QGraphicsEllipseItem(-r, -r, r * 2, r * 2)
             pen = pg.mkPen(0.2)
             pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             circle.setPen(pen)
@@ -284,7 +284,7 @@ class WindroseWidget(BasePlotWidget):
             y1 = 0.0
             x2 = math.cos(math.radians(angle)) * radius
             y2 = math.sin(math.radians(angle)) * radius
-            line = pg.QtGui.QGraphicsLineItem(x1, y1, x2, y2)
+            line = pg.QtWidgets.QGraphicsLineItem(x1, y1, x2, y2)
             pen = pg.mkPen(0.2)
             pen.setStyle(QtCore.Qt.PenStyle.DashLine)
             line.setPen(pen)

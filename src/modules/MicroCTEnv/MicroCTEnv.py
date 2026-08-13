@@ -50,15 +50,17 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             "PoreNetworkVisualization",
             "PoreNetworkKrelEda",
             "PoreNetworkProduction",
+            "PoreNetworkRemoteWorkflow",
         ]
         if slicer_is_in_developer_mode():
+            pore_network_modules.append("PoreNetworkWorkflow")
             pore_network_modules.append("PoreNetworkCompare")
 
         modules = [
             "CustomizedData",
             "MicroCTLoader",
             "MicroCTExport",
-            "CustomizedCropVolume",
+            "CropTool",
             "FilteringTools",
             "CustomResampleScalarVolume",
             self.setupSegmentation,
@@ -74,6 +76,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             (
                 "Register",
                 [
+                    "FastRegistration",
                     "MicroCTTransforms",
                     "CTAutoRegistration",
                 ],

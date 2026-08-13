@@ -11,7 +11,13 @@ import slicer
 import vtk
 from scipy.ndimage import zoom
 
-from ltrace.slicer.helpers import triggerNodeModified, highlight_error, reset_style_on_valid_text
+from ltrace.slicer.helpers import (
+    triggerNodeModified,
+    highlight_error,
+    reset_style_on_valid_text,
+    copy_hierarchy_attributes,
+)
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
@@ -27,7 +33,7 @@ class CTAutoRegistration(LTracePlugin):
 
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
-        self.parent.title = "MicroCT Auto Registration"
+        self.parent.title = "MicroCT General Registration"
         self.parent.categories = ["Registration", "MicroCT"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysical Solutions"]
@@ -346,6 +352,9 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
 
         # Output volume
         self.outputVolume = slicer.modules.volumes.logic().CloneVolume(self.movingVolume, "Cloned volume")
+        """ FIXME MUSA-150 - Should we copy attributes by default?
+        copy_metadata(self.movingVolume, self.outputVolume)
+        copy_hierarchy_attributes(self.movingVolume, self.outputVolume)"""
         self.outputVolume.HideFromEditorsOn()
         self.outputVolume.SetName(p.outputPrefix + " - Registered volume")
         subjectHierarchyNode.SetItemParent(
@@ -541,6 +550,11 @@ class CTAutoRegistrationLogic(LTracePluginLogic):
         subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volume))
         subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(newVolume), itemParent)
+
+        """ FIXME MUSA-150 - Should we copy attributes by default? And references?
+        copy_metadata(self.movingVolume, self.outputVolume)
+        copy_hierarchy_attributes(self.movingVolume, self.outputVolume)
+        self.outputVolume.CopyReferences(self.movingVolume) """
 
         return newVolume
 

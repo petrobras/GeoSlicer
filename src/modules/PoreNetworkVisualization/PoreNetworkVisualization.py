@@ -178,7 +178,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         self.kroLabel = qt.QLabel("")
         self.kroLabel.objectName = "Kro label"
         informationFormLayout.addRow("Kro: ", self.kroLabel)
-        pysideReportForm = shiboken2.wrapInstance(hash(informationFormLayout), pyside.QtWidgets.QFormLayout)
+        self.pysideReportForm = shiboken2.wrapInstance(hash(informationFormLayout), pyside.QtWidgets.QFormLayout)
         self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
         self.subvolumeGraphicsLayout.setMinimumHeight(400)
         self.subvolumeGraphicsLayout.setMinimumWidth(100)
@@ -190,7 +190,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
         self.subvolumePlotItem.addLegend()
 
-        pysideReportForm.addRow(self.subvolumeGraphicsLayout)
+        self.pysideReportForm.addRow(self.subvolumeGraphicsLayout)
 
         # colors
         KrwOilInvasion = (0, 0, 255)
@@ -200,7 +200,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
 
         self.subvolumeKrwOilInvasion = self.subvolumePlotItem.plot(
             name="Krw - oil invasion",
-            pen=pg.mkPen(KrwOilInvasion, width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KrwOilInvasion, width=1, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t3",
             symbolPen=KrwOilInvasion,
             symbolSize=8,
@@ -208,7 +208,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
         self.subvolumeKrwWaterInvasion = self.subvolumePlotItem.plot(
             name="Krw - water invasion",
-            pen=pg.mkPen(KrwWaterInvasion, width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KrwWaterInvasion, width=1, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t2",
             symbolPen=KrwWaterInvasion,
             symbolSize=8,
@@ -216,7 +216,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
         self.subvolumeKroOilInvasion = self.subvolumePlotItem.plot(
             name="Kro - oil invasion",
-            pen=pg.mkPen(KroOilInvasion, width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KroOilInvasion, width=1, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t3",
             symbolPen=KroOilInvasion,
             symbolSize=8,
@@ -224,7 +224,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
         self.subvolumeKroWaterInvasion = self.subvolumePlotItem.plot(
             name="Kro - water invasion",
-            pen=pg.mkPen(KroWaterInvasion, width=1, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KroWaterInvasion, width=1, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t2",
             symbolPen=KroWaterInvasion,
             symbolSize=8,
@@ -238,14 +238,14 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
 
         self.subvolumeLogKrwWaterInvasion = self.subvolumeLogPlotItem.plot(
-            pen=pg.mkPen(KrwWaterInvasion, width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KrwWaterInvasion, width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t2",
             symbolPen=KrwWaterInvasion,
             symbolSize=8,
             symbolBrush=KrwWaterInvasion,
         )
         self.subvolumeLogKrwOilInvasion = self.subvolumeLogPlotItem.plot(
-            pen=pg.mkPen(KrwOilInvasion, width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KrwOilInvasion, width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t3",
             symbolPen=KrwOilInvasion,
             symbolSize=8,
@@ -253,14 +253,14 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
         )
 
         self.subvolumeLogKroWaterInvasion = self.subvolumeLogPlotItem.plot(
-            pen=pg.mkPen(KroWaterInvasion, width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KroWaterInvasion, width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t2",
             symbolPen=KroWaterInvasion,
             symbolSize=8,
             symbolBrush=KroWaterInvasion,
         )
         self.subvolumeLogKroOilInvasion = self.subvolumeLogPlotItem.plot(
-            pen=pg.mkPen(KroOilInvasion, width=2, style=QtCore.Qt.DashLine),
+            pen=pg.mkPen(KroOilInvasion, width=2, style=QtCore.Qt.PenStyle.DashLine),
             symbol="t3",
             symbolPen=KroOilInvasion,
             symbolSize=8,

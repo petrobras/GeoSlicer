@@ -7,7 +7,6 @@ from ltrace.slicer import ui
 from ltrace.slicer import export, netcdf
 from pathlib import Path
 
-
 EXPORTABLE_TYPES = (
     slicer.vtkMRMLLabelMapVolumeNode,
     slicer.vtkMRMLSegmentationNode,

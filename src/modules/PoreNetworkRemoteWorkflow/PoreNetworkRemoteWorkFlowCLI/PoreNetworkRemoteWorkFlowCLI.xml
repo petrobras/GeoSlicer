@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <title>PoreNetworkRemoteWorkflowCLI</title>
+  <description>LTrace Pore Network Remote Workflow CLI</description>
+  <parameters>
+    <string>
+      <longflag>netcdfFilePath</longflag>
+    </string>
+    <string>
+      <longflag>cwd</longflag>
+    </string>
+  </parameters>
+</executable>

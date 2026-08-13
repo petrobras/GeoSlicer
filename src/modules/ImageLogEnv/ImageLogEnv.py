@@ -93,7 +93,8 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         )
 
         self.setupSegmentation()
-        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts"])
+        self.setupImageLogPSD()
+        self.setupTools(tools=["VolumeCalculator", "CustomizedTables", "TableFilter", "Charts", "NetCDF"])
         # self.setupLoaders()
         self.setupSliceViewAnnotations()
 
@@ -111,6 +112,19 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["ImageLogSegmentEditor"],
                 modules["ImageLogInstanceSegmenter"],
                 modules["InstanceSegmenterEditor"],
+            ],
+            self.modulesToolbar,
+        )
+
+    def setupImageLogPSD(self):
+        modules = self.getModuleManager().fetchByCategory([self.category])
+
+        addMenu(
+            svgToQIcon(getResourcePath("Icons") / "svg" / "Pore Network.svg"),
+            "Pore Size Distribution",
+            [
+                modules["ImageLogPSDGeneration"],
+                modules["PSDPerDepth"],
             ],
             self.modulesToolbar,
         )

@@ -37,11 +37,11 @@ TEXT_SYMBOLS = {
 
 LINE_STYLES = {
     "None": None,
-    "Solid": QtCore.Qt.SolidLine,
-    "Dashed": QtCore.Qt.DashLine,
-    "Dotted": QtCore.Qt.DotLine,
-    "Dash-Dot": QtCore.Qt.DashDotLine,
-    "Dash-Dot-Dot": QtCore.Qt.DashDotDotLine,
+    "Solid": QtCore.Qt.PenStyle.SolidLine,
+    "Dashed": QtCore.Qt.PenStyle.DashLine,
+    "Dotted": QtCore.Qt.PenStyle.DotLine,
+    "Dash-Dot": QtCore.Qt.PenStyle.DashDotLine,
+    "Dash-Dot-Dot": QtCore.Qt.PenStyle.DashDotDotLine,
 }
 
 SYMBOL_TEXT = {v: k for k, v in TEXT_SYMBOLS.items()}
@@ -364,7 +364,12 @@ class NodeGraphData(GraphData):
             raise ValueError("Invalid data type to visualize")
 
         if self.__nodeId:
-            self.__observerHandlers.append((dataNode, dataNode.AddObserver("ModifiedEvent", self.__onNodeModified)))
+            self.__observerHandlers.append(
+                (
+                    dataNode.GetID(),
+                    dataNode.AddObserver("ModifiedEvent", self.__onNodeModified),
+                )
+            )
             self.__observerHandlers.append(
                 (
                     slicer.mrmlScene,
@@ -380,10 +385,20 @@ class NodeGraphData(GraphData):
 
     def __del__(self):
         super().__del__()
+        self.__removeObservers()
 
-        for object, tag in self.__observerHandlers:
-            object.RemoveObserver(tag)
         del self.__observerHandlers
+
+    def __removeObservers(self):
+        for obj, tag in self.__observerHandlers:
+            if isinstance(obj, str):  # is a node ID
+                obj = tryGetNode(obj)
+                if not obj:
+                    continue
+
+            obj.RemoveObserver(tag)
+
+        self.__observerHandlers.clear()
 
     @property
     def node(self):
@@ -422,6 +437,13 @@ class NodeGraphData(GraphData):
             orientation = str(TableDataOrientation.COLUMN.value)
 
         df = dutils.tableNodeToDataFrame(dataNode)
+
+        # Retrieving the columns name (when it's absent) from the Property attribute of the table node.
+        # This helps treating specificalities of the data from the DataFrame alone
+        if not df.columns.name:
+            if dataNode.GetAttribute("Property"):
+                df.columns.name = dataNode.GetAttribute("Property")
+
         if orientation == str(TableDataOrientation.ROW.value):
             df = self.transposeDataframe(df)
 
@@ -450,8 +472,7 @@ class NodeGraphData(GraphData):
 
     def _cleanUp(self):
         super()._cleanUp()
-        for object, tag in self.__observerHandlers:
-            object.RemoveObserver(tag)
+        self.__removeObservers()
         self.__nodeId = None
 
     @staticmethod

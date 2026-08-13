@@ -70,6 +70,12 @@ class PressurePlot(PlotBase):
         self.checkboxes["Imbibition"].setChecked(True)
         self.checkboxes["Mean"].setChecked(True)
 
+        self.showPointsCheckbox = qt.QCheckBox()
+        self.showPointsCheckbox.setChecked(False)
+        self.showPointsCheckbox.stateChanged.connect(self.update_curves_color_scale)
+        self.boxes_layout.addWidget(qt.QLabel("Show points"), 1, (i + 1) * 2)
+        self.boxes_layout.addWidget(self.showPointsCheckbox, 1, (i + 1) * 2 + 1)
+
         self.mainLayout.addRow(" ", None)
 
         graphics_layout_widget, plot_item = self.__createKrelPlotWidget()
@@ -78,8 +84,8 @@ class PressurePlot(PlotBase):
         self.__pressure_curves_plot = None
         self.__ref_curves_plots = {}
 
-        pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), PySide2.QtWidgets.QFormLayout)
-        pySideMainLayout.addRow(graphics_layout_widget)
+        self.pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), PySide2.QtWidgets.QFormLayout)
+        self.pySideMainLayout.addRow(graphics_layout_widget)
 
         self.color_bar = ColorBar()
         self.mainLayout.addRow(self.color_bar)
@@ -150,12 +156,15 @@ class PressurePlot(PlotBase):
             krel_result_curves = self.data_manager.get_krel_result_curves()
             self.__pressure_curves_plot = PressureCurvesPlot(self.__plot_item, krel_result_curves)
 
+        self.__pressure_curves_plot.show_points = self.showPointsCheckbox.isChecked()
+
         ref_curve_node_list = self.filterListWidget.getReferenceCurvesNodes()
         for curve_node in ref_curve_node_list:
             if curve_node not in self.__ref_curves_plots:
                 ref_curve_result = PressureResultCurves(curve_node)
                 new_krel_curves_plot = PressureCurvesPlot(self.__plot_item, ref_curve_result)
                 self.__ref_curves_plots[curve_node] = new_krel_curves_plot
+            self.__ref_curves_plots[curve_node].show_points = self.showPointsCheckbox.isChecked()
 
         # Set visibilities
         cycle_name_list = ((1, "Drainage"), (2, "Imbibition"), (3, "Second Drainage"))
@@ -257,7 +266,7 @@ class PressurePlot(PlotBase):
         x_legend_label_item = pg.LabelItem(angle=0)
         y_legend_label_item = pg.LabelItem(angle=270)
         x_legend_label_item.setText("Sw", color="k")
-        y_legend_label_item.setText("Pc", color="k")
+        y_legend_label_item.setText("Pressure (Pa)", color="k")
         graphics_layout_widget.addItem(x_legend_label_item, row=2, col=2, colspan=2)
         graphics_layout_widget.addItem(y_legend_label_item, row=0, col=1, rowspan=2)
 
@@ -569,6 +578,11 @@ class PressureCurvesPlot:
     IMBIBITION = 2
     SECOND_DRINAGE = 3
 
+    LINE_WIDTH = 2
+    SYMBOL_SIZE = 5
+    SYMBOL_PEN_WIDTH = None
+    SYMBOL_PEN_COLOR = (128, 128, 128, 255)
+
     DEFAULT_COLOR_DICT = {
         "middle": {
             PRESSURE: "blue",
@@ -579,6 +593,24 @@ class PressureCurvesPlot:
         self.__plot_item = plot_item
         self.__krel_result_curves = krel_result_curves
         self.__plot_manager = PlotManager()
+        self.show_points = False
+
+    def _get_plot_kwargs(self, color):
+        kwargs = {
+            "pen": pg.mkPen(color, width=self.LINE_WIDTH),
+        }
+        if self.show_points:
+            kwargs.update(
+                {
+                    "symbol": "o",
+                    "symbolSize": self.SYMBOL_SIZE,
+                    "symbolBrush": color,
+                    "symbolPen": pg.mkPen(self.SYMBOL_PEN_COLOR, width=self.SYMBOL_PEN_WIDTH)
+                    if self.SYMBOL_PEN_WIDTH
+                    else None,
+                }
+            )
+        return kwargs
 
     def recalculate_middle(self, filtered_list):
         for cycle_id in range(1, 4):
@@ -651,7 +683,8 @@ class PressureCurvesPlot:
         pressure = krel_cycle_curves.get_pressure_data(simulation_id)
         if not pressure:
             return
-        pressure_plot = self.__plot_item.plot(pen=pg.mkPen(color, width=2))
+        plot_kwargs = self._get_plot_kwargs(color)
+        pressure_plot = self.__plot_item.plot(**plot_kwargs)
         pressure_plot.setData(sw, pressure)
         if evidence:
             pressure_plot.setZValue(1)

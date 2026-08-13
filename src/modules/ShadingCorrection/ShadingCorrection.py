@@ -9,16 +9,21 @@ import qt
 import slicer
 
 from ltrace.slicer import ui
+from ltrace.constants import DLISImportConst
 from ltrace.slicer.helpers import (
     createTemporaryVolumeNode,
     getSourceVolume,
     makeTemporaryNodePermanent,
     copy_display,
+    copy_attributes,
+    copy_subject_hierarchy_item_parent,
+    copy_hierarchy_attributes,
     getVolumeNullValue,
     setVolumeNullValue,
     extractSegmentInfo,
     highlight_error,
 )
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.widgets import InputState, PixelLabel, get_input_widget_color
 from ltrace.slicer_utils import *
 from ltrace.slicer.node_attributes import NodeEnvironment
@@ -260,16 +265,9 @@ class ShadingCorrectionLogic(LTracePluginLogic):
         # Removing old cli node if it exists
         slicer.mrmlScene.RemoveNode(self.cliNode)
 
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        inputVolumeItemParent = subjectHierarchyNode.GetItemParent(
-            subjectHierarchyNode.GetItemByDataNode(pars.inputVolume)
-        )
-
         # Output volume
         self.outputVolume = createTemporaryVolumeNode(pars.inputVolume.__class__, name=pars.outputVolumeName)
-        subjectHierarchyNode.SetItemParent(
-            subjectHierarchyNode.GetItemByDataNode(self.outputVolume), inputVolumeItemParent
-        )
+        copy_subject_hierarchy_item_parent(pars.inputVolume, self.outputVolume)
 
         cliParams = {
             "inputVolume": pars.inputVolume.GetID(),
@@ -293,6 +291,12 @@ class ShadingCorrectionLogic(LTracePluginLogic):
 
             slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
             copy_display(self.inputVolume, self.outputVolume)
+            """ shadingcorrectioncli erases all attributes (why?).
+            # Should we restore them? And what about hierarchy attributes and references? MUSA-150
+            copy_attributes(self.inputVolume, self.outputVolume)
+            copy_metadata(self.inputVolume, self.outputVolume)
+            copy_hierarchy_attributes(self.inputVolume, self.outputVolume, imageLogHierarchyAttrs)
+            self.outputVolume.CopyReferences(self.inputVolume) """
 
             if status == "Completed":
                 makeTemporaryNodePermanent(self.outputVolume, show=True)

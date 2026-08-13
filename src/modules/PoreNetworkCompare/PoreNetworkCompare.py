@@ -242,9 +242,9 @@ class PoreNetworkCompareWidget(LTracePluginWidget):
         self.meanSaturationDataPlotWidget = DataPlotWidget()
         self.meanSaturationDataPlotWidget.widget.setFixedHeight(300)
         self.meanSaturationDataPlotWidget.set_theme("Light")
-        pySideMainLayout = shiboken2.wrapInstance(hash(dataLayout), pyside.QtWidgets.QHBoxLayout)
-        pySideMainLayout.addWidget(self.saturationDataPlotWidget.widget)
-        pySideMainLayout.addWidget(self.meanSaturationDataPlotWidget.widget)
+        self.pySideMainLayout = shiboken2.wrapInstance(hash(dataLayout), pyside.QtWidgets.QHBoxLayout)
+        self.pySideMainLayout.addWidget(self.saturationDataPlotWidget.widget)
+        self.pySideMainLayout.addWidget(self.meanSaturationDataPlotWidget.widget)
         formLayout.addRow(dataLayout)
 
         return frame

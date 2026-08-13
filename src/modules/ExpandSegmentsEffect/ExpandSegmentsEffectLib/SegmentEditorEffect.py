@@ -25,6 +25,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.applyFinishedCallback = lambda: None
         self.applyAllSupported = True
         self.editorWidget = None
+        self.filter = None
+        self.abort = False
 
     def getEditorWidget(self):
         widget = self.applyButton.parent()
@@ -92,49 +94,83 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         # Turn off effect-specific cursor for this effect
         return slicer.modules.AppContextInstance.mainWindow.cursor
 
+    def cancel(self):
+        self.abort = True
+        if self.filter:
+            self.filter.Abort()
+
     def onApply(self):
+        self.abort = False
         if self.scriptedEffect.parameterSetNode() is None:
             slicer.util.errorDisplay("Failed to apply the effect. The selected node is not valid.")
 
         self.scriptedEffect.saveStateForUndo()
 
-        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-        labelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-        slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
-            segmentationNode, labelMapNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
-        )
         try:
-            array = slicer.util.arrayFromVolume(labelMapNode)
-        except AttributeError:  # Array is empty
-            slicer.util.errorDisplay(
-                "Failed to apply the effect. The segmentation node doesn't contain any filled segments."
-            )
-            slicer.mrmlScene.RemoveNode(labelMapNode)
-            return
+            with self.progress() as update_progress:
+                update_progress(5, label="Starting...")
+                segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+                labelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+                slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                    segmentationNode, labelMapNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+                )
+                try:
+                    array = slicer.util.arrayFromVolume(labelMapNode)
+                except AttributeError:  # Array is empty
+                    slicer.util.errorDisplay(
+                        "Failed to apply the effect. The segmentation node doesn't contain any filled segments."
+                    )
+                    slicer.mrmlScene.RemoveNode(labelMapNode)
+                    return
 
-        # Invisible segments will not be expanded
-        segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-        segmentIDs = vtk.vtkStringArray()
-        segmentation = segmentationNode.GetSegmentation()
-        segmentation.GetSegmentIDs(segmentIDs)
-        array = slicer.util.arrayFromVolume(labelMapNode)
-        invisibleSegmentsIndexes = []
-        for segmentIndex in range(segmentIDs.GetNumberOfValues()):
-            if not segmentationNode.GetDisplayNode().GetSegmentVisibility(segmentIDs.GetValue(segmentIndex)):
-                indexes = np.where(array == segmentIndex + 1)
-                invisibleSegmentsIndexes.append([segmentIndex + 1, indexes])
-                array[indexes] = 0
-        slicer.util.updateVolumeFromArray(labelMapNode, array)
+                if self.abort:
+                    raise RuntimeError("AbortGenerateDataOn")
 
-        filter = sitk.MorphologicalWatershedFromMarkersImageFilter()
-        filter.FullyConnectedOff()
-        filter.MarkWatershedLineOff()
-        marks = sitkUtils.PullVolumeFromSlicer(labelMapNode)
-        image = sitk.Image(*labelMapNode.GetImageData().GetDimensions(), sitk.sitkUInt8)
-        image.SetDirection(marks.GetDirection())
-        image.SetOrigin(marks.GetOrigin())
-        image.SetSpacing(marks.GetSpacing())
-        result = filter.Execute(image, marks)
+                update_progress(10, label="Masking...")
+                # Invisible segments will not be expanded
+                segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+                segmentation = segmentationNode.GetSegmentation()
+                array = slicer.util.arrayFromVolume(labelMapNode)
+                invisibleSegmentsIndexes = []
+                for segmentIndex in range(segmentation.GetNumberOfSegments()):
+                    segmentID = segmentation.GetNthSegmentID(segmentIndex)
+                    if not segmentationNode.GetDisplayNode().GetSegmentVisibility(segmentID):
+                        indexes = np.where(array == segmentIndex + 1)
+                        invisibleSegmentsIndexes.append([segmentIndex + 1, indexes])
+                        array[indexes] = 0
+                slicer.util.updateVolumeFromArray(labelMapNode, array)
+
+                if self.abort:
+                    raise RuntimeError("AbortGenerateDataOn")
+
+                self.filter = sitk.MorphologicalWatershedFromMarkersImageFilter()
+                self.applyButton.setEnabled(False)
+                self.applyFullButton.setEnabled(False)
+
+                self.filter.FullyConnectedOff()
+                self.filter.MarkWatershedLineOff()
+                marks = sitkUtils.PullVolumeFromSlicer(labelMapNode)
+                image = sitk.Image(*labelMapNode.GetImageData().GetDimensions(), sitk.sitkUInt8)
+                image.SetDirection(marks.GetDirection())
+                image.SetOrigin(marks.GetOrigin())
+                image.SetSpacing(marks.GetSpacing())
+                self.filter.AddCommand(
+                    sitk.sitkProgressEvent,
+                    lambda: update_progress(
+                        10 + self.filter.GetProgress() * 90,
+                        label="Expanding segments...",
+                    ),
+                )
+                result = self.filter.Execute(image, marks)
+        except RuntimeError as e:
+            if "AbortGenerateDataOn" in str(e):
+                slicer.mrmlScene.RemoveNode(labelMapNode)
+                return
+            raise e
+        finally:
+            self.applyButton.setEnabled(True)
+            self.applyFullButton.setEnabled(True)
+
         sitkUtils.PushVolumeToSlicer(result, targetNode=labelMapNode)
 
         array = slicer.util.arrayFromVolume(labelMapNode)
@@ -142,12 +178,22 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             array[indexes] = segmentValue
         slicer.util.updateVolumeFromArray(labelMapNode, array)
 
-        segmentIDs = vtk.vtkStringArray()
         segmentation = segmentationNode.GetSegmentation()
-        segmentation.GetSegmentIDs(segmentIDs)
+        segmentIDs = []
+        for i in range(segmentation.GetNumberOfSegments()):
+            segmentIDs.append(segmentation.GetNthSegmentID(i))
+
+        vtkSegmentIDs = vtk.vtkStringArray()
+        for segmentID in segmentIDs:
+            vtkSegmentIDs.InsertNextValue(segmentID)
+
         slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-            labelMapNode, segmentationNode, segmentIDs
+            labelMapNode, segmentationNode, vtkSegmentIDs
         )
+
+        for i, segmentID in enumerate(segmentIDs):
+            segmentation.SetSegmentIndex(segmentID, i)
+
         slicer.mrmlScene.RemoveNode(labelMapNode)
 
         self.applyFinishedCallback()

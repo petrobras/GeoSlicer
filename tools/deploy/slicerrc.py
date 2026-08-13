@@ -1,3 +1,16 @@
+DEBUG = False
+
+if DEBUG:
+    import sys
+    import faulthandler
+
+    # Pass the true, unredirected stderr so faulthandler has a real OS file descriptor
+    if hasattr(sys, "__stderr__") and sys.__stderr__ is not None:
+        faulthandler.enable(file=sys.__stderr__)
+    import gc
+
+    gc.set_debug(gc.DEBUG_STATS | gc.DEBUG_COLLECTABLE)
+
 import argparse
 import ctypes
 import logging
@@ -20,7 +33,8 @@ from ltrace.slicer.ai_models.widget import AIModelsPathDialog, AIModelsPathModel
 from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData, MANUAL_BASE_URL
 from ltrace.slicer.app.custom_3dview import customize_3d_view as customize3DView
 from ltrace.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
-from ltrace.slicer.app.onboard import showDataLoaders, LOADERS, loadEnvironment
+from ltrace.slicer.app.onboard import LOADERS, loadEnvironment
+from ltrace.slicer.app.onboard_view import showOnboardView
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.bug_report import BugReportDialog
 from ltrace.slicer.custom_export_to_file import customizeExportToFile
@@ -42,6 +56,7 @@ from ltrace.utils import custom_keyring
 # post: https://forum.qt.io/post/617768
 os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
 os.environ["TESSDATA_PREFIX"] = Path(f"{slicer.app.slicerHome}/bin/Tesseract-OCR/tessdata/").as_posix()
+os.environ["PYQTGRAPH_QT_LIB"] = "PySide2"
 
 RUN_MODE = os.environ.get("GEOSLICER_RUN_MODE", "development")
 APP_NAME = slicer.app.applicationName
@@ -121,7 +136,7 @@ class ExpandToolbarActionNames:
 
         if not widget:
             logging.warning("No action found")
-            slicer.modules.AppContextInstance.modules.showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
+            showOnboardView(APP_TOOLBARS["ModuleToolBar"])
             return
 
         expander = APP_TOOLBARS["MainToolBar"].actions()[0]
@@ -235,8 +250,6 @@ def setModuleSelectorToolBar():
 
         toolbar.setVisible(True)
     except:
-        import traceback
-
         traceback.print_exc()
 
     addEnvSelectorMenu()
@@ -297,6 +310,10 @@ def setMainToolBar():
 
 
 def setDialogToolBar():
+    # os must be imported locally
+    # qSlicerCorePythonManager::appendPythonPath runs `del os, sys`
+    import os
+
     toolbarArea = qt.Qt.RightToolBarArea
     verticalToolBars = [
         "DialogToolBar",
@@ -319,7 +336,7 @@ def setDialogToolBar():
     dialogToolBar.addAction(
         qt.QIcon((ICON_DIR / "svg" / "Apps.svg").as_posix()),
         "Data Sources",
-        lambda: slicer.modules.AppContextInstance.modules.showDataLoaders(APP_TOOLBARS["ModuleToolBar"]),
+        lambda: showOnboardView(APP_TOOLBARS["ModuleToolBar"]),
     )
 
     dialogToolBar.addAction(
@@ -416,7 +433,7 @@ def setCustomCaptureToolBar():
         captureToolBar.removeAction(action)
 
     screenshotAction = captureToolBar.addAction(
-        qt.QIcon((ICON_DIR / "png" / "Screenshot.png").as_posix()),
+        qt.QIcon((ICON_DIR / "png" / "ScreenShot.png").as_posix()),
         "",
         lambda: ScreenshotWidget().exec(),
     )
@@ -429,11 +446,38 @@ def setModulePanelVisible(visible):
 
 
 def setModulePanel():
-    modulePanelDockWidget = slicer.util.mainWindow().findChildren("QDockWidget", "PanelDockWidget")[0]
+    modulePanelDockWidget = slicer.util.mainWindow().findChild("QDockWidget", "PanelDockWidget")
     modulePanelDockWidget.setFeatures(qt.QDockWidget.NoDockWidgetFeatures)
+    modulePanelDockWidget.setMinimumWidth(0)
 
-    moduleHeader = ModuleHeader(modulePanelDockWidget)
+    # make central panel widget ignore content width
+    centralWidget = modulePanelDockWidget.widget()
+    centralWidget.setSizePolicy(qt.QSizePolicy.Policy.Ignored, centralWidget.sizePolicy.verticalPolicy())
 
+    # add a bounding qframe to make the title shrinkable
+    moduleHeader = ModuleHeader()
+    moduleHeader.setSizePolicy(qt.QSizePolicy.Policy.Ignored, moduleHeader.sizePolicy.verticalPolicy())
+    titleFrame = qt.QFrame()
+    titleLayout = qt.QVBoxLayout(titleFrame)
+    titleLayout.setContentsMargins(0, 0, 0, 0)
+    titleLayout.setSpacing(0)
+    titleLayout.addWidget(moduleHeader)
+    modulePanelDockWidget.setTitleBarWidget(titleFrame)
+
+    # force content to be aligned to the right
+    modulePanel = modulePanelDockWidget.findChild(slicer.qSlicerModulePanel, "ModulePanel")
+    scrollArea = modulePanel.findChild("QScrollArea", "ScrollArea")
+    scrollArea.setSizePolicy(qt.QSizePolicy.Policy.Ignored, scrollArea.sizePolicy.verticalPolicy())
+    scrollBar = scrollArea.horizontalScrollBar()
+
+    def sliderToMaximum(min: int, max: int):
+        scrollBar.blockSignals(True)
+        scrollBar.triggerAction(qt.QAbstractSlider.SliderToMaximum)
+        scrollBar.blockSignals(False)
+
+    scrollBar.rangeChanged.connect(sliderToMaximum)
+
+    # handle module selection
     def handle(moduleName):
         try:
             if not hasattr(slicer.modules, f"{moduleName}Instance"):
@@ -450,7 +494,8 @@ def setModulePanel():
         except Exception as e:
             logging.error(f"Failed to update module header: {e}.\n{traceback.format_exc()}")
 
-    modulePanelDockWidget.setTitleBarWidget(moduleHeader)
+        if modulePanelDockWidget.width < 400:
+            slicer.util.mainWindow().resizeDocks([modulePanelDockWidget], [400], qt.Qt.Horizontal)
 
     slicer.util.moduleSelector().moduleSelected.connect(handle)
 
@@ -580,7 +625,7 @@ def updateHelpMenu():
     manualHelpAction.triggered.connect(__openGeoslicerManual)
 
     order = [
-        actions["&Keyboard Shortcuts"],
+        # actions["&Keyboard Shortcuts"],
         bugReportAction,
         "Separator",
         manualHelpAction,
@@ -705,8 +750,9 @@ def showHideAllVolumes(self, button):
 def linkAllVolumesRenderingDisplayProperties(volume_rendering_module):
     from Multicore import MulticoreLogic
 
-    volumeNodeComboBox = volume_rendering_module.findChild(qt.QObject, "VolumeNodeComboBox")
-    currentNode = volumeNodeComboBox.currentNode()
+    volumeNodeSelector = volume_rendering_module.findChild(qt.QObject, "VolumeNodeSelector")
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    currentNode = shNode.GetItemDataNode(volumeNodeSelector.currentItem())
     volumeRenderingLogic = slicer.modules.volumerendering.logic()
     currentDisplayNode = volumeRenderingLogic.CreateDefaultVolumeRenderingNodes(currentNode)
     volumeRenderingLogic = slicer.modules.volumerendering.logic()
@@ -864,6 +910,7 @@ def loadEffects(modules):
         "ColorThresholdEffect",
         "ConnectivityEffect",
         "CustomizedSmoothingEffect",
+        "PeriodicLevelTracingEffect",
         "DepthRangeSegmenterEffect",
         "ExpandSegmentsEffect",
         "MaskVolumeEffect",
@@ -874,6 +921,20 @@ def loadEffects(modules):
     ]
 
     loadModules([modules[effect] for effect in effects if effect in modules], permanent=True, favorite=False)
+
+
+def registerDisplayOverridePlugin():
+    """Install the global display-override provider for the SH Data tree.
+
+    Sets a single scripted plugin as qSlicerSubjectHierarchyPluginHandler's display provider.
+    The C++ model consults this provider for tooltip / icon / displayed-name / visibility-icon
+    on every name-column and visibility-column refresh in every SH tree view.
+    """
+    import SubjectHierarchyPlugins.DisplayOverrideSubjectHierarchyPlugin as mod
+
+    overridePlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
+    overridePlugin.setPythonSource(mod.DisplayOverrideSubjectHierarchyPlugin.filePath)
+    slicer.qSlicerSubjectHierarchyPluginHandler().instance().setDisplayOverrideProvider(overridePlugin)
 
 
 def registerEffects():
@@ -887,6 +948,7 @@ def registerEffects():
     slicer.modules.ColorThresholdEffectInstance.registerEditorEffect()
     slicer.modules.ConnectivityEffectInstance.registerEditorEffect()
     slicer.modules.CustomizedSmoothingEffectInstance.registerEditorEffect()
+    slicer.modules.PeriodicLevelTracingEffectInstance.registerEditorEffect()
     slicer.modules.DepthRangeSegmenterEffectInstance.registerEditorEffect()
     slicer.modules.ExpandSegmentsEffectInstance.registerEditorEffect()
     slicer.modules.MaskVolumeEffectInstance.registerEditorEffect()
@@ -1157,7 +1219,7 @@ def showSearchPopup():
 
 def setupShortcuts():
 
-    mainWindow = getAppContext().mainWindow
+    mainWindow = getAppContext().mainWindow if getAppContext() else slicer.util.mainWindow()
     # # find buttons
     # widget = slicer.modules.SegmentEditorWidget.editor.findChild("QWidget", "EffectsGroupBox")
     # def addEffectShortcut(name, keysequence ):
@@ -1171,7 +1233,7 @@ def setupShortcuts():
     # addEffectShortcut("Scissors", qt.QKeySequence( 'Shift+F6'))
     # add shortcut for brush size
     qt.QShortcut(qt.QKeySequence("Ctrl+Shift+o"), mainWindow).connect(
-        "activated()", lambda: showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
+        "activated()", lambda: showOnboardView(APP_TOOLBARS["ModuleToolBar"])
     )
 
     mtoolbar = mainWindow.findChild(slicer.qSlicerModuleSelectorToolBar)
@@ -1203,14 +1265,17 @@ def setupShortcuts():
 
 def updateModuleSelectorIcons() -> None:
     createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
-    for child in slicer.util.moduleSelector().children():
-        if not hasattr(child, "text"):
+    icon_map = {"Next": "ArrowRight.svg", "Previous": "ArrowLeft.svg"}
+    for child in slicer.util.mainWindow().moduleSelector().findChildren(qt.QToolButton):
+        file_name = icon_map.get(child.text)
+        if file_name is None:
             continue
-
-        if child.text == "Next":
-            child.setIcon(createIcon("ArrowRight.svg"))
-        elif child.text == "Previous":
-            child.setIcon(createIcon("ArrowLeft.svg"))
+        icon = createIcon(file_name)
+        action = child.defaultAction()
+        if action:
+            action.setIcon(icon)
+        else:
+            child.setIcon(icon)
 
 
 def disableThemeSelectorInSettings():
@@ -1224,9 +1289,54 @@ def updateLogConfiguration():
     qt.QSettings().sync()
 
 
-def configure(rebuild_index=False):
-    mainWindow = getAppContext().mainWindow
+def _autoStartWebServer():
+    """Start the Slicer WebServer module programmatically in developer mode.
+
+    Enables agent communication via http://localhost:2016/slicer/exec
+    without requiring manual GUI interaction.
+    """
+    if not slicer_is_in_developer_mode():
+        return
+
+    try:
+        if not hasattr(slicer.modules, "webserver"):
+            logging.warning("WebServer module not available; agent API will not be accessible.")
+            return
+
+        widget = slicer.modules.webserver.widgetRepresentation()
+        if widget is None:
+            logging.warning("WebServer widget representation not available.")
+            return
+
+        webServerWidget = widget.self()
+        if webServerWidget.logic.serverStarted:
+            return
+
+        webServerWidget.enableSlicerHandler.setChecked(True)
+        webServerWidget.enableSlicerHandlerExec.setChecked(True)
+        webServerWidget.startServer()
+        logging.info(f"WebServer auto-started on port {webServerWidget.logic.port} for agent access.")
+    except Exception as e:
+        logging.warning(f"Failed to auto-start WebServer: {e}")
+
+
+def applyWindowGeometry(mainWindow):
+    """Maximize on the first launch, afterwards keep the geometry saved on the previous exit."""
+    settings = slicer.app.userSettings()
+    restoring = str(settings.value("MainWindow/RestoreGeometry", False)).lower() == "true"
+    if restoring and settings.contains("MainWindow/geometry") and not mainWindow.isMaximized():
+        return
+
+    # A window restored as maximized keeps that flag even when clamped to a smaller rectangle,
+    # and showMaximized() is a no-op while the flag is set, so drop to the normal state first.
+    if mainWindow.isMaximized():
+        mainWindow.showNormal()
     mainWindow.showMaximized()
+
+
+def configure(rebuild_index=False):
+    mainWindow = getAppContext().mainWindow if getAppContext() else slicer.util.mainWindow()
+    applyWindowGeometry(mainWindow)
 
     updateLogConfiguration()
     setModulePanelVisible(False)
@@ -1239,10 +1349,14 @@ def configure(rebuild_index=False):
         modules = pickle.loads(strData.encode()) if strData else {}
 
     registerEffects()
+    registerDisplayOverridePlugin()
 
     # Keep this ALWAYS after the loadModules call above
     appContext = getAppContext()
-    appContext.modules.initCache(modules)
+    if appContext:
+        appContext.modules.initCache(modules)
+    else:
+        logging.error("AppContext is not initialized yet!")
 
     # Hide Data Store module
     removeDataStore()
@@ -1258,7 +1372,10 @@ def configure(rebuild_index=False):
     slicer.util.setModulePanelTitleVisible(True)
     slicer.util.setModuleHelpSectionVisible(False)
 
-    mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
+    if getAppContext():
+        mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
+    else:
+        logging.error("AppContext is not initialized yet!")
 
     setExtentionManagerOff()
     setHelpModule()
@@ -1310,15 +1427,26 @@ def configure(rebuild_index=False):
 
     setModulePanelVisible(True)
 
-    mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
+    if getAppContext():
+        mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, getAppContext().rightDrawer.widget())
+    else:
+        logging.error("AppContext is not initialized yet!")
 
-    qt.QApplication.setOverrideCursor(qt.Qt.ArrowCursor)
     mainWindow.setAcceptDrops(True)
+    import gc
+
+    gc.disable()
 
     def _startEnv():
         ApplicationObservables().applicationLoadFinished.disconnect(_startEnv)
-
+        gc.enable()
+        _autoStartWebServer()
         shouldRunTests = slicer.app.userSettings().value("LTraceTestsWidget/RunOnStartup", None) is not None
+        shouldSkipOnboarding = slicer.app.userSettings().value("GeoSlicer/AgentSkipOnboarding", None) is not None
+        if shouldSkipOnboarding:
+            slicer.app.userSettings().remove("GeoSlicer/AgentSkipOnboarding")
+            slicer.app.userSettings().sync()
+
         preLoadEnvironment = getCustomArguments().preLoadEnvironment
         loaderInfo = [info for info in LOADERS.values() if info.environment == preLoadEnvironment]
         loaderInfo = loaderInfo[0] if loaderInfo else None
@@ -1328,7 +1456,7 @@ def configure(rebuild_index=False):
                 slicer.modules.AppContextInstance.runTest()
                 return
 
-            showDataLoaders(APP_TOOLBARS["ModuleToolBar"])
+            showOnboardView(APP_TOOLBARS["ModuleToolBar"])
             return
 
         loadEnvironment(APP_TOOLBARS["ModuleToolBar"], loaderInfo)
@@ -1393,7 +1521,9 @@ def createIndex():
 
 def updateDICOMDatabasePath():
     """Update DICOM Database directory base path. This function helps old DICOM database files to be moved to the new desired location."""
-    currentPath = slicer.app.DICOMDatabaseDirectoryBasePath()
+    currentPath = (
+        slicer.app.DICOMDatabaseDirectoryBasePath() if hasattr(slicer.app, "DICOMDatabaseDirectoryBasePath") else ""
+    )
     desiredPath = Path(qt.QStandardPaths.writableLocation(qt.QStandardPaths.AppLocalDataLocation))
 
     if not currentPath:
@@ -1473,7 +1603,6 @@ def bootstrap(userSettings):
             )
         else:
             msg = "Congratulations! GeoSlicer has been configured. We just need to restart GeoSlicer to complete the installation."
-
         setPaths()
 
         # userSettings.setValue("Developer/DeveloperMode", "true")
@@ -1503,7 +1632,6 @@ def bootstrap(userSettings):
 
 
 def init():
-
     os.chdir(slicer.app.slicerHome)
     userSettings = slicer.app.userSettings()
 
@@ -1517,7 +1645,10 @@ def init():
         if previousAppVersion != getApplicationVersion():
             userSettings.setValue(f"{APP_NAME}/Version", getApplicationVersion())
 
-    getAppContext().appInitialized = True
+    if getAppContext():
+        getAppContext().appInitialized = True
+    else:
+        logging.error("AppContext is not initialized yet!")
 
 
 def wasAppInitialized():

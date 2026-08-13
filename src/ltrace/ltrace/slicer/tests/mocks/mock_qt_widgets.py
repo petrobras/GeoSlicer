@@ -11,6 +11,7 @@ def mockFileDialog(selectedFiles: List[str] = None, getSaveFileName: str = None,
     fileDialogMock = MagicMock()
     fileDialogMock.selectedFiles.return_value = selectedFiles
     fileDialogMock.exec.return_value = 0 if cancel else 1
+    fileDialogMock.exec_.return_value = 0 if cancel else 1
 
     fileDialogClsMock.return_value = fileDialogMock
     fileDialogClsMock.getSaveFileName.return_value = getSaveFileName

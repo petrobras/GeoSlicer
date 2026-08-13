@@ -9,10 +9,15 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer.helpers import triggerNodeModified
+from ltrace.slicer.helpers import triggerNodeModified, tryGetNode
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+
+try:
+    from Test.UnwrapRegistrationTest import UnwrapRegistrationTest
+except ImportError:
+    UnwrapRegistrationTest = None
 
 
 class UnwrapRegistration(LTracePlugin):
@@ -163,6 +168,14 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
 
         self.layout.addStretch(1)
 
+    def cleanup(self):
+        super().cleanup()
+        self._clearObservers()
+        self.transformNode = None
+        self.transformArray = None
+        self.imageNode = None
+        self.imageArray = None
+
     def onDepthChanged(self):
         transformMatrix = vtk.vtkMatrix4x4()
         transformMatrix.SetElement(2, 3, self.transformArray[2, 3] + self.depthSliderWidget.value * 1000)
@@ -262,7 +275,7 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         transformObserverID = self.transformNode.AddObserver(
             slicer.vtkMRMLTransformNode.TransformModifiedEvent, self.onNodeModified
         )
-        self.observers.append([transformObserverID, self.transformNode])
+        self.observers.append([self.transformNode.GetID(), transformObserverID])
         self.transformNode.UndoEnabledOn()
 
         # Image
@@ -272,7 +285,7 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         imageObserverID = self.imageNode.AddObserver(
             slicer.vtkMRMLScalarVolumeNode.ImageDataModifiedEvent, self.onNodeModified
         )
-        self.observers.append([imageObserverID, self.imageNode])
+        self.observers.append([self.imageNode.GetID(), imageObserverID])
         self.imageNode.UndoEnabledOn()
 
         self.registering = True
@@ -286,8 +299,7 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
 
         slicer.mrmlScene.RemoveNode(self.transformNode)
 
-        for observerID, node in self.observers:
-            node.RemoveObserver(observerID)
+        self._clearObservers()
 
         slicer.mrmlScene.ClearUndoStack()
         slicer.mrmlScene.ClearRedoStack()
@@ -298,7 +310,16 @@ class UnwrapRegistrationWidget(LTracePluginWidget):
         self.transformArray = None
         self.imageNode = None
         self.imageArray = None
-        self.observers = []
+
+    def _clearObservers(self):
+        for nodeId, observerId in self.observers:
+            node = tryGetNode(nodeId)
+            if node is None:
+                continue
+
+            node.RemoveObserver(observerId)
+
+        self.observers.clear()
 
     def onNodeModified(self, *args):
         self.applyButton.enabled = True

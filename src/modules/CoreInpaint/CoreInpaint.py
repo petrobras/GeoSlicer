@@ -5,7 +5,12 @@ import numpy as np
 
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from ltrace.slicer import widgets
-from ltrace.slicer.helpers import createTemporaryVolumeNode, highlight_error
+from ltrace.slicer.helpers import (
+    createTemporaryVolumeNode,
+    highlight_error,
+    copy_hierarchy_attributes,
+    copy_subject_hierarchy_item_parent,
+)
 from ltrace.slicer.node_attributes import NodeEnvironment
 from pathlib import Path
 from Libs.patchmatch import PatchMatch
@@ -88,7 +93,7 @@ class CoreInpaintWidget(LTracePluginWidget):
         selectedSegments = self.inputWidget.getSelectedSegments()
 
         if not selectedSegments:
-            highlight_error(self.inputWidget.segmentListGroup[1])
+            highlight_error(self.inputWidget.segmentListWidget)
             self.applyButton.enabled = True
             return
 
@@ -97,6 +102,9 @@ class CoreInpaintWidget(LTracePluginWidget):
         slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(segmentNode, labelMapNode, imageNode)
 
         outNode = slicer.vtkSlicerVolumesLogic().CloneVolume(slicer.mrmlScene, imageNode, "clonedNode", False)
+        # Should we copy attributes by default? MUSA-150
+        # copy_hierarchy_attributes(self.inputImage, outNode)
+        # copy_subject_hierarchy_item_parent(self.inputImage, outNode)
         outNode.SetName(slicer.mrmlScene.GenerateUniqueName(self.outputNameField.text))
         outNode.Modified()
 

@@ -102,7 +102,7 @@ def get_3ddepths(volume, base_volume, intersection, border):
 
 def get_segmentation(image, threshold=0.05, label_background=0, label_pores=1):
     binary = np.where(image >= threshold, label_pores, label_background)
-    binary = binary.astype("int8")
+    binary = binary.astype(np.int8)
     return binary
 
 
@@ -112,9 +112,9 @@ def expand_depths(depths, background_threshold, split_threshold, volume=None):
     else:
         semantic = volume
     del volume
-    segmented = label(get_segmentation(depths, threshold=split_threshold)).astype("int32")
+    segmented = label(get_segmentation(depths, threshold=split_threshold)).astype(np.int32)
     depths = (depths * 127).astype(np.int8)
-    labeled_semantic = label(semantic).astype("int32")
+    labeled_semantic = label(semantic).astype(np.int32)
     max_label = np.amax(segmented)
     objects = ndimage.find_objects(labeled_semantic)
 
@@ -128,8 +128,8 @@ def expand_depths(depths, background_threshold, split_threshold, volume=None):
         else:
             wtd_mask = np.where(labeled_semantic[slices] == (i + 1), 1, 0)
             wtd_img = seg.watershed(
-                -depths[slices] * wtd_mask.astype("int8"),
-                roi_segmented * wtd_mask.astype("int8"),
+                -depths[slices] * wtd_mask.astype(np.int8),
+                roi_segmented * wtd_mask.astype(np.int8),
                 mask=roi_semantic * wtd_mask.astype(bool),
             )
             segmented[slices][labeled_semantic[slices] == i + 1] = wtd_img[labeled_semantic[slices] == i + 1]

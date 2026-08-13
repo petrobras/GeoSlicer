@@ -119,7 +119,7 @@ class PnflowSubprocess(TwoPhaseSubprocess):
         return cycle_results
 
     @staticmethod
-    def caller(cwd, params, statoil_data, snapshot_file=None, write_debug_files=False):
+    def caller(cwd, params, statoil_data, snapshot_file=None, write_debug_files=False, queue=None):
         link1 = statoil_data["link1"]
         link2 = statoil_data["link2"]
         node1 = statoil_data["node1"]

@@ -54,8 +54,20 @@ class SaveStatus(Enum):
 class model_selector_tags(str, Enum):
     IMAGELOG_INSTANCE_SEGMENTER = "ImageLogInstanceSegmenter"
     SILICLASTICS_PORES = "SiliciclasticsPore"
-    SINGAN = "SinGAN"
+    SINGAN = "RockSinGAN"
     PORE_STATS = "PoreStats"
     TEST_ENV = "testEnv"
     TEXTURAL_STRUCTURES = "TexturalStructures"
     THIN_SECTION_ENV = "ThinSectionEnv"
+
+
+class PSDLib(Enum):
+    MICROTOM = "Microtom"
+    PORESPY = "PoreSpy"
+
+    @classmethod
+    def getFromName(cls, name):
+        for lib in cls:
+            if lib.name == name.upper():
+                return lib
+        return None

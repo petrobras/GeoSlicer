@@ -15,7 +15,23 @@ except ImportError:
 import vtk, slicer
 
 
-def dataFrameToTableNode(dataFrame: pd.DataFrame, tableNode=None):
+def dataFrameToTableNode(dataFrame: pd.DataFrame, tableNode=None, replace=False):
+    """Write a pandas DataFrame into a vtkMRMLTableNode.
+
+    Args:
+        dataFrame (pd.DataFrame): The dataframe to write.
+        tableNode (vtkMRMLTableNode, optional): If not provided, a new table node
+            is created wuth the `dataFrame` contents . Otherwise, the dataframe
+            columns will be *added* to this table (`replace=False`) or will substitute
+            the existing columns (`replace=True`).
+        replace (bool, optional): If True and `tableNode` is provided, clear
+            existing columns before writing the dataframe. Defaults to False.
+
+    Returns:
+        vtkMRMLTableNode: A new table containing the dataframe or the provided
+        `tableNode` with the dataframe columns added.
+    """
+
     def is_float(value):
         return value.dtype in [np.dtype("float32")]
 
@@ -35,6 +51,17 @@ def dataFrameToTableNode(dataFrame: pd.DataFrame, tableNode=None):
 
     if tableNode is None:
         tableNode = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__)
+    else:
+        # Optionally replace/clear existing columns
+        if replace:
+            try:
+                tableNode.RemoveAllColumns()
+            except Exception:
+                # Fallback: attempt to clear columns via the underlying vtkTable
+                vtable = tableNode.GetTable()
+                for col_index in range(vtable.GetNumberOfColumns() - 1, -1, -1):
+                    vtable.RemoveColumn(col_index)
+
     tableWasModified = tableNode.StartModify()
     for ind, column in enumerate(dataFrame.columns):
         serie = dataFrame[column]

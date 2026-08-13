@@ -1,10 +1,11 @@
 from string import Template
 
+import qt
 import slicer
 import vtk
 
 from ltrace.slicer.app.layouts import customLayout
-from ltrace.slicer.side_by_side_image_layout import setupViews, SideBySideImageManager
+from ltrace.slicer.side_by_side_image_layout import enable_zoom_sync, SideBySideImageManager
 from ltrace.slicer_utils import LTracePlugin
 from ltrace.constants import (
     SIDE_BY_SIDE_IMAGE_LAYOUT_ID,
@@ -118,21 +119,22 @@ class SideBySideLayoutView(LTracePlugin):
 
         def onLayoutChanged(id_):
             if id_ == SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID:
-                self.updateSideBySideSegmentation()
                 self._linkViews(("SideBySideSegmentationSlice", "SideBySideImageSlice"))
                 self._useSameBackgroundAs("Red", "SideBySideImageSlice")
                 self._useSameForegroundAs("Red", "SideBySideImageSlice")
-                self._useSameBackgroundAs("Red", "SideBySideSegmentationSlice", opacity=0)
-                self._useSameForegroundAs("Red", "SideBySideSegmentationSlice", opacity=0)
 
                 if not self.sideBySideSegmentationSetupComplete:
-                    setupViews("SideBySideImageSlice", "SideBySideSegmentationSlice")
+                    enable_zoom_sync("SideBySideImageSlice", "SideBySideSegmentationSlice")
                     self.sideBySideSegmentationSetupComplete = True
 
                 # These are necessary despite also being called inside _useSameBackgroundAs and _useSameForegroundAs
                 slicer.app.processEvents(1000)
                 layout.sliceWidget("SideBySideImageSlice").sliceLogic().FitSliceToAll()
                 layout.sliceWidget("SideBySideSegmentationSlice").sliceLogic().FitSliceToAll()
+
+                # Must run after processEvents: link propagation from _useSameBackgroundAs would
+                # otherwise override the None background we set on the segmentation slice.
+                self.updateSideBySideSegmentation()
             else:
                 self.exitSideBySideSegmentation()
 
@@ -143,7 +145,7 @@ class SideBySideLayoutView(LTracePlugin):
 
                 if not self.sideBySideImageManager:
                     self.sideBySideImageManager = SideBySideImageManager()
-                    setupViews("SideBySideSlice1", "SideBySideSlice2")
+                    enable_zoom_sync("SideBySideSlice1", "SideBySideSlice2")
                 self.sideBySideImageManager.enterLayout()
             elif self.sideBySideImageManager:
                 self.sideBySideImageManager.exitLayout()
@@ -198,9 +200,6 @@ class SideBySideLayoutView(LTracePlugin):
         segSliceLogic = sliceWidget.sliceLogic()
         segCompositeNode = segSliceLogic.GetSliceCompositeNode()
 
-        # Hide image but still keep it as background for segmentation logic to work
-        segCompositeNode.SetBackgroundOpacity(0)
-
         segSliceId = segSliceLogic.GetSliceNode().GetID()
         segNodes = slicer.util.getNodesByClass("vtkMRMLSegmentationNode")
         for segNode in segNodes:
@@ -212,6 +211,11 @@ class SideBySideLayoutView(LTracePlugin):
 
                 # Show segmentation on 'S' slice view only
                 displayNode.AddViewNodeID(segSliceId)
+
+        # Defer clearing the background to the next event loop iteration so that any
+        # synchronous link-sync events triggered above (e.g. by AddViewNodeID) have
+        # already settled before we apply the final None.
+        qt.QTimer.singleShot(0, lambda: segCompositeNode.SetBackgroundVolumeID(None))
 
     def disableSliceVisibilityIn3DView(self, viewNames):
         for viewName in viewNames:
@@ -240,7 +244,7 @@ class SideBySideLayoutView(LTracePlugin):
             slicer.app.layoutManager().sliceWidget(viewName).sliceLogic().GetSliceCompositeNode().SetLinkedControl(1)
 
     @staticmethod
-    def _useSameBackgroundAs(fromSlice, toSlice, opacity=-1):
+    def _useSameBackgroundAs(fromSlice, toSlice):
         layout = slicer.app.layoutManager()
         toLogic = layout.sliceWidget(toSlice).sliceLogic()
         toComposite = toLogic.GetSliceCompositeNode()
@@ -251,15 +255,12 @@ class SideBySideLayoutView(LTracePlugin):
         fromComposite = fromLogic.GetSliceCompositeNode()
 
         toComposite.SetBackgroundVolumeID(fromComposite.GetBackgroundVolumeID())
-        if opacity < 0:
-            opacity = fromComposite.GetBackgroundOpacity()
-        toComposite.SetBackgroundOpacity(opacity)
 
         fromLogic.FitSliceToAll()
         toLogic.FitSliceToAll()
 
     @staticmethod
-    def _useSameForegroundAs(fromSlice, toSlice, opacity=-1):
+    def _useSameForegroundAs(fromSlice, toSlice):
         layout = slicer.app.layoutManager()
         toLogic = layout.sliceWidget(toSlice).sliceLogic()
         toComposite = toLogic.GetSliceCompositeNode()
@@ -270,9 +271,7 @@ class SideBySideLayoutView(LTracePlugin):
         fromComposite = fromLogic.GetSliceCompositeNode()
 
         toComposite.SetForegroundVolumeID(fromComposite.GetForegroundVolumeID())
-        if opacity < 0:
-            opacity = fromComposite.GetForegroundOpacity()
-        toComposite.SetForegroundOpacity(opacity)
+        toComposite.SetForegroundOpacity(fromComposite.GetForegroundOpacity())
 
         fromLogic.FitSliceToAll()
         toLogic.FitSliceToAll()

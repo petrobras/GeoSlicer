@@ -2,7 +2,13 @@
 
 Registration is used to align two images of the same sample, commonly utilized for slides (but with a different interface) when PP/PX exists. In Micro CT, we generally use it when we have images of the same sample, dry and saturated, or when the sample undergoes cleaning processes.
 
-Alignment can be done manually or using an automatic algorithm. In simple cases, the automatic method should be able to solve it, but in other cases, it's advisable to adjust manually first, bringing the samples at least close to the reference, and then run the automatic process for fine-tuning.
+Three methods are available, each suited to a different situation:
+
+- **Fast Registration** performs a *global* alignment: it recovers an arbitrary rotation and translation, with no need for the volumes to be close to begin with. It is specific to MicroCT, because it relies on assumptions about the dense features the two scans have in common. Use it as the first choice for paired MicroCT volumes (for example dry and saturated scans of the same sample).
+- **Manual Registration** is completely general purpose: you set the transformation by hand. Use it when the automatic methods do not apply, or to bring the volumes close enough for General Registration to converge.
+- **General Registration** (the BRAINSFit-based automatic registration) makes no assumptions about the image content, but only converges when the volumes are *already nearly registered*. Use it to refine an alignment that is already close, for instance after a manual registration.
+
+A common workflow is to try Fast Registration first, fall back to aligning roughly by hand when it does not apply, and then run General Registration for the final adjustment.
 
 ## Manual Registration
 
@@ -45,13 +51,13 @@ However, the most intuitive way to register the image is through the graphical e
 	To compare the volumes during registration, one can choose one volume as *foreground* and the other as *background*, using the selection box in the top-left corner of each view. When selecting these two volumes, the interface allows changing the opacity between the two using the slider on the left of the selection, or by holding the Ctrl button + clicking and dragging the mouse from bottom to top within the viewing window.
 	![foreground](../../assets/images/MicroCTForeground.png)
 
-## Automatic Registration
+## General Registration
 
 ![Registro Automático](../../assets/images/MicroCTRegistroAutomatico.webp)
 
-In the Automatic Registration interface, you must select a reference volume and a moving volume that will automatically find the necessary transformation. Transformations will be applied to the "*Moving volume*" to match the "*Fixed volume*", and the result will be saved as a new transformed volume, preserving the original and reference volumes.
+General Registration is the BRAINSFit-based automatic registration. It makes no assumptions about the image content, so it works on any pair of volumes, but it only converges when they are *already nearly registered*, so it is best used to refine an alignment produced by Manual Registration. Select a reference volume and a moving volume, and the transformation is found automatically. Transformations are applied to the "*Moving volume*" to match the "*Fixed volume*", and the result is saved as a new transformed volume, preserving the original and reference volumes.
 
-The parameters used in automatic registration are:
+The parameters used in general registration are:
 
 - *Sample Radius*: radius of the sample in millimeters. This radius will be used to create a mask that identifies relevant data for registration.
 - *Sampling Fraction*: the fraction of voxels from the Fixed volume that will be used for registration. The value must be greater than zero and less than or equal to one. Higher values increase computation time but can result in greater precision.
@@ -63,3 +69,17 @@ The parameters used in automatic registration are:
   - *Rigid + Scale (7 DOF)*: can perform another type of transformation besides rigid ones; it can increase or decrease the image scale.
   - *Rigid + Scale + Skew (10 DOF)*: in addition to the previous transformations, it can perform shearing in different directions.
   These phases are on a scale where the first type of transformations, with fewer degrees of freedom, will deform the original image less, and the last can deform with more freedom.
+
+## Fast Registration
+
+Fast Registration automatically aligns two MicroCT volumes of the same sample (for example a dry and a saturated scan) by matching the constellation of compact, high-attenuation inclusions ("blobs") visible in both. It recovers a rigid transform (rotation and translation) and is well suited to samples that share such dense features. Both volumes must be on the same voxel grid and spacing.
+
+Select the *Fixed volume*, which stays in place, and the *Moving volume*, which receives the alignment transform, then click *Apply*. A progress bar reports feature detection and matching, which usually takes only a few seconds.
+
+On success:
+
+- The fixed and aligned moving volumes are overlaid in the slice views and cross-faded automatically (the *Alignment preview*), so you can confirm the alignment: features that stay put as the overlay fades indicate success. Use *Pause*, *Show fixed*, and *Show moving* to inspect either volume on its own.
+- The resulting transformation matrix (moving → fixed) is shown and can be copied. The transform is applied to the moving volume non-destructively; use *Harden transform* to apply it permanently. Running again replaces the transform.
+
+!!! tip
+	If automatic alignment fails, the module explains why (for example, too few features were detected, or no consistent alignment could be found) and offers a shortcut to Manual Registration, which opens with the same moving volume already selected. For difficult cases, it often helps to align roughly by hand first and then use an automatic method for fine-tuning.

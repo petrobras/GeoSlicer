@@ -56,7 +56,7 @@ class GraphicsLayoutWidget(GraphicsView):
         for n in ['nextRow', 'nextCol', 'nextColumn', 'addPlot', 'addViewBox', 'addItem', 'getItem', 'addLayout', 'addLabel', 'removeItem', 'itemIndex', 'clear']:
             setattr(self, n, getattr(self.ci, n))
         self.setCentralItem(self.ci)
-        
+
         if size is not None:
             self.resize(*size)
             

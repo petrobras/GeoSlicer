@@ -1,29 +1,29 @@
 """Module to store every node attribute definition with well defined values.
 
-   How to implement:
+How to implement:
 
-   - Derive a class from NodeAttributeValue:
-       class NewNodeAttribute(NodeAttributeValue):
-           Option1 = "option_1"
-           Option2 = "option_2"
-           
-       The class name (retrieved by the method 'name()') is used as the node's attribute key.
-       The class attributes are the 'options' available for the node's attribute. The attribute 'key' is used to retrieve the value, which is used as the node's attribute value.
+- Derive a class from NodeAttributeValue:
+    class NewNodeAttribute(NodeAttributeValue):
+        Option1 = "option_1"
+        Option2 = "option_2"
 
-   How to use:
+    The class name (retrieved by the method 'name()') is used as the node's attribute key.
+    The class attributes are the 'options' available for the node's attribute. The attribute 'key' is used to retrieve the value, which is used as the node's attribute value.
 
-    - Getting an attribute:
-      node.GetAttribute(NewNodeAttribute.name())
-      # Expecting a node attribute with the string "NewNodeAttribute" as key.
-      
-     
-    - Setting an attribute:
-      node.SetAttribute(ATTRIBUTE_EXAMPLE.name(), ATTRIBUTE_EXAMPLE.Option1.value)
-      # Expecting to define the node's attribute with the string "NewNodeAttribute" as the key, and a string "option_1" as its value.
-     
-    - Comparison:
-      if node.GetAttribute(ATTRIBUTE_EXAMPLE.name()) == ATTRIBUTE_EXAMPLE.Option1.value:
-          ....
+How to use:
+
+ - Getting an attribute:
+   node.GetAttribute(NewNodeAttribute.name())
+   # Expecting a node attribute with the string "NewNodeAttribute" as key.
+
+
+ - Setting an attribute:
+   node.SetAttribute(ATTRIBUTE_EXAMPLE.name(), ATTRIBUTE_EXAMPLE.Option1.value)
+   # Expecting to define the node's attribute with the string "NewNodeAttribute" as the key, and a string "option_1" as its value.
+
+ - Comparison:
+   if node.GetAttribute(ATTRIBUTE_EXAMPLE.name()) == ATTRIBUTE_EXAMPLE.Option1.value:
+       ....
 
 """
 
@@ -119,6 +119,7 @@ class HistogramGraphType(NodeAttributeValue):
     IN_DEPTH = "in_depth"
     NMR = "nmr"
     MULTI_HISTOGRAM = "multi_histogram"
+    PSD_PER_DEPTH = "psd_per_depth"
 
 
 class TableDataTypeAttribute(NodeAttributeValue):

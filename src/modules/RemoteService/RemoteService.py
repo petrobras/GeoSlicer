@@ -139,9 +139,9 @@ class RemoteServiceLogic:
                         RemoteServiceWidget.showLoginDialog(target)
 
                     client = ConnectionManager.connect(target)
-
-                    if client is not None and keepDialogOpen is False:
-                        return target, client
+                    if client is not None:
+                        if keepDialogOpen is False:
+                            return target, client
 
                 except errors.TimeoutException as e:
                     slicer.util.errorDisplay(

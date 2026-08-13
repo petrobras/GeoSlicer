@@ -72,9 +72,11 @@ def loadModules(modules, permanent=False, favorite=False):
 
         modulesToLoad.append(myModule.key)
 
-    if not factory.loadModules(modulesToLoad):
-        logging.error(f"Failed to load some module(s)")
-        return
+    for module in modulesToLoad:
+        logging.info(f"Loading module {module}")
+        if not factory.loadModules([module]):
+            logging.error(f"Failed to load module {module}")
+            continue
 
     if len(searchPaths) > npaths:
         settings.setValue("Modules/AdditionalPaths", [str(p) for p in searchPaths])

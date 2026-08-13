@@ -59,6 +59,10 @@ class Client(AbstractClient):
             self.__ssh.connect(**credentials, **kwargs)
         except socket.timeout as e:
             raise TimeoutException(e, self.__credentials["hostname"])
+        except socket.gaierror as e:
+            # Name resolution failed: the host address could not be found.
+            # Must come before socket.error, since gaierror subclasses it.
+            raise HostNotFoundError(e, self.__credentials["hostname"])
         except socket.error as e:
             raise SSHException(e, self.__credentials["hostname"])
         except paramiko.BadHostKeyException as e:

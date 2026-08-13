@@ -7,6 +7,7 @@ import logging
 import ltrace.algorithms.detect_cups as cups
 import traceback
 
+from .AmLoader import AmLoaderWidget
 from .ManualCylinderCrop import ManualCylinderCropWidget
 from .RawLoader import RawLoaderWidget
 from dataclasses import dataclass, field
@@ -14,6 +15,7 @@ from ltrace.slicer import microct, tescan
 from ltrace.slicer.helpers import (
     highlight_error,
     BlockSignals,
+    is_dir_listable,
 )
 from ltrace.slicer.ui import DirOrFileWidget
 from ltrace.slicer_utils import *
@@ -179,6 +181,9 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         rawParamsSection = rawWidget.parametersCollapsibleButton
         return rawWidget, rawParamsSection
 
+    def setupAmWidget(self):
+        return AmLoaderWidget(self)
+
     def setup(self):
         LTracePluginWidget.setup(self)
 
@@ -221,6 +226,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         self.normalWidget = self.setupNormalWidget()
         self.rawWidget, self.rawParamsSection = self.setupRawWidget()
+        self.amWidget = self.setupAmWidget()
 
         # For subclasses
         self.processingSection = ctk.ctkCollapsibleButton()
@@ -238,12 +244,14 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
         self.loadFormLayout.addRow(self.rawParamsSection)
         self.loadFormLayout.addRow(self.processingSection)
         self.loadFormLayout.addRow(self.rawWidget)
+        self.loadFormLayout.addRow(self.amWidget)
         self.loadFormLayout.addRow(self.normalWidget)
 
         self.layout.addStretch()
 
         self.rawWidget.visible = False
         self.rawParamsSection.visible = False
+        self.amWidget.visible = False
         self.normalWidget.visible = False
         self.enableProcessing(False)
 
@@ -259,7 +267,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
     def onPathSelected(self, path):
         self.pathWidget.pathLineEdit.setStyleSheet("")
 
-        if self.pathWidget.path.strip() == "":
+        if self.pathWidget.path.strip() == "" or not is_dir_listable(path):
             message = "No images found"
             self._setInvertWidgetVisibility(False)
             highlight_error(self.pathWidget.pathLineEdit)
@@ -271,6 +279,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
 
         self.rawWidget.visible = False
         self.rawParamsSection.visible = False
+        self.amWidget.visible = False
         self.normalWidget.visible = True
 
         self.enableProcessing(True)
@@ -289,6 +298,13 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             self.normalWidget.visible = False
             message = "Will import a single image from RAW file"
             self.rawWidget.onCurrentPathChanged(path)
+        elif path.suffix == ".am":
+            self.amWidget.visible = True
+            self.normalWidget.visible = False
+            self.amWidget.onCurrentPathChanged(path)
+            self.pathInfoLabel.setText("Will read AmiraMesh compatible data and load into GeoSlicer format")
+            self.enableProcessing(False)
+            return
         else:  # File path is a directory or a single file
             tescan_info = tescan.get_tescan_info(path)
             if tescan_info is None:
@@ -416,7 +432,7 @@ class MicroCTLoaderBaseWidget(LTracePluginWidget):
             self.progressBar.setRange(0, 0)
         else:
             self.progressBar.setRange(0, 100)
-            self.progressBar.setValue(progress)
+            self.progressBar.setValue(int(progress))
             if self.progressBar.value == 100:
                 self.progressBar.hide()
                 self.currentStatusLabel.text = "Idle"

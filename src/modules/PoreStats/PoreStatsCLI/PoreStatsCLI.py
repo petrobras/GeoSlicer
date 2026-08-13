@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from pathlib import Path
 from ltrace.slicer.cli_utils import progressUpdate
@@ -59,31 +60,41 @@ def runcli(args):
     fixed_flags = ["--netcdf", "--exclude-ooids"]
     # fixed_flags += ["--resize"]  # faster execution for debugging purposes only. Leave it commented or delete.
 
-    process = subprocess.Popen(
-        [python_executable]
-        + [script_path]
-        + required_args
-        + optional_paths
-        + optional_params
-        + optional_flags
-        + fixed_flags,
-        bufsize=1,  # line buffered
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        shell=True if sys.platform.startswith("win32") else False,
-    )
+    # Route stderr to a temp file instead of a pipe: we only read stdout during
+    # execution, and if the child writes more than the OS pipe buffer (~64 KB
+    # on Windows) it would block on stderr and freeze stdout too. The file is
+    # kept after the run so its contents can be inspected.
+    stderr_log = tempfile.NamedTemporaryFile(mode="wb+", prefix="porestats_cli_stderr_", suffix=".log", delete=False)
+    try:
+        process = subprocess.Popen(
+            [python_executable]
+            + [script_path]
+            + required_args
+            + optional_paths
+            + optional_params
+            + optional_flags
+            + fixed_flags,
+            bufsize=1,  # line buffered
+            stdout=subprocess.PIPE,
+            stderr=stderr_log,
+            text=True,
+            shell=True if sys.platform.startswith("win32") else False,
+        )
 
-    progress = 0
-    for line in process.stdout:
-        progress = max(getProgress(line), progress)
-        progressUpdate(progress)
+        progress = 0
+        for line in process.stdout:
+            progress = max(getProgress(line), progress)
+            progressUpdate(progress)
 
-    progressUpdate(1)
-    _, error = process.communicate()
+        progressUpdate(1)
+        process.wait()
 
-    if process.returncode != 0:
-        raise RuntimeError(error)
+        if process.returncode != 0:
+            stderr_log.seek(0)
+            error_text = stderr_log.read().decode("utf-8", errors="replace")
+            raise RuntimeError(error_text)
+    finally:
+        stderr_log.close()
 
 
 if __name__ == "__main__":

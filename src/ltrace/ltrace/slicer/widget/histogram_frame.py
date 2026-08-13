@@ -22,6 +22,8 @@ from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import (
     GraphicsLayoutWidget,
 )
 
+import gc
+
 
 class HistogramMeta(type(qt.QFrame), ABCMeta):
     pass
@@ -134,9 +136,9 @@ class HistogramFrame(qt.QFrame, metaclass=HistogramMeta):
         self.number_of_sample_points_box.value = number_of_sample_points
         numberOfSamplePoints = int(self.number_of_sample_points_box.value)
         region_range_min = np.inf
-        region_range_max = np.NINF
+        region_range_max = -np.inf
         min_x_value = np.inf
-        max_x_value = np.NINF
+        max_x_value = -np.inf
 
         self.data_plot.clear_plots()
         for i in range(len(self.voxel_array)):
@@ -221,9 +223,9 @@ class DisplayNodeHistogramFrame(HistogramFrame):
         super().__init__(parent, region_widget, view_widget)
         layout = qt.QVBoxLayout(self)
 
-        self.data_plot = DisplayNodeDataPlot(zoom_slider=view_widget)
+        self.data_plot = DisplayNodeDataPlot(parent=self, zoom_slider=view_widget)
         self.data_plot.region_changed.connect(self._on_region_changed)
-        layout.addLayout(self.data_plot)
+        layout.addWidget(self.data_plot)
 
         # ------------------------------------------------------------------------
         buttonsZ_layout = qt.QHBoxLayout()
@@ -358,9 +360,9 @@ class SegmentationModellingHistogramFrame(HistogramFrame):
         super().__init__(parent, region_widget, view_widget, num_channels)
         layout = qt.QVBoxLayout(self)
 
-        self.data_plot = SegmentationModellingDataPlot(zoom_slider=view_widget)
+        self.data_plot = SegmentationModellingDataPlot(parent=self, zoom_slider=view_widget)
         self.data_plot.region_changed.connect(self._on_region_changed)
-        layout.addLayout(self.data_plot)
+        layout.addWidget(self.data_plot)
 
         buttonsZ_layout = qt.QHBoxLayout()
         buttonsZ_layout.setSpacing(4)
@@ -458,23 +460,26 @@ class DataPlotPalette:
     plot_bg: str
 
 
-class DataPlotMeta(type(qt.QFrame), ABCMeta):
+class DataPlotMeta(type(qt.QWidget), ABCMeta):
     pass
 
 
-class DataPlot(qt.QFormLayout, metaclass=DataPlotMeta):
+class DataPlot(qt.QWidget, metaclass=DataPlotMeta):
     region_changed = qt.Signal()
 
     def __init__(self, parent=None, zoom_slider=None):
         super().__init__(parent)
 
+        self.formLayout = qt.QFormLayout(self)
+        self.formLayout.setContentsMargins(0, 0, 0, 0)
+
         self.zoom_slider = None
         self.linear_region = None
-        self.region_min_limit = np.NINF
+        self.region_min_limit = -np.inf
         self.region_max_limit = np.inf
 
         # Maximum zoom out for the graph
-        self.zoom_min = np.NINF
+        self.zoom_min = -np.inf
         self.zoom_max = np.inf
 
         self.plot_item_list = []
@@ -485,19 +490,24 @@ class DataPlot(qt.QFormLayout, metaclass=DataPlotMeta):
             else DataPlotPalette("#FFFFFF", "#000000", "#FFFFFF")
         )
 
-        pysideReportForm = shiboken2.wrapInstance(hash(self), PySide2.QtWidgets.QFormLayout)
-        subvolumeGraphicsLayout = GraphicsLayoutWidget()
-        subvolumeGraphicsLayout.setMinimumSize(subvolumeGraphicsLayout.minimumWidth(), 200)
-        subvolumeGraphicsLayout.setMaximumSize(subvolumeGraphicsLayout.maximumWidth(), 200)
-        subvolumeGraphicsLayout.setBackground(palette.bg)
-        pysideReportForm.addRow(subvolumeGraphicsLayout)
+        self.subvolumeGraphicsLayout = GraphicsLayoutWidget()
+        self.subvolumeGraphicsLayout.setMinimumSize(self.subvolumeGraphicsLayout.minimumWidth(), 200)
+        self.subvolumeGraphicsLayout.setMaximumSize(self.subvolumeGraphicsLayout.maximumWidth(), 200)
+        self.subvolumeGraphicsLayout.setBackground(palette.bg)
+
+        from ltrace.slicer.helpers import getPythonQtWidget
+
+        self._pythonQtSubvolumeWidget = getPythonQtWidget(self.subvolumeGraphicsLayout)
+
+        # FIX 3: Use the internal form_layout
+        self.formLayout.addRow(self._pythonQtSubvolumeWidget)
 
         pen = QtGui.QPen(palette.fg)
         pen.setWidth(2)
         pen.setStyle(QtGui.Qt.SolidLine)
         pen.setCapStyle(QtGui.Qt.SquareCap)
 
-        self.plot_item = subvolumeGraphicsLayout.addPlot()
+        self.plot_item = self.subvolumeGraphicsLayout.addPlot()
         self.plot_item.setMouseEnabled(False, False)
         self.plot_item.getViewBox().setBackgroundColor(palette.plot_bg)
         self.plot_item.getAxis("bottom").setPen(pen)
@@ -513,7 +523,7 @@ class DataPlot(qt.QFormLayout, metaclass=DataPlotMeta):
         if zoom_slider is None:
             self.zoom_slider = ctk.ctkRangeWidget()
             self.zoom_slider.valuesChanged.connect(self._set_graphic_range)
-            self.addRow("Zoom:", self.zoom_slider)
+            self.formLayout.addRow("Zoom:", self.zoom_slider)
 
     def add_plot(self, data_x, data_y, color):
         if type(color) is tuple:
@@ -521,7 +531,7 @@ class DataPlot(qt.QFormLayout, metaclass=DataPlotMeta):
         else:
             color = QtGui.QColor(color)
         brush = QtGui.QBrush(color)
-        new_curve_item = pg.PlotCurveItem(data_x, data_y, stepMode=True, fillLevel=0, brush=brush)
+        new_curve_item = pg.PlotCurveItem(data_x, data_y, stepMode="center", fillLevel=0, brush=brush)
         self.plot_item_list.append(new_curve_item)
         self.plot_item.addItem(new_curve_item)
 
@@ -583,14 +593,14 @@ class DataPlot(qt.QFormLayout, metaclass=DataPlotMeta):
     def clear_region(self):
         self.plot_item.removeItem(self.linear_region)
         self.linear_region = None
-        self.region_min_limit = np.NINF
+        self.region_min_limit = -np.inf
         self.region_max_limit = np.inf
 
     def _set_graphic_range(self, min_, max_):
         min_ = max(min_, self.zoom_min) if min_ else self.zoom_min
         max_ = min(max_, self.zoom_max) if max_ else self.zoom_max
 
-        if min_ in [np.inf, np.NINF] or max_ in [np.inf, np.NINF]:
+        if min_ in [np.inf, -np.inf] or max_ in [np.inf, -np.inf]:
             return
 
         self.plot_item.setXRange(min_, max_, padding=0)

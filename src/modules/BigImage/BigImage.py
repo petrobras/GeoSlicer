@@ -90,6 +90,8 @@ class BigImageWidget(LTracePluginWidget):
             nodeTypes=["vtkMRMLTextNode"],
             tooltip="Select the image within the NetCDF dataset to preview.",
         )
+        self.volumeSelector.setSizePolicy(qt.QSizePolicy.Ignored, qt.QSizePolicy.Fixed)
+        self.volumeSelector.setMinimumWidth(120)
         self.volumeSelector.selectorWidget.addNodeAttributeFilter("LazyNode", "1")
         self.volumeSelector.objectName = "Volume Selector"
         datasetLayout.addRow("Image:", self.volumeSelector)
@@ -234,7 +236,7 @@ class BigImageWidget(LTracePluginWidget):
         self.convertedTypeComboBox.setToolTip("Convert the image to this numeric type.")
         self.convertedTypeComboBox.currentIndexChanged.connect(lambda _: self.updateOutputSizeLabel())
         typeLayout.addRow("Convert to type:", self.convertedTypeComboBox)
-        self.remapRangeCheckBox = qt.QCheckBox("Map min and max values to min and max of new type")
+        self.remapRangeCheckBox = qt.QCheckBox("Remap dynamic range to new type")
         self.remapRangeCheckBox.setToolTip(
             "When enabled, the remapping of values will occur when converting to a new integer type, preserving the dynamic range of the original values. "
             "When disabled, values outside the range of the new type will be clipped, while values within the range will remain unchanged."
@@ -389,8 +391,8 @@ class BigImageWidget(LTracePluginWidget):
         self.sliceSliders[0].valueChanged.emit(self.sliceSliders[0].value)
         self.cropOriginSpinBoxes[0].valueChanged.emit(self.cropOriginSpinBoxes[0].value)
         self.volumeSelector.enabled = False
-        red_and_3d_layout_id = 100
-        slicer.app.layoutManager().setLayout(red_and_3d_layout_id)
+        red_layout_id = 6
+        slicer.app.layoutManager().setLayout(red_layout_id)
         BigImage.set_setting("InputDir", self.inputDirSelector.directory)
 
     def onLoadClicked(self):
@@ -770,7 +772,6 @@ class BigImageLogic(LTracePluginLogic):
 
             sliceComposite = sliceLogic.GetSliceCompositeNode()
             sliceComposite.SetBackgroundVolumeID(None)
-            sliceComposite.SetBackgroundOpacity(1)
             sliceComposite.SetForegroundVolumeID(previewNode.GetID())
             sliceComposite.SetForegroundOpacity(1)
 

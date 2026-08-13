@@ -11,7 +11,8 @@ from ltrace.slicer.app import updateWindowTitle, getApplicationVersion, parseApp
 from ltrace.slicer.app.custom_3dview import customize_3d_view
 from ltrace.slicer.app.custom_colormaps import customize_color_maps
 from ltrace.slicer.app.drawer import ExpandDataDrawer
-from ltrace.slicer.app.onboard import showDataLoaders, loadEnvironmentByName
+from ltrace.slicer.app.onboard import loadEnvironmentByName
+from ltrace.slicer.app.onboard_view import showOnboardView
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
 from ltrace.slicer.debounce_caller import DebounceCaller
@@ -33,6 +34,8 @@ try:
 except ImportError:
     TrackingManager = lambda *args, **kwargs: None
 
+import sympy
+import torch
 
 toBool = slicer.util.toBool
 
@@ -55,8 +58,15 @@ class AppContext(LTracePlugin):
         ####################################################################################
 
         self.appData = getJsonData()
-
+        self._PYSIDE_GC_REGISTRY = {}
         self.__mainWindow = None
+
+        # Cache window for performance and avoids hasattr(w, "objectName") ValueError
+        self.__mainWindowCache = None
+        if not getattr(slicer.util, "_ltraceOriginalMainWindow", None):
+            slicer.util._ltraceOriginalMainWindow = slicer.util.mainWindow
+        slicer.util.mainWindow = self._cachedMainWindow
+
         self.slicesShown = False
         self.appVersionString = parseApplicationVersion(self.appData)
         self.modulesDir = ""
@@ -90,6 +100,15 @@ class AppContext(LTracePlugin):
             self.__mainWindow = slicer.util.mainWindow()
 
         return self.__mainWindow
+
+    def _cachedMainWindow(self):
+        """Installed as slicer.util.mainWindow; see __init__ for rationale.
+
+        Uses the captured original for the one-time lookup so it stays correct
+        even though slicer.util.mainWindow now points here."""
+        if self.__mainWindowCache is None:
+            self.__mainWindowCache = slicer.util._ltraceOriginalMainWindow()
+        return self.__mainWindowCache
 
     def setupObservers(self):
 
@@ -209,7 +228,7 @@ class ModuleManager:
         )
 
     def showDataLoaders(self, toolbar):
-        showDataLoaders(toolbar)
+        showOnboardView(toolbar)
 
     def loadEnvironmentByName(self, toolbar, displayName):
         loadEnvironmentByName(toolbar, displayName)
@@ -267,7 +286,10 @@ class ProjectEventsLogic:
 
         self.setupRecentlyLoadedMenu()
 
-    def loadScene(self):
+    def loadScene(self, path=None):
+        if path:
+            return self.__loadScenePath(Path(path).resolve())
+
         fileDialog = qt.QFileDialog(
             slicer.modules.AppContextInstance.mainWindow,
             "Load a scene",
@@ -277,23 +299,22 @@ class ProjectEventsLogic:
         try:
             if fileDialog.exec():
                 paths = fileDialog.selectedFiles()
-                projectFilePath = paths[0]
-                projectFilePath = Path(projectFilePath).resolve()
-                if projectFilePath == Path(slicer.mrmlScene.GetURL()):
-                    return True
-
-                if not self.onCloseScene():
-                    return False
-
-                status, errorMessage = self.__projectManager.load(projectFilePath)
-                if not status:
-                    slicer.util.errorDisplay(errorMessage)
-                    return False
-                self.setupRecentlyLoadedMenu()
-                return True
+                return self.__loadScenePath(Path(paths[0]).resolve())
             return False
         finally:
             fileDialog.deleteLater()
+
+    def __loadScenePath(self, projectFilePath: Path) -> bool:
+        if projectFilePath == Path(slicer.mrmlScene.GetURL()):
+            return True
+        if not self.onCloseScene():
+            return False
+        status, errorMessage = self.__projectManager.load(projectFilePath)
+        if not status:
+            slicer.util.errorDisplay(errorMessage)
+            return False
+        self.setupRecentlyLoadedMenu()
+        return True
 
     def saveScene(self):
         """Save current scene/project

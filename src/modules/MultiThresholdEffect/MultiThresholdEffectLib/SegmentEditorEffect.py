@@ -6,13 +6,13 @@ import numpy as np
 import pyqtgraph as pg
 import PySide2 as ps
 
-import vtk, qt, slicer
+import vtk, qt, slicer, ctk
 from SegmentEditorEffects import *
 from SegmentEditorEffects.SegmentEditorThresholdEffect import PreviewPipeline
 
 from ltrace.algorithms.common import randomChoice
 from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES
-from ltrace.slicer.helpers import getVolumeNullValue, getPythonQtWidget, hide_masking_widget
+from ltrace.slicer.helpers import getVolumeNullValue, getPythonQtWidget, hide_masking_widget, tryGetNode
 from ltrace.slicer.ui import numberParamInt
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 
@@ -143,6 +143,7 @@ the number of clusters equal to the number of segments added to the segmentation
         self.rederedInConventional = False
         self.svalues = None
         self.clearPreviewDisplay()
+        self.clearObservers()
         self.timer.stop()
 
         if self.scriptedEffect.parameterSetNode() is None:
@@ -162,43 +163,44 @@ the number of clusters equal to the number of segments added to the segmentation
         pass
 
     def setupOptionsFrame(self):
-        parametersCollapsibleButton = qt.QWidget()
-        self.scriptedEffect.addOptionsWidget(parametersCollapsibleButton)
+        self.parametersCollapsibleButton = qt.QWidget()
+        self.scriptedEffect.addOptionsWidget(self.parametersCollapsibleButton)
 
-        parametersFormLayout = qt.QFormLayout()
-        parametersCollapsibleButton.setLayout(parametersFormLayout)
-
+        self.parametersFormLayout = qt.QFormLayout()
+        self.parametersCollapsibleButton.setLayout(self.parametersFormLayout)
         self.enablePulsingCheckbox = qt.QCheckBox("Preview pulse")
         self.enablePulsingCheckbox.setCheckState(qt.Qt.Checked)
-        parametersFormLayout.addRow(self.enablePulsingCheckbox)
+        self.parametersFormLayout.addRow(self.enablePulsingCheckbox)
 
         self.figureGroup = ps.QtWidgets.QWidget()
         self.figureGroup.setMinimumWidth(150)
         self.figureGroup.setMaximumHeight(250)
 
-        axisLayout = ps.QtWidgets.QHBoxLayout(self.figureGroup)
-        axisLayout.setContentsMargins(0, 0, 0, 0)
-        axisLayout.setSpacing(5)
+        self.axisLayout = ps.QtWidgets.QHBoxLayout(self.figureGroup)
+        self.axisLayout.setContentsMargins(0, 0, 0, 0)
+        self.axisLayout.setSpacing(5)
 
-        graphicsLayoutWidget = GraphicsLayoutWidget()
-        graphicsLayoutWidget.setSizePolicy(ps.QtWidgets.QSizePolicy.Expanding, ps.QtWidgets.QSizePolicy.Expanding)
+        self.graphicsLayoutWidget = GraphicsLayoutWidget()
+        self.graphicsLayoutWidget.setSizePolicy(
+            ps.QtWidgets.QSizePolicy.Policy.Expanding, ps.QtWidgets.QSizePolicy.Policy.Expanding
+        )
+
         self.table = ps.QtWidgets.QTableWidget()
+        self.table.setSizePolicy(ps.QtWidgets.QSizePolicy.Policy.Fixed, ps.QtWidgets.QSizePolicy.Policy.Expanding)
 
-        axisLayout.addWidget(graphicsLayoutWidget, 1)
-        axisLayout.addWidget(self.table, 0)
+        self.axisLayout.addWidget(self.graphicsLayoutWidget, 1)
+        self.axisLayout.addWidget(self.table, 0)
 
-        self.table.setSizePolicy(ps.QtWidgets.QSizePolicy.Fixed, ps.QtWidgets.QSizePolicy.Expanding)
-
-        self.hist_plot = graphicsLayoutWidget.addPlot()
+        self.hist_plot = self.graphicsLayoutWidget.addPlot()
         self.hist_plot.setMouseEnabled(False, False)
         self.hist_plot.setMenuEnabled(False)
         self.hist_plot.hideAxis("left")
 
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["min", "max"])
-        self.table.horizontalHeader().setSectionResizeMode(ps.QtWidgets.QHeaderView.ResizeToContents)
-
-        parametersFormLayout.addRow(getPythonQtWidget(self.figureGroup))
+        self.table.horizontalHeader().setSectionResizeMode(ps.QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.figureGroupPythonQt = getPythonQtWidget(self.figureGroup)
+        self.parametersFormLayout.addRow(self.figureGroupPythonQt)
 
         # Slide bar to zoom the histogram
         zoomGroup = qt.QWidget()
@@ -206,14 +208,14 @@ the number of clusters equal to the number of segments added to the segmentation
 
         zoomLabel = qt.QLabel("X-axis range:")
         zoomLabel.setToolTip("Set the x range of the displayed histogram.")
-        parametersFormLayout.addRow(zoomLabel)
+        self.parametersFormLayout.addRow(zoomLabel)
 
         self.zoomSlider = ctk.ctkRangeWidget()
 
         zoomLayout.addWidget(zoomLabel)
         zoomLayout.addWidget(self.zoomSlider)
 
-        parametersFormLayout.addRow(zoomGroup)
+        self.parametersFormLayout.addRow(zoomGroup)
 
         #
         # Apply Button
@@ -246,7 +248,7 @@ the number of clusters equal to the number of segments added to the segmentation
         hlayout.addWidget(self.kMeansButton)
         hlayout.addWidget(self.applyButton)
         hlayout.addWidget(self.applyFullButton)
-        parametersFormLayout.addRow(applyKMeansGroup)
+        self.parametersFormLayout.addRow(applyKMeansGroup)
 
         self.bins_box.valueChanged.connect(self.onBinsChanged)
 
@@ -355,12 +357,12 @@ the number of clusters equal to the number of segments added to the segmentation
             return []
 
         segmentation = segmentationNode.GetSegmentation()
-        segmentation.GetSegmentIDs(segmentIDs)
         colors = list()
-        for index in range(segmentIDs.GetNumberOfValues()):
-            segment = segmentation.GetNthSegment(index)
+        for index in range(segmentation.GetNumberOfSegments()):
+            segmentID = segmentation.GetNthSegmentID(index)
+            segment = segmentation.GetSegment(segmentID)
             colors.append(segment.GetColor())
-            self.colorsBySegment[segmentIDs.GetValue(index)] = segment.GetColor()
+            self.colorsBySegment[segmentID] = segment.GetColor()
         return colors
 
     def sampleDataset(self, nparray):
@@ -442,7 +444,7 @@ the number of clusters equal to the number of segments added to the segmentation
             segmentID = segmentation.GetNthSegmentID(i)
             segment_name = segmentation.GetSegment(segmentID).GetName()
             item = ps.QtWidgets.QTableWidgetItem("")
-            item.setFlags(ps.QtCore.Qt.ItemIsEnabled)
+            item.setFlags(ps.QtCore.Qt.ItemFlag.ItemIsEnabled)
             item_color = segmentation.GetSegment(segmentID).GetColor()
             self.table.setVerticalHeaderItem(i, item)
 
@@ -450,9 +452,9 @@ the number of clusters equal to the number of segments added to the segmentation
             for j in range(2):
                 minThresh, maxThresh = self.lrlist[i].getRegion()
                 item1 = ps.QtWidgets.QTableWidgetItem()
-                item1.setData(ps.QtCore.Qt.EditRole, minThresh)
+                item1.setData(ps.QtCore.Qt.ItemDataRole.EditRole, minThresh)
                 item2 = ps.QtWidgets.QTableWidgetItem()
-                item2.setData(ps.QtCore.Qt.EditRole, maxThresh)
+                item2.setData(ps.QtCore.Qt.ItemDataRole.EditRole, maxThresh)
                 self.table.setItem(i, 0, item1)
                 self.table.setItem(i, 1, item2)
 
@@ -469,7 +471,7 @@ the number of clusters equal to the number of segments added to the segmentation
         self.table.setFixedWidth(self.tableWidth)
 
     def onCellChanged(self, rowIdx, colIdx):
-        er = ps.QtCore.Qt.EditRole
+        er = ps.QtCore.Qt.ItemDataRole.EditRole
         changedItem = self.table.item(rowIdx, colIdx)
         data = changedItem.data(er)
 
@@ -519,13 +521,11 @@ the number of clusters equal to the number of segments added to the segmentation
         with slicer.util.NodeModify(segmentationNode):
             segmentation = segmentationNode.GetSegmentation()
             self.scriptedEffect.saveStateForUndo()
-            segmentIds = vtk.vtkStringArray()
-            segmentation.GetSegmentIDs(segmentIds)
 
-            for i in range(segmentIds.GetNumberOfValues()):
+            for i in range(segmentation.GetNumberOfSegments()):
                 try:
                     # Set current selected segment
-                    segmentid = segmentIds.GetValue(i)
+                    segmentid = segmentation.GetNthSegmentID(i)
                     self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(segmentid)
                     # Get master volume image data
                     import vtkSegmentationCorePython as vtkSegmentationCore
@@ -584,8 +584,13 @@ the number of clusters equal to the number of segments added to the segmentation
         virtualSegWidget.setParams(self.getParentLazyNode(), self.transitions.tolist(), self.colors, segmentNames)
 
     def clearObservers(self):
-        for object, tag in self._observerHandlers:
-            object.RemoveObserver(tag)
+        for obj, tag in self._observerHandlers:
+            if isinstance(obj, str):  # is a node ID
+                obj = tryGetNode(obj)
+                if not obj:
+                    continue
+
+            obj.RemoveObserver(tag)
         self._observerHandlers.clear()
 
     def resetObservers(self):
@@ -596,7 +601,7 @@ the number of clusters equal to the number of segments added to the segmentation
 
         self._observerHandlers.append(
             (
-                self.segmentationNode,
+                self.segmentationNode.GetID(),
                 self.segmentationNode.AddObserver(
                     self.segmentationNode.GetSegmentation().RepresentationModified, self.onSegmentationNodeModified
                 ),
@@ -604,7 +609,7 @@ the number of clusters equal to the number of segments added to the segmentation
         )
         self._observerHandlers.append(
             (
-                self.segmentationNode,
+                self.segmentationNode.GetID(),
                 self.segmentationNode.AddObserver(
                     self.segmentationNode.GetSegmentation().SegmentAdded, self.onSegmentationNodeModified
                 ),
@@ -612,7 +617,7 @@ the number of clusters equal to the number of segments added to the segmentation
         )
         self._observerHandlers.append(
             (
-                self.segmentationNode,
+                self.segmentationNode.GetID(),
                 self.segmentationNode.AddObserver(
                     self.segmentationNode.GetSegmentation().SegmentRemoved, self.onSegmentationNodeModified
                 ),
@@ -620,7 +625,7 @@ the number of clusters equal to the number of segments added to the segmentation
         )
         self._observerHandlers.append(
             (
-                self.segmentationNode,
+                self.segmentationNode.GetID(),
                 self.segmentationNode.AddObserver(
                     self.segmentationNode.GetSegmentation().SegmentModified, self.onSegmentationNodeModified
                 ),
@@ -669,7 +674,7 @@ the number of clusters equal to the number of segments added to the segmentation
             logging.debug("Invalid segmentation node. There are no segments.")
             return
 
-        centroids, labelmap = kmeans2(self.svalues.astype("float"), int(nsegs), iter=100, minit="points")
+        centroids, labelmap = kmeans2(self.svalues.astype(float), int(nsegs), iter=100, minit="points")
         self.transitions = self.getTransitions(centroids)
         self.transitions = np.append(self._min, self.transitions)
         self.transitions = np.append(self.transitions, self._max)

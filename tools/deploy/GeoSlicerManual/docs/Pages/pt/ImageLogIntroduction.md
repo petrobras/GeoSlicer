@@ -45,6 +45,7 @@ O ambiente Well Logs do GeoSlicer é organizado em vários módulos, cada um ded
     *   **[Editor de Segmentos](/ImageLog/Segmentation/Segmentation.md#manual-segmentation):** Ferramentas manuais e semi-automáticas para edição de segmentos.
     *   **[Segmentador por Instância](/ImageLog/Segmentation/Segmentation.md#instance-segmenter):** Segmentação automática baseada em aprendizado de máquina.
     *   **[Editor de Instâncias](/ImageLog/Segmentation/Segmentation.md#instance-segmenter-editor):** Ferramentas para refinar os resultados da segmentação por instância.
+*   **[Pore Size Distribution](/ImageLog/PoreSizeDistribution/PoreSizeDistribution.md):** Distribuição de tamanhos de poros como imagem e como histogramas.
 *   **[Ferramentas Adicionais](/ImageLog/MoreTools/MoreTools.md):**
     *   [Calculadora de Volume](/ImageLog/MoreTools/MoreTools.md#volume-calculator)
     *   [Filtro de Tabela](/ImageLog/MoreTools/MoreTools.md#table-filter)

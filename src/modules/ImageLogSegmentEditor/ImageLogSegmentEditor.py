@@ -10,6 +10,11 @@ import sys
 from ltrace.slicer_utils import *
 from ltrace.slicer.node_attributes import NodeEnvironment
 
+try:
+    from Test.ImageLogSegmentEditorTest import ImageLogSegmentEditorTest
+except ImportError:
+    ImageLogSegmentEditorTest = None
+
 
 class ImageLogSegmentEditor(LTracePlugin):
     SETTING_KEY = "ImageLogSegmentEditor"
@@ -105,6 +110,7 @@ class ImageLogSegmentEditorWidget(LTracePluginWidget):
             "Draw",
             "Erase",
             "Level tracing",
+            "Periodic level tracing",
             "Margin",
             "Smoothing",
             "Scissors",

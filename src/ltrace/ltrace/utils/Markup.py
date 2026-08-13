@@ -4,7 +4,7 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer.helpers import createTemporaryNode
+from ltrace.slicer.helpers import createTemporaryNode, removeTemporaryNodes
 
 
 class Markup(qt.QObject):
@@ -42,7 +42,9 @@ class Markup(qt.QObject):
         self.pick_criterion_passed = None
         self.last_slice_view_name = None
 
-        self.markups_node = createTemporaryNode(cls=self.TYPE_TO_SLICER_TYPE[self.type], name="markups_node")
+        self.markups_node = createTemporaryNode(
+            cls=self.TYPE_TO_SLICER_TYPE[self.type], name="markups_node", environment="Markup"
+        )
         slicer.modules.AppContextInstance.mainWindow.installEventFilter(self)
 
         self.destroyed.connect(self.__del__)
@@ -59,8 +61,12 @@ class Markup(qt.QObject):
         self.after_finish_callback = None
         selection_node = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
         selection_node.SetReferenceActivePlaceNodeID(None)
-        slicer.mrmlScene.RemoveNode(self.markups_node)
-        del self.markups_node
+        self.__removeInteractionObserverTags()
+        self.__removeMarkupsObserverTags()
+        self.markups_observer_tags.clear()
+        self.interaction_observer_tags.clear()
+        removeTemporaryNodes(environment="Markup")
+        self.markups_node = None
 
     def eventFilter(self, object, event):
         if event.type() == qt.QEvent.HoverMove:
@@ -179,6 +185,7 @@ class Markup(qt.QObject):
             if self.interaction_observer_tags is not None:
                 for tag in self.interaction_observer_tags:
                     interactionNode.RemoveObserver(tag)
+                self.interaction_observer_tags.clear()
         return False
 
     def __removeMarkupsObserverTags(self):
@@ -186,6 +193,7 @@ class Markup(qt.QObject):
             if self.markups_observer_tags is not None:
                 for tag in self.markups_observer_tags:
                     self.markups_node.RemoveObserver(tag)
+                self.markups_observer_tags.clear()
         return False
 
     def __ras_to_ijk(self, ras, volume_node=None, as_int=True):

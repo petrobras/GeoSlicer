@@ -20,6 +20,7 @@ import cv2
 from mmdet.apis import init_detector, inference_detector
 from mmdet.utils import register_all_modules
 from mmengine import Config
+import sympy  # import it before torch to avoid crash
 import torch
 import pandas as pd
 import scipy

@@ -27,12 +27,12 @@ class WettabilityIndexPlot(PlotBase):
         self.dataPlotWidget.set_theme("Light")
 
         self.spacerWidget = pyside.QtWidgets.QSpacerItem(
-            0, 0, pyside.QtWidgets.QSizePolicy.Expanding, pyside.QtWidgets.QSizePolicy.Expanding
+            0, 0, pyside.QtWidgets.QSizePolicy.Policy.Expanding, pyside.QtWidgets.QSizePolicy.Policy.Expanding
         )
 
-        pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), pyside.QtWidgets.QFormLayout)
-        pySideMainLayout.addRow(self.dataPlotWidget.widget)
-        pySideMainLayout.addItem(self.spacerWidget)
+        self.pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), pyside.QtWidgets.QFormLayout)
+        self.pySideMainLayout.addRow(self.dataPlotWidget.widget)
+        self.pySideMainLayout.addItem(self.spacerWidget)
 
     def update(self):
         self.zAxisComboBox.blockSignals(True)

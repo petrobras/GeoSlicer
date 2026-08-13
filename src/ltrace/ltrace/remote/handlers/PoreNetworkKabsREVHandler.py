@@ -20,10 +20,6 @@ from ltrace.slicer_utils import dataFrameToTableNode
 
 class PoreNetworkKabsREVHandler:
     JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
-    if platform.system() == "Windows":
-        JOBS_LOCAL_PATH = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\GEOSLICER\jobs")
-    else:
-        JOBS_LOCAL_PATH = Path("/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     PROGRESS_FILTER_PATTERN = re.compile(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
@@ -54,9 +50,10 @@ class PoreNetworkKabsREVHandler:
 
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
-            job_dir_name = JobManager.dirname(caller.jobs[uid])
+            job_executor = caller.jobs[uid]
+            job_dir_name = JobManager.dirname(job_executor)
             self.job_remote_path = self.JOBS_REMOTE_PATH / job_dir_name
-            self.job_local_path = self.JOBS_LOCAL_PATH / job_dir_name
+            self.job_local_path = job_executor.host.get_mounted_path() / job_dir_name
 
             client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
 
@@ -91,7 +88,9 @@ class PoreNetworkKabsREVHandler:
             script = " ".join(
                 ["PoreNetworkKabsREV.PoreNetworkKabsREVCLI.PoreNetworkKabsREVCLI", argstring(self.cli_params)]
             )
-            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script])
+            host = caller.jobs[uid].host
+            remote_version = host.get_remote_version()
+            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
             full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
             output = client.run_command(full_cmd, verbose=True)

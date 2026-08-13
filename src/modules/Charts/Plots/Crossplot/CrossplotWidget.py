@@ -23,7 +23,7 @@ from ..BasePlotWidget import BasePlotWidget
 from .data_table_widget import DataTableWidget
 from .equations.line import Line
 from .equations.timur_coates import TimurCoates
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Resources")
 COLOR_MAPS_DIR_PATH = os.path.join(RESOURCES_PATH, "ColorMaps")
@@ -195,12 +195,12 @@ class CrossplotWidget(BasePlotWidget):
         """Initialize widgets"""
         self.setObjectName("Crossplot Widget")
         self.setMinimumSize(780, 600)
-        layout = QtGui.QHBoxLayout()
+        layout = QtWidgets.QHBoxLayout()
 
-        parametersWidget = QtGui.QFrame()
-        parametersLayout = QtGui.QVBoxLayout()
+        parametersWidget = QtWidgets.QFrame()
+        parametersLayout = QtWidgets.QVBoxLayout()
         parametersWidget.setLayout(parametersLayout)
-        plot_layout = QtGui.QVBoxLayout()
+        plot_layout = QtWidgets.QVBoxLayout()
         # Data table widget
         self.__tableWidget = DataTableWidget()
         self.__tableWidget.signal_style_changed.connect(self.__updatePlot)
@@ -216,35 +216,35 @@ class CrossplotWidget(BasePlotWidget):
         plot_layout.addStretch()
         # X axis
         # Histogram options
-        self.__xAxisHistogramEnableCheckBox = QtGui.QCheckBox()
+        self.__xAxisHistogramEnableCheckBox = QtWidgets.QCheckBox()
         self.__xAxisHistogramEnableCheckBox.setChecked(True)
         self.__xAxisHistogramEnableCheckBox.stateChanged.connect(self.__onHistogramCheckBoxChange)
-        xHistogramCheckBoxLabel = QtGui.QLabel("Enable histogram")
+        xHistogramCheckBoxLabel = QtWidgets.QLabel("Enable histogram")
         xHistogramCheckBoxLabel.setBuddy(self.__xAxisHistogramEnableCheckBox)
 
-        self.__xHistogramBinSpinBox = QtGui.QSpinBox()
+        self.__xHistogramBinSpinBox = QtWidgets.QSpinBox()
         self.__xHistogramBinSpinBox.setRange(3, 99999)
         self.__xHistogramBinSpinBox.setValue(10)
-        xHistogramSpinBoxLabel = QtGui.QLabel("Bins")
+        xHistogramSpinBoxLabel = QtWidgets.QLabel("Bins")
         xHistogramSpinBoxLabel.setBuddy(self.__xHistogramBinSpinBox)
 
         self.__xUnitConversion = UnitConversionWidget()
 
-        self.__xLogCheckBox = QtGui.QCheckBox()
+        self.__xLogCheckBox = QtWidgets.QCheckBox()
         self.__xLogCheckBox.setChecked(False)
         self.__xLogCheckBox.stateChanged.connect(self.__onLogCheckBoxChange)
-        xLogCheckBoxLabel = QtGui.QLabel("Log")
+        xLogCheckBoxLabel = QtWidgets.QLabel("Log")
         xLogCheckBoxLabel.setBuddy(self.__xLogCheckBox)
 
         # Parameter combobox
-        self.__xAxisComboBox = QtGui.QComboBox()
+        self.__xAxisComboBox = QtWidgets.QComboBox()
         self.__xAxisComboBox.objectName = "X Axis Combo Box"
-        xAxisParameterLayout = QtGui.QFormLayout()
+        xAxisParameterLayout = QtWidgets.QFormLayout()
         xAxisParameterLayout.addRow("Parameter", self.__xAxisComboBox)
         xAxisParameterLayout.setHorizontalSpacing(8)
         # Layout
-        self.__xAxisGridLayout = QtGui.QGridLayout()
-        self.__xAxisGroupBox = QtGui.QGroupBox("X axis")
+        self.__xAxisGridLayout = QtWidgets.QGridLayout()
+        self.__xAxisGroupBox = QtWidgets.QGroupBox("X axis")
         self.__xAxisGroupBox.setLayout(self.__xAxisGridLayout)
         parametersLayout.addWidget(self.__xAxisGroupBox)
 
@@ -252,55 +252,54 @@ class CrossplotWidget(BasePlotWidget):
         self.__xAxisGridLayout.addLayout(xAxisParameterLayout, 0, 0, 1, -1)
         self.__xAxisGridLayout.addWidget(xHistogramCheckBoxLabel, 1, 0, 1, 1)
         self.__xAxisGridLayout.addWidget(self.__xAxisHistogramEnableCheckBox, 1, 1, 1, 1)
-        x_bins_layout = QtGui.QHBoxLayout()
+        x_bins_layout = QtWidgets.QHBoxLayout()
         x_bins_layout.addWidget(xHistogramSpinBoxLabel)
         x_bins_layout.addWidget(self.__xHistogramBinSpinBox)
         x_bins_layout.setSpacing(5)
         self.__xAxisGridLayout.addLayout(x_bins_layout, 1, 2, 1, 1)
 
-        log_layout = QtGui.QHBoxLayout()
+        log_layout = QtWidgets.QHBoxLayout()
         log_layout.addWidget(xLogCheckBoxLabel)
         log_layout.addWidget(self.__xLogCheckBox)
         log_layout.setSpacing(5)
         self.__xAxisGridLayout.addLayout(log_layout, 2, 0, 1, 3)
+        self.__pysideXUnitConversion = shiboken2.wrapInstance(hash(self.__xUnitConversion), QtWidgets.QWidget)
 
-        self.__xAxisGridLayout.addWidget(
-            shiboken2.wrapInstance(hash(self.__xUnitConversion), QtGui.QWidget), 3, 0, 1, 5
-        )
+        self.__xAxisGridLayout.addWidget(self.__pysideXUnitConversion, 3, 0, 1, 5)
         # Groupbox
 
         # Y axis
         # Histogram options
-        self.__yAxisHistogramEnableCheckBox = QtGui.QCheckBox()
+        self.__yAxisHistogramEnableCheckBox = QtWidgets.QCheckBox()
         self.__yAxisHistogramEnableCheckBox.setChecked(True)
         self.__yAxisHistogramEnableCheckBox.stateChanged.connect(self.__onHistogramCheckBoxChange)
-        yHistogramCheckBoxLabel = QtGui.QLabel("Enable histogram")
+        yHistogramCheckBoxLabel = QtWidgets.QLabel("Enable histogram")
         yHistogramCheckBoxLabel.setBuddy(self.__yAxisHistogramEnableCheckBox)
 
-        self.__yHistogramBinSpinBox = QtGui.QSpinBox()
+        self.__yHistogramBinSpinBox = QtWidgets.QSpinBox()
         self.__yHistogramBinSpinBox.setRange(3, 99999)
         self.__yHistogramBinSpinBox.setValue(10)
-        yHistogramSpinBoxLabel = QtGui.QLabel("Bins")
+        yHistogramSpinBoxLabel = QtWidgets.QLabel("Bins")
         yHistogramSpinBoxLabel.setBuddy(self.__yHistogramBinSpinBox)
 
         self.__yUnitConversion = UnitConversionWidget()
 
-        self.__yLogCheckBox = QtGui.QCheckBox()
+        self.__yLogCheckBox = QtWidgets.QCheckBox()
         self.__yLogCheckBox.setChecked(False)
         self.__yLogCheckBox.stateChanged.connect(self.__onLogCheckBoxChange)
-        yLogCheckBoxLabel = QtGui.QLabel("Log")
+        yLogCheckBoxLabel = QtWidgets.QLabel("Log")
         yLogCheckBoxLabel.setBuddy(self.__yLogCheckBox)
 
         # Parameter combobox
-        self.__yAxisComboBox = QtGui.QComboBox()
+        self.__yAxisComboBox = QtWidgets.QComboBox()
         self.__yAxisComboBox.objectName = "Y Axis Combo Box"
-        yAxisParameterLayout = QtGui.QFormLayout()
+        yAxisParameterLayout = QtWidgets.QFormLayout()
         yAxisParameterLayout.addRow("Parameter", self.__yAxisComboBox)
         yAxisParameterLayout.setHorizontalSpacing(8)
 
         # Layout
-        self.__yAxisGridLayout = QtGui.QGridLayout()
-        self.__yAxisGroupBox = QtGui.QGroupBox("Y axis")
+        self.__yAxisGridLayout = QtWidgets.QGridLayout()
+        self.__yAxisGroupBox = QtWidgets.QGroupBox("Y axis")
         self.__yAxisGroupBox.setLayout(self.__yAxisGridLayout)
         parametersLayout.addWidget(self.__yAxisGroupBox)
 
@@ -308,74 +307,74 @@ class CrossplotWidget(BasePlotWidget):
         self.__yAxisGridLayout.addLayout(yAxisParameterLayout, 0, 0, 1, -1)
         self.__yAxisGridLayout.addWidget(yHistogramCheckBoxLabel, 1, 0, 1, 1)
         self.__yAxisGridLayout.addWidget(self.__yAxisHistogramEnableCheckBox, 1, 1, 1, 1)
-        y_bins_layout = QtGui.QHBoxLayout()
+        y_bins_layout = QtWidgets.QHBoxLayout()
         y_bins_layout.addWidget(yHistogramSpinBoxLabel)
         y_bins_layout.addWidget(self.__yHistogramBinSpinBox)
         y_bins_layout.setSpacing(5)
         self.__yAxisGridLayout.addLayout(y_bins_layout, 1, 2, 1, 1)
 
-        log_layout = QtGui.QHBoxLayout()
+        log_layout = QtWidgets.QHBoxLayout()
         log_layout.addWidget(yLogCheckBoxLabel)
         log_layout.addWidget(self.__yLogCheckBox)
         log_layout.setSpacing(5)
         self.__yAxisGridLayout.addLayout(log_layout, 2, 0, 1, 3)
+        self.__pysideYUnitConversion = shiboken2.wrapInstance(hash(self.__yUnitConversion), QtWidgets.QWidget)
 
-        self.__yAxisGridLayout.addWidget(
-            shiboken2.wrapInstance(hash(self.__yUnitConversion), QtGui.QWidget), 3, 0, 1, 5
-        )
+        self.__yAxisGridLayout.addWidget(self.__pysideYUnitConversion, 3, 0, 1, 5)
         # Groupbox
 
         # Z axis
-        self.__zAxisComboBox = QtGui.QComboBox()
-        self.__autoRangeCheckBox = QtGui.QCheckBox()
-        self.__ZMinValueRangeDoubleSpinBox = QtGui.QDoubleSpinBox()
+        self.__zAxisComboBox = QtWidgets.QComboBox()
+        self.__autoRangeCheckBox = QtWidgets.QCheckBox()
+        self.__ZMinValueRangeDoubleSpinBox = QtWidgets.QDoubleSpinBox()
         self.__ZMinValueRangeDoubleSpinBox.setRange(0, 99999999)
 
-        self.__ZMaxValueRangeDoubleSpinBox = QtGui.QDoubleSpinBox()
+        self.__ZMaxValueRangeDoubleSpinBox = QtWidgets.QDoubleSpinBox()
         self.__ZMaxValueRangeDoubleSpinBox.setRange(0, 99999999)
 
-        self.__colorMapComboBox = QtGui.QComboBox()
+        self.__colorMapComboBox = QtWidgets.QComboBox()
         self.__colorMapComboBox.setIconSize(QtCore.QSize(80, 20))
         self.__populateColorMapComboBox()
 
         # Manual/Auto range widgets layout
-        rangeLayout = QtGui.QHBoxLayout()
+        rangeLayout = QtWidgets.QHBoxLayout()
         rangeLayout.setSpacing(5)
-        autoRangeLayout = QtGui.QHBoxLayout()
+        autoRangeLayout = QtWidgets.QHBoxLayout()
         autoRangeLayout.setSpacing(5)
-        autoRangeLayout.addWidget(QtGui.QLabel("Auto Range"))
+        autoRangeLayout.addWidget(QtWidgets.QLabel("Auto Range"))
         autoRangeLayout.addWidget(self.__autoRangeCheckBox)
         rangeLayout.addLayout(autoRangeLayout)
-        minimumLayout = QtGui.QHBoxLayout()
+        minimumLayout = QtWidgets.QHBoxLayout()
         minimumLayout.setSpacing(5)
-        minimumLayout.addWidget(QtGui.QLabel("Min"))
+        minimumLayout.addWidget(QtWidgets.QLabel("Min"))
         minimumLayout.addWidget(self.__ZMinValueRangeDoubleSpinBox)
         rangeLayout.addLayout(minimumLayout)
-        maximumLayout = QtGui.QHBoxLayout()
+        maximumLayout = QtWidgets.QHBoxLayout()
         maximumLayout.setSpacing(5)
-        maximumLayout.addWidget(QtGui.QLabel("Max"))
+        maximumLayout.addWidget(QtWidgets.QLabel("Max"))
         maximumLayout.addWidget(self.__ZMaxValueRangeDoubleSpinBox)
         rangeLayout.addLayout(maximumLayout)
 
         self.__zUnitConversion = UnitConversionWidget()
-        formLayout = QtGui.QFormLayout()
-        zStyleGroupBox = QtGui.QGroupBox("Z axis")
+        formLayout = QtWidgets.QFormLayout()
+        zStyleGroupBox = QtWidgets.QGroupBox("Z axis")
         zStyleGroupBox.setLayout(formLayout)
         parametersLayout.addWidget(zStyleGroupBox)
         formLayout.addRow("Parameter", self.__zAxisComboBox)
         formLayout.addRow(rangeLayout)
         formLayout.addRow("Color map", self.__colorMapComboBox)
-        formLayout.addRow(shiboken2.wrapInstance(hash(self.__zUnitConversion), QtGui.QWidget))
+        self.__pysideZUnitConversion = shiboken2.wrapInstance(hash(self.__zUnitConversion), QtWidgets.QWidget)
+        formLayout.addRow(self.__pysideZUnitConversion)
 
         # Settings
-        self.__settingsGroupBox = QtGui.QGroupBox("Settings")
-        self.__themeComboBox = QtGui.QComboBox()
+        self.__settingsGroupBox = QtWidgets.QGroupBox("Settings")
+        self.__themeComboBox = QtWidgets.QComboBox()
         for themeName in self.dataPlotWidget.themes:
             self.__themeComboBox.addItem(themeName)
-        self.__embeddedLegendVisibilityCheckBox = QtGui.QCheckBox()
+        self.__embeddedLegendVisibilityCheckBox = QtWidgets.QCheckBox()
         self.__embeddedLegendVisibilityCheckBox.setChecked(self.dataPlotWidget.embeddedLegendVisibility)
         self.__embeddedLegendVisibilityCheckBox.stateChanged.connect(self.__onEmbeddedLegendVisibilityChange)
-        settingsFormLayout = QtGui.QFormLayout()
+        settingsFormLayout = QtWidgets.QFormLayout()
         settingsFormLayout.setHorizontalSpacing(8)
         settingsFormLayout.addRow("Theme", self.__themeComboBox)
         settingsFormLayout.addRow("Show legend", self.__embeddedLegendVisibilityCheckBox)
@@ -389,23 +388,23 @@ class CrossplotWidget(BasePlotWidget):
         parametersLayout.addStretch()
 
         # Tabs
-        tabWidget = QtGui.QTabWidget()
+        tabWidget = QtWidgets.QTabWidget()
         tabWidget.addTab(parametersWidget, "Data")
         fitFrameQt = self.__createFitTab()
-        fitFrameQtGui = shiboken2.wrapInstance(hash(fitFrameQt), QtGui.QFrame)
-        tabWidget.addTab(fitFrameQtGui, "Curve fitting")
+        self.fitFrameQtGui = shiboken2.wrapInstance(hash(fitFrameQt), QtWidgets.QFrame)
+        tabWidget.addTab(self.fitFrameQtGui, "Curve fitting")
         self.equationsTab = EquationsTabWidget(self.__fitDataList)
         self.equationsTab.signalNewFunctionCurveData.connect(self.__onFitDataCreated)
         self.equationsTab.signalImportFunctionCurve.connect(self.__onImportClicked)
         self.equationsTab.signalExportFunctionCurve.connect(self.__onExportClicked)
         self.equationsTab.signalFunctionCurveEdited.connect(self.__onFunctionCurveEdited)
         self.equationsTab.signalSaveData.connect(self.__on_function_curve_save_button_clicked)
-        equationsTabQtGui = shiboken2.wrapInstance(hash(self.equationsTab), QtGui.QFrame)
-        tabWidget.addTab(equationsTabQtGui, "Curves")
+        self.equationsTabQtGui = shiboken2.wrapInstance(hash(self.equationsTab), QtWidgets.QFrame)
+        tabWidget.addTab(self.equationsTabQtGui, "Curves")
 
-        shortest_width = min(parametersWidget.sizeHint().width(), fitFrameQtGui.sizeHint().width())
+        shortest_width = min(parametersWidget.sizeHint().width(), self.fitFrameQtGui.sizeHint().width())
         parametersWidget.setMaximumWidth(shortest_width)
-        fitFrameQtGui.setMaximumWidth(shortest_width)
+        self.fitFrameQtGui.setMaximumWidth(shortest_width)
         tabWidget.setMaximumWidth(shortest_width)
 
         # Layout
@@ -905,6 +904,8 @@ class CrossplotWidget(BasePlotWidget):
 
     def __updateGraphDataTable(self):
         """Handles table widget data update"""
+        if not self.__tableWidget:
+            return
         self.__tableWidget.clear()
 
         for graphData in self.__graphDataList:

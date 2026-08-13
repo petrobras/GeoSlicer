@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import string
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import numexpr as ne
 import numpy as np
 import qt
 import slicer
+from vtk.util.numpy_support import vtk_to_numpy
 
 from ltrace.slicer.helpers import svgToQIcon
 from ltrace.slicer_utils import *
@@ -209,62 +211,104 @@ class CustomizedTablesWidget(LTracePluginWidget):
 
 
 class CustomizedTablesLogic(LTracePluginLogic):
-    COLUMN_LETTERS = [char for char in string.ascii_uppercase]
-    COLUMN_INDEXES = [i for i in range(len(COLUMN_LETTERS))]
-    COLUMN_LETTERS_TO_INDEXES_DICT = dict(zip(COLUMN_LETTERS, COLUMN_INDEXES))
-    COLUMN_INDEXES_TO_LETTERS_DICT = dict(zip(COLUMN_INDEXES, COLUMN_LETTERS))
+    # Matches Excel-style column names: A, B, ..., Z, AA, AB, ..., ZZ, AAA, ...
+    COLUMN_LETTER_PATTERN = re.compile(r"\b[A-Z]+\b")
 
     def __init__(self):
         LTracePluginLogic.__init__(self)
 
+    @staticmethod
+    def columnLetterToIndex(columnLetter):
+        # Converts an Excel-style column name (A, B, ..., Z, AA, AB, ...) to a 0-based index
+        if not columnLetter:
+            raise ValueError("Column name is empty.")
+
+        index = 0
+        for char in columnLetter:
+            if char not in string.ascii_uppercase:
+                raise ValueError(f"Invalid column letter: {columnLetter}")
+            index = index * 26 + (ord(char) - ord("A") + 1)
+        return index - 1
+
     def calculate(self, tableNode, formulaString, outputColumnLetter):
+        if tableNode is None:
+            raise CustomizedTableError("Please select a table.")
+
+        if formulaString.strip() == "":
+            raise CustomizedTableError("Formula is required.")
+
         # Checking if output column exists
         if outputColumnLetter == "":
             raise CustomizedTableError("Output column name is required.")
 
         try:
-            outputColumnIndex = self.COLUMN_LETTERS_TO_INDEXES_DICT[outputColumnLetter]
-        except KeyError as e:
+            outputColumnIndex = self.columnLetterToIndex(outputColumnLetter)
+        except ValueError:
             raise CustomizedTableError("Invalid output column name: " + outputColumnLetter + ".")
 
         if outputColumnIndex > tableNode.GetNumberOfColumns() - 1:
             raise CustomizedTableError("Invalid output column name: " + outputColumnLetter + ".")
 
-        for c in self.COLUMN_LETTERS:
-            # If letter exists in formula
-            if c in formulaString:
-                # If letter exists in table
-                if self.COLUMN_LETTERS_TO_INDEXES_DICT[c] <= tableNode.GetNumberOfColumns() - 1:
-                    columnArray = self.getColumnAsArray(tableNode, c)
-                    exec(c + "=columnArray", locals())
-                else:
-                    raise CustomizedTableError("Invalid output column name: " + c + ".")
+        # numexpr resolves names from the caller's frame only when local_dict is omitted, and it clears
+        # that frame's locals dict as a side effect, so the columns must be passed in explicitly.
+        formulaVariables = {}
+        for c in sorted(set(self.COLUMN_LETTER_PATTERN.findall(formulaString))):
+            # If the column name exists in the table
+            if self.columnLetterToIndex(c) <= tableNode.GetNumberOfColumns() - 1:
+                formulaVariables[c] = self.getColumnAsArray(tableNode, c)
+            else:
+                raise CustomizedTableError("Invalid column name in formula: " + c + ".")
 
         try:
-            outputArray = ne.evaluate(formulaString)
-            self.setColumnFromArray(tableNode, outputColumnLetter, outputArray)
-        except:
-            raise CustomizedTableError("Invalid formula.")
+            outputArray = ne.evaluate(formulaString, local_dict=formulaVariables, global_dict={})
+        except Exception as e:
+            raise CustomizedTableError("Invalid formula: " + str(e))
+
+        # A formula with no column references evaluates to a scalar, which fills the whole column.
+        # Any other result already has one value per row, since every variable came from this table.
+        if outputArray.ndim == 0:
+            numberOfRows = tableNode.GetTable().GetNumberOfRows()
+            outputArray = np.broadcast_to(outputArray, (numberOfRows,))
+
+        self.setColumnFromArray(tableNode, outputColumnLetter, outputArray)
 
     def getColumnAsArray(self, tableNode, columnLetter):
-        columnIndex = self.COLUMN_LETTERS_TO_INDEXES_DICT[columnLetter]
+        columnIndex = self.columnLetterToIndex(columnLetter)
+        column = tableNode.GetTable().GetColumn(columnIndex)
+
+        # Numeric columns are read from the VTK array itself. GetCellText is a display API -
+        # it formats through vtkVariant::ToString at default stream precision - so reading a
+        # double column through it would round every value to six significant digits. astype
+        # also copies, which keeps the data valid when this is the output column as well.
+        if column.IsNumeric():
+            return vtk_to_numpy(column).astype(np.float64)
+
+        # Text columns have no numeric array to read, so they are parsed cell by cell.
         numberOfRows = tableNode.GetTable().GetNumberOfRows()
         rows = []
         for i in range(numberOfRows):
-            rows.append(float(tableNode.GetCellText(i, columnIndex)))
+            cellText = tableNode.GetCellText(i, columnIndex)
+            try:
+                rows.append(float(cellText))
+            except ValueError:
+                raise CustomizedTableError(
+                    f"Column {columnLetter} contains a non-numeric value at row {i + 1}: '{cellText}'."
+                )
         return np.array(rows)
 
     def setColumnFromArray(self, tableNode, columnLetter, array):
-        columnIndex = self.COLUMN_LETTERS_TO_INDEXES_DICT[columnLetter]
+        columnIndex = self.columnLetterToIndex(columnLetter)
 
         # convert column to double first
         columnName = tableNode.GetColumnName(columnIndex)
         tableNode.SetColumnType(columnName, 0)
 
-        table = tableNode.GetTable()
-        numberOfRows = table.GetNumberOfRows()
-        for i in range(numberOfRows):
-            table.SetValue(i, columnIndex, array[i])
+        # SetColumnType above replaced this column with a vtkDoubleArray holding one value per
+        # row, so the results can be written in one assignment instead of boxing every row into
+        # a vtkVariant. A shape mismatch raises here rather than corrupting part of the column.
+        column = tableNode.GetTable().GetColumn(columnIndex)
+        vtk_to_numpy(column)[:] = array
+        column.Modified()
         tableNode.Modified()
 
 

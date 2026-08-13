@@ -62,7 +62,7 @@ def set_histogram_data(plot, histogram_node):
         y = histogram_array[i + 1]
         y = y[:-1]
         color = tuple([int(c * 255) for c in color])
-        plot.plot(x, y, stepMode=True, fillLevel=0, pen=pg.mkPen(color, width=2))
+        plot.plot(x, y, stepMode="center", fillLevel=0, pen=pg.mkPen(color, width=2))
     plot.showGrid(x=True, y=True)
 
 
@@ -265,7 +265,9 @@ class MicroCTCupsAnalysisWidget(LTracePluginWidget):
 
                 pb.nextStep(90, "Creating labelmap")
 
-                labelmap = createTemporaryVolumeNode(slicer.vtkMRMLLabelMapVolumeNode, volume.GetName() + " - Labelmap")
+                labelmap = createTemporaryVolumeNode(
+                    slicer.vtkMRMLLabelMapVolumeNode, volume.GetName() + " - Labelmap", hidden=False
+                )
                 slicer.util.updateVolumeFromArray(labelmap, labelmap_array)
                 labelmap.CopyOrientation(volume)
 

@@ -79,8 +79,8 @@ class ImageLogTableViewer(qt.QWidget):
             "QHeaderView::section {padding-left: 10px; padding-right: 10px;}"
         )
         self.tableWidget.horizontalHeader().sectionDoubleClicked.connect(self._on_header_clicked)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.Stretch)
-        self.tableWidget.horizontalHeader().setSectionResizeMode(2, qt.QHeaderView.Stretch)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.ResizeMode.Stretch)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(2, qt.QHeaderView.ResizeMode.Stretch)
         self.tableWidget.setShowGrid(False)
         self.tableWidget.setAlternatingRowColors(True)
         self.tableWidget.setSelectionBehavior(self.tableWidget.SelectRows)

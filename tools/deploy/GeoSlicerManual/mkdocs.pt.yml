@@ -1,0 +1,28 @@
+# Portuguese build of the GeoSlicer Manual.
+#
+# Build with:  mkdocs build -f mkdocs.pt.yml --site-dir site/pt
+#
+# Inherits everything from mkdocs.base.yml. Sets the language (which drives both the
+# Material UI strings and the include_markdown macro, so page content is read from
+# docs/Pages/pt/ with an automatic fallback to docs/Pages/en/) and provides the
+# navigation label translations that used to live in the i18n plugin config.
+INHERIT: mkdocs.base.yml
+
+theme:
+  language: pt
+
+extra:
+  nav_translations:
+    Overview: Visão Geral
+    Introduction: Introdução
+    Installation: Instalação
+    First Steps: Primeiros Passos
+    Application: Aplicação
+    Modules: Módulos
+    Loading Data: Carregando dados
+    Remote computing: Computação Remota
+    Development: Desenvolvimento
+    Troubleshooting: Solução de Problemas
+    How To Contribute: Como Contribuir
+    Documentation: Documentação
+    Building GeoSlicer: Compilando o GeoSlicer

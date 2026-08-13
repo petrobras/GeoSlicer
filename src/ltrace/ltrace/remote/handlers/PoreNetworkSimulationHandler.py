@@ -16,8 +16,21 @@ import slicer
 
 from ltrace.pore_networks.functions_extract import _get_paired_throats_table
 from ltrace.pore_networks.processing.two_phase.two_phase_simulation import TwoPhaseSimulation
-from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
+from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, TWO_PHASE_SIMULATION_TYPE
 from ltrace.remote import utils as slurm_utils
+from ltrace.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_DISCONNECTED,
+    JOB_EVENT_PROGRESS,
+    JOB_EVENT_START,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_DEPLOYING,
+    JOB_STATE_FAILED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+)
 from ltrace.remote.jobs import JobManager
 from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
 from ltrace.slicer.data_utils import dataFrameToTableNode
@@ -31,10 +44,6 @@ _1hour = 3600  # seconds
 
 class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
     JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
-    if platform.system() == "Windows":
-        JOBS_LOCAL_PATH = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\GEOSLICER\jobs")
-    else:
-        JOBS_LOCAL_PATH = Path("/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
     def __init__(self, pore_table_node_id, params, prefix, simulation_intervals=None, job_dir_name=None) -> None:
@@ -54,11 +63,12 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
         self.last_slurm_out_size = 0
 
         self.__action_map = {
-            "DEPLOY": self.deploy,
-            "START": self.start,
-            "PROGRESS": self.progress,
-            "CANCEL": self.cancel,
-            "COLLECT": self.collect,
+            JOB_EVENT_DEPLOY: self.deploy,
+            JOB_EVENT_DISCONNECTED: self.disconnected,
+            JOB_EVENT_START: self.start,
+            JOB_EVENT_PROGRESS: self.progress,
+            JOB_EVENT_CANCEL: self.cancel,
+            JOB_EVENT_COLLECT: self.collect,
         }
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
@@ -71,10 +81,11 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
             # Use provided job_dir_name or generate a new one
+            job_executor = caller.jobs[uid]
             retried_job = self.job_dir_name is not None
-            self.job_dir_name = self.job_dir_name or JobManager.dirname(caller.jobs[uid])
+            self.job_dir_name = self.job_dir_name or JobManager.dirname(job_executor)
             self.job_remote_path = self.JOBS_REMOTE_PATH / self.job_dir_name
-            self.job_local_path = self.JOBS_LOCAL_PATH / self.job_dir_name
+            self.job_local_path = job_executor.host.get_mounted_path() / self.job_dir_name
             self.temp_path = self.JOBS_REMOTE_PATH / self.job_dir_name / "temp"
             self.params_to_save = self.params.copy()
 
@@ -95,7 +106,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
 
                 dump_via_slicer_temp(pore_network, "pore_network.pkl", self.job_local_path, format="pickle")
                 dump_via_slicer_temp(throat_network, "throat_network.pkl", self.job_local_path, format="pickle")
-                dump_via_slicer_temp(self.params_to_save, "simulation_params_dict.json", self.job_local_path)
+                dump_via_slicer_temp(self.params_to_save, "two_phase_simulation_params_dict.json", self.job_local_path)
 
             self.cli_params = {
                 "model": "TwoPhaseSensibilityTest",
@@ -103,13 +114,13 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                 "tempDir": str(self.temp_path),
             }
 
-            caller.set_state(uid, "DEPLOYING", 10, message="Configuration done. Starting job deployment.")
-            caller.schedule(uid, "START")
+            caller.set_state(uid, JOB_STATE_DEPLOYING, 10, message="Configuration done. Starting job deployment.")
+            caller.schedule(uid, JOB_EVENT_START)
         except Exception:
             traceback.print_exc()
             caller.set_state(
                 uid,
-                "FAILED",
+                JOB_STATE_FAILED,
                 100,
                 message="Failed to deploy job.",
                 end_time=datetime.now().timestamp(),
@@ -143,8 +154,10 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                 cli_params["simInterval"] = f"{start_sim}:{end_sim}"
 
                 script = " ".join(["PoreNetworkSimulationCLI.PoreNetworkSimulationCLI", argstring(cli_params)])
-                opening_command = caller.jobs[uid].host.opening_command
-                main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script])
+                host = caller.jobs[uid].host
+                opening_command = host.opening_command
+                remote_version = host.get_remote_version()
+                main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
                 full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
                 output = client.run_command(full_cmd, verbose=True)
@@ -152,7 +165,10 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                 match = self.JOB_ID_PATTERN.search(output["stdout"])
                 if not match:
                     caller.set_state(
-                        uid, "FAILED", 100, message=f"Failed to match job id for interval [{start_sim}, {end_sim}]"
+                        uid,
+                        JOB_STATE_FAILED,
+                        100,
+                        message=f"Failed to match job id for interval [{start_sim}, {end_sim}]",
                     )
                     caller.persist(uid)
                     return
@@ -175,19 +191,19 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
             }
             caller.set_state(
                 uid,
-                "PENDING",
+                JOB_STATE_PENDING,
                 10,
                 message=f"{len(self.slurm_job_ids)} jobs submitted for simulation intervals.",
                 start_time=ts_start,
                 details=details,
             )
             caller.persist(uid)
-            caller.schedule(uid, "PROGRESS")
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
         except Exception:
             traceback.print_exc()
             caller.set_state(
                 uid,
-                "FAILED",
+                JOB_STATE_FAILED,
                 100,
                 start_time=ts_start,
                 end_time=datetime.now().timestamp(),
@@ -222,7 +238,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                     # All jobs succeeded
                     caller.set_state(
                         uid,
-                        "COMPLETED",
+                        JOB_STATE_COMPLETED,
                         100,
                         message=f"All {len(successful_job_ids)} job(s) reached 100%.",
                         end_time=datetime.now().timestamp(),
@@ -234,7 +250,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                     failed_str = ", ".join(failed_job_ids)
                     caller.set_state(
                         uid,
-                        "FAILED",
+                        JOB_STATE_FAILED,
                         100,
                         message=f"All {len(self.slurm_job_ids)} jobs failed. Failed jobs: {failed_str}.",
                         end_time=datetime.now().timestamp(),
@@ -246,7 +262,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                     failed_str = ", ".join(failed_job_ids)
                     caller.set_state(
                         uid,
-                        "COMPLETED",
+                        JOB_STATE_COMPLETED,
                         100,
                         message=f"Only {len(successful_job_ids)} out of {len(self.slurm_job_ids)} jobs completed successfully. Failed jobs: {failed_str}.",
                         end_time=datetime.now().timestamp(),
@@ -257,16 +273,16 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
             elif slurm_utils.any_running(jobstatus):
                 # Not all done yet -> report aggregated running progress and reschedule
                 avg_progress = max(total_progress / count, 10) if count > 0 else 10
-                caller.set_state(uid, "RUNNING", avg_progress)
-                caller.schedule(uid, "PROGRESS")
+                caller.set_state(uid, JOB_STATE_RUNNING, avg_progress)
+                caller.schedule(uid, JOB_EVENT_PROGRESS)
             else:
-                caller.set_state(uid, "PENDING", 10)
-                caller.schedule(uid, "PROGRESS")
+                caller.set_state(uid, JOB_STATE_PENDING, 10)
+                caller.schedule(uid, JOB_EVENT_PROGRESS)
         except Exception as e:
             traceback.print_exc()
             caller.set_state(
                 uid,
-                "FAILED",
+                JOB_STATE_FAILED,
                 100,
                 message=f"Exception in progress: {repr(e)}",
                 end_time=datetime.now().timestamp(),
@@ -316,7 +332,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
         successful_job_ids = details.get("successful_job_ids", [])
         n_total = details.get("n_jobs", len(self.slurm_job_ids))
 
-        if caller.jobs[uid].status == "COMPLETED" and len(successful_job_ids) < n_total:
+        if caller.jobs[uid].status == JOB_STATE_COMPLETED and len(successful_job_ids) < n_total:
             failed_job_ids = [jid for jid in details["slurm_job_ids"] if jid not in successful_job_ids]
             failed_intervals = [details["job_map"][jid] for jid in failed_job_ids]
             failed_str = ", ".join(failed_job_ids)
@@ -344,107 +360,118 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
 
         # Proceed with collecting results if all jobs succeeded or user declined retry
         pore_table_node = slicer.mrmlScene.GetNodeByID(self.pore_table_node_id)
-        folder_tree = slicer.mrmlScene.GetSubjectHierarchyNode()
+        shn = slicer.mrmlScene.GetSubjectHierarchyNode()
         if pore_table_node:
-            item_tree_id = folder_tree.GetItemByDataNode(pore_table_node)
-            parent_item_id = folder_tree.GetItemParent(folder_tree.GetItemParent(item_tree_id))
+            item_tree_id = shn.GetItemByDataNode(pore_table_node)
+            parent_item_id = shn.GetItemParent(shn.GetItemParent(item_tree_id))
         else:
-            parent_item_id = folder_tree.GetSceneItemID()
-        root_dir = folder_tree.CreateFolderItem(parent_item_id, f"{self.prefix}_Two_Phase_PN_Simulation")
-        table_dir = folder_tree.CreateFolderItem(root_dir, "Tables")
-        folder_tree.SetItemExpanded(root_dir, False)
-        folder_tree.SetItemExpanded(table_dir, False)
+            parent_item_id = shn.GetSceneItemID()
+        destination_dir = shn.CreateFolderItem(parent_item_id, f"{self.prefix}_Two_Phase_PN_Simulation")
+        shn.SetItemExpanded(destination_dir, False)
 
         # Reload updated params
-        with (self.job_local_path / "simulation_params_dict.json").open("r") as file:
+        with (self.job_local_path / "two_phase_simulation_params_dict.json").open("r") as file:
             params = json.load(file)
-        parameters_node = dict_to_parameter_node(params, root_dir)
+        dict_to_parameter_node(params, destination_dir, node_type=TWO_PHASE_SIMULATION_TYPE)
 
-        def load_and_concat(pattern):
-            files = list(self.job_local_path.glob(pattern))
-            if not files:
-                raise FileNotFoundError(f"No files found matching pattern: {pattern}")
-            dataframes = [pd.read_pickle(str(f)) for f in sorted(files)]
-            return pd.concat(dataframes, ignore_index=True)
-
-        def aggregate_cycle_data(dataframes):
-            base_df = dataframes[0][["cycle", "Sw"]].copy()
-
-            group_columns = []  # Store the new globally reindexed group columns
-            index_counter = 0
-
-            renamed_dfs = []
-
-            for df in dataframes:
-                # Drop _middle columns
-                df = df[[col for col in df.columns if not col.endswith("_middle")]]
-
-                # Detect the per-group columns by their suffix index
-                group_indices = sorted(
-                    set(
-                        int(col.split("_")[-1])
-                        for col in df.columns
-                        if any(col.startswith(prefix) for prefix in ["cycle_", "Pc_", "Krw_", "Kro_"])
-                    )
-                )
-
-                renamed = {}
-                for group_idx in group_indices:
-                    renamed[f"cycle_{group_idx}"] = f"cycle_{index_counter}"
-                    renamed[f"Pc_{group_idx}"] = f"Pc_{index_counter}"
-                    renamed[f"Krw_{group_idx}"] = f"Krw_{index_counter}"
-                    renamed[f"Kro_{group_idx}"] = f"Kro_{index_counter}"
-
-                    group_columns.append(index_counter)
-                    index_counter += 1
-
-                renamed_df = df.rename(columns=renamed).drop(columns=["cycle", "Sw"], errors="ignore")
-                renamed_dfs.append(renamed_df)
-
-            # Concatenate horizontally
-            result_df = pd.concat([base_df] + renamed_dfs, axis=1)
-
-            # Sanity check: no duplicate columns
-            duplicates = result_df.columns[result_df.columns.duplicated()].tolist()
-            assert not duplicates, f"Duplicate columns detected: {duplicates}"
-
-            # Compute _middle columns
-            pc_cols = [f"Pc_{i}" for i in group_columns]
-            krw_cols = [f"Krw_{i}" for i in group_columns]
-            kro_cols = [f"Kro_{i}" for i in group_columns]
-
-            result_df["Pc_middle"] = result_df[pc_cols].mean(axis=1)
-            result_df["Krw_middle"] = result_df[krw_cols].mean(axis=1)
-            result_df["Kro_middle"] = result_df[kro_cols].mean(axis=1)
-
-            # Cast to float32 (except 'cycle' and 'Sw')
-            float_cols = [col for col in result_df.columns if col not in ["cycle", "Sw"]]
-            result_df[float_cols] = result_df[float_cols].values.astype(np.float32)
-
-            return result_df
-
-        # Aggregate krelResults
-        krel_df = load_and_concat("krelResults*")
-        krel_table_node = dataFrameToTableNode(krel_df)
-        krel_table_node.SetName(slicer.mrmlScene.GenerateUniqueName("Krel_results"))
-        krel_table_node.SetAttribute("table_type", "krel_simulation_results")
-        folder_tree.CreateItem(root_dir, krel_table_node)
-
-        # Aggregate cycles
-        for cycle in range(1, 4):
-            pattern = f"krelCycle{cycle}*"
-            files = list(self.job_local_path.glob(pattern))
-            if not files:
-                raise FileNotFoundError(f"No files found matching pattern: {pattern}")
-            dataframes = [pd.read_pickle(str(f)) for f in sorted(files)]
-
-            # Aggregate horizontally with reindexing and middle calculation
-            cycle_df = aggregate_cycle_data(dataframes)
-            cycle_table_node = dataFrameToTableNode(cycle_df)
-            cycle_table_node.SetName(slicer.mrmlScene.GenerateUniqueName(f"krel_table_cycle{cycle}"))
-            cycle_table_node.SetAttribute(f"table_type", "relative_permeability")
-            krel_table_node.SetAttribute(f"cycle_table_{cycle}_id", cycle_table_node.GetID())
-            folder_tree.CreateItem(table_dir, cycle_table_node)
+        collect_two_phase_simulation(self.job_local_path, destination_dir, self.prefix)
 
     def get_number_of_simulations(self):
         return len(TwoPhaseSimulation.get_params_list(TwoPhaseSimulation.expand_params(self.params)))
+
+
+def collect_two_phase_simulation(source_path, destination_folder_item, prefix):
+    shn = slicer.mrmlScene.GetSubjectHierarchyNode()
+    root_dir = shn.CreateFolderItem(destination_folder_item, f"{prefix}_Two_Phase_PN_Simulation")
+    table_dir = shn.CreateFolderItem(root_dir, "Tables")
+    shn.SetItemExpanded(table_dir, False)
+
+    def load_krel_df():
+        pattern = "krelResults*"
+        files = list(source_path.glob(pattern))
+        if not files:
+            raise FileNotFoundError(f"No files found matching pattern: {pattern}")
+        dataframes = [pd.read_pickle(str(f)) for f in sorted(files)]
+        return pd.concat(dataframes, ignore_index=True)
+
+    def aggregate_krel_cycle_dfs(dataframes):
+        base_df = dataframes[0][["cycle", "Sw"]].copy()
+
+        group_columns = []  # Store the new globally reindexed group columns
+        index_counter = 0
+
+        renamed_dfs = []
+
+        for df in dataframes:
+            # Drop _middle columns
+            df = df[[col for col in df.columns if not col.endswith("_middle")]]
+
+            group_prefixes = ["cycle_", "Pc_", "Krw_", "Kro_"]
+            has_ri = any(col.startswith("RI_") for col in df.columns)
+            if has_ri:
+                group_prefixes.append("RI_")
+
+            # Detect the per-group columns by their suffix index
+            group_indices = sorted(
+                set(int(col.split("_")[-1]) for col in df.columns if any(col.startswith(prefix) for prefix in group_prefixes))
+            )
+
+            renamed = {}
+            for group_idx in group_indices:
+                for prefix in group_prefixes:
+                    renamed[f"{prefix}{group_idx}"] = f"{prefix}{index_counter}"
+
+                group_columns.append(index_counter)
+                index_counter += 1
+
+            renamed_df = df.rename(columns=renamed).drop(columns=["cycle", "Sw"], errors="ignore")
+            renamed_dfs.append(renamed_df)
+
+        # Concatenate horizontally
+        result_df = pd.concat([base_df] + renamed_dfs, axis=1)
+
+        # Sanity check: no duplicate columns
+        duplicates = result_df.columns[result_df.columns.duplicated()].tolist()
+        assert not duplicates, f"Duplicate columns detected: {duplicates}"
+
+        # Compute _middle columns
+        pc_cols = [f"Pc_{i}" for i in group_columns]
+        krw_cols = [f"Krw_{i}" for i in group_columns]
+        kro_cols = [f"Kro_{i}" for i in group_columns]
+
+        result_df["Pc_middle"] = result_df[pc_cols].mean(axis=1)
+        result_df["Krw_middle"] = result_df[krw_cols].mean(axis=1)
+        result_df["Kro_middle"] = result_df[kro_cols].mean(axis=1)
+
+        ri_cols = [f"RI_{i}" for i in group_columns if f"RI_{i}" in result_df.columns]
+        if ri_cols:
+            result_df["RI_middle"] = result_df[ri_cols].mean(axis=1)
+
+        # Cast to float32 (except 'cycle' and 'Sw')
+        float_cols = [col for col in result_df.columns if col not in ["cycle", "Sw"]]
+        result_df[float_cols] = result_df[float_cols].values.astype(np.float32)
+
+        return result_df
+
+    # Aggregate krel dfs
+    krel_df = load_krel_df()
+    krel_table_node = dataFrameToTableNode(krel_df)
+    krel_table_node.SetName(slicer.mrmlScene.GenerateUniqueName(f"{prefix}_Krel_results"))
+    krel_table_node.SetAttribute("table_type", "krel_simulation_results")
+    shn.CreateItem(root_dir, krel_table_node)
+
+    # Aggregate krel cycle dfs
+    for cycle in range(1, 4):
+        pattern = f"krelCycle{cycle}*"
+        files = list(source_path.glob(pattern))
+        if not files:
+            raise FileNotFoundError(f"No files found matching pattern: {pattern}")
+        dataframes = [pd.read_pickle(str(f)) for f in sorted(files)]
+
+        # Aggregate horizontally with reindexing and middle calculation
+        cycle_df = aggregate_krel_cycle_dfs(dataframes)
+        cycle_table_node = dataFrameToTableNode(cycle_df)
+        cycle_table_node.SetName(slicer.mrmlScene.GenerateUniqueName(f"{prefix}_krel_table_cycle{cycle}"))
+        cycle_table_node.SetAttribute(f"table_type", "relative_permeability")
+        krel_table_node.SetAttribute(f"cycle_table_{cycle}_id", cycle_table_node.GetID())
+        shn.CreateItem(table_dir, cycle_table_node)

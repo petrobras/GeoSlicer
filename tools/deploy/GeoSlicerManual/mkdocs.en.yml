@@ -1,0 +1,11 @@
+# English build of the GeoSlicer Manual.
+#
+# Build with:  mkdocs build -f mkdocs.en.yml --site-dir site/en
+#
+# Inherits everything from mkdocs.base.yml and only sets the language. English is
+# the default/source language, so it defines no nav_translations (the nav labels in
+# mkdocs.base.yml are already in English) and the content macro reads docs/Pages/en/.
+INHERIT: mkdocs.base.yml
+
+theme:
+  language: en

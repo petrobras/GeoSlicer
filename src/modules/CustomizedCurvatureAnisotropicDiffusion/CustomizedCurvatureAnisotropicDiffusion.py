@@ -7,7 +7,8 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
-from ltrace.slicer.helpers import copy_display
+from ltrace.slicer.helpers import copy_display, copy_attributes, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
 
@@ -234,6 +235,11 @@ class CustomizedCurvatureAnisotropicDiffusionLogic(LTracePluginLogic):
 
             slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
             copy_display(self.input_volume, self.outputVolume)
+            """ FIXME MUSA-150 - Should we copy attributes by default? And references?
+            copy_attributes(self.input_volume, self.outputVolume)
+            copy_metadata(self.input_volume, self.outputVolume)
+            copy_hierarchy_attributes(self.input_volume, self.outputVolume)
+            self.outputVolume.CopyReferences(self.input_volume)"""
 
             if status == "Completed":
                 pass

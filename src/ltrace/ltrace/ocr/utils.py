@@ -78,7 +78,7 @@ def correct_types(df, types):
             df.iloc[:, i] = (
                 df.iloc[:, i]
                 .str.replace(",", ".", regex=False)
-                .str.replace("<(\d+\.?\d+)", "0", regex=True)
+                .str.replace(r"<(\d+\.?\d+)", "0", regex=True)
                 .astype(float)
             )
         elif type_ is int:

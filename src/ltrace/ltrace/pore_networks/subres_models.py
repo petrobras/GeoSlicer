@@ -1,7 +1,11 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import scipy as sp
+
+from ltrace.file_utils import load_and_parse_data
 
 HG_SURFACE_TENSION = 480  # 480N/km 0.48N/m 48e-5N/mm 48dyn/mm 480dyn/cm
 HG_CONTACT_ANGLE = 140  # º
@@ -210,18 +214,20 @@ MODEL_DICT = {
 
 
 def get_pore_network_volume_data(pore_table_node):
-    if pore_table_node is None:
-        return {}
-    # TODO The or operator here will garantee that old projects could be used
-    # we need to remove this in future version
-    x_size = float(pore_table_node.GetAttribute("x_size") or 1.0)
-    y_size = float(pore_table_node.GetAttribute("y_size") or 1.0)
-    z_size = float(pore_table_node.GetAttribute("z_size") or 1.0)
-    x_spacing = float(pore_table_node.GetAttribute("x_spacing") or 1.0)
-    y_spacing = float(pore_table_node.GetAttribute("y_spacing") or 1.0)
-    z_spacing = float(pore_table_node.GetAttribute("z_spacing") or 1.0)
-    extraction_algorithm = pore_table_node.GetAttribute("extraction_algorithm")
-    is_multiscale = pore_table_node.GetAttribute("is_multiscale") == "True"
+    x_size, y_size, z_size = 1.0, 1.0, 1.0
+    x_spacing, y_spacing, z_spacing = 1.0, 1.0, 1.0
+    extraction_algorithm = "porespy"
+    is_multiscale = "True"
+    # TODO The or operator here will guarantee that old projects could be used
+    if pore_table_node:
+        x_size = float(pore_table_node.GetAttribute("x_size") or 1.0)
+        y_size = float(pore_table_node.GetAttribute("y_size") or 1.0)
+        z_size = float(pore_table_node.GetAttribute("z_size") or 1.0)
+        x_spacing = float(pore_table_node.GetAttribute("x_spacing") or 1.0)
+        y_spacing = float(pore_table_node.GetAttribute("y_spacing") or 1.0)
+        z_spacing = float(pore_table_node.GetAttribute("z_spacing") or 1.0)
+        extraction_algorithm = pore_table_node.GetAttribute("extraction_algorithm")
+        is_multiscale = pore_table_node.GetAttribute("is_multiscale") == "True"
 
     volume_data = {
         "size": {"x": x_size, "y": y_size, "z": z_size},
@@ -326,6 +332,54 @@ def rebin_psd_log_uniform(x_values, y_values, bin_edges):
     hist = np.diff(cdf_at_edges) * 100  # convert fraction to pore volume %
     bin_centers = np.sqrt(bin_edges[:-1] * bin_edges[1:])  # geometric mean
     return hist, bin_centers
+
+
+def sirr_file_to_subres_params(file_path, model_name="Throat Radius Curve", cutoff_radius_mm=1.0):
+    """Load a SIRR CSV/XLSX file and return subres_model_name + subres_params ready for simulation.
+
+    Args:
+        file_path: path to the SIRR file with columns 'Pressão capilar(psi)' and 'Saturação de Hg (%)'.
+        model_name: "Throat Radius Curve" or "Pressure Curve".
+        cutoff_radius_mm: radii_cutoff_mm in mm (only used for Throat Radius Curve).
+
+    Returns:
+        dict with keys "subres_model_name" and "subres_params" (arrays as lists).
+    """
+    loaded_df = load_and_parse_data(Path(file_path), filter_empty_columns=True)
+    if loaded_df is None:
+        raise RuntimeError(f"Failed to parse SIRR file: {file_path}")
+
+    expected = {"Pressão capilar(psi)", "Saturação de Hg (%)"}
+    missing = expected - set(loaded_df.columns)
+    if missing:
+        raise KeyError(f"Missing columns in SIRR file: {missing}. Found: {list(loaded_df.columns)}")
+
+    pc = loaded_df["Pressão capilar(psi)"] * 6894.75729  # psi → Pa
+    df = pd.DataFrame({"pc": pc})
+    df["snwp"] = loaded_df["Saturação de Hg (%)"] / 100
+    df["dsn"] = np.diff(df["snwp"], n=1, prepend=0)
+    df["radii"] = estimate_radius(df["pc"])
+
+    if model_name == "Throat Radius Curve":
+        subres_params = {
+            "node id": None,
+            "throat radii": df["radii"].tolist(),
+            "capillary pressure": None,
+            "dsn": df["dsn"].tolist(),
+            "radii_cutoff_mm": cutoff_radius_mm,
+        }
+    elif model_name == "Pressure Curve":
+        subres_params = {
+            "node id": None,
+            "throat radii": None,
+            "capillary pressure": df["pc"].tolist(),
+            "dsn": df["dsn"].tolist(),
+            "radii_cutoff_mm": cutoff_radius_mm,
+        }
+    else:
+        raise ValueError(f"model_name must be 'Throat Radius Curve' or 'Pressure Curve', got {model_name!r}")
+
+    return {"subres_model_name": model_name, "subres_params": subres_params}
 
 
 def get_subres_function(pore_network, params):

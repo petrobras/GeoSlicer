@@ -3,7 +3,6 @@ import os
 import re
 from typing import Optional
 
-from multiprocessing.shared_memory import SharedMemory
 import numpy as np
 import pandas as pd
 import slicer
@@ -11,6 +10,8 @@ import vtk
 from numba import njit, prange
 
 from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.slicer.helpers import labelArrayToColorNode
+from ltrace.utils.mmap_shared_memory import MmapSharedMemory
 from porespy.networks import regions_to_network_parallel, snow2
 from porespy.tools import make_contiguous
 
@@ -298,18 +299,23 @@ def geo2pnf(
 
         # adjustments for darcy pores
         if pore_dict["pore.phase"][i] == 2:
+            n_capilaries = pore_dict["pore.number_of_capilaries"][i]
             radius = "{:E}".format(scale_factor * pore_dict["pore.cap_radius"][i])
             shape_factor = "{:E}".format(subres_shape_factor)
-            N = "{:E}".format(pore_dict["pore.number_of_capilaries"][i])
+            number_of_capilaries = "{:E}".format(n_capilaries)
+            if n_capilaries > 0:
+                volume = "{:E}".format(
+                    scale_factor**3 * pore_dict["pore.volume"][i] * volume_multiplier / n_capilaries
+                )
         else:
-            N = "{:E}".format(1.0)
+            number_of_capilaries = "{:E}".format(1.0)
 
         pnf["node1"].append(
             f"{i+1} {p_x} {p_y} {p_z} {coordinate_number} {connected_pores} {is_inlet} {is_outlet} {connected_throats}"
         )
         pnf["node2"].append(f"{i+1} {volume} {radius} {shape_factor} {clay}")
 
-        pnf["node3"].append(f"{i+1} {N}")
+        pnf["node3"].append(f"{i+1} {number_of_capilaries}")
 
     return pnf
 
@@ -344,8 +350,8 @@ def get_connected_geo_network(pore_dict, throat_dict, in_face, out_face):
     adjacency_network = sprs.coo_matrix((weights, (row, col)), (n_pores, n_pores))
     _, cluster_labels = csg.connected_components(adjacency_network, directed=False)
 
-    in_labels = np.unique(cluster_labels[pore_dict[f"pore.{in_face}"]])
-    out_labels = np.unique(cluster_labels[pore_dict[f"pore.{out_face}"]])
+    in_labels = np.unique(cluster_labels[pore_dict[f"pore.{in_face}"].astype(bool)])
+    out_labels = np.unique(cluster_labels[pore_dict[f"pore.{out_face}"].astype(bool)])
     common_labels = np.intersect1d(in_labels, out_labels, assume_unique=True)
 
     connected_pores = np.isin(cluster_labels, common_labels)
@@ -616,10 +622,15 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
 
     ### Volume properties
     if porosity_map is not None:
-        input_volume_porosity = (porosity_map.sum() / porosity_map.size) / 100
-        input_resolved_porosity = (porosity_map[porosity_map == 100].sum() / porosity_map.size) / 100
-        input_subscale_porosity = (((0 < porosity_map) & (porosity_map < 100)) * porosity_map).sum() / (
-            porosity_map.size * 100
+        # porosity_map may be given as a percentage (0~100) or as a ratio (0~1),
+        # matching the same adaptive threshold used in _phases_from_porosity_map
+        porosity_scale = 100 if porosity_map.max() > 1 else 1
+        input_volume_porosity = (porosity_map.sum() / porosity_map.size) / porosity_scale
+        input_resolved_porosity = (
+            porosity_map[porosity_map >= porosity_scale].sum() / porosity_map.size
+        ) / porosity_scale
+        input_subscale_porosity = (((0 < porosity_map) & (porosity_map < porosity_scale)) * porosity_map).sum() / (
+            porosity_map.size * porosity_scale
         )
     else:
         input_volume_porosity = (watershed_image > 0).sum() / watershed_image.size
@@ -647,6 +658,7 @@ def _porespy_postprocessing(pn_properties, watershed_image, scale, porosity_map=
         * pn_properties["throat.subresolution_porosity"][pn_properties["throat.phases_1"] > 1]
     ).sum()
     throat_total_volume = throat_resolved_volume + throat_subscale_volume
+
     pn_properties["network.number_of_pores"] = len(pn_properties["pore.all"])
     pn_properties["network.number_of_throats"] = len(pn_properties["throat.all"])
 
@@ -721,7 +733,7 @@ def general_pn_extract(
 
         multiphase_array = _phases_from_porosity_map(scalar_array)
 
-        _parallelization = {"divs": divs} if divs > 0 else None
+        _parallel_kw = {"divs": divs} if divs > 0 else None
         snow_results = snow2(
             phases=multiphase_array,
             porosity_map=scalar_array,
@@ -730,7 +742,7 @@ def general_pn_extract(
             sigma=watershed_blur,
             force_cpu=force_cpu,
             boundary_width=0,
-            parallelization=_parallelization,
+            parallel_kw=_parallel_kw,
         )
         pn_properties = snow_results.network
 
@@ -902,17 +914,8 @@ def is_contiguous(labelmap):
 
 
 def _create_shared_array(array):
-    output_memory = SharedMemory(
-        create=True,
-        size=array.size * np.int32().itemsize,
-    )
-    shared_array = np.ndarray(
-        array.shape,
-        dtype=np.int32(),
-        buffer=output_memory.buf,
-    )
-    shared_array[:, :, :] = array
-    return shared_array, output_memory
+    handle = MmapSharedMemory.create_array(array, dtype=np.int32)
+    return np.ndarray(array.shape, dtype=np.int32, buffer=handle.buf), handle
 
 
 class ExtractionNodesCreator:
@@ -925,12 +928,16 @@ class ExtractionNodesCreator:
         inputNodeID=None,
         watershed_output_memory=None,
         watershed_output_shape=None,
+        watershed_output_array=None,
     ):
         """
         :param metadata: dict containing 'spacing', 'origin', 'ijktorasmatrix', 'bounds', and 'itemTreeId'
         :param cwd: current working directory (Path object)
         :param prefix: string prefix for node naming
         :param visualization: boolean to trigger 3D model creation
+        :param watershed_output_memory: shared memory handle holding the watershed array (local extraction)
+        :param watershed_output_shape: shape of the array stored in watershed_output_memory
+        :param watershed_output_array: watershed array already loaded in memory (e.g. from a remote job's watershed.npy)
         """
         self.metadata = metadata
         self.cwd = cwd
@@ -939,6 +946,7 @@ class ExtractionNodesCreator:
         self.inputNodeID = inputNodeID
         self.watershed_output_memory = watershed_output_memory
         self.watershed_output_shape = watershed_output_shape
+        self.watershed_output_array = watershed_output_array
         self.results = {}
 
         self.network_property_map = {
@@ -996,15 +1004,22 @@ class ExtractionNodesCreator:
         df_network = pd.DataFrame(list(dict_network.items()), columns=["Property", "Value"])
 
         # Handle Watershed Volume
-        if self.watershed_output_memory is not None:
-            self.shared_array = np.ndarray(
-                self.watershed_output_shape,
-                dtype=np.int32(),
-                buffer=self.watershed_output_memory.buf,
-            )
+        has_watershed = self.watershed_output_memory is not None or self.watershed_output_array is not None
+        if has_watershed:
+            if self.watershed_output_memory is not None:
+                self.shared_array = np.ndarray(
+                    self.watershed_output_shape,
+                    dtype=np.int32(),
+                    buffer=self.watershed_output_memory.buf,
+                )
+            else:
+                self.shared_array = self.watershed_output_array
             output_watershed_volume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            output_watershed_volume.SetName(slicer.mrmlScene.GenerateUniqueName(f"{self.prefix}_watershed"))
             output_watershed_volume.CreateDefaultDisplayNodes()
             slicer.util.updateVolumeFromArray(output_watershed_volume, self.shared_array)
+            watershed_color_node = labelArrayToColorNode(self.shared_array, f"{self.prefix}_watershed_colors")
+            output_watershed_volume.GetDisplayNode().SetAndObserveColorNodeID(watershed_color_node.GetID())
 
             # Apply metadata
             output_watershed_volume.SetSpacing(self.metadata["spacing"])
@@ -1039,7 +1054,7 @@ class ExtractionNodesCreator:
         if ijktoras is not None:
             poreOutputTable.SetAttribute("ijktoras", ";".join(str(v) for row in ijktoras for v in row))
 
-        if self.watershed_output_memory is not None:
+        if has_watershed:
             poreOutputTable.SetAttribute("watershed_node_id", output_watershed_volume.GetID())
             poreOutputTable.AddNodeReferenceID("watershed", output_watershed_volume.GetID())
 
@@ -1051,13 +1066,16 @@ class ExtractionNodesCreator:
             itemId = folderTree.GetItemByDataNode(node)
             folderTree.SetItemParent(itemId, currentDir)
 
-        if self.watershed_output_memory is not None:
+        if has_watershed:
             itemId = folderTree.GetItemByDataNode(output_watershed_volume)
             folderTree.SetItemParent(itemId, currentDir)
-            self.watershed_output_memory.close()
+            if self.watershed_output_memory is not None:
+                self.watershed_output_memory.close()
 
         if self.visualization:
-            self.results["model_nodes"] = visualize_network(poreOutputTable, throatOutputTable, self.metadata)
+            self.results["model_nodes"] = visualize_network(
+                poreOutputTable, throatOutputTable, self.metadata, prefix=self.prefix
+            )
 
         return self.results
 
@@ -1081,9 +1099,7 @@ class ExtractionNodesCreator:
 
 
 def visualize_network(
-    poreOutputTable: slicer.vtkMRMLTableNode,
-    throatOutputTable: slicer.vtkMRMLTableNode,
-    metadata: dict,
+    poreOutputTable: slicer.vtkMRMLTableNode, throatOutputTable: slicer.vtkMRMLTableNode, metadata: dict, prefix=""
 ):
     """
     Receives pore and throat table nodes and metadata to create 3D visualizations.
@@ -1091,6 +1107,13 @@ def visualize_network(
     ########################
     ##### Create pores #####
     ########################
+    if prefix:
+        throat_model_name = f"{prefix}_throat_model_phase"
+        pore_model_name = f"{prefix}_pore_model_phase"
+    else:
+        throat_model_name = "throat_model_phase"
+        pore_model_name = "pore_model_phase"
+
     pore_columns = {poreOutputTable.GetColumnName(i): i for i in range(poreOutputTable.GetNumberOfColumns())}
 
     n_of_phases = int(np.array(poreOutputTable.GetTable().GetColumn(pore_columns["pore.phase"])).max())
@@ -1123,7 +1146,7 @@ def visualize_network(
         glyph3D.SetInputData(polydata)
         glyph3D.Update()
 
-        node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"pore_model_phase_{phase+1}")
+        node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"{pore_model_name}_{phase+1}")
         node.SetPolyDataConnection(glyph3D.GetOutputPort())
         node.CreateDefaultDisplayNodes()
         display = node.GetDisplayNode()
@@ -1231,7 +1254,7 @@ def visualize_network(
         tubes.SetRadiusFactor(max_r_factor)
         tubes.Update()
 
-        t_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"throat_model_phase_{phase+1}")
+        t_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", f"{throat_model_name}_{phase+1}")
         t_node.SetPolyDataConnection(tubes.GetOutputPort())
         t_node.CreateDefaultDisplayNodes()
         t_node.GetDisplayNode().SetScalarVisibility(0)

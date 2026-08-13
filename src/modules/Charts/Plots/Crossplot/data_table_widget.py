@@ -1,6 +1,6 @@
 import os
 
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
 from ltrace.slicer.graph_data import TEXT_SYMBOLS, LINE_STYLES, SYMBOL_TEXT, LINE_STYLES_TEXT
 from ltrace.slicer.widget.custom_color_button import CustomColorButton
@@ -16,7 +16,7 @@ ALL_VISIBILITY_ON_ICON_FILE_PATH = os.path.join(ICONS_DIR_PATH, "toggle-left.svg
 ALL_VISIBILITY_OFF_ICON_FILE_PATH = os.path.join(ICONS_DIR_PATH, "toggle-right.svg")
 
 
-class DataTableWidget(QtGui.QTreeWidget):
+class DataTableWidget(QtWidgets.QTreeWidget):
     signal_style_changed = QtCore.Signal()
     signal_data_removed = QtCore.Signal(str)
     signal_all_style_changed = QtCore.Signal(str, int, str, int)
@@ -31,38 +31,38 @@ class DataTableWidget(QtGui.QTreeWidget):
         super().__init__(*args, **kwargs)
         self.setColumnCount(2)
         self.setHeaderLabels(["Data", "Options"])
-        self.header().setResizeMode(0, QtGui.QHeaderView.Stretch)
+        self.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.header().setStretchLastSection(False)
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(self.SelectRows)
         self.setSelectionMode(self.SingleSelection)
 
-        self.input_data_item = QtGui.QTreeWidgetItem(["Input data"])
-        self.input_data_item.setFlags(self.input_data_item.flags() & ~QtCore.Qt.ItemIsEditable)
+        self.input_data_item = QtWidgets.QTreeWidgetItem(["Input data"])
+        self.input_data_item.setFlags(self.input_data_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
         self.addTopLevelItem(self.input_data_item)
 
-        self.fitted_curves_item = QtGui.QTreeWidgetItem(["Curves"])
-        self.fitted_curves_item.setFlags(self.fitted_curves_item.flags() & ~QtCore.Qt.ItemIsEditable)
+        self.fitted_curves_item = QtWidgets.QTreeWidgetItem(["Curves"])
+        self.fitted_curves_item.setFlags(self.fitted_curves_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
         self.addTopLevelItem(self.fitted_curves_item)
 
         self.editAllStyleDialog = StyleEditorWidget(useButtons=True)
 
-        visibilityButton = QtGui.QPushButton(QtGui.QIcon(str(ALL_VISIBILITY_ON_ICON_FILE_PATH)), "")
+        visibilityButton = QtWidgets.QPushButton(QtGui.QIcon(str(ALL_VISIBILITY_ON_ICON_FILE_PATH)), "")
         visibilityButton.setFixedSize(26, 26)
         visibilityButton.setIconSize(QtCore.QSize(20, 20))
         visibilityButton.setAutoDefault(False)
         visibilityButton.setDefault(False)
         visibilityButton.setToolTip("Turn on/off all input data")
 
-        editButton = QtGui.QPushButton(QtGui.QIcon(str(EDIT_ALL_ICON_FILE_PATH)), "")
+        editButton = QtWidgets.QPushButton(QtGui.QIcon(str(EDIT_ALL_ICON_FILE_PATH)), "")
         editButton.setFixedSize(26, 26)
         editButton.setIconSize(QtCore.QSize(20, 20))
         editButton.setAutoDefault(False)
         editButton.setDefault(False)
         editButton.setToolTip("Edit the style for all input data")
 
-        optionsLayout = QtGui.QHBoxLayout()
-        optionsLayout.setSizeConstraint(QtGui.QLayout.SetMinimumSize)
+        optionsLayout = QtWidgets.QHBoxLayout()
+        optionsLayout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinimumSize)
         optionsLayout.setSpacing(5)
         optionsLayout.addWidget(visibilityButton)
         optionsLayout.addWidget(editButton)
@@ -76,23 +76,23 @@ class DataTableWidget(QtGui.QTreeWidget):
             )
         )
 
-        optionsWidget = QtGui.QWidget()
+        optionsWidget = QtWidgets.QWidget()
         optionsWidget.setLayout(optionsLayout)
         optionsWidget.setFixedSize(26, 26)
         self.setItemWidget(self.input_data_item, 1, optionsWidget)
 
         # Create dummy widgets to assure a proper height to the top level items
-        fit_dummy_widget = QtGui.QWidget()
+        fit_dummy_widget = QtWidgets.QWidget()
         fit_dummy_widget.setFixedSize(26, 26)
         self.setItemWidget(self.fitted_curves_item, 1, fit_dummy_widget)
 
     def add_data(self, graphData, data_type):
         """Creates objects and widgets related to the GraphData inserted."""
         # Options widget
-        optionsWidget = QtGui.QWidget()
+        optionsWidget = QtWidgets.QWidget()
 
         # Visible toggle button
-        visibleButton = QtGui.QPushButton("")
+        visibleButton = QtWidgets.QPushButton("")
         self.__updateTableVisibleButton(visibleButton, graphData)
         visibleButton.setFixedSize(26, 26)
         visibleButton.setIconSize(QtCore.QSize(20, 20))
@@ -113,15 +113,15 @@ class DataTableWidget(QtGui.QTreeWidget):
         editButton.setDefault(False)
 
         # Remove button
-        removeButton = QtGui.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
+        removeButton = QtWidgets.QPushButton(QtGui.QIcon(str(REMOVE_ICON_FILE_PATH)), "")
         removeButton.setFixedSize(26, 26)
         removeButton.setIconSize(QtCore.QSize(20, 20))
         removeButton.setAutoDefault(False)
         removeButton.setDefault(False)
 
         # Options widget layout
-        optionsLayout = QtGui.QHBoxLayout()
-        optionsLayout.setSizeConstraint(QtGui.QLayout.SetMinimumSize)
+        optionsLayout = QtWidgets.QHBoxLayout()
+        optionsLayout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinimumSize)
         optionsLayout.setSpacing(5)
         optionsLayout.addWidget(visibleButton)
         optionsLayout.addWidget(editButton)
@@ -137,8 +137,8 @@ class DataTableWidget(QtGui.QTreeWidget):
             )
         )
 
-        nameItem = QtGui.QTreeWidgetItem([graphData.name])
-        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemIsEditable)
+        nameItem = QtWidgets.QTreeWidgetItem([graphData.name])
+        nameItem.setFlags(nameItem.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
         if data_type == self.INPUT_DATA_TYPE:
             self.input_data_item.addChild(nameItem)
         else:
@@ -167,14 +167,14 @@ class DataTableWidget(QtGui.QTreeWidget):
         graphData.style.line_size = line_size
         self.signal_style_changed.emit()
 
-    def __updateTableVisibleButton(self, button: QtGui.QPushButton, graphData):
+    def __updateTableVisibleButton(self, button: QtWidgets.QPushButton, graphData):
         """Updates icon of the related visible button (from the table widget)."""
         if graphData.visible is True:
             button.setIcon(QtGui.QIcon(str(VISIBLE_ICON_FILE_PATH)))
         else:
             button.setIcon(QtGui.QIcon(str(NOT_VISIBLE_ICON_FILE_PATH)))
 
-    def __toggleGraphVisible(self, button: QtGui.QPushButton, graphData):
+    def __toggleGraphVisible(self, button: QtWidgets.QPushButton, graphData):
         """Updates visible state from GraphData object."""
         graphData.visible = not graphData.visible
         self.__updateTableVisibleButton(button, graphData)

@@ -1,5 +1,5 @@
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from ltrace.slicer.graph_data import TEXT_SYMBOLS, LINE_STYLES, SCATTER_PLOT_TYPE, LINE_PLOT_TYPE
 from ltrace.slicer.widget.style_editor_widget import StyleEditorWidget
 
@@ -37,7 +37,7 @@ class CustomColorButton(pg.ColorButton):
         if not dialogLayout:
             return
 
-        formLayout = QtGui.QFormLayout()
+        formLayout = QtWidgets.QFormLayout()
 
         self.styleEditor = StyleEditorWidget(
             self,

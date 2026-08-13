@@ -11,16 +11,17 @@ import vtk, slicer, slicer.util, mrml
 import argparse
 import dask.array as da
 import json
+
 import ltrace.slicer.netcdf as netcdf
 import numpy as np
-import random
 import xarray as xr
 
 from dask.callbacks import Callback
+
+from ltrace.algorithms.shading_correction import compute_polynomial_shading_correction
 from ltrace.slicer.lazy import lazy
 from ltrace.slicer.cli_utils import progressUpdate
 from typing import Union, Dict
-from scipy.optimize import curve_fit
 
 
 class DaskCLICallback(Callback):
@@ -36,99 +37,28 @@ class DaskCLICallback(Callback):
 
 def polynomialShadingCorrection(
     inputImageArray: "dask.array.core.Array",
-    inputMaskArray: "dask.array.core.Array",
     inputShadingMaskArray: "dask.array.core.Array",
     params: dict = None,
 ) -> Union[None, "dask.array.core.Array"]:
-    def isValid(arr):
-        return arr is not None and len(arr) > 0
 
-    if not isValid(inputImageArray) or not isValid(inputMaskArray) or not isValid(inputShadingMaskArray):
+    # Check for valid inputs before sending to the algorithm
+    if inputImageArray is None or len(inputImageArray) == 0:
+        return None
+    if inputShadingMaskArray is None or len(inputShadingMaskArray) == 0:
         return None
 
-    sliceGroupSize = params["sliceGroupSize"]
-    numberOfFittingPoints = params["numberFittingPoints"]
-    inputNullValue = params.get("nullValue", 0)
-    outputImageArray = inputImageArray.copy()
-
-    array = inputImageArray[inputShadingMaskArray != 0]
-
-    inputArrayShadingMaskMax = np.max(array) if array.size != 0 else 1
-    inputArrayShadingMaskMean = np.mean(array) if array.size != 0 else 1
-    initialParameters = [
-        1,
-        inputImageArray.shape[1] / 2,
-        1,
-        inputImageArray.shape[2] / 2,
-        1,
-        1,
-        1,
-        inputArrayShadingMaskMax,
-    ]
-
-    x, y = np.meshgrid([i for i in range(inputImageArray.shape[1])], [j for j in range(inputImageArray.shape[2])])
-
-    iterationIndexes = np.arange(sliceGroupSize // 2, len(inputImageArray), sliceGroupSize)
-    for i in iterationIndexes:
-        # Selecting random points
-        xData, yData = np.where(inputShadingMaskArray[i] != 0)
-        if len(xData) == 0:  # if no indexes where found
-            continue
-        data = [(x, y) for x, y in zip(xData, yData)]
-        data = random.sample(data, min(len(data), numberOfFittingPoints))
-        xData, yData = list(zip(*data))
-        zData = inputImageArray[i][(xData, yData)]
-
-        # Fitting
-        function = polynomial
-        try:
-            fittedParameters, pcov = curve_fit(function, [xData, yData], zData, p0=initialParameters)
-            initialParameters = fittedParameters
-        except:
-            # If the polynomial fitting fails, try to fit a simple plane
-            function = plane
-            try:
-                fittedParameters, pcov = curve_fit(
-                    function,
-                    [xData, yData],
-                    zData,
-                    p0=[1, inputImageArray.shape[1] / 2, 1, inputImageArray.shape[2] / 2, inputArrayShadingMaskMax],
-                )
-            except:
-                # If nothing can be fitted, skip
-                continue
-
-        # Applying function
-        z = function((x, y), *fittedParameters)
-        z = np.swapaxes(z, 0, 1)
-        zz = z / inputArrayShadingMaskMean
-
-        # Adjusting slice data
-        for j in range(i - sliceGroupSize // 2, i + 1):
-            outputImageArray[j] = inputImageArray[j] / zz
-
-        # In the last iteration, proceed to apply the function in all the remaining slices
-        if i == iterationIndexes[-1]:
-            end = len(inputImageArray)
-        else:
-            end = i + sliceGroupSize // 2 + 1
-
-        for j in range(i + 1, end):
-            outputImageArray[j] = inputImageArray[j] / zz
-
-    outputImageArray[inputMaskArray == 0] = inputNullValue
-
-    return outputImageArray
-
-
-def polynomial(data, a, b, c, d, e, f, g, h) -> int:
-    x, y = data
-    return a * (x - b) ** 2 + c * (y - d) ** 2 + e * (x - b) + f * (y - d) + g * (x - b) * (y - d) + h
-
-
-def plane(data, a, b, c, d, e) -> int:
-    x, y = data
-    return a * (x - b) + c * (y - d) + e
+    return compute_polynomial_shading_correction(
+        inputImageArray=inputImageArray,
+        inputShadingMaskArray=inputShadingMaskArray,
+        sliceGroupSize=params["sliceGroupSize"],
+        fittingPointsPercentage=params["fittingPointsPercentage"],
+        functionType=params["functionType"],
+        polynomialOrder=params.get("polynomialOrder", 4),
+        useCustomCenter=params.get("useCustomCenter", False),
+        centerX=params.get("centerX", 0),
+        centerY=params.get("centerY", 0),
+        inputNullValue=params.get("nullValue", 0),
+    )
 
 
 def getEncoding(array: "xr.DataArray") -> Dict:
@@ -142,17 +72,14 @@ def getEncoding(array: "xr.DataArray") -> Dict:
 
 def run(params: Dict) -> None:
     inputLazyData = lazy.LazyNodeData(params["inputLazyNodeUrl"], params["inputLazyNodeVar"])
-    inputMaskLazyData = lazy.LazyNodeData(params["inputMaskLazyNodeUrl"], params["inputMaskLazyNodeVar"])
     inputShadingMaskLazyData = lazy.LazyNodeData(
         params["inputShadingMaskLazyNodeUrl"], params["inputShadingMaskLazyNodeVar"]
     )
 
     inputLazyNodeHost = params["inputLazyNodeHost"]
-    inputMaskLazyNodeHost = params["inputMaskLazyNodeHost"]
     inputShadingMaskLazyNodeHost = params["inputShadingMaskLazyNodeHost"]
 
     inputDataArray = inputLazyData.to_data_array(**inputLazyNodeHost)
-    inputMaskDataArray = inputMaskLazyData.to_data_array(**inputMaskLazyNodeHost)
     inputShadingMaskDataArray = inputShadingMaskLazyData.to_data_array(**inputShadingMaskLazyNodeHost)
 
     # Convert xarray.DataArray to dask.Array
@@ -167,13 +94,11 @@ def run(params: Dict) -> None:
     chunkSize = (sliceChunkSize, shape[1], shape[2])
 
     daskInputDataArray = da.from_array(inputDataArray, chunks=chunkSize)
-    daskInputMaskDataArray = da.from_array(inputMaskDataArray, chunks=chunkSize)
     daskInputShadingMaskDataArray = da.from_array(inputShadingMaskDataArray, chunks=chunkSize)
 
     filteredDaskArray = da.map_blocks(
         polynomialShadingCorrection,
         daskInputDataArray,
-        daskInputMaskDataArray,
         daskInputShadingMaskDataArray,
         params=params,
         dtype=np.dtype("uint16"),
@@ -205,7 +130,9 @@ def run(params: Dict) -> None:
 
     # Export xarray.DataSet to .nc file
     encoding = getEncoding(filteredArray)
-    task = dataset.to_netcdf(params["exportPath"], encoding=encoding, format="NETCDF4", compute=False)
+    task = dataset.to_netcdf(
+        params["exportPath"], encoding=encoding, format="NETCDF4", compute=False, engine="h5netcdf"
+    )
 
     # Compute
     with DaskCLICallback():

@@ -11,7 +11,9 @@ from skimage.measure import block_reduce
 from pathlib import Path
 from scipy import ndimage
 from vtk.util.numpy_support import numpy_to_vtk
-
+from ltrace.slicer.helpers import copy_attributes, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
+from ltrace.constants import DLISImportConst
 
 try:
     from Test.HeterogeneityIndexTest import HeterogeneityIndexTest
@@ -102,7 +104,24 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
             output_table = create_hi_curve(
                 self.inputSelector.currentNode(), self.outputPrefixLineEdit.text, float(self.windowSizeSpinBox.value)
             )
+            # Which attributes should be copied? All? See MUSA-150
+            # And references?
+            imageLogAttrs = [
+                DLISImportConst.WELL_NAME_TAG,
+                DLISImportConst.FRAME_TAG,
+                DLISImportConst.ORIGIN_TAG,
+                DLISImportConst.LOGICAL_FILE_TAG,
+            ]
+            copy_attributes(self.inputSelector.currentNode(), output_table, imageLogAttrs)
+            imageLogHierarchyAttrs = [
+                DLISImportConst.FRAME_TAG,
+                DLISImportConst.LOGICAL_FILE_TAG,
+                # DLISImportConst.SCALAR_VOLUME_TYPE, ?
+            ]
+            copy_metadata(self.inputSelector.currentNode(), output_table)
+            copy_hierarchy_attributes(self.inputSelector.currentNode(), output_table, imageLogHierarchyAttrs)
             output_table.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+            output_table.CopyReferences(output_table)
             self.statusLabel.setText("Heterogeneity index computed.")
         except Exception as e:
             msg = "Error: " + str(e)

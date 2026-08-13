@@ -18,7 +18,6 @@ from ltrace.slicer import ui, helpers, widgets, data_utils as du
 from ltrace.slicer.node_attributes import Tag, NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from pathlib import Path
 
@@ -26,19 +25,11 @@ from ltrace.remote.handlers import OneResultSlurmHandler
 
 from ltrace.slicer.helpers import LazyLoad2
 
-ReportForm = LazyLoad2("PNMReport.ReportLib.ReportForm")
-ReportLogic = LazyLoad2("PNMReport.ReportLib.ReportLogic")
-StreamlitServer = LazyLoad2("PNMReport.ReportLib.StreamlitServer")
 # Checks if closed source code is available
 try:
     from Test.MicrotomRemoteTest import MicrotomRemoteTest
 except ImportError:
     MicrotomRemoteTest = None  # tests not deployed to final version or closed source
-
-try:
-    from Test.PoreNetworkReportTest import PoreNetworkReportTest
-except ImportError:
-    PoreNetworkReportTest = None  # tests not deployed to final version or closed source
 
 WORKSPACES_REPO = "workspaces"
 
@@ -520,8 +511,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         methodsLayout = qt.QFormLayout()
 
         self.simOptions = qt.QComboBox()
-        self.simOptions.addItem("PNM Complete Workflow", "pnm")
-        self.simOptions.addItem("---------")
         self.simOptions.addItem("Pore Size Distribution", "psd")
         self.simOptions.addItem("Hierarquical Pore Size Distribution", "hpsd")
         self.simOptions.addItem("Mercury Injection Capillary Pressure", "micp")
@@ -532,11 +521,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.simOptions.addItem("Absolute Permeability - Representative Elementary Volume", "stokes_kabs_rev")
         self.simOptions.addItem("Absolute Permeability - Darcy FOAM", "darcy_kabs_foam")
         self.simOptions.addItem("Relative Permeability", "krel")
-
-        combo_model = self.simOptions.model()
-        separator_index = combo_model.index(1, 0)
-        separator_item = combo_model.itemFromIndex(separator_index)
-        separator_item.setFlags(separator_item.flags() & ~qt.Qt.ItemIsSelectable & ~qt.Qt.ItemIsEnabled)
 
         self.simOptions.setToolTip("Select a simulation MicroTom method.")
         self.simOptions.currentIndexChanged.connect(self._onSimulSelected)
@@ -639,17 +623,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.psdConfigWidget = DistributionsForm(hasSatCorrection=True, hasResolutionConfig=True)
         self.hpsdConfigWidget = DistributionsForm(hasSatCorrection=True, hasResolutionConfig=False)
         self.distribWidget = DirectedDistributionForm()
-
-        if ReportForm is not None:
-            self.pnmReportWidget = ReportForm.ReportForm()
-            self.pnmReportWidget.objectName = "PNMReportForm"
-            self.configWidget.addWidget(self.pnmReportWidget)
-        else:
-            warningPlaceHolder = qt.QWidget()
-            warningPlaceHolderLayout = qt.QVBoxLayout(warningPlaceHolder)
-            warningPlaceHolderLayout.addWidget(qt.QLabel("Report module not available"))
-            warningPlaceHolderLayout.addStretch(1)
-            self.configWidget.addWidget(warningPlaceHolder)
 
         self.configWidget.addWidget(self.psdConfigWidget)
         self.configWidget.addWidget(self.hpsdConfigWidget)
@@ -786,9 +759,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         hbox.addWidget(self.canBtn)
         ioPageLayout.addLayout(hbox)
 
-        ioStreamlitLayout = self._setupServerManager()
-        ioPageLayout.addLayout(ioStreamlitLayout)
-
         ioPageLayout.addLayout(self.ioResultsComboBox)
 
         ioPageLayout.addWidget(self.progressBar)
@@ -797,84 +767,9 @@ class MicrotomRemoteWidget(LTracePluginWidget):
 
         return ioSection
 
-    def _setupServerManager(self):
-        self.toggleServerButton = qt.QPushButton("Open Report Locally")
-        self.toggleServerButton.setStyleSheet(
-            "QPushButton {font-size: 11px; font-weight: bold; padding: 8px; margin: 4px}"
-        )
-        self.toggleServerButton.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Preferred)
-        self.toggleServerButton.objectName = "ToggleServerButton"
-        self.serverStatus = qt.QLabel("Stopped")
-        self.serverStatus.setFixedHeight(25)
-        self.serverStatus.setOpenExternalLinks(True)
-        self.serverStatus.objectName = "ServerStatusLabel"
-
-        ioPageFormLayout = qt.QFormLayout()
-        ioPageFormLayout.addWidget(self.toggleServerButton)
-        ioPageFormLayout.addWidget(self.serverStatus)
-        self.toggleServerButton.hide()
-        self.serverStatus.hide()
-
-        self.streamlitAdvancedSection = ctk.ctkCollapsibleButton()
-        self.streamlitAdvancedSection.text = "Advanced"
-        self.streamlitAdvancedSection.flat = True
-        self.streamlitAdvancedSection.collapsed = True
-        self.streamlitAdvancedSection.hide()
-
-        if StreamlitServer.StreamlitServer is not None:
-            self.server = StreamlitServer.StreamlitServer(self.simOptions, self.serverStatus, self.toggleServerButton)
-            self.server.objectName = "StreamlitServerManager"
-
-            advancedFormLayout = qt.QFormLayout(self.streamlitAdvancedSection)
-
-            portLineEdit = ui.numberParam((1024, 65535), value=self.server.port, step=1, decimals=0)
-            portLineEdit.setToolTip("Select server port for Streamlit report")
-            portLineEdit.valueChanged.connect(self.server.onPortChanged)
-            advancedFormLayout.addRow("Server Port:", portLineEdit)
-
-            folderLineEdit = ctk.ctkPathLineEdit()
-            folderLineEdit.filters = ctk.ctkPathLineEdit.Dirs
-            folderLineEdit.objectName = "StreamlitFolderLineEdit"
-            folderLineEdit.setToolTip("Select a folder where you can run the Streamlit report")
-            folderLineEdit.currentPathChanged.connect(self.server.onPathChanged)
-            folderLineEdit.currentPathChanged.connect(self.pnmReportWidget.onPathChanged)
-            folderLineEdit.setCurrentPath(self.server.report_folder)
-            folderLineEdit.currentPathChanged.emit(self.server.report_folder)
-            advancedFormLayout.addRow("Report Folder:", folderLineEdit)
-
-            hbox = qt.QHBoxLayout()
-            updateScripts = qt.QCheckBox("Update scripts in report folder")
-            updateScripts.stateChanged.connect(self.server.onUpdateScriptsChecked)
-            updateScripts.setToolTip(
-                "This checkbox will replace existing Streamlit codes in the report folder with the versions from the current GeoSlicer release."
-            )
-            hbox.addWidget(updateScripts)
-            advancedFormLayout.addRow(hbox)
-
-            ApplicationObservables().applicationLoadFinished.connect(self.__onApplicationLoadFinished)
-        else:
-            self.server = None
-            self.toggleServerButton.clicked.connect(self.onStreamlitServerUnavailable)
-
-        ioPageFormLayout.addWidget(self.streamlitAdvancedSection)
-
-        return ioPageFormLayout
-
-    def __onApplicationLoadFinished(self) -> None:
-        if StreamlitServer.StreamlitServer is None:
-            return
-
-        self.server.retrieveActiveStreamlit()
-        ApplicationObservables().applicationLoadFinished.disconnect(self.server.retrieveActiveStreamlit)
-
     def cleanup(self) -> None:
         self.modeWidgets[widgets.BatchInputWidget.MODE_NAME].onDirSelected = None
-        if StreamlitServer.StreamlitServer is not None:
-            ApplicationObservables().applicationLoadFinished.disconnect(self.__onApplicationLoadFinished)
         super().cleanup()
-
-    def onStreamlitServerUnavailable(self):
-        slicer.util.errorDisplay("Server unavailable at this version.")
 
     def showThreads(self):
         dialogWidget = qt.QDialog(self.parent)
@@ -931,10 +826,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         for key, widget in self.modeSelectors.items():
             widget.hide()
 
-        self.toggleServerButton.hide()
-        # self.serverStatus.hide()
-        self.streamlitAdvancedSection.hide()
-
         modeWidget = self.modeWidgets[widgets.SingleShotInputWidget.MODE_NAME]
         batchWidget = self.modeWidgets[widgets.BatchInputWidget.MODE_NAME]
         modeWidget.soiInput.setCurrentNode(None)
@@ -953,10 +844,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
             modeWidget.soiInput.enabled = True
             modeWidget.referenceInput.enabled = True
         elif "pnm" in self.simOptions.currentData:
-            self.toggleServerButton.show()
-            # self.serverStatus.show()
-            self.streamlitAdvancedSection.show()
-
             self.mode_label.show()
             for key, widget in self.modeSelectors.items():
                 widget.show()
@@ -989,32 +876,29 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                 modeWidget.referenceInput.setCurrentNode(None)
 
         if "krel" in self.simOptions.currentData:
-            self.configWidget.setCurrentIndex(7)
+            self.configWidget.setCurrentIndex(6)
             self._disableSwitchFor("Local", keep="Remote")
         elif "darcy" in self.simOptions.currentData:
-            self.configWidget.setCurrentIndex(6)
+            self.configWidget.setCurrentIndex(5)
             self._disableSwitchFor("Local", keep="Remote")
         elif "kabs_rev" in self.simOptions.currentData:
             modeWidget.soiInput.enabled = True
             modeWidget.referenceInput.enabled = True
-            self.configWidget.setCurrentIndex(5)
+            self.configWidget.setCurrentIndex(4)
             self._disableSwitchFor("Local", keep="Remote")
         elif "kabs" in self.simOptions.currentData:
             modeWidget.soiInput.enabled = True
             modeWidget.referenceInput.enabled = True
-            self.configWidget.setCurrentIndex(4)
+            self.configWidget.setCurrentIndex(3)
             self._disableSwitchFor("Local", keep="Remote")
         elif "hpsd" in self.simOptions.currentData:
-            self.configWidget.setCurrentIndex(2)
-            self._enableAllSwitches()
-        elif "psd" in self.simOptions.currentData:
             self.configWidget.setCurrentIndex(1)
             self._enableAllSwitches()
-        elif "pnm" in self.simOptions.currentData:
+        elif "psd" in self.simOptions.currentData:
             self.configWidget.setCurrentIndex(0)
-            self._disableSwitchFor("Remote", keep="Local")
+            self._enableAllSwitches()
         else:
-            self.configWidget.setCurrentIndex(3)
+            self.configWidget.setCurrentIndex(2)
             self._enableAllSwitches()
 
     def _onModeClicked(self):
@@ -1051,15 +935,11 @@ class MicrotomRemoteWidget(LTracePluginWidget):
         self.canBtn.enabled = False
 
     def _onBatchInputSelected(self, path):
-        if ReportForm is None:
-            return
-
         if not path:
             self.simBtn.enabled = False
             self.canBtn.enabled = False
             return
 
-        self.outputPrefix.setText(self.pnmReportWidget.report_folder)
         self.restartApplyButton()
 
     def _onReferenceSelected(self, node):
@@ -1082,20 +962,6 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                 nodeName = "_".join([*tokens, image_type, *shape, "{:05d}".format(int(round(res * 1e6))) + "nm"])
 
             self.outputPrefix.setText(nodeName)
-        elif "pnm" in self.simOptions.currentData:
-            nodeName = node.GetName()
-            tokens = nodeName.split("_")
-            if len(tokens) < 4:
-                arr = slicer.util.arrayFromVolume(node).astype(np.float64)  # TODO Precisa converter para array?
-                image_type = "PNM"
-
-                shape = ["{:04d}".format(int(d)) for d in arr.shape[::-1]]
-                res = min([v for v in node.GetSpacing()])
-
-                nodeName = "_".join([*tokens, image_type, *shape, "{:05d}".format(int(round(res * 1e6))) + "nm"])
-
-            self.outputPrefix.setText(nodeName)
-            self.pnmReportWidget.wellName.setText(nodeName)
 
         self.simBtn.enabled = True
         self.canBtn.enabled = False

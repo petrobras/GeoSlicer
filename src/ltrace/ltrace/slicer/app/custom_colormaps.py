@@ -1,4 +1,4 @@
-import collections
+import collections.abc
 import slicer
 import vtk
 import numpy as np
@@ -100,8 +100,6 @@ def add_color_map(cmap):
 
 
 def cmapToColormap(cmap, nTicks=256):
-    import numpy as np
-
     """
     Converts a Matplotlib cmap to pyqtgraphs colormaps. No dependency on matplotlib.
 
@@ -109,12 +107,15 @@ def cmapToColormap(cmap, nTicks=256):
     *cmap*: Cmap object. Imported from matplotlib.cm.*
     *nTicks*: Number of ticks to create when dict of functions is used. Otherwise unused.
     """
+    import numpy as np
+
     # Case #1: a dictionary with 'red'/'green'/'blue' values as list of ranges (e.g. 'jet')
     # The parameter 'cmap' is a 'matplotlib.colors.LinearSegmentedColormap' instance ...
     if hasattr(cmap, "_segmentdata"):
         colordata = getattr(cmap, "_segmentdata")
-        if ("red" in colordata) and isinstance(colordata["red"], collections.Sequence):
-            # collect the color ranges from all channels into one dict to get unique indices
+        if ("red" in colordata) and isinstance(
+            colordata["red"], collections.abc.Sequence
+        ):  # collect the color ranges from all channels into one dict to get unique indices
             posDict = {}
             for idx, channel in enumerate(("red", "green", "blue")):
                 for colorRange in colordata[channel]:
@@ -142,7 +143,7 @@ def cmapToColormap(cmap, nTicks=256):
             posList = [[i, posDict[i]] for i in indexList]
             return posList
         # Case #2: a dictionary with 'red'/'green'/'blue' values as functions (e.g. 'gnuplot')
-        elif ("red" in colordata) and isinstance(colordata["red"], collections.Callable):
+        elif ("red" in colordata) and isinstance(colordata["red"], collections.abc.Callable):
             indices = np.linspace(0.0, 1.0, nTicks)
             luts = [
                 np.clip(np.array(colordata[rgb](indices), dtype=np.float64), 0, 1) * 255

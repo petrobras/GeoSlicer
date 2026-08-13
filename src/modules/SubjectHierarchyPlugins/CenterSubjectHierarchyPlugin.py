@@ -9,8 +9,27 @@ from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.vtk_utils.well_model.well_model import create_well_model_from_node
 
 
+def _getCurrentItems() -> vtk.vtkIdList:
+    pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+    treeView = pluginHandlerSingleton.currentTreeView()
+
+    itemsList = vtk.vtkIdList()
+    if treeView:
+        treeView.currentItems(itemsList)
+    else:
+        pluginHandlerSingleton.currentItems(itemsList)
+
+    return itemsList
+
+
+def _getCurrentItem() -> vtk.vtkIdList:
+    pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+    treeView = pluginHandlerSingleton.currentTreeView()
+    return treeView.currentItem() if treeView else pluginHandlerSingleton.currentItem()
+
+
 class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
-    """Scripted subject hierarchy plugin for the Segment Editor module.
+    r"""Scripted subject hierarchy plugin for the Segment Editor module.
 
     This is also an example for scripted plugins, so includes all possible methods.
     The methods that are not needed (i.e. the default implementation in
@@ -50,7 +69,7 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
     def canOwnSubjectHierarchyItem(self, itemID):
         # This plugin cannot own any items (it's not a role but a function plugin),
         # but the it can be decided the following way:
-        # pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        # pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         # shNode = pluginHandlerSingleton.subjectHierarchyNode()
         # associatedNode = shNode.GetItemDataNode(itemID)
         # if associatedNode is not None and associatedNode.IsA("vtkMRMLMyNode"):
@@ -84,11 +103,11 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         return qt.QIcon()
 
     def visibilityIcon(self, visible):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         return pluginHandlerSingleton.pluginByName("Default").visibilityIcon(visible)
 
     def editProperties(self, itemID):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         pluginHandlerSingleton.pluginByName("Default").editProperties(itemID)
 
     def itemContextMenuActions(self):
@@ -105,8 +124,8 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
     def centerToThisVolume(self, volume=None):
         if volume is None:
-            pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-            currentItemID = pluginHandlerSingleton.currentItem()
+            pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+            currentItemID = _getCurrentItem()
             if not currentItemID:
                 logging.error("Invalid current item")
 
@@ -134,9 +153,9 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         slicer.app.layoutManager().threeDWidget(0).threeDView().zoomOut()
 
     def centerToThisSegment(self):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
-        currentItemID = pluginHandlerSingleton.currentItem()
+        currentItemID = _getCurrentItem()
 
         segmentationNode = subjectHierarchyNode.GetItemDataNode(subjectHierarchyNode.GetItemParent(currentItemID))
 
@@ -158,9 +177,9 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             # No scene context menu actions in this plugin
             return
 
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
-        currentItemID = pluginHandlerSingleton.currentItem()
+        currentItemID = _getCurrentItem()
 
         if not currentItemID:
             logging.error("Invalid current item")
@@ -194,16 +213,16 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         return ""
 
     def setDisplayVisibility(self, itemID, visible):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         pluginHandlerSingleton.pluginByName("Default").setDisplayVisibility(itemID, visible)
 
     def getDisplayVisibility(self, itemID):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         return pluginHandlerSingleton.pluginByName("Default").getDisplayVisibility(itemID)
 
     def __onChartsShortcutClicked(self):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-        currentItemID = pluginHandlerSingleton.currentItem()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        currentItemID = _getCurrentItem()
         if not currentItemID:
             logging.error("Invalid current item")
             return
@@ -224,10 +243,10 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         slicer.util.selectModule(module)
 
     def extract_volumes_from_sequence(self, node=None):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
         if not node:
-            itemID = pluginHandlerSingleton.currentItem()
+            itemID = _getCurrentItem()
             node = subjectHierarchyNode.GetItemDataNode(itemID)
         browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node)
         sequence_node = browser_node.GetSequenceNode(node)
@@ -252,10 +271,10 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(new_node), folder_dir)
 
     def create_sequence_from_folder(self, folderID=None):
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
         subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
         if not folderID:
-            folderID = pluginHandlerSingleton.currentItem()
+            folderID = _getCurrentItem()
 
         vtk_list = vtk.vtkIdList()
         subjectHierarchyNode.GetItemChildren(folderID, vtk_list)
@@ -315,11 +334,11 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
             )
 
     def delete_sequence_nodes(self, node=None):
-        plugin_handler_singleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-        subject_hierarchy_node = plugin_handler_singleton.subjectHierarchyNode()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
         if not node:
-            itemID = plugin_handler_singleton.currentItem()
-            node = subject_hierarchy_node.GetItemDataNode(itemID)
+            itemID = _getCurrentItem()
+            node = subjectHierarchyNode.GetItemDataNode(itemID)
         browser_node = slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node)
         if browser_node:
             sequence_node = browser_node.GetSequenceNode(node)
@@ -329,45 +348,119 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
                 slicer.mrmlScene.RemoveNode(node.GetDisplayNode().GetColorNode())
             slicer.mrmlScene.RemoveNode(node)
 
-    def find_and_remove_sequence_nodes(self, items_list):
-        subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    def find_and_remove_sequence_nodes(self):
+        itemsList = _getCurrentItems()
 
-        for item in range(items_list.GetNumberOfIds()):
-            node = subject_hierarchy.GetItemDataNode(items_list.GetId(item))
-            if (
-                type(node) is slicer.vtkMRMLFolderDisplayNode
-                or subject_hierarchy.GetItemOwnerPluginName(items_list.GetId(item)) == "Folder"
-            ):
-                children_list = vtk.vtkIdList()
-                subject_hierarchy.GetItemChildren(items_list.GetId(item), children_list)
-                self.find_and_remove_sequence_nodes(children_list)
-            elif slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node):
-                self.delete_sequence_nodes(node)
+        def _find_and_remove(_itemsList):
+            subjectHierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            for item in range(_itemsList.GetNumberOfIds()):
+                node = subjectHierarchy.GetItemDataNode(_itemsList.GetId(item))
+                if (
+                    type(node) is slicer.vtkMRMLFolderDisplayNode
+                    or subjectHierarchy.GetItemOwnerPluginName(_itemsList.GetId(item)) == "Folder"
+                ):
+                    children_list = vtk.vtkIdList()
+                    subjectHierarchy.GetItemChildren(_itemsList.GetId(item), children_list)
+                    _find_and_remove(children_list)
+                elif slicer.modules.sequences.logic().GetFirstBrowserNodeForProxyNode(node):
+                    self.delete_sequence_nodes(node)
 
-    def find_and_clone_items(self, items_list):
-        if items_list.GetNumberOfIds() == 0:
+        _find_and_remove(itemsList)
+
+    def find_and_create_labelmap_from_items(self, itemID=None):
+        """
+        This is a rewriting of qSlicerSubjectHierarchySegmentationsPlugin::exportToBinaryLabelmap()
+        - Added: Setting to the new label map the same NodeReferenceID('referenceImageGeometryRef') as of its segmentation
+        """
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
+
+        if not itemID:
+            itemID = _getCurrentItem()
+
+        node = subjectHierarchyNode.GetItemDataNode(itemID)
+        if not isinstance(node, slicer.vtkMRMLSegmentationNode):
+            node = subjectHierarchyNode.GetItemDataNode(subjectHierarchyNode.GetItemParent(itemID))
+
+        segmentation = node.GetSegmentation()
+
+        # Create binary labelmap representation using default parameters
+        success = segmentation.CreateRepresentation(
+            slicer.vtkSegmentationConverter.GetSegmentationBinaryLabelmapRepresentationName()
+        )
+        if not success:
+            logging.error(
+                f"Failed to create binary labelmap representation for segmentation {node.GetName()} using default"
+                "conversion parameters!\n\nPlease visit the Segmentation module and try the advanced create representation function."
+            )
+            raise RuntimeError("Failed to export segmentation to labelmap node")
+
+        # Get exported (visible) segment IDs
+        segmentIDs = vtk.vtkStringArray()
+        segmentation.GetSegmentIDs(segmentIDs)
+
+        # Create new labelmap node
+        newLabelmapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        newLabelmapNode.CreateDefaultDisplayNodes()
+
+        exportedNodeName = node.GetName()
+        if segmentIDs.GetNumberOfValues() == 1:
+            exportedNodeName += "-" + str(segmentation.GetSegment(segmentIDs.GetValue(0)).GetName())
+
+        exportedNodeName += "-label"  #  : suffix used when exporting segmentation to labelmap
+        exportedNodeName = slicer.mrmlScene.GetUniqueNameByString(exportedNodeName)
+        newLabelmapNode.SetName(exportedNodeName)
+
+        # Get reference volume
+        referenceVolumeNode = node.GetNodeReference(
+            slicer.vtkMRMLSegmentationNode.GetReferenceImageGeometryReferenceRole()
+        )
+
+        # Export visible segments into a multi-label labelmap volume
+        qt.QApplication.setOverrideCursor(qt.Qt.BusyCursor)
+        if not slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
+            node, newLabelmapNode, referenceVolumeNode
+        ):
+            logging.error(
+                f"Failed to export segments from segmentation {node.GetName()} to labelmap node"
+                "Most probably the segment cannot be converted into binary labelmap representation"
+            )
+            raise RuntimeError("Failed to export segments")
+        qt.QApplication.restoreOverrideCursor()
+
+        # Our extra bit: Copy the reference image geometry
+        role = "referenceImageGeometryRef"
+        refID = node.GetID()
+        if refID:
+            newLabelmapNode.SetNodeReferenceID(role, refID)
+
+    def find_and_clone_items(self):
+        itemsList = _getCurrentItems()
+        if itemsList.GetNumberOfIds() == 0:
             logging.warning("Custom clone called, but no items selected in the active view.")
             return
 
-        subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        subjectHierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         shLogic = slicer.modules.subjecthierarchy.logic()
 
-        for item in range(items_list.GetNumberOfIds()):
-            itemID = items_list.GetId(item)
-            originalNode = subject_hierarchy.GetItemDataNode(itemID)
+        for item in range(itemsList.GetNumberOfIds()):
+            itemID = itemsList.GetId(item)
+            originalNode = subjectHierarchy.GetItemDataNode(itemID)
 
-            clonedItemID = shLogic.CloneSubjectHierarchyItem(subject_hierarchy, itemID)
+            clonedItemID = shLogic.CloneSubjectHierarchyItem(subjectHierarchy, itemID)
 
             if not originalNode:
                 continue
 
-            clonedNode = subject_hierarchy.GetItemDataNode(clonedItemID)
+            clonedNode = subjectHierarchy.GetItemDataNode(clonedItemID)
 
             if not clonedNode:
                 logging.warning("Could not perform custom clone. The copy is invalid.")
                 continue
 
+            helpers.copy_hierarchy_attributes(originalNode, clonedNode)
             copy_metadata(originalNode, clonedNode)
+            helpers.copy_hierarchy_attributes(originalNode, clonedNode)
 
             # If it is a segmentation, copy also the reference image geometry
             if isinstance(originalNode, slicer.vtkMRMLSegmentationNode):
@@ -386,12 +479,27 @@ class CenterSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
                     if refID:
                         clonedNode.SetNodeReferenceID(role, refID)
 
+    def register_current_item(self):
+        """Redirect the base "Register this..." action to the Fast Registration module,
+        pre-selecting the clicked volume as the moving volume.
+        """
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
+        node = subjectHierarchyNode.GetItemDataNode(_getCurrentItem())
+        if node is None:
+            logging.warning("Register called, but no node selected in the active view.")
+            return
+
+        module = "FastRegistration"
+        slicer.util.getModuleWidget(module).setMovingNode(node)
+        slicer.util.selectModule(module)
+
     def create_well_model_node(self, node=None):
-        plugin_handler_singleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-        subject_hierarchy_node = plugin_handler_singleton.subjectHierarchyNode()
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
+        subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
         if not node:
-            itemID = plugin_handler_singleton.currentItem()
-            node = subject_hierarchy_node.GetItemDataNode(itemID)
+            itemID = _getCurrentItem()
+            node = subjectHierarchyNode.GetItemDataNode(itemID)
 
         with ProgressBarProc() as progressBar:
             progressBar.setMessage("Creating well model")

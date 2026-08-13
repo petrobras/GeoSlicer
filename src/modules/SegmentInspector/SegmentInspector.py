@@ -67,9 +67,6 @@ class SegmentInspector(LTracePlugin):
         self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "ImageLog", "Core", "Multiscale"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]  # replace with "Firstname Lastname (Organization)"
-        self.parent.helpText = (
-            f"file:///{(getResourcePath('manual') / 'Modules/Quantification/segment_inspector.html').as_posix()}"
-        )
         self.parent.acknowledgementText = ""  # replace with organization, grant and thanks.
         self.setHelpUrl("Volumes/Segmentation/Segmentation.html#segment-inspector", NodeEnvironment.MICRO_CT)
         self.setHelpUrl("ThinSection/Segmentation/Segmentation.html#segment-inspector", NodeEnvironment.THIN_SECTION)
@@ -332,7 +329,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         super().enter()
 
     def exit(self):
-        self.modeWidgets[self.currentMode].autoPorosityCalcCb.setChecked(False)
+        pass
 
     def cleanup(self):
         super().cleanup()

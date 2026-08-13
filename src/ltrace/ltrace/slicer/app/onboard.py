@@ -205,6 +205,13 @@ class LoaderInfo:
     environment: str = None
 
 
+_lastEnvironment: "LoaderInfo | None" = None
+
+
+def getLastEnvironment():
+    return _lastEnvironment
+
+
 LOADERS = {
     li.displayName: li
     for li in [
@@ -253,6 +260,22 @@ LOADERS = {
 
 
 def loadEnvironment(toolbar, environmentInfo):
+    global _lastEnvironment
+    _lastEnvironment = environmentInfo
+
+    # Hide onboarding overlay (if any) so it does not cover the env's views,
+    # and stamp the recently-loaded scene with the env so the recents list
+    # shows it next time.
+    try:
+        from ltrace.slicer.app.onboard_view import OnboardLayout, recordEnvironmentForPath
+
+        OnboardLayout.hide()
+        sceneUrl = slicer.mrmlScene.GetURL()
+        if sceneUrl:
+            recordEnvironmentForPath(sceneUrl, environmentInfo.displayName)
+    except ImportError:
+        pass
+
     groups = slicer.modules.AppContextInstance.modules.groups
     mainWindow = slicer.modules.AppContextInstance.mainWindow
     with ProgressBarProc() as pb:

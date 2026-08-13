@@ -6,6 +6,7 @@ from collections import namedtuple
 
 # This has no reason to be here apart from the type annotation in the constructor
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from ltrace.slicer import helpers
 
 
 CliNodeInformation = namedtuple(
@@ -132,6 +133,11 @@ class CliQueue(qt.QObject):
 
     def __clear_observers(self):
         for obj, handler in self.__current_observer_handlers:
+            if isinstance(obj, str):  # is a node ID
+                obj = helpers.tryGetNode(obj)
+                if obj is None:
+                    continue
+
             logging.debug("Removing observer {} from cli node {}".format(handler, obj.GetID()))
             obj.RemoveObserver(handler)
 
@@ -159,9 +165,11 @@ class CliQueue(qt.QObject):
                 self.stop()
 
         elif caller.GetStatus() == slicer.vtkMRMLCommandLineModuleNode.CompletedWithErrors:
-            logging.error("error running cli node {}!".format(self.__current_node_info.node.GetID()))
             self.__error_message = (
                 f"{self.__current_node_info.progress_text}:\n{caller.GetErrorText().strip().splitlines()[-1]}"
+            )
+            logging.error(
+                "error running cli node {}: {}".format(self.__current_node_info.node.GetID(), self.__error_message)
             )
             self.stop()
 
@@ -191,7 +199,7 @@ class CliQueue(qt.QObject):
         logic.Apply(node, self.__update_display)
 
         modified_handler = node.AddObserver("ModifiedEvent", self.__on_modified_event)
-        self.__current_observer_handlers.append((node, modified_handler))
+        self.__current_observer_handlers.append((node.GetID(), modified_handler))
         logging.debug("Creating default observer {} for node {}".format(modified_handler, node.GetID()))
         if self.__progress_bar is not None:
             self.__progress_bar.setCommandLineModuleNode(node)

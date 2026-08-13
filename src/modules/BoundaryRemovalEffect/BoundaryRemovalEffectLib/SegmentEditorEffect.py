@@ -54,6 +54,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.setupFinishedCallback = lambda: None
         self.applyAllSupported = True
 
+        self.sitkFilter = None
+
     def cleanup(self):
         if self.timer is not None:
             self.timer.stop()
@@ -127,7 +129,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         # Set views opacity back to normal
         nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
         for node in nodes.values():
-            node.SetBackgroundOpacity(1)
             node.SetForegroundOpacity(0)
 
     def setCurrentSegmentTransparent(self):
@@ -302,6 +303,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         segmentsForm = editorWidget.findChild(ctk.ctkExpandableWidget, "SegmentsTableResizableFrame")
         segmentsForm.setEnabled(enabled)
 
+        self.filterComboBox.setEnabled(enabled)
+
         slicer.app.processEvents()
 
     def createCursor(self, widget):
@@ -341,6 +344,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             self.scriptedEffect.setParameter("MinimumThreshold", self.thresholdSlider.minimumValue)
             self.scriptedEffect.setParameter("MaximumThreshold", self.thresholdSlider.maximumValue)
 
+    def cancel(self):
+        self.sitkFilter.Abort()
+
     #
     # Effect specific methods (the above ones are the API methods to override)
     #
@@ -359,11 +365,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             slicer.util.infoDisplay("There must be at least 3 segments to use this tool.")
             return
 
-        self.optionsFrame.setVisible(True)
-        self.applyButton.setVisible(True)
-
-        node = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
-        self.applyAllButton.visible = self.applyAllSupported and lazy.getParentLazyNode(node) is not None
+        self.setEnabledSegmentationButtons(False)
+        self.initializeButton.setEnabled(False)
+        self.filterComboBox.setEnabled(False)
 
         self.setCurrentSegmentTransparent()
 
@@ -379,33 +383,46 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.filterOutputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
         self.filterOutputVolume.SetName(self.sourceVolumeNode.GetName() + " - Edges")
         simpleFiltersWidget = slicer.modules.simplefilters.createNewWidgetRepresentation()
-        if self.filterComboBox.currentData == FILTER_GRADIENT_MAGNITUDE:
-            simpleFiltersWidget.self().filterSelector.setCurrentText("GradientMagnitudeImageFilter")
-            sitkFilter = simpleFiltersWidget.self().filterParameters.filter
-            inputImage = sitk.ReadImage(sitkUtils.GetSlicerITKReadWriteAddress(self.sourceVolumeNode.GetName()))
-            outputImage = sitkFilter.Execute(*[inputImage])
-            nodeWriteAddress = sitkUtils.GetSlicerITKReadWriteAddress(self.filterOutputVolume.GetName())
-            sitk.WriteImage(outputImage, nodeWriteAddress)
-            subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            itemParent = subjectHierarchyNode.GetItemParent(
-                subjectHierarchyNode.GetItemByDataNode(self.sourceVolumeNode)
-            )
-            subjectHierarchyNode.SetItemParent(
-                subjectHierarchyNode.GetItemByDataNode(self.filterOutputVolume), itemParent
-            )
 
-            # """
-            # The Magnitude Image Filter generates a volume with few very high intensity value voxels that don't add to the result.
-            # The code bellow is to exclude them, to allow a more useful threshold slider widget.
-            # """
-            # array = slicer.util.arrayFromVolume(self.filterOutputVolume)
-            # maxValue = 0
-            # step = (np.max(array) - np.min(array)) / 20
-            # meaningfullVoxelFraction = array.size / 1000
-            # while (array > maxValue).sum() > meaningfullVoxelFraction:
-            #     maxValue += step
-            # array[array > maxValue] = maxValue
-            # slicer.util.updateVolumeFromArray(self.filterOutputVolume, array)
+        try:
+            if self.filterComboBox.currentData == FILTER_GRADIENT_MAGNITUDE:
+                simpleFiltersWidget.self().filterSelector.setCurrentText("GradientMagnitudeImageFilter")
+                self.sitkFilter = simpleFiltersWidget.self().filterParameters.filter
+
+                with self.progress(text="Applying Filter...", cancel=False) as update_progress:
+                    inputImage = sitkUtils.PullVolumeFromSlicer(self.sourceVolumeNode)
+
+                    self.sitkFilter.AddCommand(
+                        sitk.sitkProgressEvent, lambda: update_progress(self.sitkFilter.GetProgress() * 100)
+                    )
+                    outputImage = self.sitkFilter.Execute(*[inputImage])
+
+                    nodeWriteAddress = sitkUtils.GetSlicerITKReadWriteAddress(self.filterOutputVolume.GetName())
+                    sitk.WriteImage(outputImage, nodeWriteAddress)
+                    subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+                    itemParent = subjectHierarchyNode.GetItemParent(
+                        subjectHierarchyNode.GetItemByDataNode(self.sourceVolumeNode)
+                    )
+                    subjectHierarchyNode.SetItemParent(
+                        subjectHierarchyNode.GetItemByDataNode(self.filterOutputVolume), itemParent
+                    )
+
+                # """
+                # The Magnitude Image Filter generates a volume with few very high intensity value voxels that don't add to the result.
+                # The code bellow is to exclude them, to allow a more useful threshold slider widget.
+                # """
+                # array = slicer.util.arrayFromVolume(self.filterOutputVolume)
+                # maxValue = 0
+                # step = (np.max(array) - np.min(array)) / 20
+                # meaningfullVoxelFraction = array.size / 1000
+                # while (array > maxValue).sum() > meaningfullVoxelFraction:
+                #     maxValue += step
+                # array[array > maxValue] = maxValue
+                # slicer.util.updateVolumeFromArray(self.filterOutputVolume, array)
+        finally:
+            self.initializeButton.setEnabled(True)
+            self.filterComboBox.setEnabled(not self.isInitialized)
+
         self.selectedSegment = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
         self.invisibleSegments = self.removeSegmentationVisibleSegments()
 
@@ -423,22 +440,24 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             imageLogic = layoutManager.sliceWidget("SideBySideImageSlice").sliceLogic()
             imageComposite = imageLogic.GetSliceCompositeNode()
             imageComposite.SetBackgroundVolumeID(self.filterOutputVolume.GetID())
-            imageComposite.SetBackgroundOpacity(0)
             imageComposite.SetForegroundVolumeID(self.sourceVolumeNode.GetID())
             imageComposite.SetForegroundOpacity(1)
 
             segmentationLogic = layoutManager.sliceWidget("SideBySideSegmentationSlice").sliceLogic()
             segmentationComposite = segmentationLogic.GetSliceCompositeNode()
             segmentationComposite.SetBackgroundVolumeID(self.filterOutputVolume.GetID())
-            segmentationComposite.SetBackgroundOpacity(0)
         else:
             slicer.util.setSliceViewerLayers(background=self.filterOutputVolume, foreground=self.sourceVolumeNode)
             nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
             for node in nodes.values():
-                node.SetBackgroundOpacity(0)
                 node.SetForegroundOpacity(1)
 
-        self.setEnabledSegmentationButtons(False)
+        self.optionsFrame.setVisible(True)
+        self.applyButton.setVisible(True)
+
+        self.applyAllButton.visible = (
+            self.applyAllSupported and lazy.getParentLazyNode(self.sourceVolumeNode) is not None
+        )
 
     def onThresholdValuesChanged(self, min, max):
         self.scriptedEffect.updateMRMLFromGUI()
@@ -476,16 +495,18 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         segmentation = segmentationNode.GetSegmentation()
 
-        segmentIDs = vtk.vtkStringArray()
-        segmentation.GetSegmentIDs(segmentIDs)
-
-        for index in range(segmentIDs.GetNumberOfValues()):
-            segID = segmentIDs.GetValue(index)
+        segmentsToRemove = []
+        for index in range(segmentation.GetNumberOfSegments()):
+            segID = segmentation.GetNthSegmentID(index)
             if not segmentationNode.GetDisplayNode().GetSegmentVisibility(segID):
-                toRemoveSegment = segmentation.GetSegment(segID)
-                nextSegmentID = segmentIDs.GetValue(index + 1) if index + 1 < segmentIDs.GetNumberOfValues() else ""
-                removedSegments.append((toRemoveSegment, segID, nextSegmentID))
-                segmentation.RemoveSegment(segID)
+                segmentsToRemove.append((segID, index))
+
+        for segID, originalIndex in reversed(segmentsToRemove):
+            toRemoveSegment = segmentation.GetSegment(segID)
+            removedSegments.append((toRemoveSegment, segID, originalIndex))
+            segmentation.RemoveSegment(segID)
+
+        removedSegments.reverse()
         return removedSegments
 
     def onApplyAll(self):
@@ -528,9 +549,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     def restoreSegments(self):
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         segmentation = segmentationNode.GetSegmentation()
-        # Restore in reverse order so next segment exists when current segment is added
-        for segToAdd, segID, nextSegID in reversed(self.invisibleSegments):
-            segmentation.AddSegment(segToAdd, segID, nextSegID)
+        # Restore and explicitly set index
+        for segToAdd, segID, originalIndex in self.invisibleSegments:
+            segmentation.AddSegment(segToAdd, segID)
+            segmentation.SetSegmentIndex(segID, originalIndex)
         self.invisibleSegments.clear()
 
     def onApply(self):
@@ -549,15 +571,28 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             self.appliedMinMax = (min, max)
 
             # Perform thresholding
-            thresh = vtk.vtkImageThreshold()
-            thresh.SetInputData(sourceImageData)
-            thresh.ThresholdBetween(min, max)
-            thresh.SetInValue(1)
-            thresh.SetOutValue(0)
-            thresh.SetOutputScalarType(modifierLabelmap.GetScalarType())
-            thresh.Update()
-            modifierLabelmap.DeepCopy(thresh.GetOutput())
-        except IndexError:
+            self.applyButton.setEnabled(False)
+            self.applyAllButton.setEnabled(False)
+
+            try:
+                with self.progress("Applying threshold...", cancel=False) as update_progress:
+                    thresh = vtk.vtkImageThreshold()
+                    thresh.SetInputData(sourceImageData)
+                    thresh.ThresholdBetween(min, max)
+                    thresh.SetInValue(1)
+                    thresh.SetOutValue(0)
+                    thresh.SetOutputScalarType(modifierLabelmap.GetScalarType())
+
+                    thresh.AddObserver(
+                        vtk.vtkCommand.ProgressEvent, lambda caller, event: update_progress(caller.GetProgress() * 100)
+                    )
+                    thresh.Update()
+
+                    modifierLabelmap.DeepCopy(thresh.GetOutput())
+            finally:
+                self.applyButton.setEnabled(True)
+                self.applyAllButton.setEnabled(True)
+        except IndexError as error:
             logging.error(f"Error: {error}")
         except Exception as error:
             logging.debug(f"Error: {error}. Traceback:\n{traceback.format_exc()}")
@@ -600,12 +635,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         if layoutManager.layout == 201:  # Side-by-side Segmentation:
             imageLogic = layoutManager.sliceWidget("SideBySideImageSlice").sliceLogic()
             imageComposite = imageLogic.GetSliceCompositeNode()
-            imageComposite.SetBackgroundOpacity(1)
         else:
             slicer.util.setSliceViewerLayers(background=self.filterOutputVolume, foreground=self.sourceVolumeNode)
             nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
             for node in nodes.values():
-                node.SetBackgroundOpacity(1)
                 node.SetForegroundOpacity(0)
 
         if not self.keepFilterResultCheckBox.isChecked():

@@ -1,0 +1,12 @@
+--- a/SubjectHierarchyPlugins/SegmentStatisticsSubjectHierarchyPlugin.py
++++ b/SubjectHierarchyPlugins/SegmentStatisticsSubjectHierarchyPlugin.py
+@@ -83,7 +83,8 @@ class SegmentStatisticsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPl
+ 
+     def onCalculateStatistics(self):
+         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+-        currentItemID = pluginHandlerSingleton.currentItem()
++        treeView = pluginHandlerSingleton.currentTreeView()
++        currentItemID = treeView.currentItem() if treeView else pluginHandlerSingleton.currentItem()
+         if not currentItemID:
+             logging.error("Invalid current item")
+ 

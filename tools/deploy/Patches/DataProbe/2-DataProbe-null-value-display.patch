@@ -1,6 +1,6 @@
 --- a/DataProbe.py
 +++ b/DataProbe.py
-@@ -4,6 +4,7 @@ import ctk
+@@ -3,6 +3,7 @@
  import qt
  import vtk
  import vtkTeem
@@ -8,7 +8,7 @@
  
  import slicer
  from slicer.ScriptedLoadableModule import *
-@@ -187,12 +188,20 @@ class DataProbeInfoWidget:
+@@ -188,12 +189,20 @@
                  component = int(component)
              components.append(component)
  

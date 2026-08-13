@@ -70,7 +70,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         with open(self.cwd / "throat_network.pkl", "wb") as f:
             pickle.dump(throat_network, f)
 
-        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
+        with open(str(self.cwd / "micp_simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         self.cliNode = slicer.cli.run(
@@ -120,7 +120,7 @@ class MercurySimulationLogic(LTracePluginLogic):
         itemTreeId = folderTree.GetItemByDataNode(self.inputTable)
         parentItemId = folderTree.GetItemParent(folderTree.GetItemParent(itemTreeId))
         self.rootDir = folderTree.CreateFolderItem(parentItemId, f"{self.prefix} Mercury Injection Simulation")
-        folderTree.SetItemExpanded(self.rootDir, False)
+        folderTree.SetItemExpanded(self.rootDir, True)
 
         dict_to_parameter_node(self.params, self.rootDir)
 

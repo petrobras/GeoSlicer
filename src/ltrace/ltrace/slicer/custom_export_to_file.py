@@ -71,7 +71,8 @@ def _save_folder_as_netcdf(folder_id):
 def _exportSelectedNode():
     sh = slicer.mrmlScene.GetSubjectHierarchyNode()
     pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler().instance()
-    selectedItemId = pluginHandler.currentItem()
+    treeView = pluginHandler.currentTreeView()
+    selectedItemId = treeView.currentItem() if treeView else pluginHandler.currentItem()
 
     if sh.GetItemOwnerPluginName(selectedItemId) == "Folder":
         if sh.GetItemAttribute(selectedItemId, "netcdf_path"):

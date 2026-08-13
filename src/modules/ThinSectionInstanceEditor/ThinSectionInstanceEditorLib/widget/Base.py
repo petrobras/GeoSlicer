@@ -21,7 +21,7 @@ class TableWidget(qt.QWidget):
         self.tableView.setSelectionMode(qt.QTableView.SingleSelection)
         horizontalHeader = self.tableView.horizontalHeader()
         horizontalHeader.setSectionResizeMode(qt.QHeaderView.ResizeToContents)
-        # horizontalHeader.setSectionResizeMode(qt.QHeaderView.Stretch)
+        # horizontalHeader.setSectionResizeMode(qt.QHeaderView.ResizeMode.Stretch)
         self.tableView.verticalHeader().hide()
         # self.tableView.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
         self.tableView.horizontalHeader().setSortIndicator(0, qt.Qt.AscendingOrder)

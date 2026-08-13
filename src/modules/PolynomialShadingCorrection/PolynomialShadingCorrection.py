@@ -1,86 +1,44 @@
-import slicer
-import qt
-import ctk
 import datetime
 import logging
-import numpy as np
 import os
-import random
 import traceback
-
 from collections import namedtuple
 from enum import Enum
+from pathlib import Path
 
+import ctk
+import numpy as np
+import qt
+import slicer
+import vtk
+from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter1d
+
+from ltrace.algorithms.shading_correction import compute_polynomial_shading_correction, normalize_z
 from ltrace.flow.util import createSimplifiedSegmentEditor, onSegmentEditorEnter, onSegmentEditorExit
-
+from ltrace.slicer import helpers
+from ltrace.slicer.app import MANUAL_BASE_URL
 from ltrace.slicer.helpers import (
     highlight_error,
     reset_style_on_valid_text,
     copy_display,
     getVolumeNullValue,
     setVolumeNullValue,
-    extractSegmentInfo,
     remove_highlight,
-    safe_convert_array,
+    copy_subject_hierarchy_item_parent,
 )
-
-from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer import helpers
 from ltrace.slicer.lazy import lazy
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import NodeEnvironment
+from ltrace.slicer.ui import hierarchyVolumeInput
+from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer.widget.status_panel import StatusPanel
-from pathlib import Path
-from scipy.optimize import curve_fit
-from scipy.ndimage import gaussian_filter1d
-from scipy.interpolate import interp1d
-
+from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
     from Test.PolynomialShadingCorrectionTest import PolynomialShadingCorrectionTest
 except ImportError:
     PolynomialShadingCorrectionTest = None  # tests not deployed to final version or closed source
-
-
-def normalize_z(data_3d, sigma=3.0, quantile_low=0.4, quantile_high=0.95, downsample=8):
-    """
-    Normalize a 3D volume along its Z-axis using quantile-based normalization.
-    """
-
-    orig_dtype = data_3d.dtype
-    z_size = data_3d.shape[0]
-
-    data_downsampled = data_3d[::downsample]
-
-    low_q = np.quantile(data_downsampled, quantile_low, axis=(1, 2))
-    high_q = np.quantile(data_downsampled, quantile_high, axis=(1, 2))
-
-    global_low = low_q.mean()
-    global_high = high_q.mean()
-
-    low_q_smooth = gaussian_filter1d(low_q, sigma)
-    high_q_smooth = gaussian_filter1d(high_q, sigma)
-
-    z_down = np.arange(0, z_size, downsample)
-    z_full = np.arange(z_size)
-    interp_low = interp1d(z_down, low_q_smooth, kind="linear", bounds_error=False, fill_value="extrapolate")
-    interp_high = interp1d(z_down, high_q_smooth, kind="linear", bounds_error=False, fill_value="extrapolate")
-
-    low_q_interp = interp_low(z_full)[:, None, None]
-    high_q_interp = interp_high(z_full)[:, None, None]
-
-    range_q = np.clip(high_q_interp - low_q_interp, 1e-8, None)
-
-    data_float = data_3d.astype(np.float32)
-    mult = (global_high - global_low) / range_q
-    normalized_float = (data_float - low_q_interp) * mult + global_low
-
-    if np.issubdtype(orig_dtype, np.integer):
-        normalized_float = np.clip(normalized_float, np.iinfo(orig_dtype).min, np.iinfo(orig_dtype).max)
-
-    normalized_data = normalized_float.astype(orig_dtype)
-
-    return normalized_data
 
 
 class PolynomialShadingCorrection(LTracePlugin):
@@ -108,7 +66,9 @@ class PolynomialShadingCorrection(LTracePlugin):
 class PolynomialShadingCorrectionWidget(LTracePluginWidget):
     # Settings constants
     SLICE_GROUP_SIZE = "sliceGroupSize"
-    NUMBER_FITTING_POINTS = "numberFittingPoints"
+    FUNCTION_TYPE = "functionType"
+    POLYNOMIAL_ORDER = "polynomialOrder"
+    FITTING_POINTS_PERCENTAGE = "fittingPointsPercentage"
     OUTPUT_SUFFIX = "_ShadingCorrection"
 
     ProcessParameters = namedtuple(
@@ -117,7 +77,12 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             "inputImage",
             "shadingMask",
             SLICE_GROUP_SIZE,
-            NUMBER_FITTING_POINTS,
+            "fittingPointsPercentage",
+            FUNCTION_TYPE,
+            POLYNOMIAL_ORDER,
+            "useCustomCenter",
+            "centerX",
+            "centerY",
             "outputImageName",
         ],
     )
@@ -126,12 +91,12 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
         self.normalizedVolume = None
         self.samplingMaskSegmentation = None
+        self.labelMapNode = None
+        self.centerFiducialNode = None
+        self.pointAddedObserverTag = None
 
     def getSliceGroupSize(self):
-        return PolynomialShadingCorrection.get_setting(self.SLICE_GROUP_SIZE, default="7")
-
-    def getNumberFittingPoints(self):
-        return PolynomialShadingCorrection.get_setting(self.NUMBER_FITTING_POINTS, default="1000")
+        return PolynomialShadingCorrection.get_setting(self.SLICE_GROUP_SIZE, default="1")
 
     def __updateApplyToAll(self):
         inputNode = self.inputImageComboBox.currentNode()
@@ -166,10 +131,13 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.thresholdCollapsibleButton.visible = False
             self.samplingMaskSegmentation.GetDisplayNode().SetVisibility(False)
             self.apply.setEnabled(True)
-            self.statusPanel.set_instruction("Choose the parameters and run the shading correction.")
+            self.statusPanel.set_instruction("Choose the parameters and run.")
 
     def setup(self):
         LTracePluginWidget.setup(self)
+
+        # Ensure CustomizedSegmentEditor is initialized
+        slicer.util.getModuleWidget("CustomizedSegmentEditor")
 
         frame = qt.QFrame()
         self.layout.addWidget(frame)
@@ -181,7 +149,9 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.statusPanel.statusLabel.setWordWrap(True)
         formLayout.addRow(self.statusPanel)
 
-        # Input section
+        manualPath = f"{MANUAL_BASE_URL}Volumes/Filter/Filter.html#polynomial-shading-correction"
+
+        # --- Input section ---
         inputCollapsibleButton = ctk.ctkCollapsibleButton()
         inputCollapsibleButton.setText("Input")
         formLayout.addRow(inputCollapsibleButton)
@@ -194,24 +164,47 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         )
         self.inputImageComboBox.setObjectName("inputImageComboBox")
         self.inputImageComboBox.setToolTip("Select the input image.")
-        inputFormLayout.addRow("Input image:", self.inputImageComboBox)
         self.inputImageComboBox.resetStyleOnValidNode()
+
+        inputImageHelp = HelpButton(
+            "Select the scalar volume (image) that you want to apply the shading correction to."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        inputImageHBox = qt.QHBoxLayout()
+        inputImageHBox.setContentsMargins(0, 0, 0, 0)
+        inputImageHBox.addWidget(self.inputImageComboBox)
+        inputImageHBox.addWidget(inputImageHelp)
+        inputFormLayout.addRow("Input image:", inputImageHBox)
 
         self.keepNormalizedBox = qt.QCheckBox("Keep intermediate image")
         self.keepNormalizedBox.setToolTip(
             "The image slices are pre-normalized to make the thresholding step easier. "
             "If this option is checked, the normalized image will be kept in the project."
         )
-        inputFormLayout.addRow(self.keepNormalizedBox)
 
-        # Initialize button
+        keepNormalizedHelp = HelpButton(
+            "During the 'Initialize' step, the image slices are pre-normalized along the Z-axis. This makes the thresholding step easier by reducing brightness variations between slices.\n\n"
+            "Check this box if you want to keep this normalized image in your project scene after the process finishes. Otherwise, it is used temporarily and discarded."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        keepNormalizedHBox = qt.QHBoxLayout()
+        keepNormalizedHBox.setContentsMargins(0, 0, 0, 0)
+        keepNormalizedHBox.addWidget(self.keepNormalizedBox)
+        keepNormalizedHBox.addWidget(keepNormalizedHelp)
+        keepNormalizedHBox.addStretch(1)
+        inputFormLayout.addRow("", keepNormalizedHBox)
+
         self.initializeButton = qt.QPushButton("Initialize")
         self.initializeButton.setObjectName("initializeButton")
         self.initializeButton.setToolTip("Normalize the input volume and prepare for thresholding.")
         self.initializeButton.clicked.connect(self.onInitializeButtonClicked)
         inputFormLayout.addRow("", self.initializeButton)
 
-        # Segment Editor
+        # --- Segment Editor (Threshold section) ---
         widget, _, self.sourceVolumeBox, self.segmentationBox = createSimplifiedSegmentEditor()
         widget.setObjectName("thresholdEditor")
         effects = ["Threshold"]
@@ -225,36 +218,183 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         formLayout.addRow(self.thresholdCollapsibleButton)
         thresholdLayout = qt.QVBoxLayout(self.thresholdCollapsibleButton)
 
+        thresholdHelp = HelpButton(
+            "Adjust the threshold bounds to isolate a **homogenous phase** of the image (e.g., only the pore space or only the matrix).\n\n"
+            "This creates a sampling mask. The shading algorithm strictly uses the voxel values within this mask to calculate the mathematical curve. "
+            "Isolating a single material ensures the model fits the *illumination artifact* and not the physical material differences."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        thresholdHeaderLayout = qt.QHBoxLayout()
+        thresholdHeaderLayout.setContentsMargins(0, 0, 0, 4)
+        thresholdLabel = qt.QLabel("Define sampling mask:")
+        thresholdHeaderLayout.addWidget(thresholdLabel)
+        thresholdHeaderLayout.addWidget(thresholdHelp)
+        thresholdHeaderLayout.addStretch(1)
+
+        thresholdLayout.addLayout(thresholdHeaderLayout)
         thresholdLayout.addWidget(widget)
         self.segmentEditorWidget = widget
 
-        # Parameters section
+        # --- Parameters section ---
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.setText("Parameters")
         formLayout.addRow(parametersCollapsibleButton)
-        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-        parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
+        self.parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+        self.parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
         self.parametersCollapsibleButton = parametersCollapsibleButton
+
+        self.functionTypeComboBox = qt.QComboBox()
+        self.functionTypeComboBox.setObjectName("functionTypeComboBox")
+        self.functionTypeComboBox.addItems(["Polynomial", "Polynomial Radial", "Spline Radial"])
+        self.functionTypeComboBox.setCurrentText(
+            PolynomialShadingCorrection.get_setting(self.FUNCTION_TYPE, default="Polynomial Radial")
+        )
+        self.functionTypeComboBox.setToolTip("Select the mathematical model for the shading correction.")
+        self.functionTypeComboBox.currentTextChanged.connect(self.onFunctionTypeChanged)
+
+        functionTypeHelp = HelpButton(
+            "Select the mathematical model for the shading correction:\n\n"
+            "- **Polynomial**: Fits a 2D Cartesian surface. Best for general, non-symmetric shading gradients across the image.\n"
+            "- **Polynomial Radial**: Fits a curve based strictly on the distance from the center. Best for broad, circular shading effects like standard beam hardening.\n"
+            "- **Spline Radial**: Calculates a median radial profile and uses splines to handle fine, high-frequency ring artifacts."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        functionTypeHBox = qt.QHBoxLayout()
+        functionTypeHBox.setContentsMargins(0, 0, 0, 0)
+        functionTypeHBox.addWidget(self.functionTypeComboBox)
+        functionTypeHBox.addWidget(functionTypeHelp)
+        self.parametersFormLayout.addRow("Function:", functionTypeHBox)
+
+        # Center Definition
+        centerLayout = qt.QHBoxLayout()
+        self.useCustomCenterCheckBox = qt.QCheckBox("Set")
+        self.useCustomCenterCheckBox.setObjectName("useCustomCenterCheckBox")
+        self.useCustomCenterCheckBox.setToolTip("Define a custom center for the mathematical curve fitting.")
+        self.useCustomCenterCheckBox.toggled.connect(self.onUseCustomCenterToggled)
+
+        self.centerXSpinBox = qt.QSpinBox()
+        self.centerXSpinBox.setObjectName("centerXSpinBox")
+        self.centerXSpinBox.setRange(0, 100000)
+        self.centerXSpinBox.setEnabled(False)
+
+        self.centerYSpinBox = qt.QSpinBox()
+        self.centerYSpinBox.setObjectName("centerYSpinBox")
+        self.centerYSpinBox.setRange(0, 100000)
+        self.centerYSpinBox.setEnabled(False)
+
+        self.pickCenterButton = qt.QPushButton("Pick Red View")
+        self.pickCenterButton.setObjectName("pickCenterButton")
+        self.pickCenterButton.setEnabled(False)
+        self.pickCenterButton.clicked.connect(self.onPickCenterClicked)
+
+        centerHelp = HelpButton(
+            "Define the center point for the radial mathematical curve fitting:\n\n"
+            "- **Default**: Automatically uses the geometric center of the image.\n"
+            "- **Custom**: Check to manually input the X and Y center coordinates.\n"
+            "- **Pick on Z**: Click to interactively select the center point directly on the Red slice view."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        centerLayout.addWidget(self.useCustomCenterCheckBox)
+        centerLayout.addStretch(1)
+        centerLayout.addWidget(qt.QLabel("X"))
+        centerLayout.addWidget(self.centerXSpinBox)
+        centerLayout.addWidget(qt.QLabel("Y"))
+        centerLayout.addWidget(self.centerYSpinBox)
+        centerLayout.addStretch(1)
+        centerLayout.addWidget(self.pickCenterButton)
+        centerLayout.addWidget(centerHelp)
+        self.parametersFormLayout.addRow("Center:", centerLayout)
+
+        self.polynomialOrderComboBox = qt.QComboBox()
+        self.polynomialOrderComboBox.setObjectName("polynomialOrderComboBox")
+        self.polynomialOrderComboBox.addItems(["2", "4", "6"])
+        self.polynomialOrderComboBox.setCurrentText(
+            PolynomialShadingCorrection.get_setting(self.POLYNOMIAL_ORDER, default="6")
+        )
+        self.polynomialOrderComboBox.setToolTip(
+            "Select the degree of the polynomial. Not used if Spline Radial is selected."
+        )
+
+        polynomialOrderHelp = HelpButton(
+            "Select the complexity of the polynomial curve (2, 4, or 6):\n\n"
+            "- **Lower orders (2)**: Capture broad, gentle shading gradients. Less prone to errors.\n"
+            "- **Higher orders (6)**: Allow for more complex, wavy curves but increase the risk of overfitting to local image features instead of the overall shading trend.\n\n"
+            "*Note: This parameter is ignored if 'Spline Radial' is selected.*"
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        self.polynomialOrderWidget = qt.QWidget()
+        polynomialOrderHBox = qt.QHBoxLayout(self.polynomialOrderWidget)
+        polynomialOrderHBox.setContentsMargins(0, 0, 0, 0)
+        polynomialOrderHBox.addWidget(self.polynomialOrderComboBox)
+        polynomialOrderHBox.addWidget(polynomialOrderHelp)
+        self.parametersFormLayout.addRow("Order:", self.polynomialOrderWidget)
 
         self.sliceGroupSize = qt.QSpinBox()
         self.sliceGroupSize.setObjectName("sliceGroupSize")
         self.sliceGroupSize.setRange(1, 9)
         self.sliceGroupSize.setSingleStep(2)
         self.sliceGroupSize.setValue(int(self.getSliceGroupSize()))
-        self.sliceGroupSize.setToolTip(
-            "This parameter will cause the polynomial function to be fitted for the central slice in the group of slices. All the other "
-            "slices of the group will use the same fitted function."
+        tooltip_text = (
+            "This parameter will cause the polynomial function to be fitted for the central slice in the group of slices. "
+            "All the other slices of the group will use the same fitted function. "
+            "Smaller values yield better results but increase processing time."
         )
-        parametersFormLayout.addRow("Slice group size:", self.sliceGroupSize)
+
+        self.sliceGroupSize.setToolTip(tooltip_text)
         self.sliceGroupSize.valueChanged.connect(lambda: self.sliceGroupSize.setStyleSheet(""))
 
-        self.numberFittingPoints = numberParamInt(vrange=(100, 999999), value=int(self.getNumberFittingPoints()))
-        self.numberFittingPoints.setObjectName("numberFittingPoints")
-        self.numberFittingPoints.setToolTip("Number of points used in the function fitting process.")
-        parametersFormLayout.addRow("Number of fitting points:", self.numberFittingPoints)
-        parametersFormLayout.addRow(" ", None)
+        sliceGroupHelp = HelpButton(
+            "This parameter will cause the polynomial function to be fitted for the central slice in the group of slices. "
+            "All the other slices of the group will use the same fitted function.\n\n"
+            "**Note:** Smaller values yield better results, but processing is slower."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
 
-        # Output section
+        sliceGroupHBox = qt.QHBoxLayout()
+        sliceGroupHBox.setContentsMargins(0, 0, 0, 0)
+        sliceGroupHBox.addWidget(self.sliceGroupSize)
+        sliceGroupHBox.addWidget(sliceGroupHelp)
+        self.parametersFormLayout.addRow("Group size:", sliceGroupHBox)
+
+        self.fittingPointsPercentage = ctk.ctkSliderWidget()
+        self.fittingPointsPercentage.decimals = 0
+        self.fittingPointsPercentage.minimum = 1
+        self.fittingPointsPercentage.maximum = 100
+        self.fittingPointsPercentage.value = 60
+        spin_box = self.fittingPointsPercentage.findChild(qt.QDoubleSpinBox)
+        if spin_box:
+            spin_box.setMinimumWidth(150)
+        self.fittingPointsPercentage.setObjectName("fittingPointsPercentage")
+        self.fittingPointsPercentage.setToolTip(
+            "Percentage of points used in the function fitting process. "
+            "Larger values yield better results but increase processing time."
+        )
+
+        fittingPointsHelp = HelpButton(
+            "Percentage of points used in the function fitting process.\n\n"
+            "**Note:** Larger values yield better results, but processing is slower."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        fittingPointsHBox = qt.QHBoxLayout()
+        fittingPointsHBox.setContentsMargins(0, 0, 0, 0)
+        fittingPointsHBox.addWidget(self.fittingPointsPercentage)
+        fittingPointsHBox.addWidget(fittingPointsHelp)
+        self.parametersFormLayout.addRow("Fitting points (%):", fittingPointsHBox)
+
+        self.parametersFormLayout.addRow(" ", None)
+
+        # --- Output section ---
         outputCollapsibleButton = ctk.ctkCollapsibleButton()
         outputCollapsibleButton.setText("Output")
         formLayout.addRow(outputCollapsibleButton)
@@ -264,15 +404,25 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
         self.outputImageNameLineEdit = qt.QLineEdit()
         self.outputImageNameLineEdit.setObjectName("outputImageNameLineEdit")
-        outputFormLayout.addRow("Output image name:", self.outputImageNameLineEdit)
-        outputFormLayout.addRow(" ", None)
         reset_style_on_valid_text(self.outputImageNameLineEdit)
+
+        outputNameHelp = HelpButton(
+            "The desired name for the corrected output image volume." "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        outputNameHBox = qt.QHBoxLayout()
+        outputNameHBox.setContentsMargins(0, 0, 0, 0)
+        outputNameHBox.addWidget(self.outputImageNameLineEdit)
+        outputNameHBox.addWidget(outputNameHelp)
+        outputFormLayout.addRow("Output image name:", outputNameHBox)
+        outputFormLayout.addRow(" ", None)
 
         self.apply = qt.QPushButton("Apply")
         self.apply.setObjectName("applyButton")
         self.apply.setFixedHeight(40)
         self.apply.clicked.connect(self.onRegisterButtonClicked)
-        self.apply.setEnabled(False)  # Disabled until initialization and thresholding
+        self.apply.setEnabled(False)
 
         self.applyFullButton = qt.QPushButton("Apply to full volume")
         self.applyFullButton.setFixedHeight(40)
@@ -307,7 +457,74 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
         self.layout.addStretch(1)
 
+        self.onFunctionTypeChanged(self.functionTypeComboBox.currentText)
         self.reset()
+
+    def onFunctionTypeChanged(self, text):
+        is_spline = text == "Spline Radial"
+
+        if hasattr(self, "polynomialOrderWidget") and hasattr(self, "parametersFormLayout"):
+            self.polynomialOrderWidget.setVisible(not is_spline)
+
+            label = self.parametersFormLayout.labelForField(self.polynomialOrderWidget)
+            if label:
+                label.setVisible(not is_spline)
+
+    def onUseCustomCenterToggled(self, isChecked):
+        self.centerXSpinBox.setEnabled(isChecked)
+        self.centerYSpinBox.setEnabled(isChecked)
+        self.pickCenterButton.setEnabled(isChecked)
+
+    def onPickCenterClicked(self):
+        if not self.centerFiducialNode:
+            self.centerFiducialNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "ShadingCenter")
+            displayNode = self.centerFiducialNode.GetDisplayNode()
+            displayNode.SetSelectedColor(1, 0, 0)
+            displayNode.RemoveAllViewNodeIDs()
+            displayNode.AddViewNodeID("vtkMRMLSliceNodeRed")
+            self.centerFiducialNode.SetHideFromEditors(True)
+
+        self.centerFiducialNode.RemoveAllControlPoints()
+
+        interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+        selectionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
+
+        selectionNode.SetReferenceActivePlaceNodeClassName("vtkMRMLMarkupsFiducialNode")
+        selectionNode.SetActivePlaceNodeID(self.centerFiducialNode.GetID())
+        interactionNode.SetCurrentInteractionMode(slicer.vtkMRMLInteractionNode.Place)
+
+        if self.pointAddedObserverTag is None:
+            self.pointAddedObserverTag = self.centerFiducialNode.AddObserver(
+                slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent, self.onCenterPointAdded
+            )
+
+    def onCenterPointAdded(self, caller, event):
+        interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
+        interactionNode.SetCurrentInteractionMode(slicer.vtkMRMLInteractionNode.ViewTransform)
+
+        pos = [0.0, 0.0, 0.0]
+        self.centerFiducialNode.GetNthControlPointPositionWorld(0, pos)
+
+        volumeNode = self.inputImageComboBox.currentNode()
+        if not volumeNode:
+            return
+
+        transform = vtk.vtkGeneralTransform()
+        slicer.vtkMRMLTransformNode.GetTransformBetweenNodes(None, volumeNode.GetParentTransformNode(), transform)
+        pos_volume = transform.TransformPoint(pos)
+
+        ijkMatrix = vtk.vtkMatrix4x4()
+        volumeNode.GetRASToIJKMatrix(ijkMatrix)
+
+        ijk = [0, 0, 0, 1]
+        ijkMatrix.MultiplyPoint(np.append(pos_volume, 1.0), ijk)
+
+        i, j = int(round(ijk[0])), int(round(ijk[1]))
+
+        self.centerXSpinBox.setValue(i)
+        self.centerYSpinBox.setValue(j)
+
+        self.centerFiducialNode.RemoveAllControlPoints()
 
     def onInputImageChanged(self, itemId):
         self.reset()
@@ -315,20 +532,40 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         inputImage = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
         if inputImage:
             outputImageName = inputImage.GetName() + self.OUTPUT_SUFFIX
+
+            imageData = inputImage.GetImageData()
+            if imageData:
+                dims = imageData.GetDimensions()
+
+                if hasattr(self, "centerXSpinBox") and hasattr(self, "centerYSpinBox"):
+                    self.centerXSpinBox.setValue(dims[0] // 2)
+                    self.centerYSpinBox.setValue(dims[1] // 2)
         else:
             outputImageName = ""
 
-        self.outputImageNameLineEdit.setText(outputImageName)
+        if hasattr(self, "outputImageNameLineEdit"):
+            self.outputImageNameLineEdit.setText(outputImageName)
+
         self.__updateApplyToAll()
 
     def reset(self):
         if self.samplingMaskSegmentation:
             slicer.mrmlScene.RemoveNode(self.samplingMaskSegmentation)
             self.samplingMaskSegmentation = None
-        if self.normalizedVolume and not self.keepNormalized:
+        if self.labelMapNode:
+            slicer.mrmlScene.RemoveNode(self.labelMapNode)
+            self.labelMapNode = None
+        if self.normalizedVolume and hasattr(self, "keepNormalized") and not self.keepNormalized:
             slicer.mrmlScene.RemoveNode(self.normalizedVolume)
             self.normalizedVolume = None
+        if self.centerFiducialNode:
+            slicer.mrmlScene.RemoveNode(self.centerFiducialNode)
+            self.centerFiducialNode = None
+            self.pointAddedObserverTag = None
         self.inputNode = None
+
+        if hasattr(self, "useCustomCenterCheckBox"):
+            self.useCustomCenterCheckBox.setChecked(False)
 
         onSegmentEditorExit(self.segmentEditorWidget)
         self.updateWidgetsVisibility(self.WidgetState.INITIAL)
@@ -344,7 +581,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
         onSegmentEditorEnter(self.segmentEditorWidget, "ShadingMask")
 
-        # Show status
         self.statusLabel.setText("Status: Normalizing volume...")
         self.statusLabel.show()
         self.progressBar.setValue(0)
@@ -357,7 +593,8 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.progressBar.setValue(30)
             slicer.app.processEvents()
 
-            normalizedArray = normalize_z(inputArray)
+            nullValue = getVolumeNullValue(inputNode)
+            normalizedArray = normalize_z(inputArray, null_value=nullValue)
 
             self.progressBar.setValue(60)
             slicer.app.processEvents()
@@ -365,7 +602,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.reset()
 
             self.inputNode = inputNode
-
             self.keepNormalized = self.keepNormalizedBox.isChecked()
 
             volumeName = inputNode.GetName() + "_PreNormalized"
@@ -399,45 +635,72 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.updateWidgetsVisibility(self.WidgetState.THRESHOLD)
 
             effect = self.segmentEditorWidget.effectByName("Threshold")
-            applyThresholdButton = effect.self().applyButton
-            applyThresholdButton.clicked.connect(lambda: self.updateWidgetsVisibility(self.WidgetState.PROCESS))
 
-            pulseBox = effect.self().enablePulsingCheckbox
-            pulseBox.setChecked(False)
-            pulseBox.hide()
+            vMin, vMax = np.percentile(normalizedArray, [10, 99])
+
+            effect.self().thresholdSlider.minimum = vMin
+            effect.self().thresholdSlider.maximum = vMax
+
+            pMin, pMax = np.percentile(normalizedArray, [60, 90])
+            effect.setParameter("MinimumThreshold", str(pMin))
+            effect.setParameter("MaximumThreshold", str(pMax))
+
+            applyThresholdButton = effect.self().applyButton
+            applyThresholdButton.clicked.connect(self.onThresholdApplied)
+
+            if hasattr(effect.self(), "enablePulsingCheckbox"):
+                pulseBox = effect.self().enablePulsingCheckbox
+                pulseBox.setChecked(False)
+                pulseBox.hide()
 
             frame = effect.optionsFrame()
             for groupBox in frame.findChildren(ctk.ctkCollapsibleGroupBox):
                 groupBox.hide()
 
+            if hasattr(self, "centerXSpinBox") and hasattr(self, "centerYSpinBox"):
+                imageData = inputNode.GetImageData()
+                if imageData:
+                    dims = imageData.GetDimensions()
+                    self.centerXSpinBox.setValue(dims[0] // 2)
+                    self.centerYSpinBox.setValue(dims[1] // 2)
+
             self.statusLabel.setText("Status: Ready")
             self.progressBar.setValue(0)
 
         except Exception as e:
-            import traceback
-
             traceback.print_exc()
             self.statusLabel.setText("Status: Error during initialization")
             slicer.util.errorDisplay(f"Failed to initialize: {str(e)}")
         finally:
             slicer.app.processEvents()
 
+    def onThresholdApplied(self):
+        if not self.labelMapNode:
+            self.labelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+            self.labelMapNode.SetName(self.inputNode.GetName() + "_shading_labelmap")
+            self.labelMapNode.SetHideFromEditors(True)
+
+        slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
+            self.samplingMaskSegmentation, self.labelMapNode, self.inputNode
+        )
+
+        self.updateWidgetsVisibility(self.WidgetState.PROCESS)
+
     def onApplyFull(self):
         slicer.util.selectModule("PolynomialShadingCorrectionBigImage")
         widget = slicer.modules.PolynomialShadingCorrectionBigImageWidget
 
-        # Get the segmentation as a labelmap
         if not self.samplingMaskSegmentation:
             slicer.util.errorDisplay("Please initialize and create a threshold segment first.")
             return
 
-        # Create parameters for the full volume processing
         params = {
             "inputNode": self.inputNode,
-            "inputMaskNode": None,
             "inputShadingMaskNode": self.samplingMaskSegmentation,
             "sliceGroupSize": self.sliceGroupSize.value,
-            "numberFittingPoints": self.numberFittingPoints.value,
+            "fittingPointsPercentage": int(self.fittingPointsPercentage.value),
+            "functionType": self.functionTypeComboBox.currentText,
+            "polynomialOrder": int(self.polynomialOrderComboBox.currentText),
         }
 
         widget.setParameters(**params)
@@ -445,7 +708,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
     def resetInputWidgetsStyle(self):
         remove_highlight(self.inputImageComboBox)
         remove_highlight(self.sliceGroupSize)
-        remove_highlight(self.numberFittingPoints)
+        remove_highlight(self.fittingPointsPercentage)
         remove_highlight(self.outputImageNameLineEdit)
 
     def onRegisterButtonClicked(self):
@@ -456,9 +719,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                 highlight_error(self.inputImageComboBox)
                 return
 
-            inputNode = self.inputNode
-
-            if not self.samplingMaskSegmentation:
+            if not self.samplingMaskSegmentation or not self.labelMapNode:
                 slicer.util.errorDisplay("Please initialize and create a threshold segment first.")
                 return
 
@@ -470,18 +731,15 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                 highlight_error(self.outputImageNameLineEdit)
                 return
 
-            inputImageDimensions = self.inputImageComboBox.currentNode().GetImageData().GetDimensions()
-            maximumNumberFittingPoints = inputImageDimensions[0] * inputImageDimensions[1]
-            if self.numberFittingPoints.value > maximumNumberFittingPoints:
-                highlight_error(self.numberFittingPoints)
-                raise ProcessInfo(
-                    "Number of fitting points must be at maximum " + str(maximumNumberFittingPoints) + "."
-                )
-
             inputNode = self.inputImageComboBox.currentNode()
 
+            functionType = self.functionTypeComboBox.currentText
+            polynomialOrder = int(self.polynomialOrderComboBox.currentText)
+
             PolynomialShadingCorrection.set_setting(self.SLICE_GROUP_SIZE, self.sliceGroupSize.value)
-            PolynomialShadingCorrection.set_setting(self.NUMBER_FITTING_POINTS, self.numberFittingPoints.value)
+            PolynomialShadingCorrection.set_setting(self.FUNCTION_TYPE, functionType)
+            PolynomialShadingCorrection.set_setting(self.POLYNOMIAL_ORDER, str(polynomialOrder))
+            PolynomialShadingCorrection.set_setting(self.FITTING_POINTS_PERCENTAGE, self.fittingPointsPercentage.value)
 
             self.resetInputWidgetsStyle()
             self.apply.setEnabled(False)
@@ -493,17 +751,16 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.progressBar.show()
             slicer.app.processEvents()
 
-            # Convert the segmentation to labelmap for processing
-            labelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
-            slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
-                self.samplingMaskSegmentation, labelMapNode, inputNode
-            )
-
             processParameters = self.ProcessParameters(
                 inputNode,
-                labelMapNode,
+                self.labelMapNode,
                 self.sliceGroupSize.value,
-                self.numberFittingPoints.value,
+                int(self.fittingPointsPercentage.value),
+                functionType,
+                polynomialOrder,
+                self.useCustomCenterCheckBox.isChecked(),
+                self.centerXSpinBox.value,
+                self.centerYSpinBox.value,
                 self.outputImageNameLineEdit.text,
             )
 
@@ -511,10 +768,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                 self.statusLabel.setText("Status: Completed")
                 self.progressBar.setValue(100)
 
-            # Clean up temporary labelmap
-            slicer.mrmlScene.RemoveNode(labelMapNode)
-
-            # Clean up other intermediate nodes
             self.reset()
 
         except ProcessInfo as e:
@@ -570,7 +823,12 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
                 inputImageArray=inputImageArray,
                 inputShadingMaskArray=shadingMaskArray,
                 sliceGroupSize=parameters.sliceGroupSize,
-                numberOfFittingPoints=parameters.numberFittingPoints,
+                fittingPointsPercentage=parameters.fittingPointsPercentage,
+                functionType=parameters.functionType,
+                polynomialOrder=parameters.polynomialOrder,
+                useCustomCenter=parameters.useCustomCenter,
+                centerX=parameters.centerX,
+                centerY=parameters.centerY,
                 input_null_value=nullValue,
             )
 
@@ -579,13 +837,9 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
 
             outputImage = slicer.modules.volumes.logic().CloneVolume(self.inputImage, parameters.outputImageName)
             slicer.util.updateVolumeFromArray(outputImage, outputImageArray)
+            copy_metadata(self.inputImage, outputImage)
             setVolumeNullValue(outputImage, nullValue)
-
-            copy_display(self.inputImage, outputImage)
-
-            subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
-            itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(self.inputImage))
-            subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(outputImage), itemParent)
+            copy_subject_hierarchy_item_parent(self.inputImage, outputImage)
 
             slicer.util.setSliceViewerLayers(background=outputImage, foreground=None, label=None, fit=True)
         except Exception as e:
@@ -601,108 +855,44 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
         inputImageArray,
         inputShadingMaskArray,
         sliceGroupSize=1,
-        numberOfFittingPoints=1000,
+        fittingPointsPercentage=60,
+        functionType="Polynomial Radial",
+        polynomialOrder=4,
+        useCustomCenter=False,
+        centerX=0,
+        centerY=0,
         input_null_value=None,
     ):
         start = datetime.datetime.now()
 
-        outputImageArray = np.zeros_like(inputImageArray, dtype=np.float32)
-        array = inputImageArray[inputShadingMaskArray != 0]
-        inputArrayShadingMaskMax = np.max(array)
-        inputArrayShadingMaskMean = np.mean(array)
-        initialParameters = [
-            1,
-            inputImageArray.shape[1] / 2,
-            1,
-            inputImageArray.shape[2] / 2,
-            1,
-            1,
-            1,
-            inputArrayShadingMaskMax,
-        ]
-
-        x, y = np.meshgrid([i for i in range(inputImageArray.shape[1])], [j for j in range(inputImageArray.shape[2])])
-
-        iterationIndexes = np.arange(sliceGroupSize // 2, len(inputImageArray), sliceGroupSize)
-        for i in iterationIndexes:
-            if self.cancelProcess:
-                break
-
-            end = datetime.datetime.now()
-            elapsed = end - start
-
-            self.statusLabel.setText("Status: Running (" + str(np.round(elapsed.total_seconds(), 1)) + ")")
-
-            self.progressBar.setValue(round(100 * (i / len(inputImageArray))))
+        def on_progress(current_slice, total_slices):
+            elapsed = datetime.datetime.now() - start
+            self.statusLabel.setText(f"Status: Running ({np.round(elapsed.total_seconds(), 1)})")
+            self.progressBar.setValue(round(100 * (current_slice / total_slices)))
             slicer.app.processEvents()
 
-            # Selecting random points
-            xData, yData = np.where(inputShadingMaskArray[i] != 0)
-            if len(xData) == 0:  # if no indexes where found
-                continue
-            data = [(x, y) for x, y in zip(xData, yData)]
-            data = random.sample(data, min(len(data), numberOfFittingPoints))
-            xData, yData = list(zip(*data))
-            zData = inputImageArray[i][(xData, yData)]
+        def on_cancel():
+            return self.cancelProcess
 
-            # Fitting
-            function = self.polynomial
-            try:
-                fittedParameters, pcov = curve_fit(function, [xData, yData], zData, p0=initialParameters)
-                initialParameters = fittedParameters
-            except:
-                # If the polynomial fitting fails, try to fit a simple plane
-                function = self.plane
-                try:
-                    fittedParameters, pcov = curve_fit(
-                        function,
-                        [xData, yData],
-                        zData,
-                        p0=[1, inputImageArray.shape[1] / 2, 1, inputImageArray.shape[2] / 2, inputArrayShadingMaskMax],
-                    )
-                except:
-                    # If nothing can be fitted, skip
-                    continue
+        outputImageArray = compute_polynomial_shading_correction(
+            inputImageArray=inputImageArray,
+            inputShadingMaskArray=inputShadingMaskArray,
+            sliceGroupSize=sliceGroupSize,
+            fittingPointsPercentage=fittingPointsPercentage,
+            functionType=functionType,
+            polynomialOrder=polynomialOrder,
+            useCustomCenter=useCustomCenter,
+            centerX=centerX,
+            centerY=centerY,
+            inputNullValue=input_null_value,
+            progressCallback=on_progress,
+            cancelCallback=on_cancel,
+        )
 
-            # Applying function
-            z = function((x, y), *fittedParameters)
-            z = np.swapaxes(z, 0, 1)
-            zz = z / inputArrayShadingMaskMean
-
-            # Adjusting slice data
-            for j in range(i - sliceGroupSize // 2, i + 1):
-                outputImageArray[j] = zz
-
-            # In the last iteration, proceed to apply the function in all the remaining slices
-            if i == iterationIndexes[-1]:
-                end = len(inputImageArray)
-            else:
-                end = i + sliceGroupSize // 2 + 1
-
-            for j in range(i + 1, end):
-                outputImageArray[j] = zz
-
-        # Apply 1D gaussian filter to smooth the shading correction
-        outputImageArray = gaussian_filter1d(outputImageArray, sigma=3, axis=0)
-        outputImageArray = inputImageArray / outputImageArray
-
-        if input_null_value is not None:
-            outputImageArray[inputImageArray == input_null_value] = input_null_value
-
-        outputImageArray = safe_convert_array(outputImageArray, inputImageArray.dtype.name)
-        end = datetime.datetime.now()
-        elapsed = end - start
-        logging.info("Polynomial shading correction elapsed time: " + str(elapsed.total_seconds()))
-
+        logging.info(
+            "Polynomial shading correction elapsed time: " + str((datetime.datetime.now() - start).total_seconds())
+        )
         return outputImageArray
-
-    def polynomial(self, data, a, b, c, d, e, f, g, h):
-        x, y = data
-        return a * (x - b) ** 2 + c * (y - d) ** 2 + e * (x - b) + f * (y - d) + g * (x - b) * (y - d) + h
-
-    def plane(self, data, a, b, c, d, e):
-        x, y = data
-        return a * (x - b) + c * (y - d) + e
 
 
 class ProcessInfo(RuntimeError):

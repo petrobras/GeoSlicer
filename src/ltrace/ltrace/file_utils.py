@@ -188,7 +188,6 @@ def load_and_parse_data(
         # Reset index after dropping rows
         df.reset_index(drop=True, inplace=True)
 
-        logging.info(f"Detected Header Row: {header_idx}")
         return df
 
     except Exception as e:

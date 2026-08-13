@@ -1,5 +1,6 @@
 import qt
 import slicer
+import logging
 
 
 class CustomAction(qt.QWidgetAction):
@@ -96,6 +97,11 @@ def addAction(module, toolbar, root="", parent=None):
 def addEntry(module, menu, parent=None):
     if not parent:
         parent = menu
+
+    if not hasattr(slicer.modules, module.key.lower()):
+        logging.warning(f"Module {module.key} not found in slicer.modules")
+        return  # Skip if the module does not exist in slicer.modules
+
     m = getattr(slicer.modules, module.key.lower())
     action = qt.QAction(m.icon, m.title, parent)
     action.triggered.connect(lambda _, name=module.key: slicer.util.selectModule(name))
@@ -143,7 +149,13 @@ def addMenuRaw(icon, folder, modules, parent):
 
     menu = qt.QMenu(toolButton)
     for module in modules:
-        addEntry(module, menu, parent)
+        try:
+            addEntry(module, menu, parent)
+        except Exception as e:
+            import traceback
+
+            print(f"Error adding module {module.name} to menu: {e}\n{traceback.format_exc()}")
+            continue
     toolButton.setMenu(menu)
 
     toolButton.setPopupMode(qt.QToolButton.MenuButtonPopup)

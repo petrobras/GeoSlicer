@@ -3,15 +3,14 @@ import os
 import qt
 import slicer
 import pyqtgraph as pg
-from pathlib import Path
+
 
 import numpy as np
-import shiboken2
 import pandas as pd
-import PySide2
 
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
 from ltrace.slicer import ui
+from ltrace.slicer.helpers import getPythonQtWidget
 from ltrace.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
@@ -22,6 +21,7 @@ from ltrace.slicer_utils import (
     getResourcePath,
 )
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from pathlib import Path
 from PoreNetworkKrelEdaLib.export.PoreNetworkKrelEdaExport import PoreNetworkKrelEdaExportWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.crossed_plots import CrossedError, CrossedParameters
 from PoreNetworkKrelEdaLib.visualization_widgets.curves_plot import CurvesPlot
@@ -141,12 +141,12 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
     def setup_import(self):
 
-        import_layout = qt.QFormLayout()
+        importLayout = qt.QFormLayout()
 
         instructions_labels = qt.QLabel(
             "To import a Krel curve, first add it to" " the scene in File -> Advanced Add Data"
         )
-        import_layout.addRow(instructions_labels)
+        importLayout.addRow(instructions_labels)
 
         self.inputSelector = slicer.qMRMLNodeComboBox()
         self.inputSelector.setMRMLScene(slicer.mrmlScene)
@@ -158,7 +158,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         self.inputSelector.noneEnabled = True
         self.inputSelector.showHidden = False
         self.inputSelector.nodeTypes = ["vtkMRMLTableNode"]
-        import_layout.addRow("Krel Table Node", self.inputSelector)
+        importLayout.addRow("Krel Table Node", self.inputSelector)
         self.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.__change_import_table)
 
         self.cboxes = {}
@@ -169,40 +169,36 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             CYCLE_COLUMN_STR,
         ):
             self.cboxes[cbox] = qt.QComboBox()
-            import_layout.addRow(cbox, self.cboxes[cbox])
+            importLayout.addRow(cbox, self.cboxes[cbox])
             self.cboxes[cbox].connect("currentIndexChanged(int)", self.__change_import_column)
 
         pg.setConfigOption("background", "w")
         pg.setConfigOption("foreground", "k")
         pg.setConfigOptions(antialias=True)
-        self.graphics_layout_widget = GraphicsLayoutWidget()
-        self.graphics_layout_widget.setFixedHeight(360)
+        self.graphicsLayoutWidget = GraphicsLayoutWidget()
+        self.graphicsLayoutWidget.setFixedHeight(360)
 
-        self.x_legend_label_item = pg.LabelItem(angle=0)
-        self.y_legend_label_item = pg.LabelItem(angle=270)
-        self.x_legend_label_item.setText("Sw")
-        self.y_legend_label_item.setText("Krel")
-        self.graphics_layout_widget.addItem(self.x_legend_label_item, row=2, col=2, colspan=2)
-        self.graphics_layout_widget.addItem(self.y_legend_label_item, row=0, col=1, rowspan=2)
-        self.plot_item = self.graphics_layout_widget.addPlot()
+        self.xLegendLabelItem = pg.LabelItem(angle=0)
+        self.yLegendLabelItem = pg.LabelItem(angle=270)
+        self.xLegendLabelItem.setText("Sw")
+        self.yLegendLabelItem.setText("Krel")
+        self.graphicsLayoutWidget.addItem(self.xLegendLabelItem, row=2, col=2, colspan=2)
+        self.graphicsLayoutWidget.addItem(self.yLegendLabelItem, row=0, col=1, rowspan=2)
+        self.plotItem = self.graphicsLayoutWidget.addPlot()
 
-        plot_layout = qt.QFormLayout()
-        plot_widget = qt.QWidget()
-        plot_widget.setLayout(plot_layout)
-        pySideMainLayout = shiboken2.wrapInstance(hash(plot_layout), PySide2.QtWidgets.QFormLayout)
-        pySideMainLayout.addRow(self.graphics_layout_widget)
-        import_layout.addWidget(plot_widget)
+        pyqtGraphicsLayoutWidget = getPythonQtWidget(self.graphicsLayoutWidget)
+        importLayout.addWidget(pyqtGraphicsLayoutWidget)
 
         self.outputPrefix = qt.QLineEdit()
-        import_layout.addRow("Table name: ", self.outputPrefix)
+        importLayout.addRow("Table name: ", self.outputPrefix)
         save_button = qt.QPushButton("Save table")
         save_button.connect("clicked(bool)", self.__click_import)
-        import_layout.addWidget(save_button)
+        importLayout.addWidget(save_button)
 
         self.spacerItem = qt.QSpacerItem(0, 0, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
-        import_layout.addItem(self.spacerItem)
+        importLayout.addItem(self.spacerItem)
         import_container = qt.QWidget()
-        import_container.setLayout(import_layout)
+        import_container.setLayout(importLayout)
         self.mainTab.addTab(import_container, "Import")
 
     def __on_input_node_changed(self, vtkid=None):
@@ -241,7 +237,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             cbox.clear()
 
         if input_node is None:
-            self.plot_item.clear()
+            self.plotItem.clear()
             return
 
         self.cboxes["Cycle column"].addItem(AUTO_DETECT_STR)
@@ -255,14 +251,14 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         self.outputPrefix.text = input_node.GetName() + "_Krel_Import"
 
     def __change_import_column(self):
-        self.plot_item.clear()
+        self.plotItem.clear()
 
         if self.inputSelector.currentNode() is None:
             return
 
         krel_df = dataframeFromTable(self.inputSelector.currentNode())
         krel_df = krel_df.replace("", np.nan)
-        krel_df = krel_df.astype("float32")
+        krel_df = krel_df.astype(np.float32)
         sw_string = self.cboxes[SW_COLUMN_STR].currentText
         kro_string = self.cboxes[KRO_COLUMN_STR].currentText
         krw_string = self.cboxes[KRW_COLUMN_STR].currentText
@@ -293,11 +289,11 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             if cycle >= len(cycle_krel_df_list):
                 continue
             cycle_krel_df = cycle_krel_df_list[cycle]
-            kro_plot = self.plot_item.plot(pen=pg.mkPen((255, i * 85, 0), width=2), name=f"Kro cycle {cycle + 1}")
-            krw_plot = self.plot_item.plot(pen=pg.mkPen((0, i * 85, 255), width=2), name=f"Krw cycle {cycle + 1}")
+            kro_plot = self.plotItem.plot(pen=pg.mkPen((255, i * 85, 0), width=2), name=f"Kro cycle {cycle + 1}")
+            krw_plot = self.plotItem.plot(pen=pg.mkPen((0, i * 85, 255), width=2), name=f"Krw cycle {cycle + 1}")
             kro_plot.setData(cycle_krel_df[sw_string].array, cycle_krel_df[kro_string].array)
             krw_plot.setData(cycle_krel_df[sw_string].array, cycle_krel_df[krw_string].array)
-        self.plot_item.addLegend()
+        self.plotItem.addLegend()
 
         self.krel_df = krel_df
 

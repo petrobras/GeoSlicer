@@ -135,7 +135,7 @@ class MulticoreTransformsWidget(LTracePluginWidget):
 
     def renewHiddenTransformNode(self):
         slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())
-        self.transformNodeSelector.addNode()
+        self.transformNodeSelector.addNode("vtkMRMLTransformNode")
 
     def enter(self) -> None:
         super().enter()

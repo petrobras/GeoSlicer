@@ -34,7 +34,7 @@ class InteractiveSegmenter(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Interactive Segmenter"
-        self.parent.categories = ["MicroCT", "Segmentation"]
+        self.parent.categories = ["Segmentation", "Thin Section", "MicroCT", "Core", "Multiscale"]
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = ""
         self.setHelpUrl("Volumes/Segmentation/Segmentation.html#interactive-segmenter")

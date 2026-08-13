@@ -1,191 +1,34 @@
+# Orchestrator config for the GeoSlicer Manual.
+#
+# This is the entry point used by local builds (build.py) and by versioned
+# deployment (mike / deploy_manual.py). It does NOT build the documentation pages
+# itself: it only emits the site-root redirect page, and hooks/build_languages.py
+# builds each language (mkdocs.en.yml / mkdocs.pt.yml) into <site_dir>/<lang>.
+#
+# The result is a single output folder containing every language, each with its own
+# clean, single-language search index:
+#
+#   site/index.html  -> redirect to the default language
+#   site/en/...       -> English site
+#   site/pt/...       -> Portuguese site
+#
+# Because mike still runs a single `mkdocs build` against this file, versioning and
+# deploy_manual.py keep working unchanged.
 site_name: GeoSlicer Manual
+site_url: https://ltracegeo.github.io/GeoSlicerManual/
 
-extra:
-  material_alternate: true
-  alternate:
-    - name: Português
-      link: /pt/
-      lang: pt
-    - name: English
-      link: /en/
-      lang: en
-  homepage: index.html
-  version:
-    provider: mike
-
-extra_css:
-    - assets/extra.css
+docs_dir: redirect_docs
+use_directory_urls: false
 
 theme:
   name: material
-  custom_dir: theme
-  logo: assets/logo.png
-  favicon: assets/logo.ico
-  palette:
-    - scheme: default
-      primary: white
-      toggle:
-        icon: material/toggle-switch-off-outline
-        name: Switch to dark mode
-    - scheme: slate
-      primary: white
-      toggle:
-        icon: material/toggle-switch
-        name: Switch to light mode
-  features:
-    - toc.follow
-    - toc.integrate
-    - navigation.tracking
 
-plugins:
-  - search
-  - i18n:
-      fallback_to_default: true
-      reconfigure_material: true
-      docs_structure: folder
-      languages:
-        - locale: pt
-          name: PortuguÃªs
-          build: true
-          nav_translations:
-            Overview: VisÃ£o Geral
-            Introduction: IntroduÃ§Ã£o
-            Installation: InstalaÃ§Ã£o
-            First Steps: Primeiros Passos
-            Application: AplicaÃ§Ã£o
-            Modules: MÃ³dulos
-            Loading Data: Carregando dados
-            Remote computing: ComputaÃ§Ã£o Remota
-            Development: Desenvolvimento
-            How To Contribute: Como Contribuir
-            Documentation: DocumentaÃ§Ã£o
-            Building GeoSlicer: Compilando o GeoSlicer
-        - locale: en
-          name: English
-          default: true
-          build: true
-  - macros
-  - include-markdown
-  - mermaid2:
-      javascript: https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs 
-  - tags
-  - site-urls
+extra:
+  version:
+    provider: mike
 
-use_directory_urls: false
-
-markdown_extensions:
-  - tables
-  - attr_list
-  - md_in_html
-  - toc:
-      toc_depth: 2
-  - admonition
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.details
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:mermaid2.fence_mermaid_custom
-  - pymdownx.critic
-  - pymdownx.caret
-  - pymdownx.keys
-  - pymdownx.mark
-  - pymdownx.tilde
-  - pymdownx.tabbed:
-      alternate_style: true
-
-validation:
-  links:
-    absolute_links: relative_to_docs
-    anchors: warn
-    unrecognized_links: warn
-
-extra_javascript:
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+hooks:
+  - hooks/build_languages.py
 
 nav:
-  - Overview: "index.md"
-  - Introduction:
-      - Installation: "GettingStarted/InstallationGuide.md"
-      - First Steps: "GettingStarted/FirstSteps.md"
-      - Application: "GettingStarted/UserInterface/Application.md"
-      - Modules: "GettingStarted/UserInterface/Modules.md"
-      - Loading Data: "GettingStarted/DataLoading.md"
-      - Remote computing: "GettingStarted/RemoteComputing.md"
-  - Volumes:
-      - Introduction: "Volumes/Introduction.md"
-      - MicroCT Import: "Volumes/MicroCTImport/Import.md"
-      - MicroCT Export: "Volumes/MicroCTExport/Export.md"
-      - Crop: "Volumes/Crop/Crop.md"
-      - Filter: "Volumes/Filter/Filter.md"
-      - Resample: "Volumes/Resample/Resample.md"
-      - Segmentation: "Volumes/Segmentation/Segmentation.md"
-      - Microtom: "Volumes/Microtom/Microtom.md"
-      - Microporosity: "Volumes/Microporosity/Microporosity.md"
-      - Modelling Flow: "Volumes/ModellingFlow/StreamlinedModelling.md"
-      - Register: "Volumes/Register/Register.md"
-      - Pore Network: "Volumes/PNM/PNM.md"
-      - Multiscale: Volumes/Multiscale/Multiscale.md
-      - Big Image: "Volumes/BigImage/BigImage.md"
-      - More Tools: "Volumes/MoreTools/MoreTools.md"
-      - Import: "Volumes/Import/Import.md"
-  - Thin Section:
-      - Introduction: "ThinSection/Introduction.md"
-      - Thin Section Loader: "ThinSection/Loader/ThinSectionLoader.md"
-      - QEMSCAN Loader: "ThinSection/Loader/QemscanLoader.md"
-      - Crop: "ThinSection/Crop/Crop.md"
-      - Filters: "ThinSection/Filters/ImageTools.md"
-      - Register: "ThinSection/Register/Register.md"
-      - Segmentation: "ThinSection/Segmentation/Segmentation.md"
-      - Thin Section Flows: "ThinSection/Flows/Flows.md"
-      - Multi-Image Analysis: "ThinSection/MultipleImageAnalysis/MultipleImageAnalysis.md"
-      - Export: "ThinSection/Export/Export.md"
-      - More Tools:  "ThinSection/MoreTools/MoreTools.md"
-      - Import: "ThinSection/Import/Import.md"
-  - Well Logs:
-      - Introduction: "ImageLog/Introduction.md"
-      - Import: "ImageLog/Import/Import.md"
-      - Unwrap: "ImageLog/Unwrap/Unwrap.md"
-      - Export: "ImageLog/Export/Export.md"
-      - Crop: "ImageLog/Crop.md"
-      - Processing: "ImageLog/Processing/Processing.md"
-      - Unwrap Registration: "ImageLog/UnwrapRegistration/UnwrapRegistration.md"
-      - Permeability Modeling: "ImageLog/PermeabilityModeling/PermeabilityModeling.md"
-      - Inpainting: "ImageLog/Inpainting/Inpainting.md"
-      - Segmentation: "ImageLog/Segmentation/Segmentation.md"
-      - More Tools: "ImageLog/MoreTools/MoreTools.md"
-  - Core:
-      - Introduction: "Core/Introduction.md"
-      - Multicore: "Core/Multicore.md"
-      - Core Photograph Loader: "Core/CorePhotographLoader.md"
-      - Crop: "Core/Crop.md"
-      - Multicore Transforms: "Core/MulticoreTransforms.md"
-      - Segmentation: "Core/Segmentation/Segmentation.md"
-      - Core Inpaint: "Core/CoreInpaint.md"
-      - Export: "Core/MulticoreExport.md"
-      - Multicore Export: "Core/MulticoreExport.md"
-      - Fluxos: "Core/Flows.md"
-  - Multiscale:
-      - Introduction: "Multiscale/Introduction.md"
-      - Geolog Integration: "Multiscale/GeologIntegration/GeologEnv.md"
-      - Import Tools: "Multiscale/ImportTools/ImportTools.md"
-      - Export Tools: "Multiscale/ExportTools/ExportTools.md"
-      - Image Log Pre-processing: "Multiscale/ImageLogPreProcessing/ImageLogPreProcessing.md"
-      - Volumes Pre-processing: "Multiscale/VolumesPreProcessing/VolumesPreProcessing.md"
-      - Microtom: "Multiscale/Microtom/Microtom.md"
-      - Image Generation: "Multiscale/MultiscaleImageGeneration/Multiscale.md"
-      - Multiscale Post-Processing: "Multiscale/MultiscalePostProcessing/MultiscalePostProcessing.md"
-      - Pore Network: "Multiscale/PNM/PNM.md"
-      - Volume Segmentation: "Multiscale/Segmentation/VolumeSegmentation.md"
-      - Image Log Segmentation: "Multiscale/Segmentation/ImageLogSegmentation.md"
-      - More Tools: "Multiscale/MoreTools/MoreTools.md"
-      - Flows: "Multiscale/Flows/Flows.md"
-  - Development:
-    - Building GeoSlicer: "Development/BuildingGeoSlicer.md"
-    - How To Contribute: "Development/HowToContribute.md"
-    - Documentation: "Development/Documentation.md"
-
-not_in_nav: |
-  Pages/*
+  - Home: index.md

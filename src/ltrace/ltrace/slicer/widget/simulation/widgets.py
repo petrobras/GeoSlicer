@@ -67,15 +67,13 @@ class MultistepEditWidget(qt.QBoxLayout):
         start = float(self.start.text)
         stop = float(self.stop.text)
         steps = int(self.steps.text)
-        cf = self.conversion_factor
         if steps == 1:
-            return {self.parameter_name: start * cf}
+            return {self.parameter_name: start}
         else:
             if self.step_spacing == "logarithmic":
                 values = np.geomspace(start, stop, steps)
             else:
                 values = np.linspace(start, stop, steps)
-            values = tuple(i * cf for i in values)
         return {self.parameter_name: values}
 
     def get_name(self):
@@ -83,13 +81,13 @@ class MultistepEditWidget(qt.QBoxLayout):
 
     def get_start(self):
         try:
-            return float(self.start.text) * self.conversion_factor
+            return float(self.start.text)
         except ValueError:
             return None
 
     def get_stop(self):
         try:
-            return float(self.stop.text) * self.conversion_factor
+            return float(self.stop.text)
         except ValueError:
             return None
 
@@ -108,6 +106,9 @@ class MultistepEditWidget(qt.QBoxLayout):
         self.__enableMultiField(num_of_steps_int != 1)
         self.steps.setText(str(num_of_steps_int))
         self.stepChanged.emit()
+
+    def get_conversion_factor(self):
+        return self.conversion_factor
 
     def __enableMultiField(self, enable):
         self.multiWidget.setVisible(enable)

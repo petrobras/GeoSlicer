@@ -381,6 +381,23 @@ def load(hierarchy, data_home, output_name="output.nc"):
         array = load_eleven_sandstones(dataset=dataset, filename=filename, data_home=data_home)
     elif root == Source.ICL_2009:
         dataset = hierarchy[1]
+        # drd treats any existing file as valid (no content verification when md5=None).
+        # Delete corrupt/empty cached archives so they are re-downloaded.
+        cached_file = data_home / f"{dataset}.7z"
+        if cached_file.exists():
+            magic_7z = b"7z\xbc\xaf\x27\x1c"
+            with open(cached_file, "rb") as f:
+                header = f.read(6)
+            if header != magic_7z:
+                cached_file.unlink()
+        # figshare's ndownloader endpoint sits behind AWS WAF (returns 202 + JS challenge).
+        # The REST API endpoint bypasses the WAF and redirects straight to S3.
+        import drd.datasets.icl_sandstones_carbonates_2009 as _icl_mod
+
+        _icl_mod.DATASET_METADATA = {
+            k: v.replace("https://figshare.com/ndownloader/files/", "https://api.figshare.com/v2/file/download/")
+            for k, v in _icl_mod.DATASET_METADATA.items()
+        }
         array = drd.datasets.load_icl_sandstones_carbonates_2009(dataset=dataset, data_home=data_home)
     elif root == Source.ICL_2015:
         dataset = hierarchy[1]
@@ -395,7 +412,7 @@ def load(hierarchy, data_home, output_name="output.nc"):
     output_path = data_home / "output_nc"
     output_path.mkdir(parents=True, exist_ok=True)
 
-    array.to_netcdf(output_path / output_name)
+    array.to_netcdf(output_path / output_name, engine="h5netcdf")
 
 
 if __name__ == "__main__":

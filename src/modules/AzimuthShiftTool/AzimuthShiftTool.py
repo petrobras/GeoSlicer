@@ -4,6 +4,7 @@ import qt
 import slicer
 
 from ltrace.slicer import helpers
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
@@ -189,14 +190,9 @@ class AzimuthShiftToolLogic(LTracePluginLogic):
                     interpolationPoints, np.arange(volumeArray.shape[2] + 1), volumeRolled
                 )
 
-        newVolume = slicer.mrmlScene.AddNewNodeByClass(volumeNode.GetClassName(), name)
-        newVolume.CopyOrientation(volumeNode)
+        newVolume = helpers.clone_volume(volumeNode, name=volumeNode.GetName() + "_azimuthShift", as_temporary=False)
+        helpers.copy_display(volumeNode, newVolume)
+        copy_metadata(volumeNode, newVolume)
+        helpers.copy_attributes(volumeNode, newVolume)
         newVolume.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
         slicer.util.updateVolumeFromArray(newVolume, volumeArrayCorrected)
-
-        helpers.copy_display(volumeNode, newVolume)
-
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        parent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volumeNode))
-
-        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(newVolume), parent)

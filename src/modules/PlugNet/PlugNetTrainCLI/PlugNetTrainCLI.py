@@ -40,7 +40,7 @@ def train(inputFileName, outputFileName, gpuEnabled):
         X = np.array(f.get("X"))
         Y = np.array(f.get("Y"))
 
-    X = X.astype("float32")
+    X = X.astype(np.float32)
     Y = preprocess(Y)
 
     normalization = Normalization(axis=None)

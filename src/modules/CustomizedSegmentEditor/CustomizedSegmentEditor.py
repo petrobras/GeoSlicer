@@ -57,6 +57,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor = None
         self.__tag = None
         self._lastEffectName = None
+        self._syncingSourceVolume = False
 
         self.color_effects = ["Color threshold"]
 
@@ -137,6 +138,23 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         switchToSegmentationsButton = self.editor.findChild(qt.QToolButton, "SwitchToSegmentationsButton")
         switchToSegmentationsButton.setVisible(False)
 
+        self.progressLayout = qt.QHBoxLayout()
+
+        self.progressLabel = qt.QLabel("Calculating...")
+        self.progressLabel.setVisible(False)
+        self.progressLayout.addWidget(self.progressLabel)
+
+        self.progressBar = qt.QProgressBar()
+        self.progressBar.setObjectName("SegmentEditorProgressBar")
+        self.progressBar.setVisible(False)
+        self.progressLayout.addWidget(self.progressBar)
+
+        self.cancelButton = qt.QPushButton("Cancel")
+        self.cancelButton.setVisible(False)
+        self.progressLayout.addWidget(self.cancelButton)
+
+        self.layout.addLayout(self.progressLayout)
+
         self.layout.addStretch()
 
         self.configureEffects()
@@ -188,11 +206,62 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         segmentation.GetSegment(segmentID).SetColor(newColor)
 
     def onSegmentationNodeChanged(self, node):
-        pass
+        if self._syncingSourceVolume or node is None:
+            return
+
+        referencedNode = helpers.getSourceVolume(node)
+        if referencedNode is None:
+            return
+
+        if self.sourceVolumeNodeComboBox.currentNode() is referencedNode:
+            return
+
+        self._syncingSourceVolume = True
+        try:
+            self.sourceVolumeNodeComboBox.setCurrentNode(referencedNode)
+        finally:
+            self._syncingSourceVolume = False
 
     def onSourceVolumeNodeChanged(self, node):
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureColorSupport(color_support=color_support)
+
+        if self._syncingSourceVolume or node is None:
+            return
+
+        segNode = self.segmentationNodeComboBox.currentNode()
+        if segNode is None:
+            return
+
+        currentReference = helpers.getSourceVolume(segNode)
+        if currentReference is node:
+            return
+
+        hasSegments = segNode.GetSegmentation().GetNumberOfSegments() > 0
+        if currentReference is not None and hasSegments:
+            confirmed = slicer.util.confirmYesNoDisplay(
+                f"The segmentation '{segNode.GetName()}' already references the image "
+                f"'{currentReference.GetName()}' and contains painted segments.\n\n"
+                f"Changing its reference image to '{node.GetName()}' will resample the "
+                f"existing segments to the new image geometry, which may alter or cause "
+                f"loss of part of your current annotation.\n\n"
+                f"Do you want to continue?",
+                windowTitle="Change reference image",
+            )
+            if not confirmed:
+                self._syncingSourceVolume = True
+                try:
+                    self.sourceVolumeNodeComboBox.setCurrentNode(currentReference)
+                finally:
+                    self._syncingSourceVolume = False
+                return
+
+        self._syncingSourceVolume = True
+        try:
+            helpers.setSourceVolume(segNode, node)
+            helpers.rescaleSegmentationGeometry(segNode, node)
+        finally:
+            self._syncingSourceVolume = False
 
     def hidePaintEffectOptions(self):
         paintEffect = self.editor.effectByName("Paint")

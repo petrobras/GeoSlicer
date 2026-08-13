@@ -88,7 +88,9 @@ def run(params: dict) -> None:
 
     # Export xarray.DataSet to .nc file
     encoding = getEncoding(boundaryRemovalArray)
-    task = dataset.to_netcdf(params["exportPath"], encoding=encoding, format="NETCDF4", compute=False)
+    task = dataset.to_netcdf(
+        params["exportPath"], encoding=encoding, format="NETCDF4", compute=False, engine="h5netcdf"
+    )
 
     # Compute
     with DaskCLICallback():

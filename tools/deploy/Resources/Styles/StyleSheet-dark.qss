@@ -75,6 +75,12 @@ QListView, QTableView {
 QWidget {
     selection-background-color: hsv(136, 80%, 50%);
 }
+
+QTreeView {
+    selection-background-color: hsv(136, 80%, 20%);
+    selection-color: #ffffff;
+    outline: 0;
+}
   
 QListWidget {
     padding: 4px;

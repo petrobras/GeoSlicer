@@ -137,9 +137,7 @@ class SideBySideImageManager:
         displayNode = segmentationNode.GetNthDisplayNode(sliceIndex)
         displayNode.SetAllSegmentsVisibility(False)
 
-        segmentation = segmentationNode.GetSegmentation()
-        for segmentIndex in selectedSegments:
-            segmentId = segmentation.GetNthSegmentID(segmentIndex)
+        for segmentId in selectedSegments:
             displayNode.SetSegmentVisibility(segmentId, True)
 
 
@@ -148,23 +146,76 @@ ZOOM_FLAG = slicer.vtkMRMLSliceNode.FieldOfViewFlag
 FIT_VOLUME_FLAG = slicer.vtkMRMLSliceNode.ResetFieldOfViewFlag
 SLICE_OFFSET_FLAG = slicer.vtkMRMLSliceNode.XYZOriginFlag
 
-FLAG_LIST = [POSITION_FLAG, ZOOM_FLAG, FIT_VOLUME_FLAG, SLICE_OFFSET_FLAG]
+# Interactions that need a forced re-broadcast. Only zoom (and fit) qualify:
+# ScaleZoom changes the slice origin but only flags FieldOfView, so the origin
+# would otherwise not propagate. Pan (XYZOrigin) and slice offset (SliceToRAS)
+# are intentionally excluded -- they flag exactly what they change, so they
+# already propagate natively (continuously under hot link). Triggering on them
+# would force-stop the interaction mid-drag (see _sync) and freeze the gesture.
+FLAG_LIST = [ZOOM_FLAG, FIT_VOLUME_FLAG]
 ALL_FLAGS = POSITION_FLAG | ZOOM_FLAG | SLICE_OFFSET_FLAG
 
 
 def _sync(sliceNode):
-    """Sync position, zoom, slice offset of other slice views with this slice view."""
+    """Force-broadcast position, zoom and slice offset to the other linked views.
+
+    Restores the original interaction state instead of clearing it, so this can
+    run mid-drag (hot-linked zoom) without interrupting the ongoing gesture's own
+    continuous broadcasts.
+    """
+    was_interacting = sliceNode.GetInteracting()
+    previous_flags = sliceNode.GetInteractionFlags()
     sliceNode.SetInteracting(1)
     sliceNode.SetInteractionFlags(ALL_FLAGS)
     sliceNode.Modified()
-    sliceNode.SetInteractionFlags(0)
-    sliceNode.SetInteracting(0)
+    sliceNode.SetInteractionFlags(previous_flags)
+    sliceNode.SetInteracting(was_interacting)
+
+
+# ctrl+scroll zoom fires discrete events; the propagation/render of the final
+# tick to the (indirectly updated) linked views is intermittently dropped by the
+# render throttle and the broadcast re-entrancy guard, leaving the linked view a
+# step behind / pixelated until the next interaction. After a scroll burst
+# settles, re-broadcast the final geometry and force a re-render to catch up.
+_zoom_finalize_timer = None
+ZOOM_FINALIZE_DELAY_MS = 80
+
+
+def _finalize_zoom(sliceNode):
+    if not sliceNode or not slicer.mrmlScene.IsNodePresent(sliceNode):
+        return
+    # Re-broadcast the settled geometry, in case the last tick's broadcast was
+    # swallowed by the re-entrancy guard.
+    _sync(sliceNode)
+    # Force every linked view in the group to re-render and recompute its slice
+    # resolution, in case the final frame was throttled out (state correct but
+    # frame/resolution stale). Modifying the node alone triggers both.
+    viewGroup = sliceNode.GetViewGroup()
+    for node in slicer.util.getNodesByClass("vtkMRMLSliceNode"):
+        if node.GetViewGroup() == viewGroup:
+            node.Modified()
+
+
+def _schedule_zoom_finalize(sliceNode):
+    global _zoom_finalize_timer
+    if _zoom_finalize_timer is None:
+        _zoom_finalize_timer = qt.QTimer()
+        _zoom_finalize_timer.setSingleShot(True)
+        _zoom_finalize_timer.setInterval(ZOOM_FINALIZE_DELAY_MS)
+    try:
+        _zoom_finalize_timer.timeout.disconnect()
+    except (RuntimeError, TypeError):
+        pass
+    _zoom_finalize_timer.timeout.connect(lambda: _finalize_zoom(sliceNode))
+    _zoom_finalize_timer.start()
 
 
 def _onSliceNodeModified(caller, event):
     interaction = caller.GetInteractionFlags()
     if interaction in FLAG_LIST and caller.GetInteracting():
         _sync(caller)
+        if interaction == ZOOM_FLAG:
+            _schedule_zoom_finalize(caller)
 
 
 def _onCompositeNodeModified(sliceNode, caller, event):
@@ -177,14 +228,53 @@ def _onCompositeNodeModified(sliceNode, caller, event):
     _sync(sliceNode)
 
 
-def setupViews(viewName1, viewName2):
-    sliceWidget1 = slicer.app.layoutManager().sliceWidget(viewName1)
-    sliceWidget2 = slicer.app.layoutManager().sliceWidget(viewName2)
+# Node IDs that already have zoom-sync observers, so enable_zoom_sync can be
+# called repeatedly (e.g. on every segmentation start) without stacking
+# duplicate observers on the persistent view nodes.
+_zoom_sync_observed_nodes = set()
+# Whether we have registered the scene-close hook that resets the set above.
+_zoom_sync_close_hooked = False
+
+
+def _reset_zoom_sync_observers(*args):
+    """Forget the tracked node IDs when the scene closes.
+
+    The observers live on slice/composite nodes that are destroyed on scene
+    close, taking the observers with them. Slicer reuses node IDs across a
+    close, so without this reset a recreated node could match a stale ID and
+    enable_zoom_sync would skip re-attaching its observer, silently breaking
+    zoom sync after a scene reload. Clearing the set also bounds its growth.
+    """
+    _zoom_sync_observed_nodes.clear()
+
+
+def enable_zoom_sync(viewName1, viewName2):
+    """Keep two linked slice views in sync when zooming with ctrl+scroll.
+
+    Slicer's ScaleZoom (ctrl+scroll) changes both the field of view and the
+    slice origin, but only flags the field of view for linked-view broadcast,
+    so the origin never propagates and the views drift apart. RMB-drag zoom is
+    unaffected because it only changes the field of view. We work around it by
+    re-broadcasting all view-geometry flags whenever an interacting slice node
+    is modified.
+
+    Idempotent: safe to call more than once for the same views.
+    """
+    global _zoom_sync_close_hooked
+    if not _zoom_sync_close_hooked:
+        slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.EndCloseEvent, _reset_zoom_sync_observers)
+        _zoom_sync_close_hooked = True
+
+    layoutManager = slicer.app.layoutManager()
+    sliceWidget1 = layoutManager.sliceWidget(viewName1)
+    sliceWidget2 = layoutManager.sliceWidget(viewName2)
     sliceNode1 = sliceWidget1.sliceLogic().GetSliceNode()
     sliceNode2 = sliceWidget2.sliceLogic().GetSliceNode()
 
-    sliceNode1.AddObserver("ModifiedEvent", _onSliceNodeModified)
-    sliceNode2.AddObserver("ModifiedEvent", _onSliceNodeModified)
+    for sliceNode in (sliceNode1, sliceNode2):
+        if sliceNode.GetID() not in _zoom_sync_observed_nodes:
+            sliceNode.AddObserver("ModifiedEvent", _onSliceNodeModified)
+            _zoom_sync_observed_nodes.add(sliceNode.GetID())
 
     composite1 = sliceWidget1.sliceLogic().GetSliceCompositeNode()
     composite2 = sliceWidget2.sliceLogic().GetSliceCompositeNode()
@@ -192,4 +282,8 @@ def setupViews(viewName1, viewName2):
     composite1.SetInteractionFlagsModifier(0)
     composite2.SetInteractionFlagsModifier(0)
 
-    composite1.AddObserver("ModifiedEvent", lambda caller, event: _onCompositeNodeModified(sliceNode1, caller, event))
+    if composite1.GetID() not in _zoom_sync_observed_nodes:
+        composite1.AddObserver(
+            "ModifiedEvent", lambda caller, event: _onCompositeNodeModified(sliceNode1, caller, event)
+        )
+        _zoom_sync_observed_nodes.add(composite1.GetID())

@@ -4,6 +4,7 @@
 from __future__ import print_function
 
 import json
+import logging
 import math
 import os
 import sys
@@ -24,6 +25,7 @@ import numpy as np
 from numpy.random import RandomState
 import pickle
 from PIL import Image
+import sympy  # import it before torch to avoid crash
 import torch
 from monai.transforms import MapLabelValued
 
@@ -141,7 +143,10 @@ def writeDataInto(volumeFile, dataVoxelArray, builder, reference=None, cropping_
     # reset the data array to force resizing, otherwise we will just keep the old data too
     nodeOut.SetAndObserveImageData(None)
 
-    # print(nodeOut)
+    # int8 (signed char) cannot be written by vtkMRMLNRRDStorageNode in Slicer 2.9+.
+    # Cast to int16, which is the standard labelmap integer type and is always supported.
+    if dataVoxelArray.dtype == np.int8:
+        dataVoxelArray = dataVoxelArray.astype(np.int16)
 
     # print(f"{dataVoxelArray.shape=}", 3)
     slicer.util.updateVolumeFromArray(nodeOut, dataVoxelArray)
@@ -262,82 +267,48 @@ def run_inference(saved_model: dict):
 
         sample[input_name] = torch.as_tensor(narray.astype(np.float32))
 
-    is_segmentation_model = meta["is_segmentation_model"]
-    model_spatial_dims = meta["spatial_dims"]
-    input_roi_shape = meta["input_roi_shape"]
-
-    inputs = meta["inputs"]
-    pre_processed_inputs = meta.get("pre_processed_inputs", inputs)
-    outputs = meta["outputs"]
-
-    input_names = list(inputs.keys())
-    pre_processed_input_names = list(pre_processed_inputs.keys())
-    output_names = list(outputs.keys())
-
-    # temporary limitation: only volume is fed to the model, only output is accepted
-    pre_processed_input_name = pre_processed_input_names[0]
-    output_name = output_names[0]
-
-    # get volumes from arguments
-    inputFiles = [file for file in (args.inputVolume, args.inputVolume1, args.inputVolume2) if file is not None]
-    volumeNodes = [readFrom(file, mrml.vtkMRMLScalarVolumeNode) for file in inputFiles]
-
-    sample = {}
-    for v, volumeNode in enumerate(volumeNodes):
-        input_name = input_names[v]
-        description = inputs[input_name]
-        spatial_dims = description.get("spatial_dims", 3)
-        n_channels = description.get("n_channels", 1)
-
-        vimage = volumeNode.GetImageData()
-        nshape = tuple(reversed(volumeNode.GetImageData().GetDimensions()))
-        narray = vtk.util.numpy_support.vtk_to_numpy(vimage.GetPointData().GetScalars())
-        if narray.ndim == 1:
-            shape = (*nshape, 1)
-        else:
-            shape = (*nshape, narray.shape[-1])
-
-        narray = narray.reshape(shape)
-        narray = np.moveaxis(narray, [0, 1, 2, 3], [1, 2, 3, 0])
-        narray = narray[:n_channels]
-
-        if spatial_dims == 2:
-            dims = narray.shape[1:]
-            depth_dim = np.argwhere(np.equal(dims, 1))[0].item()
-            narray = np.squeeze(narray, axis=depth_dim + 1)
-
-        sample[input_name] = torch.as_tensor(narray.astype(np.float32))
-
     sample = pre_processing_transforms(sample)
     # create batch dimension for prediction
     batch = {name: tensor[None, ...] for name, tensor in sample.items()}
 
+    def run_on_device(device):
+        model.to(device)
+        model.eval()
+        with torch.no_grad():
+            batched_output = {
+                output_name: sliding_window_inference(
+                    inputs=batch[pre_processed_input_name],
+                    roi_size=input_roi_shape,
+                    predictor=model,
+                    geoslicer_progress=True,
+                    sw_batch_size=1,
+                    sw_device=device,
+                ),
+            }
+            batched_output = post_processing_transforms(batched_output)
+            return batched_output[output_name]
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    for i in range(2):
-        try:
-            model.to(device)
-            model.eval()
-            with torch.no_grad():
-                batched_output = {
-                    output_name: sliding_window_inference(
-                        inputs=batch[pre_processed_input_name],
-                        roi_size=input_roi_shape,
-                        predictor=model,
-                        geoslicer_progress=True,
-                        sw_batch_size=1,
-                        sw_device=device,
-                    ),
-                }
-                batched_output = post_processing_transforms(batched_output)
-                batched_inference = batched_output[output_name]
-            break
-        except RuntimeError as e:
-            print(e)
-            print("PyTorch is not able to use GPU: falling back to CPU.")
-            device = "cpu"
+    try:
+        batched_inference = run_on_device(device)
+    except Exception as e:
+        logging.error(f"Inference failed on {device.upper()} with error: {repr(e)}")
+        if device != "cpu":
+            logging.info("Falling back to CPU.")
+            torch.cuda.empty_cache()
+            try:
+                batched_inference = run_on_device("cpu")
+            except Exception as cpu_e:
+                logging.error(f"Inference failed on CPU as well: {repr(cpu_e)}")
+                raise cpu_e
+        else:
+            raise e
 
     # remove batch and channel dimensions
     output = batched_inference.detach().numpy()[0, 0]
+
+    # Cast to int32 to avoid issues with NRRD writer (which may fail with int64)
+    output = output.astype(np.int32)
 
     if model_spatial_dims == 2:
         output = np.expand_dims(output, depth_dim)

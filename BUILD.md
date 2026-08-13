@@ -8,12 +8,12 @@ Before you begin, you will need to install the following tools and libraries on 
 
 ### Common Requirements (All Operating Systems)
 
--   **Python 3.9**: GeoSlicer is built on top of 3D Slicer and requires Python 3.9 for compatibility. We recommend using a conda-based package manager like [miniforge](https://github.com/conda-forge/miniforge) to manage your Python environment.
+-   **Python 3.12**: GeoSlicer is built on top of 3D Slicer and requires Python 3.12 for compatibility. We recommend using a conda-based package manager like [miniforge](https://github.com/conda-forge/miniforge) to manage your Python environment.
     
-    To create and activate a new environment with Python 3.9, run the following commands:
+    To create and activate a new environment with Python 3.12, run the following commands:
     
     ```bash
-    conda create --name geoslicer python=3.9
+    conda create --name geoslicer python=3.12
     conda activate geoslicer
     ```
     
@@ -24,10 +24,12 @@ Before you begin, you will need to install the following tools and libraries on 
     ```
 
 -   **CUDA and cuDNN**: For GPU acceleration, you will need to install CUDA and cuDNN. Make sure you have the correct NVIDIA drivers installed for your system.
+
+    > **NVIDIA Driver Compatibility**: For stable operation with GeoSlicer's Python environment, we recommend using **NVIDIA Driver version 576.28 or earlier**. Newer versions may exhibit stability issues with specific internal dependencies.
     
-    1.  Download and install **CUDA 11.6.2** from the [NVIDIA archive](https://developer.nvidia.com/cuda-11-6-2-download-archive).
-    2.  Ensure the `CUDA_PATH_V11_6` environment variable is set and valid.
-    3.  Download **cuDNN 8.9.7** for CUDA 11.x from the [NVIDIA developer website](https://developer.nvidia.com/rdp/cudnn-archive).
+    1.  Download and install **CUDA 12.1.0** from the [NVIDIA archive](https://developer.nvidia.com/cuda-12-1-0-download-archive).
+    2.  Ensure the `CUDA_PATH_V12_1` environment variable is set and valid (e.g. `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1`).
+    3.  Download **cuDNN 8.9.7** for CUDA 12.x from the [NVIDIA developer website](https://developer.nvidia.com/rdp/cudnn-archive).
     4.  Follow the [cuDNN installation instructions](https://docs.nvidia.com/deeplearning/cudnn/installation/latest/index.html).
 
 -   **Tesseract OCR**: Required for optical character recognition (OCR) to automatically detect scale information from images in the `ThinSectionLoader` and `CorePhotographLoader` modules. GeoSlicer uses a specific bundled version of Tesseract.

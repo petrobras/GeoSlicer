@@ -284,7 +284,7 @@ class AIModelsPathWidget(qt.QWidget):
         self.identifiedModelsTable.setColumnCount(2)
         self.identifiedModelsTable.setHorizontalHeaderLabels(["Title", "Environment"])
         self.identifiedModelsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
-        self.identifiedModelsTable.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        self.identifiedModelsTable.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.ResizeMode.Stretch)
         self.identifiedModelsTable.verticalHeader().setVisible(False)
         self.identifiedModelsTable.setSortingEnabled(True)
 

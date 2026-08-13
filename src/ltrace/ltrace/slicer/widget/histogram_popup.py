@@ -25,7 +25,12 @@ class HistogramPopupWidget(qt.QDialog):
 
         volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
 
-        self.activeVolumeNodeSelector = volumesWidget.findChild(slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector")
+        self.activeVolumeNodeSelector = volumesWidget.findChild(
+            slicer.qMRMLSubjectHierarchyTreeView, "ActiveVolumeNodeSelector"
+        )
+        assert (
+            self.activeVolumeNodeSelector is not None
+        ), "Could not find ActiveVolumeNodeSelector in the volume display widget"
 
         volumeDisplayWidget = volumesWidget.findChild(
             slicer.qSlicerScalarVolumeDisplayWidget, "qSlicerScalarVolumeDisplayWidget"

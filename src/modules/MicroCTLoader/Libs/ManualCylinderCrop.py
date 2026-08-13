@@ -1,6 +1,7 @@
 import qt
 import slicer
 import ctk
+import vtk
 
 from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.widget.status_panel import StatusPanel
@@ -8,8 +9,10 @@ import ltrace.algorithms.detect_cups as cups
 from ltrace.slicer.helpers import (
     copy_display,
     setVolumeNullValue,
-    copyAttributesTo,
+    copy_attributes,
+    copy_hierarchy_attributes,
 )
+from ltrace.slicer import metadata
 import json
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 
@@ -39,7 +42,14 @@ def create_cylinder_crop(volume, cylinder):
 
     float_cylinder = [float(x) for x in cylinder]
     volume.SetAttribute("RockCylinder", json.dumps(float_cylinder))
-    copyAttributesTo(rockNode, sourceNode=volume)
+
+    """ Should we copy all attributes and references by default? MUSA-150. 
+    copy_attributes(volume, rockNode)
+    copy_hierarchy_attributes(volume, rockNode)
+    metadata.set_node_metadata(volume, "RockCylinder", json.dumps(float_cylinder))
+    metadata.copy_metadata(volume, rockNode)
+    # (Note that if spacing is changed, keeping the geometryReference may be problematic)
+    rockNode.CopyReferences(volume) """
     return rockNode
 
 
@@ -131,7 +141,6 @@ class ManualCylinderCropWidget(qt.QWidget):
 class ManualCylinderCropModel:
     @staticmethod
     def startCropping(volume):
-        rasOrigin = volume.GetOrigin()
         rasSpacing = volume.GetSpacing()
         cylinderRoi = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsROINode", "Cylinder bounds")
         cylinderRoi.HideFromEditorsOn()
@@ -149,14 +158,19 @@ class ManualCylinderCropModel:
         else:
             x, y, r, z_min, z_max = json.loads(storedCylinder)
 
-            x = rasOrigin[0] + (x - 0.5) * -rasSpacing[0]
-            y = rasOrigin[1] + (y - 0.5) * -rasSpacing[1]
-            r = r * rasSpacing[0]
-            z_min = rasOrigin[2] + (z_min - 0.5) * rasSpacing[2]
-            z_max = rasOrigin[2] + (z_max - 0.5) * rasSpacing[2]
+            ijkToRas = vtk.vtkMatrix4x4()
+            volume.GetIJKToRASMatrix(ijkToRas)
 
-            center = [x, y, (z_min + z_max) / 2]
-            radius = [r, r, (z_max - z_min) / 2]
+            # z_max is an exclusive upper bound; center is at the midpoint of the inclusive range
+            z_center_k = (z_min + z_max) / 2 - 0.5
+            center_ras = [0.0, 0.0, 0.0, 1.0]
+            ijkToRas.MultiplyPoint([x - 0.5, y - 0.5, z_center_k, 1.0], center_ras)
+
+            r_ras = r * rasSpacing[0]
+            z_half_ras = (z_max - z_min) / 2 * rasSpacing[2]
+
+            center = [center_ras[0], center_ras[1], center_ras[2]]
+            radius = [r_ras, r_ras, z_half_ras]
             cylinderRoi.SetXYZ(center)
             cylinderRoi.SetRadiusXYZ(radius)
 
@@ -164,7 +178,6 @@ class ManualCylinderCropModel:
 
     @staticmethod
     def finishCropping(volume: slicer.vtkMRMLNode, cylinderRoi: slicer.vtkMRMLMarkupsROINode) -> None:
-        rasOrigin = volume.GetOrigin()
         rasSpacing = volume.GetSpacing()
 
         rasCenter = [0, 0, 0]
@@ -172,11 +185,23 @@ class ManualCylinderCropModel:
         rasRadius = [0, 0, 0]
         cylinderRoi.GetRadiusXYZ(rasRadius)
 
-        x = (rasCenter[0] - rasOrigin[0]) / -rasSpacing[0] + 0.5
-        y = (rasCenter[1] - rasOrigin[1]) / -rasSpacing[1] + 0.5
+        ijkToRas = vtk.vtkMatrix4x4()
+        volume.GetIJKToRASMatrix(ijkToRas)
+        rasToIjk = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(ijkToRas, rasToIjk)
+
+        ijk_center = [0.0, 0.0, 0.0, 1.0]
+        rasToIjk.MultiplyPoint([rasCenter[0], rasCenter[1], rasCenter[2], 1.0], ijk_center)
+        x = ijk_center[0] + 0.5
+        y = ijk_center[1] + 0.5
+        z_center_k = ijk_center[2]
+
         r = rasRadius[0] / rasSpacing[0]
-        z_min = (rasCenter[2] - rasRadius[2] - rasOrigin[2]) / rasSpacing[2] + 0.5
-        z_max = (rasCenter[2] + rasRadius[2] - rasOrigin[2]) / rasSpacing[2] + 0.5
+        z_half_k = rasRadius[2] / rasSpacing[2]
+        # z_max is an exclusive upper bound; recover by adding 0.5 to account for the
+        # center being placed at the midpoint of the inclusive voxel range [z_min, z_max-1]
+        z_min = z_center_k - z_half_k + 0.5
+        z_max = z_center_k + z_half_k + 0.5
 
         cylinder = x, y, r, z_min, z_max
         with ProgressBarProc() as pb:

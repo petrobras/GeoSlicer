@@ -1,5 +1,4 @@
 import os
-import vtk
 import slicer
 import qt
 import logging
@@ -39,16 +38,17 @@ class CustomizedData(LTracePlugin):
 
 
 class CustomizedDataWidget(LTracePluginWidget):
-    activeTreeView = None
-
     def __init__(self, parent):
         super().__init__(parent)
         self.subjectHierarchyTreeView = None
         self.nodeMenu = None
+        self.registerActions = []
+        self.registerThisAction = None
 
-    def onRightClickMenuAboutToShow(self):
-        if self.nodeMenu:
-            CustomizedDataWidget.activeTreeView = self.nodeMenu.parentWidget()
+    def onNodeMenuAboutToShow(self):
+        for action in self.registerActions:
+            if action is not self.registerThisAction:
+                action.visible = False
 
     def setup(self):
         LTracePluginWidget.setup(self)
@@ -56,14 +56,14 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         import SubjectHierarchyPlugins
 
-        scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
-        scriptedPlugin.setPythonSource(SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin.filePath)
+        self.scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
+        self.scriptedPlugin.setPythonSource(SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin.filePath)
 
-        dataWidget = slicer.modules.data.createNewWidgetRepresentation()
-        tabWidgetStackedWidget = dataWidget.findChild(qt.QObject, "qt_tabwidget_stackedwidget")
+        self.dataWidget = slicer.modules.data.createNewWidgetRepresentation()
+        tabWidgetStackedWidget = self.dataWidget.findChild(qt.QObject, "qt_tabwidget_stackedwidget")
         tabWidgetStackedWidget.findChild(qt.QObject, "SubjectHierarchyDisplayTransformsCheckBox").checked = False
 
-        self.subjectHierarchyTreeView = dataWidget.findChild(qt.QObject, "SubjectHierarchyTreeView")
+        self.subjectHierarchyTreeView = self.dataWidget.findChild(qt.QObject, "SubjectHierarchyTreeView")
         self.subjectHierarchyTreeView.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
 
         def showSearchPopup(current):
@@ -74,17 +74,15 @@ class CustomizedDataWidget(LTracePluginWidget):
 
         # Adds confirmation step before delete action
         self.nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
-        self.nodeMenu.aboutToShow.connect(self.onRightClickMenuAboutToShow)  # Find active tree view
+        self.nodeMenu.aboutToShow.connect(self.onNodeMenuAboutToShow)
         self.deleteAction = [action for action in self.nodeMenu.actions() if action.text == "Delete"][0]
 
         def confirmDeleteSelectedItems():
             message = "Are you sure you want to delete the selected nodes?"
             if slicer.util.confirmYesNoDisplay(message):
-                selected_items = vtk.vtkIdList()
-                self.subjectHierarchyTreeView.currentItems(selected_items)
-                SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(scriptedPlugin).find_and_remove_sequence_nodes(
-                    selected_items
-                )
+                SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(
+                    self.scriptedPlugin
+                ).find_and_remove_sequence_nodes()
                 self.subjectHierarchyTreeView.deleteSelectedItems()
 
         self.deleteAction.triggered.disconnect()
@@ -97,39 +95,54 @@ class CustomizedDataWidget(LTracePluginWidget):
             if action.text == "Clone" and isinstance(action.parent(), slicer.qSlicerSubjectHierarchyCloneNodePlugin)
         ][0]
 
-        def customCloneSelectedItems():
-            tree_view = CustomizedDataWidget.activeTreeView
-            if not tree_view:
-                logging.debug("Custom clone called, but no active tree view found.")
-                return
-
-            selected_items = vtk.vtkIdList()
-            tree_view.currentItems(selected_items)
-
-            SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(scriptedPlugin).find_and_clone_items(selected_items)
-
         self.cloneAction.triggered.disconnect()
-        self.cloneAction.triggered.connect(customCloneSelectedItems)
+        self.cloneAction.triggered.connect(
+            SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(self.scriptedPlugin).find_and_clone_items
+        )
+
+        # Replaces default export visible segments to labl map action with a custom one that also sets referenceImageGeometryRef
+        self.convertToLabelMapAction = [
+            action for action in self.nodeMenu.actions() if action.text == "Export visible segments to binary labelmap"
+        ][0]
+
+        def customExportSegmentsToLabelMap():
+            SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(
+                self.scriptedPlugin
+            ).find_and_create_labelmap_from_items()
+
+        self.convertToLabelMapAction.triggered.disconnect()
+        self.convertToLabelMapAction.triggered.connect(customExportSegmentsToLabelMap)
+
+        self.registerActions = [
+            action
+            for action in self.nodeMenu.actions()
+            if isinstance(action.parent(), slicer.qSlicerSubjectHierarchyRegisterPlugin)
+        ]
+        self.registerThisAction = [action for action in self.registerActions if action.text == "Register this..."][0]
+
+        self.registerThisAction.triggered.disconnect()
+        self.registerThisAction.triggered.connect(
+            SubjectHierarchyPlugins.CenterSubjectHierarchyPlugin(self.scriptedPlugin).register_current_item
+        )
 
         self.subjectHierarchyTreeView.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
 
         self.infoFrame = qt.QFrame()
-        infoFrameLayout = qt.QVBoxLayout(self.infoFrame)
-        infoFrameLayout.setContentsMargins(0, 0, 0, 0)
+        self.infoFrameLayout = qt.QVBoxLayout(self.infoFrame)
+        self.infoFrameLayout.setContentsMargins(0, 0, 0, 0)
 
         self.tabWidget = qt.QTabWidget()
-        infoFrameLayout.addWidget(self.tabWidget)
+        self.infoFrameLayout.addWidget(self.tabWidget)
 
         self.infoWidgetContainer = qt.QWidget()
         self.infoWidgetLayout = qt.QVBoxLayout(self.infoWidgetContainer)
         self.infoWidgetLayout.setContentsMargins(0, 0, 0, 0)
         self.tabWidget.addTab(self.infoWidgetContainer, "Info")
-
-        self.scalarVolumeWidget = ScalarVolumeWidget(isLabelMap=False)
+        self.scalarVolumeWidget = ScalarVolumeWidget(parent=self.infoWidgetContainer, isLabelMap=False)
         self.infoWidgetLayout.addWidget(self.scalarVolumeWidget)
         self.scalarVolumeWidget.setVisible(False)
 
-        self.vectorVolumeWidget = VectorVolumeWidget()
+        self.vectorVolumeWidget = VectorVolumeWidget(self.infoWidgetContainer)
         self.infoWidgetLayout.addWidget(self.vectorVolumeWidget)
         self.vectorVolumeWidget.setVisible(False)
 
@@ -137,7 +150,7 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.infoWidgetLayout.addWidget(self.tableWidget)
         self.tableWidget.setVisible(False)
 
-        self.labelMapWidget = ScalarVolumeWidget(isLabelMap=True)
+        self.labelMapWidget = ScalarVolumeWidget(parent=self.infoWidgetContainer, isLabelMap=True)
         self.infoWidgetLayout.addWidget(self.labelMapWidget)
         self.labelMapWidget.setVisible(False)
 
@@ -237,6 +250,10 @@ class CustomizedDataWidget(LTracePluginWidget):
         super().cleanup()
         self.subjectHierarchyTreeView.currentItemsChanged.disconnect()
         slicer.mrmlScene.RemoveObserver(self.endSceneObserver)
+        self.nodeMenu.aboutToShow.disconnect(self.onNodeMenuAboutToShow)
         self.deleteAction.triggered.disconnect()
         self.cloneAction.triggered.disconnect()
+        self.convertToLabelMapAction.triggered.disconnect()
+        if self.registerThisAction is not None:
+            self.registerThisAction.triggered.disconnect()
         self.scalarVolumeWidget.cleanup()

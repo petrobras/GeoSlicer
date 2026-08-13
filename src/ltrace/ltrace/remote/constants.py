@@ -1,0 +1,26 @@
+JOB_EVENT_CANCEL = "CANCEL"
+JOB_EVENT_COLLECT = "COLLECT"
+JOB_EVENT_DEPLOY = "DEPLOY"
+JOB_EVENT_DISCONNECTED = "DISCONNECTED"
+JOB_EVENT_PROGRESS = "PROGRESS"
+JOB_EVENT_START = "START"
+JOB_EVENT_SHUTDOWN = "SHUTDOWN"
+
+# Minimum delay between two PROGRESS polls of the same job. Prevents the
+# monitor thread from busy-looping (and starving the GIL) when a handler
+# reschedules PROGRESS immediately.
+JOB_POLL_INTERVAL_SECONDS = 5.0
+
+# Cap for the exponential backoff between reconnection attempts of a
+# disconnected job (see SlurmJobStatusMixin.disconnected).
+DISCONNECT_BACKOFF_MAX_SECONDS = 3 * 3600
+
+JOB_STATE_COMPLETED = "COMPLETED"
+JOB_STATE_DEPLOYING = "DEPLOYING"
+JOB_STATE_FAILED = "FAILED"
+JOB_STATE_NOTCONNECTED = "NOT CONNECTED"
+JOB_STATE_PENDING = "PENDING"
+JOB_STATE_RUNNING = "RUNNING"
+JOB_STATE_CANCELLED = "CANCELLED"
+JOB_STATE_IDLE = "IDLE"
+JOB_STATE_DONE = "DONE"

@@ -1,5 +1,5 @@
 ---
-icon: CustomizedCropVolume
+icon: Crop
 ---
 
-{{ include_markdown("CustomizedCropVolume") }}
+{{ include_markdown("CropTool") }}

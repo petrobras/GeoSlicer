@@ -9,7 +9,15 @@ import numpy as np
 import qt
 import slicer
 
-from ltrace.slicer.helpers import tryGetNode, tryGetNodes, reset_style_on_valid_text, highlight_error
+from ltrace.slicer.helpers import (
+    tryGetNode,
+    tryGetNodes,
+    reset_style_on_valid_text,
+    highlight_error,
+    copy_attributes,
+    copy_hierarchy_attributes,
+)
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer_utils import *
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.transforms import resample_if_needed
@@ -194,7 +202,7 @@ class VolumeCalculatorWidget(LTracePluginWidget):
         self.mnemonicTableView.setFirstRowLocked(True)
         self.mnemonicTableView.tableModel().setHorizontalHeaderLabels(["Volume name", "Mnemonic"])
         self.mnemonicTableView.setColumnWidth(1, 160)
-        self.mnemonicTableView.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        self.mnemonicTableView.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.ResizeMode.Stretch)
         self.mnemonicTableView.setFocusPolicy(qt.Qt.NoFocus)
         self.mnemonicTableView.setSelectionBehavior(self.mnemonicTableView.SelectRows)
 
@@ -259,6 +267,7 @@ class VolumeCalculatorLogic(LTracePluginLogic):
         mnemonicsDict = self.getMnemonicsDictFromMnemonicsTableNode(mnemonicsTableNode)
         nodeNamesList = self.getNodeNamesFromVariablesNames(variablesNamesList, mnemonicsDict)
         duplicateName = None
+        localVars = {}
 
         if nodeNamesList:
             resampleNeeded = False
@@ -287,7 +296,7 @@ class VolumeCalculatorLogic(LTracePluginLogic):
                         node = resampledVolume
 
                 array = slicer.util.arrayFromVolume(node)
-                exec(node.GetID() + "=array", locals())
+                localVars[node.GetID()] = array
 
                 slicer.mrmlScene.RemoveNode(resampledVolume)
 
@@ -296,9 +305,10 @@ class VolumeCalculatorLogic(LTracePluginLogic):
                 formulaString = formulaString.replace(
                     "{" + self.getVariableNameFromNodeName(nodeName, mnemonicsDict) + "}", node.GetID()
                 )
+
             try:
-                outputArray = ne.evaluate(formulaString) * 1
-            except (TypeError, SyntaxError) as e:
+                outputArray = ne.evaluate(formulaString, local_dict=localVars) * 1
+            except (TypeError, SyntaxError, ValueError) as e:
                 raise CalculateError("Invalid formula.")
 
             outputVolume = tryGetNode(outputVolumeName, hasImageData=True)
@@ -330,6 +340,7 @@ class VolumeCalculatorLogic(LTracePluginLogic):
         clippedArray = array[: minimumArrayShape[0], : minimumArrayShape[1], : minimumArrayShape[2]]
         return clippedArray
 
+    # Note that this is one more cloning method... Also, should we copy references also? Check MUSA-150
     def cloneVolumeProperties(self, volume, newVolumeName):
         newVolume = slicer.mrmlScene.AddNewNodeByClass(volume.GetClassName(), newVolumeName)
         newVolume.SetOrigin(volume.GetOrigin())
@@ -345,6 +356,9 @@ class VolumeCalculatorLogic(LTracePluginLogic):
             newVolumeDisplayNode = newVolume.GetDisplayNode()
             newVolumeDisplayNode.AutoWindowLevelOff()
             newVolumeDisplayNode.SetWindowLevel(displayNode.GetWindow(), displayNode.GetLevel())
+        copy_attributes(volume, newVolume)
+        copy_metadata(volume, newVolume)
+        copy_hierarchy_attributes(volume, newVolume)
         return newVolume
 
     def getMnemonicsDictFromMnemonicsTableNode(self, mnemonicsTableNode):

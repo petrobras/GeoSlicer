@@ -20,17 +20,25 @@ from ltrace.interactive import seg_consumer
 from ltrace.interactive.seg_ipc import (
     InterprocessPaths,
     safe_save_numpy,
+    safe_save_numpy_stacked,
+    safe_unlink,
+    safe_read_json,
     FeatureIndex,
-    FEATURE_NAMES,
+    PRESETS,
+    preset_feature_indices,
     safe_dump_json,
+    compute_preview_factor,
 )
 from ltrace.interactive.slice_view_util import Slice, get_volume_extents_in_slice_view
+from ltrace.interactive.scale_estimate import suggest_multiplier, SUPPORTED_MULTIPLIERS
+from ltrace.slicer.side_by_side_image_layout import enable_zoom_sync
 
 from ltrace.slicer import ui
 import numpy as np
 
 from ltrace.slicer import helpers
 from ltrace.slicer.node_observer import NodeObserver
+from ltrace.slicer_utils import slicer_is_in_developer_mode
 from ltrace.constants import SIDE_BY_SIDE_DUMB_LAYOUT_ID
 
 from ltrace.flow.util import (
@@ -41,6 +49,7 @@ from ltrace.flow.util import (
 
 ANNOTATION_SLICE = "SideBySideDumb1"
 PREVIEW_SLICE = "SideBySideDumb2"
+VIEW_PLANES = ("XY", "XZ", "YZ")
 
 
 def _copy_segment_names_and_colors(source_segmentation, target_segmentation):
@@ -79,7 +88,7 @@ def _kill_process_and_children(proc: subprocess.Popen, timeout=5):
         for child in children:
             child.terminate()
 
-        gone, alive = psutil.wait_procs([parent] + children, timeout=timeout)
+        _, alive = psutil.wait_procs([parent] + children, timeout=timeout)
         if alive:
             for p in alive:
                 p.kill()
@@ -91,16 +100,13 @@ def _kill_process_and_children(proc: subprocess.Popen, timeout=5):
 def _get_annotated_voxel_values_from_array(segmentationNode):
     referenceVolumeNode = helpers.getSourceVolume(segmentationNode)
 
-    # Get transform from reference volume IJK to RAS
     scalarIJKToRAS_vtk = vtk.vtkMatrix4x4()
     referenceVolumeNode.GetIJKToRASMatrix(scalarIJKToRAS_vtk)
 
-    # Get transform from RAS to reference volume IJK
     scalarRASToIJK_vtk = vtk.vtkMatrix4x4()
     scalarRASToIJK_vtk.DeepCopy(scalarIJKToRAS_vtk)
     scalarRASToIJK_vtk.Invert()
 
-    # Convert VTK matrix to numpy array
     scalarRASToIJK_np = np.zeros((4, 4))
     for r in range(4):
         for c in range(4):
@@ -183,60 +189,88 @@ def _get_annotated_voxel_values_from_array(segmentationNode):
 
 @dataclass
 class RealTimeSegLogic:
-    paths: InterprocessPaths = field(init=False)
+    # Fields are grouped by responsibility. The class still owns all of them, but
+    # the groups make it easier to see which fields change together and keep
+    # unrelated concerns (e.g. uncertainty overlay vs. subprocess) from being
+    # interleaved.
+
+    # --- Subprocess lifecycle ---
+    # The consumer process that computes features and runs train/predict.
     consumer_process: subprocess.Popen = None
+
+    # --- IPC & task dispatch ---
+    # Paths shared with the consumer, the timers driving the polling loops, and
+    # the flags tracking what work is outstanding / which stage we are in.
+    paths: InterprocessPaths = field(init=False)
+    feature_indices: list = field(init=False)
+    main_loop_timer: qt.QTimer = None
+    progress_timer: qt.QTimer = None
+    last_annotation_write_time: float = 0
+    last_result_read_time: float = 0
+    pending_training: bool = True
+    pending_inference: bool = True
+    pending_debug: bool = False
+    applying_full_image: bool = False
+    features_ready: bool = False
+
+    # --- Input & result MRML nodes ---
+    # The user's annotation and source volumes, optional extra channels and a
+    # separate inference image, plus the preview result nodes this class owns and
+    # tears down (and the observer watching the annotation for edits).
     annotation_node: "vtkMRMLSegmentationNode" = None
     source_volume_node: "vtkMRMLScalarVolumeNode" = None
     inference_volume_node: "vtkMRMLScalarVolumeNode" = None
+    extra_volume_nodes: list = field(default_factory=list)
     result_segmentation_node: "vtkMRMLSegmentationNode" = None
-    segmentation_obs: NodeObserver = None
-    annotation_slice: Slice = None
     tmp_labelmap_node: "vtkMRMLLabelMapVolumeNode" = None
+    segmentation_obs: NodeObserver = None
+
+    # --- View & layout ---
+    # The annotation (left) slice view and its observer; the preview slice lives
+    # on an instance attribute set in start_segmentation. previous_layout is the
+    # layout to restore on cleanup; it stays None until start_segmentation has
+    # switched the layout, so an early-failing start leaves nothing to restore.
+    annotation_slice: Slice = None
     annotation_slice_obs: NodeObserver = None
-    last_annotation_write_time: float = 0
-    last_result_read_time: float = 0
-    main_loop_timer: qt.QTimer = None
-    feature_indices: list = field(init=False)
-    pending_training: bool = True
-    pending_inference: bool = True
-    applying_full_image: bool = False
+    preview_slice_obs: NodeObserver = None
+    previous_layout: int = None
+    view_plane: str = "XY"
+
+    # --- Feature configuration ---
+    is_2d: bool = False
+    feature_scale: int = 1
+
+    # --- Uncertainty overlay ---
+    # The faint "most uncertain voxels" overlay shown in the annotation view.
+    show_uncertainty: bool = True
+    uncertainty_segmentation_node: "vtkMRMLSegmentationNode" = None
+    uncertainty_labelmap_node: "vtkMRMLLabelMapVolumeNode" = None
+
+    # --- Callbacks to the widget ---
     on_full_segmentation_complete_callback: callable = None
     on_process_crashed_callback: callable = None
     on_progress_callback: callable = None
     on_model_trained_callback: callable = None
-    features_ready: bool = False
-    progress_timer: qt.QTimer = None
+    on_features_complete_callback: callable = None
+    on_debug_capture_ready_callback: callable = None
+    on_view_plane_changed_callback: callable = None
 
     def __post_init__(self):
         temp_dir = Path(slicer.app.temporaryPath) / "InteractiveSegmenter"
         self.paths = InterprocessPaths(temp_dir)
         self.calculated_extents = []
 
-        self.segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
-        self.segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
-        self.segmentEditorNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segmentEditorWidget.setMRMLSegmentEditorNode(self.segmentEditorNode)
+        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
+        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
+        self.segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
+        self.segment_editor_widget.setMRMLSegmentEditorNode(self.segment_editor_node)
 
     def set_timers(self, main_loop, progress):
         self.main_loop_timer = main_loop
         self.progress_timer = progress
 
     def set_feature_preset(self, feature_preset_name):
-        FI = FeatureIndex
-        if feature_preset_name == "Sharp":
-            fi = [FI.SOURCE, FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.WINVAR_A]
-        elif feature_preset_name == "Balanced":
-            fi = [FI.SOURCE, FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Smooth":
-            fi = [FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.GAUSSIAN_D, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Extra Smooth":
-            fi = [FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.GAUSSIAN_D, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Complete":
-            fi = [FI(i) for i in range(len(FI))]
-        else:
-            raise ValueError(f"Unknown feature set: {feature_preset_name}")
-
-        self.feature_indices = [i.value for i in fi]
+        self.feature_indices = preset_feature_indices(feature_preset_name)
         self._on_input_modified()
         logging.debug(f"Feature set set to: {self.feature_indices}")
 
@@ -266,9 +300,10 @@ class RealTimeSegLogic:
             return
 
         self.features_ready = False
-        if self.paths.base_dir.exists():
-            shutil.rmtree(self.paths.base_dir)
-        self.paths.base_dir.mkdir(parents=True)
+        # ignore_errors tolerates a stale file an orphaned consumer may still
+        # hold open on Windows (WinError 32); the fresh session writes over it.
+        shutil.rmtree(self.paths.base_dir, ignore_errors=True)
+        self.paths.base_dir.mkdir(parents=True, exist_ok=True)
         python_slicer_executable = shutil.which("PythonSlicer")
 
         self.annotation_node = segmentation_node
@@ -276,6 +311,8 @@ class RealTimeSegLogic:
 
         if not self.source_volume_node:
             raise ValueError("Could not find the source volume for the selected segmentation node.")
+
+        self.is_2d = self.source_volume_node.GetImageData().GetDimensions()[2] == 1
 
         layout_manager = slicer.app.layoutManager()
         self.previous_layout = layout_manager.layout
@@ -288,19 +325,39 @@ class RealTimeSegLogic:
         self.preview_slice.set_bg(self.source_volume_node)
         slicer.app.processEvents(1000)
 
+        self.annotation_slice.set_orientation(self.view_plane)
+        self.preview_slice.set_orientation(self.view_plane)
+
         self.annotation_slice.fit()
         self.preview_slice.fit()
 
         self.preview_slice.link()
         self.annotation_slice.link()
 
+        # Workaround for ctrl+scroll zoom not propagating the slice origin to linked views.
+        enable_zoom_sync(ANNOTATION_SLICE, PREVIEW_SLICE)
+
+        self._sync_preview_offset()
+
         for display_node in slicer.util.getNodesByClass("vtkMRMLSegmentationDisplayNode"):
             display_node.SetVisibility(False)
 
         self._setup_segmentation_display(segmentation_node, self.annotation_slice.node.GetID())
 
-        source_array = slicer.util.arrayFromVolume(self.source_volume_node)
-        safe_save_numpy(source_array, self.paths.source)
+        source_arrays = [slicer.util.arrayFromVolume(self.source_volume_node)]
+        for extra_node in self.extra_volume_nodes:
+            extra_array = slicer.util.arrayFromVolume(extra_node)
+            if extra_array.shape[:3] != source_arrays[0].shape[:3]:
+                raise ValueError(
+                    f"Extra image '{extra_node.GetName()}' must have the same dimensions as the input image."
+                )
+            source_arrays.append(extra_array)
+
+        if len(source_arrays) == 1:
+            safe_save_numpy(source_arrays[0], self.paths.source)
+        else:
+            # Extra co-registered images are appended as additional channels
+            safe_save_numpy_stacked(source_arrays, self.paths.source)
         logging.debug(f"Source image saved to {self.paths.source}")
 
         si = None
@@ -316,6 +373,12 @@ class RealTimeSegLogic:
             self.paths.base_dir.resolve().as_posix(),
             "--parent-pid",
             str(os.getpid()),
+            # Compute the active preset's features first so the preview appears sooner.
+            "--initial-features",
+            ",".join(str(i) for i in self.feature_indices),
+            # Scale every feature kernel for coarser-textured images (1/2/4).
+            "--feature-scale",
+            str(self.feature_scale),
         ]
 
         logging.debug(f"Starting consumer process with command: {' '.join(command)}")
@@ -331,28 +394,44 @@ class RealTimeSegLogic:
         self.progress_timer.start()
 
     def _check_progress(self):
-        if not self.paths.progress.exists():
+        if self.paths.progress.exists():
+            try:
+                with open(self.paths.progress, "r") as f:
+                    progress_data = json.load(f)
+                self.paths.progress.unlink()
+            except (OSError, ValueError):
+                progress_data = None
+
+            if progress_data is not None:
+                if self.on_progress_callback:
+                    self.on_progress_callback(progress_data["progress"], progress_data["message"])
+
+                # During a full-image apply the progress file alone signals completion.
+                if self.applying_full_image and progress_data["progress"] >= 100:
+                    self.progress_timer.stop()
+                    logging.debug("Full image task complete.")
+                    self.check_and_update_result()
+                    return
+
+        if self.applying_full_image:
             return
 
-        with open(self.paths.progress, "r") as f:
-            progress_data = json.load(f)
+        # Preview-ready: the active preset's features exist, so start serving previews.
+        # The user may already have annotated; _start_main_loop force-trains on the
+        # current annotation, so nothing painted during warmup is lost.
+        if not self.features_ready and self.paths.preview_ready.exists():
+            self.features_ready = True
+            logging.debug("Preview features ready.")
+            if self.on_progress_callback:
+                self.on_progress_callback(100, "Preview ready.")
+            self._start_main_loop()
 
-        self.paths.progress.unlink()
-
-        if self.on_progress_callback:
-            self.on_progress_callback(progress_data["progress"], progress_data["message"])
-
-        if progress_data["progress"] >= 100:
+        # Features-complete: every feature is computed, so preset switching is safe.
+        if self.paths.features_complete.exists():
             self.progress_timer.stop()
-            logging.debug("Task complete.")
-
-            if self.applying_full_image:
-                self.check_and_update_result()
-            else:
-                self.features_ready = True
-                if self.on_progress_callback:
-                    self.on_progress_callback(100, "Features ready.")
-                self._start_main_loop()
+            logging.debug("All features computed.")
+            if self.on_features_complete_callback:
+                self.on_features_complete_callback()
 
     def _start_main_loop(self):
         self.segmentation_obs = NodeObserver(self.annotation_node)
@@ -360,6 +439,9 @@ class RealTimeSegLogic:
 
         self.annotation_slice_obs = NodeObserver(self.annotation_slice.node)
         self.annotation_slice_obs.modifiedSignal.connect(self._on_view_modified)
+
+        self.preview_slice_obs = NodeObserver(self.preview_slice.node)
+        self.preview_slice_obs.modifiedSignal.connect(self._on_view_modified)
 
         self._on_segmentation_modified()
         logging.debug("NodeObserver for segmentation node started.")
@@ -371,14 +453,8 @@ class RealTimeSegLogic:
     def stop_segmentation(self):
         self.progress_timer.stop()
         self.main_loop_timer.stop()
-        try:
-            self.progress_timer.timeout.disconnect()
-        except (TypeError, RuntimeError):
-            logging.error("Failed to disconnect progress timer; it may not have been connected.")
-        try:
-            self.main_loop_timer.timeout.disconnect()
-        except (TypeError, RuntimeError):
-            logging.error("Failed to disconnect main loop timer; it may not have been connected.")
+        self.progress_timer.timeout.disconnect()
+        self.main_loop_timer.timeout.disconnect()
 
         if self.is_running():
             safe_dump_json({"action": "stop"}, self.paths.task)
@@ -388,19 +464,58 @@ class RealTimeSegLogic:
         self._cleanup()
         logging.debug("Real-time segmentation stopped and cleaned up.")
 
+    def set_view_plane(self, plane):
+        """Reorient both slice views to `plane` and refit, discarding the preview:
+        segments computed in the old orientation show up as 1-voxel-thick lines in
+        the new plane. Skipping views already on `plane` avoids re-fitting one the
+        user just reoriented by hand."""
+        if plane != self.view_plane:
+            self._reset_preview()
+        self.view_plane = plane
+        for slice_obj in (self.annotation_slice, self.preview_slice):
+            if slice_obj.orientation != plane:
+                slice_obj.set_orientation(plane)
+                slice_obj.fit()
+        self._sync_preview_offset()
+
+    def _sync_preview_offset(self):
+        if self.annotation_slice.orientation != self.preview_slice.orientation:
+            return
+        self.annotation_slice.snap_to_ijk()
+        ann_offset = self.annotation_slice.offset
+        if abs(self.preview_slice.offset - ann_offset) > 1e-6:
+            self.preview_slice.set_offset(ann_offset)
+
+    def _sync_view_plane(self):
+        """Adopt an orientation the user set through a slice view's own selector,
+        propagating it to the other view and notifying the widget."""
+        for slice_obj in (self.annotation_slice, self.preview_slice):
+            plane = slice_obj.orientation
+            # An oblique reformat reports "Reformat"; the module only tracks the
+            # three axis-aligned planes, so ignore anything else.
+            if plane != self.view_plane and plane in VIEW_PLANES:
+                self.set_view_plane(plane)
+                if self.on_view_plane_changed_callback:
+                    self.on_view_plane_changed_callback(plane)
+                return
+        self._sync_preview_offset()
+
     def _on_view_modified(self, *args, **kwargs):
         if not self.annotation_node:
             logging.warning("Segmentation node is None in _on_view_modified; skipping update.")
             return
         self.pending_inference = True
+        self._sync_view_plane()
 
     def _request_inference(self):
         extents = get_volume_extents_in_slice_view(self.source_volume_node, self.annotation_slice)
         if not extents:
             return
-        for existing_extent in self.calculated_extents:
+        factor = compute_preview_factor(extents) if self.is_2d else 1
+        for existing_extent, existing_factor in self.calculated_extents:
             if (
-                existing_extent[0] <= extents[0]
+                existing_factor <= factor
+                and existing_extent[0] <= extents[0]
                 and existing_extent[1] >= extents[1]
                 and existing_extent[2] <= extents[2]
                 and existing_extent[3] >= extents[3]
@@ -420,13 +535,68 @@ class RealTimeSegLogic:
         }
         safe_dump_json(task_params, self.paths.task)
 
+    def request_debug_capture(self):
+        """
+        Request a one-off debug preview for the current view. The consumer runs
+        its normal preview path with a capture sink and writes debug_capture.npz,
+        which update_loop picks up. The 2D report explains the lazy feature path
+        over the whole image; the 3D report shows orthogonal central slices of the
+        previewed region. Returns None on success or an explanatory message
+        string on failure.
+        """
+        if not self.features_ready:
+            return "Features are not ready yet. Please wait."
+        is_trained = False
+        if self.paths.model_status.exists():
+            is_trained = safe_read_json(self.paths.model_status).get("is_trained", False)
+        if not is_trained:
+            return "Model is not trained yet. Annotate at least two classes first."
+        extents = get_volume_extents_in_slice_view(self.source_volume_node, self.annotation_slice)
+        if not extents:
+            return "No visible region to capture."
+        if self.paths.task.exists():
+            return "The consumer is busy. Try again in a moment."
+        if self.paths.debug_capture.exists():
+            self.paths.debug_capture.unlink()
+
+        # Per-image channel layout, in the same order the source channels are
+        # stacked (source node first, then extras). Lets the renderer split the
+        # flat channel stack back into one image (RGB or grayscale) per input.
+        image_nodes = [self.source_volume_node] + list(self.extra_volume_nodes)
+        image_channels = [node.GetImageData().GetNumberOfScalarComponents() for node in image_nodes]
+        image_names = [node.GetName() for node in image_nodes]
+
+        task_params = {
+            "action": "predict",
+            "extents": extents,
+            "features": self.feature_indices,
+            "debug": True,
+            "image_channels": image_channels,
+            "image_names": image_names,
+        }
+        safe_dump_json(task_params, self.paths.task)
+        self.pending_debug = True
+        return None
+
+    def _check_debug_capture(self):
+        if self.pending_debug and self.paths.debug_capture.exists():
+            self.pending_debug = False
+            if self.on_debug_capture_ready_callback:
+                self.on_debug_capture_ready_callback(self.paths.debug_capture)
+
     def _on_segmentation_modified(self, *args, **kwargs):
         self._on_input_modified()
 
     def _on_input_modified(self):
+        self.pending_training = True
+        self._reset_preview()
+
+    def _reset_preview(self):
+        """Discard the accumulated preview segments and covered extents and schedule a fresh inference."""
         if self.result_segmentation_node:
             self.result_segmentation_node.GetSegmentation().RemoveAllSegments()
-        self.pending_training = True
+        if self.uncertainty_segmentation_node:
+            self.uncertainty_segmentation_node.GetSegmentation().RemoveAllSegments()
         self.pending_inference = True
         self.calculated_extents.clear()
 
@@ -469,17 +639,30 @@ class RealTimeSegLogic:
             return
 
         if self.paths.model_status.exists():
-            with open(self.paths.model_status, "r") as f:
-                model_status = json.load(f)
-            if self.on_model_trained_callback:
+            # The consumer may be mid-rewrite of model_status.json; its atomic
+            # replace briefly denies readers on Windows (PermissionError). Skip
+            # this cycle if so -- the next tick retries (same tolerance as the
+            # result.unlink below).
+            try:
+                with open(self.paths.model_status, "r") as f:
+                    model_status = json.load(f)
+            except PermissionError:
+                model_status = None
+            if model_status is not None and self.on_model_trained_callback:
                 self.on_model_trained_callback(model_status.get("is_trained", False))
 
         if self.pending_inference:
-            if self.paths.result.exists():
-                self.paths.result.unlink()
+            # The consumer may still hold result.npz open while rewriting it, so
+            # on Windows the delete can raise WinError 32. Skip this cycle if so;
+            # the next tick retries (mirrors seg_ipc.safe_replace's tolerance).
+            try:
+                self.paths.result.unlink(missing_ok=True)
+            except PermissionError:
+                pass
         else:
             self.check_and_update_result()
         self.check_and_update_inputs()
+        self._check_debug_capture()
 
     def check_and_update_inputs(self):
         if self.pending_training:
@@ -501,74 +684,101 @@ class RealTimeSegLogic:
 
             result_arrays = np.load(self.paths.result)
             result_array = result_arrays.get("result", None)
+            uncertainty_array = result_arrays.get("uncertainty", None)
 
-            if self.result_segmentation_node:
-                if result_array.size > 0:
-                    extents = result_arrays.get("extents", None)
-                    i_min, _, j_min, _, k_min, _ = extents
+            if self.result_segmentation_node and result_array.size > 0:
+                extents = result_arrays.get("extents", None)
+                factor = int(result_arrays.get("factor", 1))
 
-                    ijkToRas = vtk.vtkMatrix4x4()
-                    source_for_geometry = self.source_volume_node
-                    if self.applying_full_image and self.inference_volume_node:
-                        source_for_geometry = self.inference_volume_node
-                    source_for_geometry.GetIJKToRASMatrix(ijkToRas)
+                source_for_geometry = self.source_volume_node
+                if self.applying_full_image and self.inference_volume_node:
+                    source_for_geometry = self.inference_volume_node
 
-                    origin_ijk = [i_min, j_min, k_min, 1]
-                    origin_ras = ijkToRas.MultiplyPoint(origin_ijk)
+                self._import_result_preview(result_array, extents, factor, source_for_geometry)
 
-                    self.tmp_labelmap_node.SetOrigin(origin_ras[:3])
-                    slicer.util.updateVolumeFromArray(self.tmp_labelmap_node, result_array)
-
-                    n_existing_segments = self.result_segmentation_node.GetSegmentation().GetNumberOfSegments()
-                    slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
-                        self.tmp_labelmap_node, self.result_segmentation_node
-                    )
-                    n_total_segments = self.result_segmentation_node.GetSegmentation().GetNumberOfSegments()
-
-                    segmentation = self.result_segmentation_node.GetSegmentation()
-
-                    result_segments_by_label = {}
-                    for i in range(n_existing_segments, n_total_segments):
-                        segment_id = segmentation.GetNthSegmentID(i)
-                        segment = segmentation.GetSegment(segment_id)
-                        label_value = segment.GetLabelValue()
-                        assert label_value not in result_segments_by_label
-                        result_segments_by_label[label_value] = segment_id
-
-                    for i in range(n_existing_segments):
-                        source_segment_id = segmentation.GetNthSegmentID(i)
-                        label_value = segmentation.GetSegment(source_segment_id).GetLabelValue()
-                        target_segment_id = result_segments_by_label.get(label_value, None)
-                        if target_segment_id is not None:
-                            self.add_segment_to_segment(
-                                self.result_segmentation_node, source_segment_id, target_segment_id
-                            )
-                            segmentation.RemoveSegment(target_segment_id)
-                            logging.debug(f"Merged label {label_value}.")
-                        else:
-                            logging.debug(f"No result segment found for label {label_value}; skipping merge.")
-
-                    self.calculated_extents.append(extents)
-                    _copy_segment_names_and_colors(self.annotation_node, self.result_segmentation_node)
+                if not self.applying_full_image and self.show_uncertainty:
+                    self._update_uncertainty(uncertainty_array, extents, factor, source_for_geometry)
 
             self.last_result_read_time = mtime
 
             if self.applying_full_image:
-                if self.main_loop_timer:
-                    self.main_loop_timer.stop()
-                if self.on_full_segmentation_complete_callback:
-                    result_node = self.result_segmentation_node
-                    result_node.SaveWithSceneOn()
-
-                    # Don't delete later
-                    self.result_segmentation_node = None
-
-                    self.on_full_segmentation_complete_callback(result_node)
-                return
+                self._finalize_full_apply()
 
         except Exception as e:
-            logging.error(f"Failed to load or update result node: {e}")
-            traceback.print_exc()
+            logging.exception("Failed to load or update reusult node.")
+
+    def _import_result_preview(self, result_array, extents, factor, source_for_geometry):
+        """Place `result_array` into the temporary labelmap with the right
+        geometry, import it into the result segmentation, then merge the new
+        segments into the ones accumulated so far (2D replaces wholesale)."""
+        i_min, _, j_min, _, k_min, _ = extents
+
+        ijkToRas = vtk.vtkMatrix4x4()
+        source_for_geometry.GetIJKToRASMatrix(ijkToRas)
+        origin_ras = ijkToRas.MultiplyPoint([i_min, j_min, k_min, 1])
+
+        self.tmp_labelmap_node.SetOrigin(origin_ras[:3])
+        # Downscaled previews cover `factor` source pixels per result pixel
+        spacing = source_for_geometry.GetSpacing()
+        self.tmp_labelmap_node.SetSpacing(spacing[0] * factor, spacing[1] * factor, spacing[2])
+        slicer.util.updateVolumeFromArray(self.tmp_labelmap_node, result_array)
+
+        if self.is_2d:
+            # 2D previews always cover the whole visible region, and merging
+            # mixed-resolution segments through the segment editor would
+            # resample them at full resolution, which is prohibitive for
+            # very large images. Replace the preview instead of merging.
+            self.result_segmentation_node.GetSegmentation().RemoveAllSegments()
+            self.calculated_extents.clear()
+
+        n_existing_segments = self.result_segmentation_node.GetSegmentation().GetNumberOfSegments()
+        slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
+            self.tmp_labelmap_node, self.result_segmentation_node
+        )
+        n_total_segments = self.result_segmentation_node.GetSegmentation().GetNumberOfSegments()
+
+        self._merge_result_segments(n_existing_segments, n_total_segments)
+
+        self.calculated_extents.append((list(extents), factor))
+        _copy_segment_names_and_colors(self.annotation_node, self.result_segmentation_node)
+
+    def _merge_result_segments(self, n_existing_segments, n_total_segments):
+        """Merge each freshly imported segment (indices
+        [n_existing_segments, n_total_segments)) into the pre-existing segment
+        with the same label value, so previews accumulated across views keep one
+        segment per class rather than one per import."""
+        segmentation = self.result_segmentation_node.GetSegmentation()
+
+        result_segments_by_label = {}
+        for i in range(n_existing_segments, n_total_segments):
+            segment_id = segmentation.GetNthSegmentID(i)
+            label_value = segmentation.GetSegment(segment_id).GetLabelValue()
+            result_segments_by_label[label_value] = segment_id
+
+        for i in range(n_existing_segments):
+            source_segment_id = segmentation.GetNthSegmentID(i)
+            label_value = segmentation.GetSegment(source_segment_id).GetLabelValue()
+            target_segment_id = result_segments_by_label.get(label_value, None)
+            if target_segment_id is not None:
+                self.add_segment_to_segment(self.result_segmentation_node, source_segment_id, target_segment_id)
+                segmentation.RemoveSegment(target_segment_id)
+                logging.debug(f"Merged label {label_value}.")
+            else:
+                logging.debug(f"No result segment found for label {label_value}; skipping merge.")
+
+    def _finalize_full_apply(self):
+        """Stop the main loop and hand the completed full-image result node to the
+        completion callback, releasing ownership so _cleanup won't delete it."""
+        if self.main_loop_timer:
+            self.main_loop_timer.stop()
+        if self.on_full_segmentation_complete_callback:
+            result_node = self.result_segmentation_node
+            result_node.SaveWithSceneOn()
+
+            # Don't delete later
+            self.result_segmentation_node = None
+
+            self.on_full_segmentation_complete_callback(result_node)
 
     def _setup_result_node(self):
         self.result_segmentation_node = slicer.mrmlScene.AddNewNodeByClass(
@@ -583,42 +793,137 @@ class RealTimeSegLogic:
         self.tmp_labelmap_node.SaveWithSceneOff()
         self.tmp_labelmap_node.CopyOrientation(self.source_volume_node)
 
+        # Overlay highlighting the classifier's most uncertain voxels, shown only
+        # in the annotation (left) view alongside the user's annotation.
+        self.uncertainty_segmentation_node = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLSegmentationNode", "UncertaintyPreview"
+        )
+        self.uncertainty_segmentation_node.SaveWithSceneOff()
+        self._setup_segmentation_display(self.uncertainty_segmentation_node, self.annotation_slice.node.GetID())
+        helpers.setSourceVolume(self.uncertainty_segmentation_node, self.source_volume_node)
+
+        # The overlay sits on top of the user's annotation, so keep the fill faint
+        # and rely on the outline to mark the uncertain regions without hiding the
+        # underlying image.
+        uncertainty_display = self.uncertainty_segmentation_node.GetNthDisplayNode(1)
+        if uncertainty_display:
+            uncertainty_display.SetOpacity2DFill(0.3)
+            uncertainty_display.SetVisibility2DOutline(True)
+            uncertainty_display.SetOpacity2DOutline(1.0)
+
+        self.uncertainty_labelmap_node = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLLabelMapVolumeNode", "UncertaintyResult"
+        )
+        self.uncertainty_labelmap_node.HideFromEditorsOn()
+        self.uncertainty_labelmap_node.SaveWithSceneOff()
+        self.uncertainty_labelmap_node.CopyOrientation(self.source_volume_node)
+
+        self._update_uncertainty_visibility()
+
         logging.debug(f"Created result node: {self.result_segmentation_node.GetName()}")
 
+    def _update_uncertainty_visibility(self):
+        if not self.uncertainty_segmentation_node:
+            return
+        display_node = self.uncertainty_segmentation_node.GetNthDisplayNode(1)
+        if display_node:
+            display_node.SetVisibility(self.show_uncertainty)
+
+    def set_show_uncertainty(self, value):
+        self.show_uncertainty = value
+        self._update_uncertainty_visibility()
+        if value:
+            # Re-run inference so the overlay reflects the current view immediately.
+            self.pending_inference = True
+            self.calculated_extents.clear()
+        elif self.uncertainty_segmentation_node:
+            self.uncertainty_segmentation_node.GetSegmentation().RemoveAllSegments()
+
+    def _update_uncertainty(self, uncertainty_array, extents, factor, source_for_geometry):
+        if not self.uncertainty_segmentation_node:
+            return
+
+        segmentation = self.uncertainty_segmentation_node.GetSegmentation()
+        # The overlay only ever reflects the current view, so replace it wholesale
+        # rather than merging across extents like the result preview.
+        segmentation.RemoveAllSegments()
+
+        if uncertainty_array is None or uncertainty_array.size == 0 or not np.any(uncertainty_array):
+            return
+
+        i_min, _, j_min, _, k_min, _ = extents
+        ijkToRas = vtk.vtkMatrix4x4()
+        source_for_geometry.GetIJKToRASMatrix(ijkToRas)
+        origin_ras = ijkToRas.MultiplyPoint([i_min, j_min, k_min, 1])
+
+        self.uncertainty_labelmap_node.SetOrigin(origin_ras[:3])
+        spacing = source_for_geometry.GetSpacing()
+        self.uncertainty_labelmap_node.SetSpacing(spacing[0] * factor, spacing[1] * factor, spacing[2])
+        slicer.util.updateVolumeFromArray(self.uncertainty_labelmap_node, uncertainty_array.astype(np.uint8))
+
+        slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
+            self.uncertainty_labelmap_node, self.uncertainty_segmentation_node
+        )
+
+        for i in range(segmentation.GetNumberOfSegments()):
+            segment = segmentation.GetSegment(segmentation.GetNthSegmentID(i))
+            segment.SetName("Uncertain")
+            segment.SetColor(1.0, 0.4, 0.0)
+
     def _cleanup(self):
+        # Detach the segment editor widget from its segmentation node and scene
+        # *before* removing any node. add_segment_to_segment() leaves this widget
+        # observing result_segmentation_node, so removing that node while the
+        # widget is still attached re-enters its segments model during teardown
+        # and corrupts the sort/filter proxy mapping (crash in
+        # qMRMLSegmentsModel::onSegmentRemoved).
+        if self.segment_editor_widget:
+            self.segment_editor_widget.setSegmentationNode(None)
+            self.segment_editor_widget.setMRMLScene(None)
+            self.segment_editor_widget = None
+
         if self.tmp_labelmap_node and slicer.mrmlScene.IsNodePresent(self.tmp_labelmap_node):
             slicer.mrmlScene.RemoveNode(self.tmp_labelmap_node)
             self.tmp_labelmap_node = None
 
-        if self.segmentEditorNode and slicer.mrmlScene.IsNodePresent(self.segmentEditorNode):
-            slicer.mrmlScene.RemoveNode(self.segmentEditorNode)
-            self.segmentEditorNode = None
+        if self.segment_editor_node and slicer.mrmlScene.IsNodePresent(self.segment_editor_node):
+            slicer.mrmlScene.RemoveNode(self.segment_editor_node)
+            self.segment_editor_node = None
 
         if self.result_segmentation_node and slicer.mrmlScene.IsNodePresent(self.result_segmentation_node):
             slicer.mrmlScene.RemoveNode(self.result_segmentation_node)
             self.result_segmentation_node = None
 
-        if self.segmentEditorWidget:
-            self.segmentEditorWidget.setMRMLScene(None)
-            self.segmentEditorWidget = None
+        if self.uncertainty_labelmap_node and slicer.mrmlScene.IsNodePresent(self.uncertainty_labelmap_node):
+            slicer.mrmlScene.RemoveNode(self.uncertainty_labelmap_node)
+            self.uncertainty_labelmap_node = None
+
+        if self.uncertainty_segmentation_node and slicer.mrmlScene.IsNodePresent(self.uncertainty_segmentation_node):
+            slicer.mrmlScene.RemoveNode(self.uncertainty_segmentation_node)
+            self.uncertainty_segmentation_node = None
 
         if self.segmentation_obs:
             self.segmentation_obs.clear()
         if self.annotation_slice_obs:
             self.annotation_slice_obs.clear()
+        if self.preview_slice_obs:
+            self.preview_slice_obs.clear()
 
         shutil.rmtree(self.paths.base_dir, ignore_errors=True)
-        slicer.app.layoutManager().setLayout(self.previous_layout)
+        # Only restore the layout if start_segmentation actually changed it; an
+        # early-failing start cleans up here before previous_layout was set.
+        if self.previous_layout is not None:
+            slicer.app.layoutManager().setLayout(self.previous_layout)
 
     def add_segment_to_segment(self, seg_node, segment_a, segment_b):
         modifierSegmentID = segment_b
         selectedSegmentID = segment_a
-        self.segmentEditorWidget.setSegmentationNode(seg_node)
-        self.segmentEditorNode.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
-        self.segmentEditorNode.SetMaskMode(slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere)
-        self.segmentEditorNode.SetSelectedSegmentID(selectedSegmentID)
-        self.segmentEditorWidget.setActiveEffectByName("Logical operators")
-        effect = self.segmentEditorWidget.activeEffect()
+        self.segment_editor_widget.setSegmentationNode(seg_node)
+        self.segment_editor_node.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
+        self.segment_editor_node.SetMaskMode(slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere)
+        self.segment_editor_node.SetSelectedSegmentID(selectedSegmentID)
+        self.segment_editor_widget.setActiveEffectByName("Logical operators")
+        effect = self.segment_editor_widget.activeEffect()
         effect.setParameter("BypassMasking", "1")
         effect.setParameter("ModifierSegmentID", modifierSegmentID)
         effect.setParameter("Operation", "UNION")
@@ -667,18 +972,53 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._inputSelector = ui.hierarchyVolumeInput(
             onChange=self._onInputNodeChanged,
             hasNone=True,
-            nodeTypes=["vtkMRMLScalarVolumeNode"],
+            nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
         )
         self._inputSelector.setMRMLScene(slicer.mrmlScene)
         self._inputSelector.setToolTip("Select the volume to segment.")
-        inputLayout.addRow("Input Image:", self._inputSelector)
+        inputLayout.addRow(" ", None)
+        inputLayout.addRow("Image 1:", self._inputSelector)
+        inputLayout.addRow(" ", None)
+
+        self._extraImageSelectors = []
+        extraImageGroupBox = qt.QGroupBox("Extra channels (optional):")
+        extraImageLayout = qt.QFormLayout(extraImageGroupBox)
+        inputLayout.addRow(extraImageGroupBox)
+        for index in (2, 3):
+            extraSelector = ui.hierarchyVolumeInput(
+                hasNone=True,
+                nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
+            )
+            extraSelector.setMRMLScene(slicer.mrmlScene)
+            extraSelector.setToolTip(
+                "Optional co-registered image of the same dimensions, appended as extra channels for "
+                "segmentation (e.g. xpol0/xpol45 images of a thin section, or a saturated microCT scan)."
+            )
+            extraImageLayout.addRow(f"Image {index}:", extraSelector)
+            self._extraImageSelectors.append(extraSelector)
+
+        self._paramSection = ctk.ctkCollapsibleButton()
+        self._paramSection.collapsed = False
+        self._paramSection.text = "Parameters"
+        layout.addWidget(self._paramSection)
+        paramLayout = qt.QFormLayout(self._paramSection)
+
+        self._featureScaleComboBox = qt.QComboBox()
+        self._featureScaleComboBox.addItems(["Auto"] + [f"{m}x" for m in SUPPORTED_MULTIPLIERS])
+        self._featureScaleComboBox.setToolTip(
+            "Scale every feature kernel for coarser-textured images. "
+            "Auto estimates the multiplier from the image's characteristic texture length."
+        )
+        self._featureScaleComboBox.currentTextChanged.connect(self._onFeatureScaleChanged)
+        paramLayout.addRow("Feature Scale:", self._featureScaleComboBox)
 
         self._runButton = qt.QPushButton()
         self._runButton.setFixedHeight(40)
         self._runButton.objectName = "Run Button"
-        inputLayout.addRow(" ", None)
-        inputLayout.addRow(self._runButton)
-        inputLayout.addRow(" ", None)
+
+        layout.addSpacing(10)
+        layout.addWidget(self._runButton)
+        layout.addSpacing(10)
 
         self._annotationSection = ctk.ctkCollapsibleButton()
         self._annotationSection.visible = False
@@ -686,12 +1026,20 @@ class InteractiveSegmenterFrame(qt.QFrame):
         layout.addWidget(self._annotationSection)
         annotationLayout = qt.QFormLayout(self._annotationSection)
 
+        self._viewPlaneComboBox = qt.QComboBox()
+        self._viewPlaneComboBox.addItems(list(VIEW_PLANES))
+        self._viewPlaneTooltip = "Choose which plane of the volume to annotate and preview."
+        self._viewPlaneComboBox.setToolTip(self._viewPlaneTooltip)
+        self._viewPlaneComboBox.currentTextChanged.connect(self._onViewPlaneChanged)
+        annotationLayout.addRow("View Plane:", self._viewPlaneComboBox)
+
         self._featurePresetComboBox = qt.QComboBox()
-        self._featurePresetComboBox.addItems(["Sharp", "Balanced", "Smooth", "Extra Smooth", "Complete"])
+        self._featurePresetComboBox.addItems(list(PRESETS.keys()))
         self._featurePresetComboBox.setCurrentText("Balanced")
-        self._featurePresetComboBox.setToolTip(
+        self._featurePresetTooltip = (
             "Change the smoothness of the result by selecting which filters to apply before training."
         )
+        self._featurePresetComboBox.setToolTip(self._featurePresetTooltip)
         self._featurePresetComboBox.currentTextChanged.connect(self._onFeaturePresetChanged)
         annotationLayout.addRow("Feature Set:", self._featurePresetComboBox)
 
@@ -708,6 +1056,31 @@ class InteractiveSegmenterFrame(qt.QFrame):
         featureListLayout.addWidget(self._featureListLabel)
         annotationLayout.addRow(self._featureListGroupBox)
 
+        uncertaintyToolTip = (
+            "Highlight in the left view the voxels the preview classifier is least certain about. "
+            "These are the most useful places to add annotations."
+        )
+        self._showUncertaintyCheckBox = qt.QCheckBox()
+        self._showUncertaintyCheckBox.setChecked(True)
+        self._showUncertaintyCheckBox.setToolTip(uncertaintyToolTip)
+        self._showUncertaintyCheckBox.toggled.connect(self._onShowUncertaintyToggled)
+
+        # QCheckBox text is plain-text only, so the word is rendered in a sibling
+        # rich-text label colored to match the uncertainty overlay (rgb 255,102,0).
+        uncertaintyLabel = qt.QLabel(
+            'Show <a href="#" style="color:#ff6600; text-decoration:none;">uncertain</a> regions'
+        )
+        uncertaintyLabel.setToolTip(uncertaintyToolTip)
+        uncertaintyLabel.linkActivated.connect(lambda _: self._showUncertaintyCheckBox.toggle())
+
+        uncertaintyRow = qt.QWidget()
+        uncertaintyRowLayout = qt.QHBoxLayout(uncertaintyRow)
+        uncertaintyRowLayout.setContentsMargins(0, 0, 0, 0)
+        uncertaintyRowLayout.addWidget(self._showUncertaintyCheckBox)
+        uncertaintyRowLayout.addWidget(uncertaintyLabel)
+        uncertaintyRowLayout.addStretch(1)
+        annotationLayout.addRow(uncertaintyRow)
+
         (
             self._segmentEditor,
             _,
@@ -723,6 +1096,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
             "Paint",
             "Draw",
             "Erase",
+            "Level tracing",
         ]
         self._segmentEditor.setEffectNameOrder(effects)
         self._segmentEditor.unorderedEffectsVisible = False
@@ -739,7 +1113,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._inferenceImageSelector = ui.hierarchyVolumeInput(
             onChange=self._onInferenceNodeChanged,
             hasNone=True,
-            nodeTypes=["vtkMRMLScalarVolumeNode"],
+            nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
         )
         self._inferenceImageSelector.setMRMLScene(slicer.mrmlScene)
         self._inferenceImageSelector.setToolTip(
@@ -755,6 +1129,15 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._applyButton.enabled = False
         inputLayout.addRow(" ", None)
         outputLayout.addRow(self._applyButton)
+
+        # Developer aid: dump and render a montage explaining how the current
+        # preview was computed (features, computed region, training samples,
+        # result for 2D; orthogonal feature/result slices for 3D).
+        self._debugPreviewButton = qt.QPushButton("Debug Preview")
+        self._debugPreviewButton.toolTip = "Render a montage explaining how the current preview is computed."
+        self._debugPreviewButton.clicked.connect(self._onDebugPreviewClicked)
+        self._debugPreviewButton.visible = slicer_is_in_developer_mode()
+        outputLayout.addRow(self._debugPreviewButton)
 
         self._progressBar = qt.QProgressBar()
         self._progressBar.setRange(0, 100)
@@ -804,14 +1187,22 @@ class InteractiveSegmenterFrame(qt.QFrame):
             self._progressBar.setRange(0, 0) if show_progress else self._progressBar.setRange(0, 100)
 
     def _onFeatureProgressUpdate(self, progress, message):
-        self._statusLabel.setText(f"Calculating: {message}")
+        # Annotation is already enabled (see _startSegmentation); this only reports
+        # how close the preview is while the user annotates.
         self._progressBar.setRange(0, 100)
         self._progressBar.setValue(progress)
         self._progressBar.setVisible(True)
 
         if progress >= 100:
             self._onStatusUpdate("Ready", show_progress=False)
-            self._annotationSection.enabled = True
+        else:
+            self._statusLabel.setText(f"Computing preview: {message}")
+
+    def _onFeaturesComplete(self):
+        # Every feature is now cached, so switching presets no longer risks reading
+        # not-yet-computed features.
+        self._featurePresetComboBox.enabled = True
+        self._featurePresetComboBox.setToolTip(self._featurePresetTooltip)
 
     def _onModelTrained(self, status):
         if self._state:
@@ -819,7 +1210,6 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
     def _onResumeSegButtonClicked(self):
         layoutManager = slicer.app.layoutManager()
-        self.previous_layout = layoutManager.layout
         layoutManager.setLayout(SIDE_BY_SIDE_DUMB_LAYOUT_ID)
 
     def _onLayoutChanged(self, layout):
@@ -836,6 +1226,14 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
         self._setRunButtonState(True)
         self._inputSelector.enabled = True
+        self._featureScaleComboBox.enabled = True
+        self._featurePresetComboBox.enabled = True
+        self._featurePresetComboBox.setToolTip(self._featurePresetTooltip)
+        self._viewPlaneComboBox.enabled = True
+        self._viewPlaneComboBox.setToolTip(self._viewPlaneTooltip)
+        for extraSelector in self._extraImageSelectors:
+            extraSelector.enabled = True
+        self._updateFeatureList()  # state is gone; revert to the combobox selection
         onSegmentEditorExit(self._segmentEditor)
 
         self._annotationSection.visible = False
@@ -850,10 +1248,13 @@ class InteractiveSegmenterFrame(qt.QFrame):
         source_node = self._inputSelector.currentNode()
 
         dims = source_node.GetImageData().GetDimensions()
-        if np.prod(dims) > 700**3:
+        is_3d = dims[2] > 1
+        if is_3d and np.prod(dims) > 700**3:
             msgBox = qt.QMessageBox(slicer.util.mainWindow())
             msgBox.setText(
-                "The input image is large. For better performance, it is recommended to crop the image. You can apply the segmentation to the full image later."
+                "The input image is large. "
+                "For better performance, it is recommended to crop the image. "
+                "You can apply the segmentation to the full image later."
             )
             msgBox.setInformativeText("Would you like to crop the volume?")
             cropButton = msgBox.addButton("Crop Image", qt.QMessageBox.YesRole)
@@ -881,8 +1282,15 @@ class InteractiveSegmenterFrame(qt.QFrame):
             helpers.setSourceVolume(annotation_node, source_node)
 
             logging.debug("Starting real-time segmentation process.")
-            self._onStatusUpdate("Calculating features...", show_progress=True)
-            self._annotationSection.enabled = False
+            self._onStatusUpdate("Computing preview — you can start annotating now", show_progress=True)
+            # Let the user annotate immediately while features warm up; the preview
+            # appears once they are ready. Preset switching stays disabled until all
+            # features are computed (3D), so a switch can't reference missing features.
+            self._annotationSection.enabled = True
+            self._featurePresetComboBox.enabled = False
+            self._featurePresetComboBox.setToolTip(
+                "Other feature sets become selectable once feature computation finishes in the background."
+            )
             self._applyButton.enabled = False
 
             self._state = RealTimeSegLogic()
@@ -890,13 +1298,39 @@ class InteractiveSegmenterFrame(qt.QFrame):
             self._state.on_process_crashed_callback = self._onProcessCrashed
             self._state.on_progress_callback = self._onFeatureProgressUpdate
             self._state.on_model_trained_callback = self._onModelTrained
+            self._state.on_features_complete_callback = self._onFeaturesComplete
+            self._state.on_debug_capture_ready_callback = self._onDebugCaptureReady
+            self._state.on_view_plane_changed_callback = self._onViewPlaneChangedInView
             self._state.set_timers(self._mainLoopTimer, self._progressTimer)
             self._state.set_feature_preset(self._featurePresetComboBox.currentText)
             self._state.inference_volume_node = self._inferenceImageSelector.currentNode()
+            self._state.extra_volume_nodes = [
+                selector.currentNode()
+                for selector in self._extraImageSelectors
+                if selector.currentNode() and selector.currentNode() is not source_node
+            ]
+            self._state.show_uncertainty = self._showUncertaintyCheckBox.isChecked()
+            self._state.feature_scale = self._resolveFeatureScale(source_node)
+            self._updateFeatureList()  # reflect the resolved (possibly Auto) scale
+
+            default_plane = self._defaultViewPlane(source_node)
+            self._viewPlaneComboBox.blockSignals(True)
+            self._viewPlaneComboBox.setCurrentText(default_plane)
+            self._viewPlaneComboBox.blockSignals(False)
+            is_2d = not is_3d
+            self._viewPlaneComboBox.enabled = not is_2d
+            self._viewPlaneComboBox.setToolTip(
+                "The image is 2D; only the XY plane is available." if is_2d else self._viewPlaneTooltip
+            )
+            self._state.view_plane = default_plane
+
             self._state.start_segmentation(annotation_node)
 
             self._setRunButtonState(False)
+            self._featureScaleComboBox.enabled = False
             self._inputSelector.enabled = False
+            for extraSelector in self._extraImageSelectors:
+                extraSelector.enabled = False
             onSegmentEditorEnter(self._segmentEditor, "InteractiveSegmenter")
             self._segmentationComboBox.setCurrentNode(annotation_node)
             self._sourceVolumeComboBox.setCurrentNode(source_node)
@@ -936,28 +1370,82 @@ class InteractiveSegmenterFrame(qt.QFrame):
         else:
             self._startSegmentation()
 
+    def _resolveFeatureScale(self, source_node):
+        """Resolve the Feature Scale combobox to an integer multiplier, estimating
+        it from the image's characteristic texture length when set to Auto."""
+        text = self._featureScaleComboBox.currentText
+        if text != "Auto":
+            return int(text.rstrip("x"))
+        try:
+            array = slicer.util.arrayFromVolume(source_node)
+            scale = suggest_multiplier(array)
+            logging.info(f"Auto feature scale: estimated x{scale} for '{source_node.GetName()}'.")
+            self._onStatusUpdate(f"Auto feature scale: x{scale}", show_progress=True)
+            return scale
+        except Exception as e:
+            logging.warning(f"Auto feature scale estimation failed ({e}); falling back to x1.")
+            return 1
+
+    @staticmethod
+    def _defaultViewPlane(source_node):
+        """Show XY by default, the usual way to view microCT cylinders. For very
+        anisotropic volumes (e.g. well cores) show the largest slice instead."""
+        dims = source_node.GetImageData().GetDimensions()
+        if max(dims) <= 2 * min(dims):
+            return "XY"
+        areas = {
+            "XY": dims[0] * dims[1],
+            "XZ": dims[0] * dims[2],
+            "YZ": dims[1] * dims[2],
+        }
+        return max(areas, key=areas.get)
+
+    def _onViewPlaneChanged(self, plane):
+        if self._state and self._state.annotation_slice:
+            self._state.set_view_plane(plane)
+
+    def _onViewPlaneChangedInView(self, plane):
+        self._viewPlaneComboBox.blockSignals(True)
+        self._viewPlaneComboBox.setCurrentText(plane)
+        self._viewPlaneComboBox.blockSignals(False)
+
+    def _onShowUncertaintyToggled(self, checked):
+        if self._state:
+            self._state.set_show_uncertainty(checked)
+
     def _onFeaturePresetChanged(self, feature_preset_name):
         if self._state:
             self._state.set_feature_preset(feature_preset_name)
 
-        FI = FeatureIndex
-        if feature_preset_name == "Sharp":
-            fi = [FI.SOURCE, FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.WINVAR_A]
-        elif feature_preset_name == "Balanced":
-            fi = [FI.SOURCE, FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Smooth":
-            fi = [FI.GAUSSIAN_A, FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.GAUSSIAN_D, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Extra Smooth":
-            fi = [FI.GAUSSIAN_B, FI.GAUSSIAN_C, FI.GAUSSIAN_D, FI.WINVAR_A, FI.WINVAR_B]
-        elif feature_preset_name == "Complete":
-            fi = [FI(i) for i in range(len(FI))]
-        else:
-            fi = []
-        feature_indices = [i.value for i in fi]
+        self._currentFeatureIndices = preset_feature_indices(feature_preset_name)
+        self._updateFeatureList()
 
-        self._featureListLabel.setText(
-            "<ul>" + "".join([f"<li>{FEATURE_NAMES[FeatureIndex(i)]}</li>" for i in feature_indices]) + "</ul>"
+    def _currentDisplayScale(self):
+        """(scale, is_auto) to show in the feature list: the running session's
+        resolved multiplier, else the combobox selection (Auto shown at 1x)."""
+        if self._state is not None:
+            return self._state.feature_scale, False
+        text = self._featureScaleComboBox.currentText
+        if text == "Auto":
+            return 1, True
+        return int(text.rstrip("x")), False
+
+    def _updateFeatureList(self):
+        scale, is_auto = self._currentDisplayScale()
+        items = "".join(
+            f"<li>{seg_consumer.feature_display_name(FeatureIndex(i), scale)}</li>"
+            for i in getattr(self, "_currentFeatureIndices", [])
         )
+        if is_auto:
+            header = "<i>Auto — sizes shown at 1×; the multiplier is estimated when you start.</i>"
+        elif scale != 1:
+            header = f"<i>Feature scale ×{scale}</i>"
+        else:
+            header = ""
+        self._featureListLabel.setText(header + "<ul>" + items + "</ul>")
+
+    def _onFeatureScaleChanged(self, _text):
+        self._updateFeatureList()
 
     def _onProcessCrashed(self):
         slicer.util.warningDisplay(
@@ -966,10 +1454,49 @@ class InteractiveSegmenterFrame(qt.QFrame):
         )
         self._stopSegmentation()
 
+    def _onDebugPreviewClicked(self):
+        if not self._state:
+            return
+        message = self._state.request_debug_capture()
+        if message:
+            slicer.util.warningDisplay(message)
+            return
+        self._onStatusUpdate("Computing debug preview...", show_progress=False)
+
+    def _onDebugCaptureReady(self, npz_path):
+        try:
+            from ltrace.interactive.seg_debug_render import render_capture
+
+            pdf_path = render_capture(npz_path)
+            qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(pdf_path)))
+            self._onStatusUpdate(f"Debug preview saved to {pdf_path}", show_progress=False)
+        except Exception as exc:
+            logging.error(f"Failed to render debug preview: {exc}\n{traceback.format_exc()}")
+            slicer.util.warningDisplay(f"Failed to render debug preview: {exc}")
+
     def _onApplyButtonClicked(self):
         if not self._state or not self._state.features_ready:
             slicer.util.warningDisplay("Features are not ready yet. Please wait.")
             return
+
+        inference_node = self._state.inference_volume_node
+        source_node = self._state.source_volume_node
+        if inference_node and inference_node is not source_node:
+            if self._state.extra_volume_nodes:
+                slicer.util.warningDisplay(
+                    "Applying to a different inference image is not supported when extra input images are used."
+                )
+                return
+            source_image = source_node.GetImageData()
+            inference_image = inference_node.GetImageData()
+            if (source_image.GetDimensions()[2] == 1) != (inference_image.GetDimensions()[2] == 1) or (
+                source_image.GetNumberOfScalarComponents() != inference_image.GetNumberOfScalarComponents()
+            ):
+                slicer.util.warningDisplay(
+                    "The inference image must have the same dimensionality (2D/3D) and "
+                    "number of channels as the input image."
+                )
+                return
 
         self._applyButton.enabled = False
         self._inputSection.enabled = False
@@ -981,8 +1508,12 @@ class InteractiveSegmenterFrame(qt.QFrame):
             helpers.setSourceVolume(self._state.result_segmentation_node, self._state.inference_volume_node)
             self._state.tmp_labelmap_node.CopyOrientation(self._state.inference_volume_node)
 
-        if self._state.paths.result.exists():
-            self._state.paths.result.unlink()
+        # The consumer may still hold result.npz open from the last real-time
+        # predict (WinError 32). This is a one-shot path -- it stops the main
+        # loop right after -- so the stale result must actually be gone before
+        # we request the full-image run, hence safe_unlink's retry rather than
+        # the update loop's swallow-and-skip.
+        safe_unlink(self._state.paths.result)
 
         inference_node = self._state.inference_volume_node or self._state.source_volume_node
         if (

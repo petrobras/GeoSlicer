@@ -1,5 +1,8 @@
 import qt
 import slicer
+from ltrace.slicer.widget.proportions import ProportionsSection
+
+from ltrace.slicer.widget.show_3d_segmentation_button import Show3DSegmentationButton
 
 
 class SegmentationWidget(qt.QWidget):
@@ -18,7 +21,15 @@ class SegmentationWidget(qt.QWidget):
         self.segmentsTableView.setStatusColumnVisible(False)
         self.segmentsTableView.setReadOnly(True)
         contentsFrameLayout.addRow(self.segmentsTableView)
-        self.show3DButton = slicer.qMRMLSegmentationShow3DButton()
+
+        contentsFrameLayout.addRow(" ", None)
+
+        self.propsSection = ProportionsSection()
+
+        contentsFrameLayout.addRow(self.propsSection)
+        contentsFrameLayout.addRow(" ", None)
+
+        self.show3DButton = Show3DSegmentationButton()
         contentsFrameLayout.addRow(self.show3DButton)
         self.opacitySlider = slicer.qMRMLSliderWidget()
         self.opacitySlider.maximum = 1
@@ -42,3 +53,4 @@ class SegmentationWidget(qt.QWidget):
         segmentationDisplayNode = node.GetDisplayNode()
         if segmentationDisplayNode:
             self.opacitySlider.value = segmentationDisplayNode.GetOpacity()
+        self.propsSection.setNode(node)

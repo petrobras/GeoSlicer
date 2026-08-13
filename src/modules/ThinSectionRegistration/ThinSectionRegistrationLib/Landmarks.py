@@ -3,6 +3,7 @@ import slicer
 import os
 
 from RegistrationLib import pqWidget
+from ltrace.slicer import helpers
 
 
 class LandmarksWidget(pqWidget):
@@ -125,15 +126,15 @@ class LandmarksWidget(pqWidget):
             tag = fiducialNode.AddObserver(
                 fiducialNode.PointModifiedEvent, lambda caller, event: self.onFiducialMoved(caller)
             )
-            self.observerTags.append((fiducialNode, tag))
+            self.observerTags.append((fiducialNode.GetID(), tag))
             tag = fiducialNode.AddObserver(
                 fiducialNode.PointEndInteractionEvent, lambda caller, event: self.onFiducialEndMoving(caller)
             )
-            self.observerTags.append((fiducialNode, tag))
+            self.observerTags.append((fiducialNode.GetID(), tag))
             tag = fiducialNode.AddObserver(fiducialNode.PointPositionDefinedEvent, self.requestNodeAddedUpdate)
-            self.observerTags.append((fiducialNode, tag))
+            self.observerTags.append((fiducialNode.GetID(), tag))
             tag = fiducialNode.AddObserver(fiducialNode.PointPositionUndefinedEvent, self.requestNodeAddedUpdate)
-            self.observerTags.append((fiducialNode, tag))
+            self.observerTags.append((fiducialNode.GetID(), tag))
 
     def onFiducialMoved(self, fiducialNode):
         """Callback when fiducialNode's point has been changed.
@@ -159,9 +160,13 @@ class LandmarksWidget(pqWidget):
 
     def removeLandmarkObservers(self):
         """Remove any existing observers"""
-        for obj, tag in self.observerTags:
-            obj.RemoveObserver(tag)
-        self.observerTags = []
+        for nodeId, tag in self.observerTags:
+            node = helpers.tryGetNode(nodeId)
+            if node is None:
+                continue
+
+            node.RemoveObserver(tag)
+        self.observerTags.clear()
 
     def pickLandmark(self, landmarkName, clearMovingView=True):
         """Hightlight the named landmark button and emit a 'signal'"""

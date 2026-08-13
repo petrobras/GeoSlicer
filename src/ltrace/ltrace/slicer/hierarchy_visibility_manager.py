@@ -37,6 +37,9 @@ class HierarchyVisibilityManager:
         return True
 
     def __onNodeModified(self, nodeObserver: NodeObserver, caller: slicer.vtkMRMLNode) -> None:
+        if caller is None:
+            return
+
         if self.__lastVisibility:
             self.__lastVisibility = caller.GetVisibility()
         elif caller.GetVisibility():

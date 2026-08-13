@@ -16,7 +16,7 @@ import slicer
 import vtk
 from numba import uint32
 from numba.types import ListType, Array
-from shiboken2 import shiboken2
+import shiboken2
 
 from ltrace.algorithms.microporosity.modelling import SampleModel, fastMapping, ModelDataTypeError
 from ltrace.slicer import helpers, ui, data_utils as du
@@ -113,10 +113,10 @@ class HistogramWidget(qt.QWidget):
         frame = qt.QFrame(self)
         frameLayout = qt.QVBoxLayout(frame)
         frameLayout.setContentsMargins(0, 0, 0, 0)
-        pysideLayout = shiboken2.wrapInstance(hash(frameLayout), PySide2.QtWidgets.QVBoxLayout)
+        self.pysideLayout = shiboken2.wrapInstance(hash(frameLayout), PySide2.QtWidgets.QVBoxLayout)
         #
         self.histogramWidget = HistogramPGWidget()
-        pysideLayout.addWidget(self.histogramWidget)
+        self.pysideLayout.addWidget(self.histogramWidget)
 
         self.layout().addWidget(frame)
 

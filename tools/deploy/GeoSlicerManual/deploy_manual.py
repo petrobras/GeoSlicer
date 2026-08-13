@@ -88,9 +88,19 @@ def _process(
     # Ensure the git remote is configured correctly.
     setup_git_remote(remote_name, GITHUB_REPO_URL)
 
+    # Fetch the target branch to ensure the local version is up-to-date with the remote.
+    try:
+        logger.info(f"🔄 Fetching latest documentation branch '{target_branch}'...")
+        run_command(["git", "fetch", remote_name, f"{target_branch}:{target_branch}", "-f"])
+    except Exception as error:
+        logger.warning(
+            f"⚠️ Could not fetch branch '{target_branch}' from '{remote_name}'. "
+            f"It might not exist yet or there's a connection issue: {error}"
+        )
+
     version = ".".join(version.replace("v", "").split(".")[:2])
     # Deploy the specified version and any aliases using mike.
-    logger.info(f"🚀 Deploying documentation version '{version}' to '{GITHUB_REPO_URL}'...")
+    logger.info(f"🚀 Deploying documentation version '{version}'...")
     deploy_cmd = [
         "mike",
         "deploy",
@@ -100,8 +110,6 @@ def _process(
         f"--branch={target_branch}",
         f'--message="Deploying documentation version {version}"',
     ]
-    if push:
-        deploy_cmd.append("--push")
 
     # Add version and aliases to the command
     deploy_cmd.extend([version] + aliases)
@@ -117,13 +125,15 @@ def _process(
             f"--branch={target_branch}",
             f'--message="Setting documentation version {version} as default"',
         ]
-        if push:
-            default_cmd.append("--push")
 
         # Set the alias 'latest' or the version itself as the default
         default_target = "latest" if "latest" in aliases else version
         default_cmd.append(default_target)
         run_command(default_cmd)
+
+    if push:
+        logger.info(f"📤 Force pushing documentation to '{remote_name}/{target_branch}'...")
+        run_command(["git", "push", remote_name, f"{target_branch}:{target_branch}", "-f"])
 
     logger.info("🎉 Deployment successful!")
     logger.info("Check the Pages settings in your GitHub repository to ensure the site is published.")

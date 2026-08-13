@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import sympy  # import it before torch to avoid crash
 import torch
 from scipy.ndimage import distance_transform_edt, distance_transform_cdt
 import warnings
@@ -42,7 +43,7 @@ class ReadFirstNetCDFVariableTransform:
         self.dtype = "float32"
 
     def __call__(self, sample):
-        dataset = xr.open_dataset(sample[self.path_key])
+        dataset = xr.open_dataset(sample[self.path_key], engine="h5netcdf")
         data_var_name = next(iter(dataset.data_vars))
 
         sample[self.out_key] = dataset[data_var_name].data.astype(self.dtype)
@@ -65,7 +66,7 @@ class ReadNetCDFTransform:
         self.del_dataset = del_dataset
 
     def __call__(self, sample):
-        dataset = xr.open_dataset(sample[self.key])
+        dataset = xr.open_dataset(sample[self.key], engine="h5netcdf")
 
         # saving variables
         if self.variables is not None:

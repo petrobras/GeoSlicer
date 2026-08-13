@@ -419,9 +419,11 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             self.logic.imageLogDataLogic.addInpaintView(self._tempSegmentation, segmentation, node)
 
     def clearViews(self):
-        if hasattr(self, "logic") and self.logic.imageLogDataLogic:
-            for id in range(len(self.logic.imageLogDataLogic.imageLogViewList) - 1, -1, -1):
-                self.logic.imageLogDataLogic.removeView(id)
+        if not hasattr(self, "logic") or not self.logic or not self.logic.imageLogDataLogic:
+            return
+
+        for id in range(len(self.logic.imageLogDataLogic.imageLogViewList) - 1, -1, -1):
+            self.logic.imageLogDataLogic.removeView(id)
 
     def resetVars(self):
         self._volumeHistory = []
@@ -441,14 +443,22 @@ class ImageLogInpaintWidget(LTracePluginWidget):
         ]
 
     def removeObservers(self):
-        for handler in self._observerTags:
-            if type(self._observerTags[handler]) == list:
-                for tag in self._observerTags[handler]:
-                    handler.RemoveObserver(tag)
-            else:
-                handler.RemoveObserver(self._observerTags[handler])
+        def _removeObserver(obj, tag):
+            if isinstance(obj, str):  # is a node ID:
+                obj = tryGetNode(obj)
+                if obj is None:
+                    return
 
-        self._observerTags = {}
+            obj.RemoveObserver(tag)
+
+        for obj in self._observerTags:
+            if type(self._observerTags[obj]) == list:
+                for tag in self._observerTags[obj]:
+                    _removeObserver(obj, tag)
+            else:
+                _removeObserver(obj, self._observerTags[obj])
+
+        self._observerTags.clear()
 
     def initTempVariables(self):
         self._tempSegmentation = createTemporaryVolumeNode(
@@ -466,7 +476,7 @@ class ImageLogInpaintWidget(LTracePluginWidget):
         self.segmentationComboBox.setCurrentNode(self._tempSegmentation)
         self.segmentEditorWidget.setCurrentSegmentID(ImageLogInpaintConst.SEGMENT_ID)
 
-        self._observerTags[self._tempSegmentation] = self._tempSegmentation.AddObserver(
+        self._observerTags[self._tempSegmentation.GetID()] = self._tempSegmentation.AddObserver(
             slicer.vtkSegmentation.SourceRepresentationModified, self.applyInpaint
         )
 
@@ -518,7 +528,10 @@ class ImageLogInpaintWidget(LTracePluginWidget):
         self.resetVars()
         self.clearViews()
 
-        del self.logic
+        if self.logic:
+            self.logic.imageLogDataLogic.cleanUp()
+            del self.logic
+            self.logic = None
 
     def onReload(self):
         importlib.reload(sys.modules["ltrace.slicer.widget.clone_and_rename"])
@@ -532,6 +545,10 @@ class ImageLogInpaintLogic(LTracePluginLogic):
         self.isSingletonParameterNode = True
         self.moduleName = ImageLogInpaint.SETTING_KEY
         self.setImageLogDataLogic()
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self) -> None:
+        self.imageLogDataLogic = None
 
     def getParameterNode(self):
         return ImageLogInpaintParameterNode(super().getParameterNode())

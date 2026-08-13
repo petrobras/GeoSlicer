@@ -129,7 +129,7 @@ class CoreBoxesImageFile:
             RuntimeError: When current file's name pattern doesn't match the expected file name.
         """
         file_name = os.path.basename(image_file)
-        regex_pattern = "([0-9]+)cx([0-9]+)-([0-9]+)_([0-9]+)(_(\S+))?\.\S+"
+        regex_pattern = r"([0-9]+)cx([0-9]+)-([0-9]+)_([0-9]+)(_(\S+))?\.\S+"
         pattern = re.compile(regex_pattern)
         match = re.search(pattern, file_name)
         if match is None:

@@ -143,6 +143,17 @@ def _array_to_node(array: xr.DataArray, node: slicer.vtkMRMLVolumeNode, spacing:
         node.SetIJKToRASDirections(-1, 0, 0, 0, -1, 0, 0, 0, 1)
 
 
+def _reference_geometry_from_array(array: xr.DataArray, spacing: List[float]) -> str:
+    origin = get_origin(array)
+    matrix = vtk.vtkMatrix4x4()
+    for i, (scale, translation) in enumerate(zip((-spacing[0], -spacing[1], spacing[2]), origin)):
+        matrix.SetElement(i, i, scale)
+        matrix.SetElement(i, 3, translation)
+    image = vtk.vtkImageData()
+    image.SetExtent(0, array.shape[2] - 1, 0, array.shape[1] - 1, 0, array.shape[0] - 1)
+    return slicer.vtkSegmentationConverter.SerializeImageGeometry(matrix, image)
+
+
 def nc_labels_to_color_node(labels, name="nc_labels"):
     colors = []
     colorNames = []
@@ -218,7 +229,7 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
     var_to_files = defaultdict(list)
     all_vars = set()
     for f in files:
-        with xr.open_dataset(f) as ds:
+        with xr.open_dataset(f, engine="h5netcdf", backend_kwargs={"lock": False}) as ds:
             for var_name in ds.data_vars:
                 var_to_files[var_name].append(f)
                 all_vars.add(var_name)
@@ -232,13 +243,13 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
             continue
 
         if len(files_with_var) == 1:
-            with xr.open_dataset(files_with_var[0]) as ds:
+            with xr.open_dataset(files_with_var[0], engine="h5netcdf", backend_kwargs={"lock": False}) as ds:
                 final_datasets.append(ds[[var_name]])
             continue
 
         # Define the which dimension to concatenate ('z' is preferred)
         concat_dim = None
-        with xr.open_dataset(files_with_var[0]) as ds:
+        with xr.open_dataset(files_with_var[0], engine="h5netcdf", backend_kwargs={"lock": False}) as ds:
             first_da = ds[var_name]
             if "z" in first_da.dims:
                 concat_dim = "z"
@@ -258,6 +269,8 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
                     concat_dim=concat_dim,
                     combine="nested",
                     chunks=256,
+                    engine="h5netcdf",
+                    backend_kwargs={"lock": False},
                 )
                 final_datasets.append(combined_ds)
 
@@ -267,7 +280,7 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
                 )
                 # Fallback with default open_dataset
                 for f in files_with_var:
-                    with xr.open_dataset(f) as ds:
+                    with xr.open_dataset(f, engine="h5netcdf", backend_kwargs={"lock": False}) as ds:
                         final_datasets.append(ds[[var_name]])
         else:
             # No dimension to concatenate, just add them separately.
@@ -275,7 +288,7 @@ def _open_dataset_from_directory(path: Union[Path, str]) -> list[xr.Dataset]:
                 f"No concatenation dimension found for '{var_name}'. Loading files for this data array separately."
             )
             for f in files_with_var:
-                with xr.open_dataset(f) as ds:
+                with xr.open_dataset(f, engine="h5netcdf", backend_kwargs={"lock": False}) as ds:
                     final_datasets.append(ds[[var_name]])
 
     return final_datasets
@@ -315,8 +328,11 @@ def import_dataset(dataset, images="all") -> Generator[slicer.vtkMRMLNode, None,
 
         # Get spacing before cropping in case some dimension is size 1
         spacing = get_spacing(array)
+        reference_geometry = None
         if single_coords:
             fill_value = 0 if has_labels else 255
+            if has_labels and not is_labelmap:
+                reference_geometry = _reference_geometry_from_array(array, spacing)
             array = _crop_value(array, fill_value)
 
         if has_labels:
@@ -333,6 +349,12 @@ def import_dataset(dataset, images="all") -> Generator[slicer.vtkMRMLNode, None,
             else:
                 node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode", name)
                 updateSegmentationFromLabelMap(node, label_map, includeEmptySegments=True)
+                node.SetReferenceImageGeometryParameterFromVolumeNode(label_map)
+                node.RemoveNodeReferenceIDs(role)
+                if reference_geometry:
+                    node.GetSegmentation().SetConversionParameter(
+                        slicer.vtkSegmentationConverter.GetReferenceImageGeometryParameterName(), reference_geometry
+                    )
 
             if "reference" in array.attrs:
                 master_name = array.attrs["reference"]
@@ -571,7 +593,7 @@ def exportNetcdf(
         dataset_attrs["pcr"] = pcr_values[0]
 
     if save_in_place:
-        existing_dataset = xr.load_dataset(exportPath)
+        existing_dataset = xr.load_dataset(exportPath, engine="h5netcdf")
         existing_dims = _get_dataset_main_dims(existing_dataset)
 
     for node, dtype in zip(dataNodes, nodeDtypes):
@@ -747,7 +769,7 @@ def exportNetcdf(
 
     dataset.attrs["geoslicer_version"] = slicer.app.applicationVersion
     dataset.attrs.update(dataset_attrs)
-    dataset.to_netcdf(exportPath, encoding=encoding, format="NETCDF4")
+    dataset.to_netcdf(exportPath, encoding=encoding, format="NETCDF4", engine="h5netcdf")
 
     return warnings
 
@@ -763,7 +785,7 @@ def import_file(path: Path, callback=lambda *args, **kwargs: None, images="all")
     Returns:
         list[slicer.vtkMRMLNode]: a list of the nodes related to the netcdf data.
     """
-    dataset = xr.open_dataset(path)
+    dataset = xr.open_dataset(path, engine="h5netcdf")
     return _handle_dataset(dataset, path, callback, images)
 
 

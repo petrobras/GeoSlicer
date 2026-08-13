@@ -9,11 +9,10 @@ import re
 import traceback
 
 from abc import abstractmethod
-from functools import partial
+from typing import List, Optional, Dict, Tuple
 from ltrace.slicer import ui, helpers
 from ltrace.slicer.widget.dimensions_label_group import DimensionsLabelGroup, DEFAULT_DIMENSIONS_UNITS
-
-from typing import Union, List, Tuple
+from ltrace.slicer.widget.segment_list_widget import SegmentListWidget
 
 from ltrace.slicer_utils import getResourcePath
 
@@ -112,7 +111,7 @@ class PixelLabel(qt.QLabel):
 
 class SingleShotInputWidget(qt.QWidget):
     segmentSelectionChanged = qt.Signal(list)
-    segmentListUpdated = qt.Signal(tuple, dict)
+    segmentListUpdated = qt.Signal()
     onMainSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
     onReferenceSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
     onSoiSelectedSignal = qt.Signal(slicer.vtkMRMLVolumeNode)
@@ -121,23 +120,23 @@ class SingleShotInputWidget(qt.QWidget):
 
     def __init__(
         self,
-        parent=None,
-        hideImage=False,
-        hideSoi=False,
-        hideCalcProp=False,
-        requireSourceVolume=True,
-        allowedInputNodes=None,
-        rowTitles: dict = None,
-        checkable=True,
-        mainName="Segmentation",
-        soiName="Region (SOI)",
-        referenceName="Image",
-        autoReferenceFetch=True,
-        setDefaultMargins=True,
-        dependentInputs=("soi", "reference"),
-        objectNamePrefix=None,
-        dimensionsUnits=DEFAULT_DIMENSIONS_UNITS,
-    ):
+        parent: Optional[qt.QWidget] = None,
+        hideImage: bool = False,
+        hideSoi: bool = False,
+        hideCalcProp: bool = False,
+        requireSourceVolume: bool = True,
+        allowedInputNodes: Optional[List[str]] = None,
+        rowTitles: Optional[Dict[str, str]] = None,
+        checkable: bool = True,
+        mainName: str = "Segmentation",
+        soiName: str = "Region (SOI)",
+        referenceName: str = "Image",
+        autoReferenceFetch: bool = True,
+        setDefaultMargins: bool = True,
+        dependentInputs: Tuple[str, ...] = ("soi", "reference"),
+        objectNamePrefix: Optional[str] = None,
+        dimensionsUnits: dict = DEFAULT_DIMENSIONS_UNITS,
+    ) -> None:
         super().__init__(parent)
 
         self.previousState = []
@@ -203,13 +202,10 @@ class SingleShotInputWidget(qt.QWidget):
         )
         self.referenceInput.objectName = "Image Segments ComboBox"
 
-        self.checkable = checkable
-
-        self.segmentListGroup = (qt.QLabel("Segments: "), qt.QListWidget())
-        self.segmentListGroup[1].setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        self.segmentListGroup[1].setFixedHeight(120)
-        self.segmentListGroup[1].hide()
-        self.segmentListGroup[1].objectName = "Segment List"
+        self.segmentListLabel = qt.QLabel("Segments: ")
+        self.segmentListWidget = SegmentListWidget(self, checkable=checkable, hideBackground=False)
+        self.segmentListWidget.hide()
+        self.segmentListWidget.itemChanged.connect(self._onSegmentListUpdated)
 
         # self.editTargetButton = ActionButton("Edit", self.editTargetSegment)  # only makes sense for segments (?)
 
@@ -241,33 +237,13 @@ class SingleShotInputWidget(qt.QWidget):
         segmentsLayout.setContentsMargins(9, 9, 9, 0)
         segmentsLayout.setSpacing(6)
 
-        segmentsLayout.addRow(self.segmentListGroup[0], self.segmentListGroup[1])
-
-        ## start autoPorosityCalcWidget
+        segmentsLayout.addRow(self.segmentListLabel, self.segmentListWidget)
 
         self.hideCalcProp = hideCalcProp
 
-        self.autoPorosityCalcWidget = qt.QWidget()
-        autoPorosityCalcLayout = qt.QHBoxLayout(self.autoPorosityCalcWidget)
-        autoPorosityCalcLayout.setContentsMargins(0, 0, 0, 0)
-        autoPorosityCalcLayout.setSpacing(2)
-
-        self.autoPorosityCalcCb = qt.QCheckBox()
-        self.autoPorosityCalcCb.setChecked(False)
-        self.autoPorosityCalcCb.setToolTip("Enable/Disable the porosity proportion for the current input combination.")
-
         self.progressInput = qt.QLabel("")
 
-        autoPorosityCalcLayout.addWidget(qt.QLabel("Calculate proportions: "))
-        autoPorosityCalcLayout.addWidget(self.autoPorosityCalcCb)
-        autoPorosityCalcLayout.addWidget(self.progressInput)
-        autoPorosityCalcLayout.addStretch(1)
-        ## end autoPorosityCalcWidget
-
-        segmentsLayout.addRow(self.autoPorosityCalcWidget)
-        self.autoPorosityCalcWidget.visible = not self.hideCalcProp
-
-        self.segmentListGroup[1].itemChanged.connect(self.checkSelection)
+        self.segmentListWidget.itemChanged.connect(self.checkSelection)
 
         self.dimensionsGroup = DimensionsLabelGroup(parent=self, units=dimensionsUnits)
         segmentsLayout.addRow(self.dimensionsGroup)
@@ -285,105 +261,78 @@ class SingleShotInputWidget(qt.QWidget):
 
         self.autoReferenceFetch = autoReferenceFetch
 
-        self.autoPorosityCalcCb.stateChanged.connect(self._onAutoPoreCalcToggled)
-
         if objectNamePrefix is not None:
             self.mainInput.objectName = f"{objectNamePrefix} {self.mainInput.objectName}"
             self.soiInput.objectName = f"{objectNamePrefix} {self.soiInput.objectName}"
             self.referenceInput.objectName = f"{objectNamePrefix} {self.referenceInput.objectName}"
-            self.segmentListGroup[1].objectName = f"{objectNamePrefix} {self.segmentListGroup[1].objectName}"
+            self.segmentListWidget.objectName = f"{objectNamePrefix} {self.segmentListWidget.objectName}"
 
-    @property
-    def segmentListWidget(self):
-        return self.segmentListGroup[1]
+    def _onSegmentListUpdated(self, item: qt.QListWidgetItem) -> None:
+        self.segmentListUpdated.emit()
 
-    def hideSegmentList(self, value: bool = True):
+    def hideSegmentList(self, value: bool = True) -> None:
         self.segmentsContainerWidget.collapsed = value
 
     def hasValidInputs(self) -> bool:
         return self.mainInput.currentNode() is not None or self.referenceInput.currentNode() is not None
 
-    def resetUI(self):
+    def resetUI(self) -> None:
         self.soiInput.enabled = False if self.dependentInputs and "soi" in self.dependentInputs else True
         self.referenceInput.enabled = False if self.dependentInputs and "reference" in self.dependentInputs else True
-        self.segmentListGroup[1].clear()
-        [s.hide() for s in self.segmentListGroup]
+        self.setSegmentListNode(None)
+        self.segmentListLabel.hide()
+        self.segmentListWidget.hide()
         self.dimensionsGroup.hide()
 
-    def fullResetUI(self):
+    def fullResetUI(self) -> None:
         node = self.mainInput.currentNode()
         if node is None:
             self._onMainSelected(0)
         else:
             self.mainInput.setCurrentNode(None)
 
-    def checkSelection(self):
+    def checkSelection(self) -> None:
         selection = self.getSelectedSegments()
         if not selection:
-            helpers.highlight_error(self.segmentListGroup[1])
+            helpers.highlight_error(self.segmentListWidget)
         else:
-            self.segmentListGroup[1].setStyleSheet("")
+            self.segmentListWidget.setStyleSheet("")
             self.segmentSelectionChanged.emit(selection)
 
-    def segmentsOn(self):
-        self.segmentListGroup[1].enabled = True
-        if self.checkable and self.previousState and len(self.previousState) == self.segmentListGroup[1].count:
-            for nth in range(self.segmentListGroup[1].count):
-                self.segmentListGroup[1].item(nth).setCheckState(self.previousState[nth])
+    def segmentsOn(self) -> None:
+        self.segmentListWidget.enabled = True
+        if self.checkable and self.previousState and len(self.previousState) == self.segmentListWidget.count:
+            for nth in range(self.segmentListWidget.count):
+                self.segmentListWidget.setStateByIndex(index=nth, state=self.previousState[nth])
 
             self.previousState = []
 
-    def segmentsOff(self):
+    def segmentsOff(self) -> None:
         self.__saveState()
-        self.segmentListGroup[1].enabled = False
+        self.segmentListWidget.enabled = False
 
         if self.checkable:
-            for nth in range(self.segmentListGroup[1].count):
-                self.segmentListGroup[1].item(nth).setCheckState(qt.Qt.Checked)
+            for nth in range(self.segmentListWidget.count):
+                self.segmentListWidget.setStateByIndex(index=nth, state=qt.Qt.Checked)
 
-    def __saveState(self):
-        if not self.previousState or len(self.previousState) != self.segmentListGroup[1].count:
+    def __saveState(self) -> None:
+        if not self.previousState or len(self.previousState) != self.segmentListWidget.count:
             self.previousState = [
-                self.segmentListGroup[1].item(nth).checkState() for nth in range(self.segmentListGroup[1].count)
+                self.segmentListWidget.item(nth).checkState() for nth in range(self.segmentListWidget.count)
             ]
 
-    def getSelectedSegments(self):
-        selectedItems = []
-        for nth in range(self.segmentListGroup[1].count):
-            if self.segmentListGroup[1].item(nth).checkState() == qt.Qt.Checked:
-                selectedItems.append(nth)
+    def getSelectedSegments(self) -> List[int]:
+        return self.segmentListWidget.getCheckedIndexes()
 
-        return selectedItems
-
-    def selectSegments(self, indices: List[int]):
-        """Set given zero-based indices to checked (silently ignore invalid indices)."""
+    def selectSegments(self, indices: List[int]) -> None:
         for idx in indices:
-            if 0 <= idx < self.segmentListGroup[1].count:
-                self.segmentListGroup[1].item(idx).setCheckState(qt.Qt.Checked)
+            self.segmentListWidget.check(idx)
 
-    def allSegmentsSelected(self):
-        return all(
-            self.segmentListGroup[1].item(nth).checkState() == qt.Qt.Checked
-            for nth in range(self.segmentListGroup[1].count)
-        )
-
-    def _onAutoPoreCalcToggled(self, state):
-        mainNode = self.mainInput.currentNode()
-        if mainNode:
-            self.updateSegmentList(
-                helpers.getSegmentList(
-                    mainNode,
-                    roiNode=self.soiInput.currentNode(),
-                    refNode=self.referenceInput.currentNode(),
-                    return_proportions=state,
-                )
-            )
-
-    def updateRefNode(self, node):
+    def updateRefNode(self, node: slicer.vtkMRMLNode) -> None:
         self.referenceInput.setCurrentNode(node)
         self.referenceInput.setStyleSheet("")
 
-    def _onMainSelected(self, item):
+    def _onMainSelected(self, item: int) -> None:
         try:
             node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(item)
 
@@ -393,7 +342,6 @@ class SingleShotInputWidget(qt.QWidget):
                 if self.autoReferenceFetch:
                     self.updateRefNode(None)
                 self.onMainSelectedSignal.emit(None)
-                self.autoPorosityCalcWidget.hide()
                 self.segmentsContainerWidget.collapsed = True
                 return
 
@@ -409,37 +357,28 @@ class SingleShotInputWidget(qt.QWidget):
                 self.dimensionsGroup.show()
             else:
                 referenceNode = node
-                self.segmentListGroup[1].clear()
                 self.segmentsContainerWidget.hide()
                 self.dimensionsGroup.hide()
-
-            self.autoPorosityCalcWidget.visible = not self.hideCalcProp and referenceNode is not None
 
             if self.autoReferenceFetch:
                 self.updateRefNode(referenceNode)
             self.onMainSelectedSignal.emit(node)
 
             if isLabeledData(node):
-                self.updateSegmentList(
-                    helpers.getSegmentList(
-                        node,
-                        roiNode=self.soiInput.currentNode(),
-                        refNode=referenceNode,
-                        return_proportions=self.autoPorosityCalcCb.isChecked(),
-                    )
-                )  # This needs to be repeated to preserve the consistency of the new selection while also showing automatically selected segments (alternatively, delegate this role to onMainSelected functions that need it)
+                self.setSegmentListNode(node)
+            else:
+                self.segmentListWidget.setNode(None)
 
         except Exception as error:
             logging.debug(f"{error}:\n{traceback.print_exc()}")
             raise error
 
-    def _onSOISelected(self, item):
-        node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(item)
+    def _onSOISelected(self, itemId: int) -> None:
+        node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemId)
         mainNode = self.mainInput.currentNode()
 
         # If using pre-trained classifier
         if mainNode is None:
-            self.autoPorosityCalcWidget.hide()
             self.onSoiSelectedSignal.emit(node)
             return
 
@@ -447,19 +386,6 @@ class SingleShotInputWidget(qt.QWidget):
 
         try:
             if node is None:
-                if isLabeledData(mainNode):
-                    if self.autoPorosityCalcCb.isChecked():
-                        self.progressInput.setText("Calculating Distribution...")
-                        slicer.app.processEvents()
-
-                    self.updateSegmentList(
-                        helpers.getSegmentList(
-                            mainNode,
-                            roiNode=None,
-                            refNode=referenceNode,
-                            return_proportions=self.autoPorosityCalcCb.isChecked(),
-                        )
-                    )
                 self.onSoiSelectedSignal.emit(None)
                 return
 
@@ -485,20 +411,6 @@ class SingleShotInputWidget(qt.QWidget):
                     self.onSoiSelectedSignal.emit(None)
                     return
 
-            if isLabeledData(mainNode):
-                if self.autoPorosityCalcCb.isChecked():
-                    self.progressInput.setText("Calculating Distribution within SOI...")
-                    slicer.app.processEvents()
-
-                self.updateSegmentList(
-                    helpers.getSegmentList(
-                        mainNode,
-                        roiNode=node,
-                        refNode=referenceNode,
-                        return_proportions=self.autoPorosityCalcCb.isChecked(),
-                    )
-                )
-
             self.onSoiSelectedSignal.emit(node)
 
         except TypeError as ter:
@@ -508,7 +420,7 @@ class SingleShotInputWidget(qt.QWidget):
         finally:
             self.progressInput.setText("")
 
-    def _onReferenceSelected(self, _):
+    def _onReferenceSelected(self, _: int) -> None:
         try:
             mainNode = self.mainInput.currentNode()
             node = self.referenceInput.currentNode()
@@ -518,8 +430,9 @@ class SingleShotInputWidget(qt.QWidget):
                 return
 
             if node is None and mainNode and self.requireSourceVolume:
-                self.segmentListGroup[1].clear()
-                [s.hide() for s in self.segmentListGroup]
+                self.segmentListWidget.setNode(None)
+                self.segmentListLabel.hide()
+                self.segmentListWidget.hide()
                 self.dimensionsGroup.hide()
                 self.toggleDimensions(None)
                 self.onReferenceSelectedSignal.emit(None)
@@ -530,28 +443,12 @@ class SingleShotInputWidget(qt.QWidget):
                 # qt.QTimer.singleShot(150, partial(helpers.highlight_error, self.referenceInput, "QComboBox"))
                 # helpers.highlight_error(self.referenceInput)
                 # slicer.util.errorDisplay("Please, select a segmentation with a valid reference volume.")
-                self.autoPorosityCalcWidget.hide()
                 return
-
-            self.autoPorosityCalcWidget.visible = not self.hideCalcProp and mainNode is not None
 
             self.inputVoxelSize = min(np.array([i for i in node.GetSpacing()])) if node else 1
 
             soiNode = self.soiInput.currentNode()
 
-            if isLabeledData(mainNode):
-                if self.autoPorosityCalcCb.isChecked():
-                    self.progressInput.setText("Calculating Distribution...")
-                    slicer.app.processEvents()
-
-                self.updateSegmentList(
-                    helpers.getSegmentList(
-                        mainNode,
-                        roiNode=soiNode,
-                        refNode=node,
-                        return_proportions=self.autoPorosityCalcCb.isChecked(),
-                    )
-                )
             self.toggleDimensions(node)
             self.onReferenceSelectedSignal.emit(node)
         except Exception as rex:
@@ -559,20 +456,20 @@ class SingleShotInputWidget(qt.QWidget):
         finally:
             self.progressInput.setText("")
 
-    def toggleDimensions(self, node):
+    def toggleDimensions(self, node: slicer.vtkMRMLNode) -> None:
         self.dimensionsGroup.setNode(node)
         if node:
             self.dimensionsGroup.show()
         else:
             self.dimensionsGroup.hide()
 
-    def segmentAboutToBeModified(self, segment):
+    def segmentAboutToBeModified(self, segment: str) -> None:
         pass
 
-    def editTargetSegment(self):
+    def editTargetSegment(self) -> None:
         self.showEditTargetDialog(self.mainInput.currentNode())
 
-    def showEditTargetDialog(self, segmentationNode):
+    def showEditTargetDialog(self, segmentationNode: slicer.vtkMRMLNode) -> None:
         dialogWidget = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
         dialogWidget.setModal(True)
         dialogWidget.setWindowTitle("Edit Target")
@@ -592,51 +489,24 @@ class SingleShotInputWidget(qt.QWidget):
         targetSegmentSelector.connect("segmentAboutToBeModified ( QString )", self.segmentAboutToBeModified)
         # self.targetSegmentSelector.connect("selectionChanged(QItemSelection, QItemSelection)", self.onSegmentSelect)
 
-        # segmentListWidget = qt.QListWidget()
-        # segmentListWidget.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        # segmentListWidget.setFixedHeight(120)
-        # segmentListWidget.hide()
-
         vertLayout.addWidget(targetSegmentSelector)
-        # vertLayout.addWidget(segmentListWidget)
 
         targetSegmentSelector.setSegmentationNode(segmentationNode)
 
         dialogWidget.exec_()
 
-    def updateSegmentList(self, segments):
-        self.segmentListGroup[1].clear()
-        self.previousState = []  # reset state
+    def setSegmentListNode(
+        self,
+        mainNode: slicer.vtkMRMLNode = None,
+    ) -> None:
+        self.previousState = []
+        self.segmentListWidget.setNode(mainNode)
 
-        total = segments.pop("total", 0)
+        if self.segmentListWidget.count == 1 and self.segmentListWidget.checkable:
+            self.segmentListWidget.check(0)
 
-        for label in segments:
-            segment = segments[label]
-            icon = ColoredIcon(*[int(c * 255) for c in segment["color"][:3]])
-            item = qt.QListWidgetItem()
-            lname = segment["name"] if segment["name"] != "invalid" else f"{label} - Unnamed"
-            if "count" in segment:
-                item.setText("{} = {:.5f} %".format(lname, segment["count"] * 100 / total))
-            else:
-                item.setText(f"{lname}")
-            item.setIcon(icon)
-            if self.checkable:
-                item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)
-                item.setCheckState(qt.Qt.Unchecked)
-            self.segmentListGroup[1].addItem(item)
-
-        if len(segments) == 1 and self.checkable:
-            self.segmentListGroup[1].item(0).setCheckState(qt.Qt.Checked)
-
-        mainNode = self.mainInput.currentNode()
-        soiNode = self.soiInput.currentNode()
-        referenceNode = self.referenceInput.currentNode()
-        self.segmentListUpdated.emit((mainNode, soiNode, referenceNode), segments)
-
-        # TODO check for overlaps
-        for s in self.segmentListGroup:
-            s.show()
-
+        self.segmentListLabel.show()
+        self.segmentListWidget.show()
         self.dimensionsGroup.show()
 
 
@@ -648,12 +518,10 @@ def ActionButton(text, action):
     return pushButton
 
 
-def ColoredIcon(r, g, b):
-    img = qt.QImage(16, 16, qt.QImage.Format_RGB32)
-    p = qt.QPainter(img)
-    p.fillRect(img.rect(), qt.QColor(r, g, b))
-    p.end()
-    return qt.QIcon(qt.QPixmap.fromImage(img))
+def ColoredIcon(r: int, g: int, b: int) -> qt.QIcon:
+    pixmap = qt.QPixmap(16, 16)
+    pixmap.fill(qt.QColor(r, g, b))
+    return qt.QIcon(pixmap)
 
 
 class BatchInputWidget(qt.QWidget):

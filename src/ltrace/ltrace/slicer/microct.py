@@ -19,7 +19,7 @@ from natsort import natsorted
 
 
 ROOT_DATASET_DIRECTORY_NAME = "Micro CT"
-MICRO_CT_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg", ".nc", ".h5", ".hdf5"]
+MICRO_CT_LOADER_FILE_EXTENSIONS = [".tif", ".tiff", ".png", ".jpg", ".jpeg", ".nc", ".h5", ".hdf5", ".am"]
 SPACING_REGEX = re.compile(r"_(\d{5})nm")
 NETCDF_FILE_EXTENSIONS = [".nc", ".h5", ".hdf5"]
 
@@ -269,7 +269,7 @@ def minMaxFromPcr(pcrFile):
     try:
         if pcrFile.suffix == ".nc":
             try:
-                with xr.open_dataset(pcrFile) as ds:
+                with xr.open_dataset(pcrFile, engine="h5netcdf") as ds:
                     pcr_string = ds.attrs.get("pcr")
                     if not pcr_string:
                         return None
@@ -295,7 +295,7 @@ def loadPCRAsTextNode(pcrFile):
 
         if pcrFile.suffix in NETCDF_FILE_EXTENSIONS:
             try:
-                with xr.open_dataset(pcrFile) as ds:
+                with xr.open_dataset(pcrFile, engine="h5netcdf") as ds:
                     pcr = ds.attrs["pcr"]
             except Exception as e:
                 logging.debug(f"Failed to load PCR from NetCDF. Cause: {repr(e)}")

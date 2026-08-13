@@ -26,6 +26,7 @@ class GraphicViewWidget(BaseViewWidget):
         self.curve_plot._plot_item.showAxis("top")
         self.curve_plot._plot_item.getAxis("top").setPen(color=(0, 0, 0))
         self.curve_plot._plot_item.getAxis("top").setTextPen(color=(0, 0, 0))
+        self.curve_plot._plot_item.signalLogMode.connect(self.__on_logmode_changed)
         self.curve_plot._plot_item.signalLogMode.connect(self.curve_plot.set_primary_logMode)
         self.__primary_table_dict = tableNodeToDict(primary_node)
 
@@ -67,13 +68,11 @@ class GraphicViewWidget(BaseViewWidget):
             )
 
         if view_data.primaryLogMode:
-            self.curve_plot._plot_item.ctrl.logXCheck.setCheckState(PySide2.QtCore.Qt.Checked)
+            self.curve_plot._plot_item.ctrl.logXCheck.setCheckState(PySide2.QtCore.Qt.CheckState.Checked)
 
-        self.curve_plot._plot_item.signalLogMode.connect(self.__on_logmode_changed)
-
-        pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
-        graphics_layout_widget = self.curve_plot._graphics_layout_widget
-        pyside_qvbox_layout.addWidget(graphics_layout_widget)
+        self.pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
+        self.graphics_layout_widget = self.curve_plot._graphics_layout_widget
+        self.pyside_qvbox_layout.addWidget(self.graphics_layout_widget)
 
     def getPlot(self):
         return self.curve_plot

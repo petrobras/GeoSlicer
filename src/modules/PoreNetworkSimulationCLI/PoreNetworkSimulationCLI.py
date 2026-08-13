@@ -50,14 +50,23 @@ def writePolydata(polydata, filename):
     writer.Write()
 
 
+def df_to_dict_numpy(df):
+    return {col: df[col].to_numpy() for col in df.columns}
+
+
+def load_and_check_network(filepath):
+    with open(filepath, "rb") as f:
+        network = pickle.load(f)
+    if type(network) is pd.DataFrame:
+        network = df_to_dict_numpy(network)
+    return network
+
+
 def onePhase(args, params):
     cwd = Path(args.cwd)
 
-    with open(cwd / "pore_network.pkl", "rb") as f:
-        pore_network = pickle.load(f)
-
-    with open(cwd / "throat_network.pkl", "rb") as f:
-        throat_network = pickle.load(f)
+    pore_network = load_and_check_network(cwd / "pore_network.pkl")
+    throat_network = load_and_check_network(cwd / "throat_network.pkl")
 
     pore_network = geo2spy(pore_network, throat_network)
 
@@ -202,11 +211,8 @@ def onePhase(args, params):
 def onePhaseMultiAngle(args, params):
     cwd = Path(args.cwd)
 
-    with open(cwd / "pore_network.pkl", "rb") as f:
-        pore_network = pickle.load(f)
-
-    with open(cwd / "throat_network.pkl", "rb") as f:
-        throat_network = pickle.load(f)
+    pore_network = load_and_check_network(cwd / "pore_network.pkl")
+    throat_network = load_and_check_network(cwd / "throat_network.pkl")
 
     pore_network = geo2spy(pore_network, throat_network)
 
@@ -340,11 +346,8 @@ def onePhaseMultiAngle(args, params):
 def twoPhaseSensibilityTest(args, params):
     cwd = Path(args.cwd)
 
-    with open(cwd / "pore_network.pkl", "rb") as f:
-        pore_network = pickle.load(f)
-
-    with open(cwd / "throat_network.pkl", "rb") as f:
-        throat_network = pickle.load(f)
+    pore_network = load_and_check_network(cwd / "pore_network.pkl")
+    throat_network = load_and_check_network(cwd / "throat_network.pkl")
 
     pore_network = geo2spy(pore_network, throat_network)
 
@@ -452,20 +455,18 @@ def twoPhaseSensibilityTest(args, params):
             params["saturation_steps"].extend(saturation_steps_list)
         else:
             params["saturation_steps"] = saturation_steps_list
-        with open(str(cwd / "simulation_params_dict.json"), "w") as file:
+        with open(str(cwd / "two_phase_simulation_params_dict.json"), "w") as file:
             json.dump(params, file, cls=NumpyEncoder)
 
 
 def simulate_mercury(args, params):
     cwd = Path(args.cwd)
 
-    with open(cwd / "pore_network.pkl", "rb") as f:
-        pore_network = pickle.load(f)
-
-    with open(cwd / "throat_network.pkl", "rb") as f:
-        throat_network = pickle.load(f)
+    pore_network = load_and_check_network(cwd / "pore_network.pkl")
+    throat_network = load_and_check_network(cwd / "throat_network.pkl")
 
     pore_network = geo2spy(pore_network, throat_network)
+
     subres_func = get_subres_function(pore_network, params)
 
     proj = openpnm.io.network_from_porespy(pore_network)
@@ -570,22 +571,25 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(f"{args.cwd}/simulation_params_dict.json", "r") as file:
-        params = json.load(file)
-
-    if params.get("remote_execution") == "T":
-        params["maxSubprocesses"] = max(os.cpu_count() - 2, 1)
-        print(f"Max subprocesses for node{get_simulation_suffix(args.simInterval)}: {params['maxSubprocesses']}")
-
     progressUpdate(value=0.1)
 
-    if args.model == "onePhase" and params.get("simulation type") == "Single orientation":
-        onePhase(args, params)
-    elif args.model == "onePhase" and params.get("simulation type") == "Multiple orientations":
-        onePhaseMultiAngle(args, params)
+    if args.model == "onePhase":
+        with open(f"{args.cwd}/one_phase_simulation_params_dict.json", "r") as file:
+            params = json.load(file)
+        if params.get("simulation type") == "Single orientation":
+            onePhase(args, params)
+        elif params.get("simulation type") == "Multiple orientations":
+            onePhaseMultiAngle(args, params)
     elif args.model == "TwoPhaseSensibilityTest":
+        with open(f"{args.cwd}/two_phase_simulation_params_dict.json", "r") as file:
+            params = json.load(file)
+        if params.get("remote_execution") == "T":
+            params["max_subprocesses"] = max(os.cpu_count() - 2, 1)
+            print(f"Max subprocesses for node{get_simulation_suffix(args.simInterval)}: {params['max_subprocesses']}")
         twoPhaseSensibilityTest(args, params)
     elif args.model == "MICP":
+        with open(f"{args.cwd}/micp_simulation_params_dict.json", "r") as file:
+            params = json.load(file)
         simulate_mercury(args, params)
 
     progressUpdate(value=1)

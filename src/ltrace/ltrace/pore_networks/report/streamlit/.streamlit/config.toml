@@ -1,0 +1,7 @@
+[server]
+enableStaticServing = true
+fileWatcherType = "none"
+maxUploadSize = 2000
+
+[browser]
+gatherUsageStats = false

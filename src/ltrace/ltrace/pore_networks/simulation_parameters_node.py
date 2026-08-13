@@ -9,6 +9,13 @@ from ltrace.pore_networks.krel_result import KrelParameterParser
 from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import dataframeFromTable, dataFrameToTableNode
 
+# Constants for PNM Parameter Node Identification
+PNM_PARAMETER_TYPE_ATTR = "pnm_parameter_type"
+EXTRACTOR_TYPE = "extractor"
+ONE_PHASE_SIMULATION_TYPE = "one_phase_simulation"
+TWO_PHASE_SIMULATION_TYPE = "two_phase_simulation"
+REMOTE_WORKFLOW_TYPE = "remote_workflow"
+
 
 def parameter_node_to_dict(parameterNode):
     parameters_dict = json.loads(parameterNode.GetText())
@@ -44,7 +51,9 @@ def __to_serializable_type(value):
         return value
 
 
-def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None, update_current_node=False):
+def dataframe_to_parameter_node(
+    input_values_df, node_name, parent_node=None, update_current_node=False, node_type=None
+):
     parameter_dict = {}
     for row_item in input_values_df.iterrows():
         _, row_data = row_item
@@ -53,10 +62,12 @@ def dataframe_to_parameter_node(input_values_df, node_name, parent_node=None, up
             "stop": __to_serializable_type(row_data.iloc[2]),
             "steps": __to_serializable_type(row_data.iloc[3]),
         }
-    return save_dict_to_parameter_node(parameter_dict, node_name, parent_node, update_current_node)
+    return save_dict_to_parameter_node(parameter_dict, node_name, parent_node, update_current_node, node_type=node_type)
 
 
-def save_dict_to_parameter_node(input_values_json, node_name, parent_node=None, update_current_node=False):
+def save_dict_to_parameter_node(
+    input_values_json, node_name, parent_node=None, update_current_node=False, node_type=None
+):
     if update_current_node:
         slicer.mrmlScene.RemoveNode(parent_node)
         slicer.app.processEvents()
@@ -71,13 +82,16 @@ def save_dict_to_parameter_node(input_values_json, node_name, parent_node=None, 
             parentItemId = newParentItemId
     else:
         parentItemId = subjectHierarchyNode.GetSceneItemID()
-    parameterNode = dict_to_parameter_node(input_values_json, parentItemId, newParameterNodeName)
+    parameterNode = dict_to_parameter_node(input_values_json, parentItemId, newParameterNodeName, node_type=node_type)
     return parameterNode
 
 
-def dict_to_parameter_node(parameter_dict, parent_dir=None, node_name="simulation_parameters"):
+def dict_to_parameter_node(parameter_dict, parent_dir=None, node_name="simulation_parameters", node_type=None):
     parameters_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode", node_name)
     parameters_node.SetText(json.dumps(parameter_dict, indent=4))
+
+    if node_type is not None:
+        parameters_node.SetAttribute(PNM_PARAMETER_TYPE_ATTR, node_type)
     parameters_node.SetAttribute(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
 
     folder_tree = slicer.mrmlScene.GetSubjectHierarchyNode()

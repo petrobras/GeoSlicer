@@ -1,5 +1,7 @@
 import slicer
 import qt
+import logging
+
 
 from ltrace.constants import ImageLogConst
 from ltrace.slicer.application_observables import ApplicationObservables
@@ -41,15 +43,24 @@ class DockedData(qt.QDockWidget):
             self.stackedWidget.addWidget(self.imageLogData)
 
     def setupUI(self):
+        self.setTitleBarWidget(qt.QFrame())
         self.defaultData = self._createScrollableWidget("customizeddata")
+        if not self.defaultData:
+            logging.warning("Data explorer is not available. Check the application files integrity. ")
+            return
         self.jobMonitorWidget = self._createScrollableWidget("jobmonitor", copyWidget=False)
+        if not self.jobMonitorWidget:
+            logging.warning("Job monitor is not available. Check the application files integrity. ")
         self.stackedWidget = qt.QStackedWidget()
-        self.stackedWidget.addWidget(self.defaultData)
+        if self.defaultData:
+            self.stackedWidget.addWidget(self.defaultData)
         self.__createImageLogDataWidget()
         self.stackedWidget.setCurrentWidget(self.defaultData)
         self.tabs = qt.QTabWidget()
+        self.tabs.setSizePolicy(qt.QSizePolicy.Policy.Ignored, self.tabs.sizePolicy.verticalPolicy())
         self.tabs.addTab(self.stackedWidget, "Explorer")
-        self.tabs.addTab(self.jobMonitorWidget, "Remote Jobs")
+        if self.jobMonitorWidget:
+            self.tabs.addTab(self.jobMonitorWidget, "Remote Jobs")
 
         mainWindow = slicer.modules.AppContextInstance.mainWindow
         mainWindow.addDockWidget(qt.Qt.RightDockWidgetArea, self)

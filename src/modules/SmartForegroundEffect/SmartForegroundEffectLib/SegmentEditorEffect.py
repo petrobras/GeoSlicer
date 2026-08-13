@@ -298,7 +298,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             for i in range(numSegments):
                 segmentId = annotsSegmentation.GetNthSegmentID(i)
                 segmentName = annotsSegmentation.GetNthSegment(i).GetName()
-                segmentColor = widgets.ColoredIcon(*(255 * np.array(annotsSegmentation.GetNthSegment(i).GetColor())))
+                segmentColor = widgets.ColoredIcon(
+                    *[int(c) for c in 255 * np.array(annotsSegmentation.GetNthSegment(i).GetColor())]
+                )
 
                 self.fragTextureAnnotCombobox.addItem(segmentColor, segmentName, segmentId)
                 self.fragResinAnnotCombobox.addItem(segmentColor, segmentName, segmentId)

@@ -49,7 +49,7 @@ class CoreEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         addAction(relatedModules["CustomizedData"], self.modulesToolbar)
         addAction(relatedModules["Multicore"], self.modulesToolbar)
         addAction(relatedModules["CorePhotographLoader"], self.modulesToolbar)
-        addAction(relatedModules["CustomizedCropVolume"], self.modulesToolbar)
+        addAction(relatedModules["CropTool"], self.modulesToolbar)
 
         addAction(relatedModules["MulticoreTransforms"], self.modulesToolbar)
         self.setupSegmentation()
@@ -68,6 +68,7 @@ class CoreEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["CustomizedSegmentEditor"],
                 modules["Segmenter"],
                 modules["SegmentInspector"],
+                modules["InteractiveSegmenter"],
                 modules["LabelMapEditor"],
                 modules["PoreStats"],
             ],

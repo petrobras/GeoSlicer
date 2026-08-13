@@ -1,6 +1,8 @@
 import csv
+import logging
 import os
 
+from numba import njit
 import numpy as np
 import openpnm
 from pypardiso import spsolve
@@ -153,6 +155,9 @@ def set_subresolution_conductance(
     throat_number_of_capilaries = (area_function(sub_network["throat.diameter"] / 2) * throat_phi) / area_function(
         throat_capilar_radius
     )
+    less_than_1_throats_count = count_less_than(1.0, throat_number_of_capilaries)
+    if less_than_1_throats_count > 0:
+        logging.warning(f"Subscale parameters were reducing {less_than_1_throats_count} throats")
 
     A = throat_capilar_radius**2 / (4 * subres_shape_factor)  # Area
     G = subres_shape_factor  # Shape Factor
@@ -244,8 +249,6 @@ def set_subresolution_conductance(
     sub_network["throat.manual_valvatne_conductance"] = throat_conductance
     sub_network["throat.number_of_capilaries"] = throat_number_of_capilaries
     sub_network["pore.number_of_capilaries"] = pore_number_of_capilaries
-    sub_network["pore.number_of_capilaries"] *= 0
-    sub_network["pore.number_of_capilaries"] += 1
 
     sub_network["throat.cross_sectional_area"] = np.pi * sub_network["throat.cap_radius"] ** 2
     sub_network["throat.volume"] = sub_network["throat.total_length"] * sub_network["throat.cross_sectional_area"]
@@ -471,3 +474,12 @@ def get_flow_rate(pn_pores, pn_throats, viscosity, pressure_drop):
 
     flow_rate = (outlet_flow_total + inlet_flow_total) / 2  # mm^3/s
     return flow_rate
+
+
+@njit(cache=True)
+def count_less_than(value, array):
+    count = 0
+    for x in array:
+        if x < value:
+            count += 1
+    return count

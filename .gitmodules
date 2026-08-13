@@ -9,4 +9,4 @@
 	url = git@bitbucket.org:ltrace/py_pore_flow.git
 [submodule "src/submodules/pyflowsolver"]
 	path = src/submodules/pyflowsolver
-	url = git@github.com:Arenhart/PyFlowSolver.git
+	url = git@github.com:ltracegeo/PyFlowSolver.git	

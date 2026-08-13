@@ -1,3 +1,181 @@
+# v2.9.0 - 2026-08-07
+
+## Highlights:
+- Added Fast Registration module for MicroCT and renamed Fine Alignment module.
+- Redesigned onboarding experience.
+- Introduced a new job queue design.
+
+## New features:
+- Added 2D support to Interactive Segmenter with scale-faithful fast preview.
+- Added support for extra input images as additional channels in Interactive Segmenter.
+- Added search exclude plugin and search configurations.
+- Added support for AmiraMesh format on MicroCTLoader.
+- Added 2 more functions to Shading correction.
+- Added CustomResampleScalarVolume to Image Log environment.
+- Added ImageLogPSDGeneration module.
+
+## Improvements:
+- Increased time limit for shading correction to 2 weeks and improved its data management.
+- Enhanced table calculator to support columns beyond Z and pass columns to numexpr explicitly.
+- Improved UI elements for subject hierarchy tree view, including auto-formatting and custom actions.
+- Redesigned Explorer icons.
+- Enhanced RawLoader to support 4 decimal places and 10nm of resolution.
+- Improved robustness of CSV import by guessing encoding.
+- Enhanced PNM Simulation widget with better styling and default values.
+- Improved job queue filtering and searching capabilities.
+- Updated documentation and user guides.
+- Enhanced visualization reconstruction in the extractor.
+- Improved summary presentation of pore network tables.
+- Enhanced progress bar in Customized Segment Editor and added a cancel button.
+- Improved error handling in model inference and user feedback.
+- Introduced periodic level tracing effect in Well Logs.
+- Enhanced Shading correction for BigImage with consistent mathematical models.
+- Improved PNM extraction, including labelmap generation.
+- Enhanced MicroCTLoader with AmiraMesh format support.
+- Improved user interface for modules, allowing for configurable minimum panel widths and free shrinking.
+- Added node type selection for simulation load parameters.
+- Added visual cues and flexibility for module resizing.
+- Enhanced Shading correction with auto-functionality and improved handling of sample fill.
+- Added Gradient Anisotropic Diffusion filter as an option for porosity map generation.
+- Improved Job Monitor details window to allow resizing and added sample alias.
+- Standardized combo box filters for Extractor and Simulations.
+- Improved handling of exceptions and CLI call results for simulations and extractions.
+- Implemented remote code signing.
+- Improved documentation deployment and video macros.
+- Enhanced PoreNetworkExtractorCLI with SLURM arguments and interface parameters.
+- Improved pore network table summary presentation.
+- Unified rps.sh calls in remote utilities.
+- Improved subscale model importing values with data chopping.
+- Implemented parallel processing for Kabs REV.
+- Improved progress updates for pyPoreFlow.
+- Enhanced Interactive Segmenter with uncertainty region and view synchronization.
+- Consolidated calculator tests and dropped unused helper functions.
+- Improved display of label map nodes, including color table opacity for 3D visibility.
+- Enhanced Segment ListWidget and fixed label listing issues.
+- Added a standalone widget with clone and rename buttons to replace old buttons.
+- Added a custom widget to the multiscale environment for resolution text.
+- Improved the handling of segmentation without a reference, allowing custom depths.
+- Unified GeoSlicer launch in a batch script to hide output.
+- Added an installer for GeoSlicer on Windows.
+- Added Geolog integration to the ImageLog toolbar.
+- Enabled user reordering of views in the Well Logs environment.
+- Introduced a new layout and widget for the onboarding experience.
+- Enhanced metadata saving for generated PSD volumes.
+- Added a conflict resolver for presets in the ImageLogPSDGeneration module.
+- Updated histogram calculations for logx mode and PSD per depth.
+- Added user-controlled smoothing and improved binning options for PSD generation.
+- Improved display of calculated PSD per depth tables.
+
+## Bug fixes:
+- Fixed GeoSlicer window opening maximized but small.
+- Fixed table calculator behavior and column handling.
+- Fixed collect behavior in two-phase simulations.
+- Fixed bad behavior while selecting items in the subject hierarchy tree view.
+- Fixed load project action.
+- Fixed custom actions in the center subject hierarchy plugin.
+- Fixed Explorer delete action.
+- Fixed using the wrong py_pore_flow's PoreNetwork python module path.
+- Fixed wrong porosity values on PNM extraction.
+- Fixed PNM Extraction labelmap generation on remote way.
+- Fixed low krw curves in multiscale two-phase simulations.
+- Fixed get_connected_geo_network by casting in/out-lets to bool.
+- Fixed pyqtgraph performance issue.
+- Fixed file read problems in MicroCTLoader.
+- Fixed watershed labelmap extraction being almost single-colored.
+- Fixed centering and cast/import details for AmiraMesh format.
+- Fixed cylinder crop for .am files.
+- Fixed import_nc_no_conversion by restoring voxel-center convention.
+- Fixed shared_memory extraction not using divs.
+- Fixed crash on cancel in Interactive Segmenter.
+- Fixed view sync for InteractiveSeg.
+- Fixed feature-order coupling and zoom-sync stale IDs.
+- Fixed write_empty bug in InteractiveSeg.
+- Fixed ctrl+scroll update preview event in InteractiveSeg.
+- Fixed batch invasion behavior.
+- Fixed reference in Manual Segmenter.
+- Fixed 'Show 3D Segmentation' feature update due to segment visibility toggle event.
+- Fixed Krel results being corrupted along save/loads.
+- Fixed MICP and One-phase simulation.
+- Fixed other subres models.
+- Fixed PNM Simulation tests.
+- Fixed get_connected_spy_network by casting in/out-lets to bool.
+- Fixed the color lookup table used by 3D rendering LabelMaps.
+- Fixed NoneType has no attribute error in PNM simulation.
+- Fixed shared_memory extraction not using divs.
+- Fixed bad behavior while selecting items in subject hierarchy tree view.
+- Fixed KabsREV to not call external ip.
+- Fixed retrieval of resolution limit in kabs REV.
+- Fixed retry when running remotely.
+- Fixed BigImage interface and registration.
+- Fixed bad object access attempt.
+- Fixed 'Show 3D' behavior for Segmentation Node.
+- Fixed attributes not being reset after a new node selection.
+- Fixed return statement with wrong type in Segmentation Node updates.
+- Fixed log flow values clipping in model nodes to avoid VTK corruption.
+- Fixed label listing for label map volumes when the background hide flag is enabled.
+- Fixed the cancel button on Gradient Diffusion filter.
+- Fixed the connection manager generating a traceback.
+- Fixed jobs not failing when there's an exception in deploy.
+- Fixed extractor reconnection not working.
+- Fixed unable to remove failed extractor job.
+- Fixed Connections.drop_client not working.
+- Fixed NOT_CONNECTED jobs not reconnecting via button.
+- Fixed geo2spy conversion and its use in two-phase simulation.
+- Fixed KabsREV UI restart after "Complete with errors" state.
+- Fixed extraction results localization in the tree.
+- Fixed Kabs model nodes orientation.
+- Fixed PNM table load bug.
+- Fixed cases where tables are still without schema.
+- Fixed redundant dictionary lookups.
+- Fixed serializable parameters for subscale estimation.
+- Fixed unit tests for subscale estimation.
+- Fixed PNM report.
+- Fixed reconstruction interface organization.
+- Fixed memory leak from Gradient Anisotropic Diffusion and Markup classes.
+- Fixed subscale model importing values.
+- Fixed black formatting.
+- Fixed dask selection of parameters failure.
+- Fixed rebase issues.
+- Fixed two-phase simulation test with Pressure Curve.
+- Fixed one phase simulation tests.
+- Fixed KabsREV UI restart after "Complete with errors" state.
+- Fixed orientation of Kabs model nodes.
+- Fixed color lookup table for 3D rendering LabelMaps.
+- Fixed issues related to the NetCDF engine.
+- Fixed PNM conflicts.
+- Fixed handling of missing environment variables in release Jenkinsfile.
+- Fixed segment list passing wrong values and improved error handling.
+- Fixed `deleteLater` crashing issues when a widget has no parent.
+- Fixed `loadPathEnv` being called twice.
+- Fixed PSDPerDepth presets test.
+- Fixed issues with the NetCDF engine.
+- Fixed PSDPerDepth histogram crashing after rebase.
+- Fixed bugs related to closing histograms' view and Apply button availability.
+- Fixed UI issues on 'Reset default values' and initial smooth factor.
+- Fixed `Create New` turning the previous view linear in x.
+- Fixed applying a preset triggering multiple calculations.
+- Fixed `ImageLogPSDGeneration` module attribute show test.
+- Fixed warning on `test_synth_circles`.
+
+## Removed:
+- Removed duplicated calculator tests.
+- Removed unused calculator helper and unreachable row-count check.
+- Removed InteractiveSeg from ImageLog module.
+- Removed module from Image Log env.
+- Removed PNM Report from microtom.
+- Removed subresolution function calculation.
+- Removed unnecessary code from subscale estimation.
+- Removed unwanted changes in subscale estimation.
+- Removed microporosity nrrd after calculations.
+- Removed unnecessary interpore code.
+- Removed unnecessary filter from workflow.
+- Removed `plugin_to_geolog.py`'s args.elevate in favor of pytest mocks.
+- Removed hard-coded paths in `geolog_addon.iss`.
+- Removed deprecated v2 of crop changes.
+- Removed the CloneAndRenameWidget to standardize based on the proposal.
+- Removed previous segmentation from view when cloning.
+- Removed options to create and delete nodes in the input node combo box.
+
 # v2.8.10 - 2026-07-14
 
 ## Improvements:

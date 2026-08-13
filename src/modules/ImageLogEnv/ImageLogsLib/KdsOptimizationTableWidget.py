@@ -141,7 +141,7 @@ class KdsOptimizationWidget(qt.QWidget):
 
         # Define the same size for all columns
         for i in range(self.table.columnCount):
-            self.table.horizontalHeader().setSectionResizeMode(i, qt.QHeaderView.Stretch)
+            self.table.horizontalHeader().setSectionResizeMode(i, qt.QHeaderView.ResizeMode.Stretch)
 
         self.table.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
         self.table.setSelectionMode(qt.QAbstractItemView.ExtendedSelection)

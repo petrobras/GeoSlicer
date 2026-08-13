@@ -1,8 +1,6 @@
-diff --git a/h5pyd/_hl/dataset.py b/h5pyd/_hl/dataset.py
-index f0060e7..e8547b3 100644
 --- a/h5pyd/_hl/dataset.py
 +++ b/h5pyd/_hl/dataset.py
-@@ -1162,41 +1162,52 @@ class Dataset(HLObject):
+@@ -1156,41 +1156,52 @@
                      self.log.info(f"page_mshape: {page_mshape}")
  
                      params["select"] = self._getQueryParam( page_start, page_stop, sel_step)
@@ -75,14 +73,15 @@ index f0060e7..e8547b3 100644
 -                        # each element must be a tuple, but the JSON decoder
 -                        # gives us a list instead.
 -                        self.log.info("json response")
-+                        except ValueError as e:
-+                            self.log.info(f"Attempt {attempt_i} got ValueError: {e}")
- 
+-
 -                        data = rsp["value"]
 -                        self.log.debug(data)
 -
 -                        page_arr = jsonToArray(page_mshape, mtype, data)
 -                        self.log.debug(f"jsontoArray returned: {page_arr}")
++                        except ValueError as e:
++                            self.log.info(f"Attempt {attempt_i} got ValueError: {e}")
++
 +                    if break_outer_loop:
 +                        break
  

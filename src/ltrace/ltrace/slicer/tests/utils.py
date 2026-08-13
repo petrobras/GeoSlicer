@@ -95,6 +95,14 @@ def wait_cli_to_finish(cli_entity, timeout_sec: int = 3600) -> None:
         cli_entity.Cancel()
         raise TimeoutError("Test timeout reached!")
 
+    # IsBusy() becoming False does not guarantee the ModifiedEvent callback has
+    # been dispatched yet in the new Slicer base. The CLI polling timer fires
+    # asynchronously, so sleep briefly between flushes to give it time to queue
+    # the ModifiedEvent before each process_events() call.
+    for _ in range(5):
+        time.sleep(0.200)
+        process_events()
+
 
 def log(message, show_window=False, end="\n"):
     """Logging wrapper for test run scenario.
@@ -251,6 +259,7 @@ def save_project(project_path: Union[str, Path], timeout_ms=300000, properties=N
         project_path (Union[str, Path]): the desired project folder .mrml file.
 
     Returns:
+
         bool: True if save process was successful, otherwise False
     """
     if properties is None or not isinstance(properties, dict):
@@ -260,9 +269,12 @@ def save_project(project_path: Union[str, Path], timeout_ms=300000, properties=N
         project_path = Path(project_path)
 
     if project_path.is_file():
-        shutil.rmtree(project_path.parent, onerror=make_directory_writable)
+        shutil.rmtree(project_path.parent, onexc=make_directory_writable)
     elif project_path.is_dir():
-        shutil.rmtree(project_path, onerror=make_directory_writable)
+        shutil.rmtree(project_path, onexc=make_directory_writable)
+    else:
+        if project_path.parent.is_dir() and project_path.suffix == ".mrml":
+            shutil.rmtree(project_path.parent, onexc=make_directory_writable)
 
     status = False
     with WatchSignal(signal=slicer.mrmlScene.EndSaveEvent, timeout_ms=timeout_ms):
@@ -365,7 +377,7 @@ def waitCondition(condition: Callable, timeoutSec: int = 5) -> None:
         time.sleep(0.2)
         process_events()
 
-        
+
 def getNodeName(node: slicer.vtkMRMLNode) -> str:
     if node is None:
         return "None"
@@ -383,4 +395,3 @@ def getPlatformProjectPath(base_project_path: Union[str, Path], check_exists=Tru
     if check_exists and not platform_path.exists():
         return path
     return platform_path
-

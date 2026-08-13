@@ -26,15 +26,27 @@ class PoreNetworkExtractor(Workstep):
 
         for node in nodes:
             self.finished = False
+            logic.extractionFinished.connect(self.onFinish)
             try:
-                logic.extract(node, None, node.GetName(), self.method, self.onFinish)
+                logic.extract(
+                    node,
+                    None,
+                    node.GetName(),
+                    False,
+                    self.method,
+                    {1: 0.4, 2: 0.8},
+                    True,
+                    {"divs": 2},
+                )
             except PoreNetworkExtractorError:
+                logic.extractionFinished.disconnect(self.onFinish)
                 continue
 
             while self.finished is False:
                 time.sleep(0.2)
                 slicer.app.processEvents()
 
+            logic.extractionFinished.disconnect(self.onFinish)
             self.discard_input(node)
 
             pore_table, throat_table = logic.results["pore_table"], logic.results["throat_table"]

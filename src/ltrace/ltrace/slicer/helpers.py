@@ -23,7 +23,7 @@ import traceback
 
 from ltrace import transforms
 from ltrace.slicer.node_attributes import ColorMapSelectable, NodeEnvironment, NodeTemporarity, CorrelatedNodeAttributes
-from ltrace.slicer.metadata import copy_metadata
+from ltrace.slicer.metadata import Metadata, copy_metadata
 
 from pathlib import Path
 from skimage.segmentation import relabel_sequential
@@ -58,16 +58,41 @@ SCALAR_TYPE_LABELS = {
 
 ## This function receives a pyside2 widget and returns a pythonqt widget
 def getPythonQtWidget(wid):
-    from PySide2 import QtWidgets
-    from PySide2.QtWidgets import QVBoxLayout
-    import PythonQt
-    import shiboken2
+    if not hasattr(slicer.modules, "AppContextInstance"):
+        print("WARNING: Slicer AppContextInstance not found. getPythonQtWidget may not work properly.", flush=True)
+        return
 
-    pyqtlayout = PythonQt.Qt.QVBoxLayout()
-    pysideLayout = shiboken2.wrapInstance(hash(pyqtlayout), QVBoxLayout)
+    import qt
+    import shiboken2
+    from PySide2 import QtWidgets
+
+    appContext = slicer.modules.AppContextInstance
+
+    container = qt.QWidget()
+
+    pysideContainer = shiboken2.wrapInstance(hash(container), QtWidgets.QWidget)
+
+    pysideLayout = QtWidgets.QVBoxLayout(pysideContainer)
+    pysideLayout.setContentsMargins(0, 0, 0, 0)
+
     pysideLayout.addWidget(wid)
-    pysideLayout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetMinimumSize)
-    return pyqtlayout.itemAt(0).widget()
+
+    wrapperId = id(container)
+    appContext._PYSIDE_GC_REGISTRY[wrapperId] = {
+        "pysideContainer": pysideContainer,
+        "pysideLayout": pysideLayout,
+        "wid": wid,
+    }
+
+    def cleanup_registry(*args):
+        appContext._PYSIDE_GC_REGISTRY.pop(wrapperId, None)
+
+    try:
+        container.destroyed.connect(cleanup_registry)
+    except Exception:
+        pass
+
+    return container
 
 
 def rescaleSegmentationGeometry(target, reference):
@@ -188,6 +213,12 @@ def get_subject_hierarchy_siblings(node, forbid_root_as_parent=False):  # TODO m
     return [n for n in sibling_nodes if n is not None]
 
 
+def copy_subject_hierarchy_item_parent(from_node, to_node):
+    subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(from_node))
+    subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(to_node), itemParent)
+
+
 def clone_volume(
     volume,
     name=None,
@@ -236,9 +267,7 @@ def clone_volume(
         if as_temporary:
             makeNodeTemporary(color_node)
 
-    subject_hierarchy_node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    item_parent = subject_hierarchy_node.GetItemParent(subject_hierarchy_node.GetItemByDataNode(volume))
-    subject_hierarchy_node.SetItemParent(subject_hierarchy_node.GetItemByDataNode(new_volume), item_parent)
+    copy_subject_hierarchy_item_parent(volume, new_volume)
 
     copy_metadata(volume, new_volume)
 
@@ -317,19 +346,28 @@ def in_thin_section_environment():
     return getCurrentEnvironment() == NodeEnvironment.THIN_SECTION
 
 
-def copyAttributesTo(targetNode, sourceNode):
-    """Copy all attributes from sourceNode to targetNode
-
-    Args:
-        sourceNode (vtkMRMLNode): Source node
-        targetNode (vtkMRMLNode): Target node
+def copy_attributes(from_node, to_node, attributes_list=None):
     """
-    if not sourceNode or not targetNode:
+    Copy attributes (all of them if attributes_list is None) from_node -> to_node
+    """
+    if not from_node or not to_node:
         raise ValueError("Source and target nodes must be provided")
+    for attr_name in from_node.GetAttributeNames():
+        if (attributes_list and attr_name in attributes_list) or (not attributes_list):
+            attr_value = from_node.GetAttribute(attr_name)
+            to_node.SetAttribute(attr_name, attr_value)
 
-    for attr_name in sourceNode.GetAttributeNames():
-        attr_value = sourceNode.GetAttribute(attr_name)
-        targetNode.SetAttribute(attr_name, attr_value)
+
+def copy_hierarchy_attributes(from_node, to_node, attributes_list=None):
+    """
+    Copy attributes (all of them if attributes_list is None) from_node hierarchy itrm -> to_node hierarchy item
+    """
+    subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    itemID = subjectHierarchyNode.GetItemByDataNode(from_node)  # the hierarchy item ID corresponding to node
+    for key in subjectHierarchyNode.GetItemAttributeNames(itemID):
+        if (attributes_list and key in attributes_list) or (not attributes_list):
+            value = subjectHierarchyNode.GetItemAttribute(itemID, key)
+            subjectHierarchyNode.SetItemAttribute(subjectHierarchyNode.GetItemByDataNode(to_node), key, value)
 
 
 def copy_attributes(from_node, to_node, attributes_list=None):
@@ -764,16 +802,154 @@ def setSourceVolume(node: slicer.vtkMRMLSegmentationNode, source: slicer.vtkMRML
         node.RemoveNodeReferenceIDs(slicer.vtkMRMLSegmentationNode.GetReferenceImageGeometryReferenceRole())
 
 
-def getWellAttributeFromNode(node, attribute: str) -> Union[int, str]:
+def getAttributeFromNodeOrReferencedNode(node, attribute: str):
+    """
+    Get attribute from node. If the attribute is absent, try to retrieve it from a reference node - the
+    case of a Proportions node, or a SegmentationNode or LabelMapVolumeNode.
+    """
+    if not node.GetAttribute(attribute):
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            node = getSourceVolume(node)
+        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(node)
+            if isinstance(node, slicer.vtkMRMLSegmentationNode):
+                node = getSourceVolume(node)
+
+    return node.GetAttribute(attribute)
+
+
+def getMetadataFromNodeOrReferencedNode(node, key: str):
+    """
+    Get metadata key from node. If it is absent, try to retrieve it from a reference node - the
+    case of a Proportions node, or a SegmentationNode or LabelMapVolumeNode.
+    """
+    if key not in Metadata(node):
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            node = getSourceVolume(node)
+        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(node)
+            if isinstance(node, slicer.vtkMRMLSegmentationNode):
+                node = getSourceVolume(node)
+
+    return Metadata(node)[key]
+
+
+def copyMetadataFromNodeOrReferencedNode(node, targetNode):
+    """
+    Try to copy metadata from node to targetNode. If the node has a CorrelatedNodeAttributes.PROPORTION_NODE
+    attribute, or is a labelmap or a segmentation, copy the metadata from the reference node
+    """
+    sourceNode = node
     if (
         node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
         == CorrelatedNodeAttributes.PROPORTION_NODE.value
     ):
-        node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
-    if isinstance(node, slicer.vtkMRMLSegmentationNode):
-        node = getSourceVolume(node)
+        sourceNode = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+    if isinstance(sourceNode, slicer.vtkMRMLSegmentationNode):
+        sourceNode = getSourceVolume(sourceNode)
+    elif isinstance(sourceNode, slicer.vtkMRMLLabelMapVolumeNode):
+        sourceNode = getSourceVolume(sourceNode)
+        if isinstance(sourceNode, slicer.vtkMRMLSegmentationNode):
+            sourceNode = getSourceVolume(sourceNode)
 
-    return node.GetAttribute(attribute)
+    copy_metadata(sourceNode, targetNode)
+
+
+def getHierarchyItemAttributeFromNodeOrReferencedNode(node, attribute: str):
+    """
+    Get attribute from node's item ID in hierarchy. If the attribute is absent, try to retrieve it from a
+    reference node - the case of a Proportions node, or a SegmentationNode or LabelMapVolumeNode.
+    """
+    subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    itemID = subjectHierarchyNode.GetItemByDataNode(node)  # the hierarchy item ID corresponding to node
+    if not subjectHierarchyNode.GetItemAttribute(itemID, attribute):
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        if isinstance(node, slicer.vtkMRMLSegmentationNode) or isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(node)
+        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(getSourceVolume(node))
+            print(node.GetName())
+
+        itemID = subjectHierarchyNode.GetItemByDataNode(node)
+
+    return subjectHierarchyNode.GetItemAttribute(itemID, attribute)
+
+
+def getMetadataFromNodeOrReferencedNode(node, key: str):
+    """
+    Get metadata key from node. If it is absent, try to retrieve it from a reference node - the
+    case of a Proportions node, or a SegmentationNode or LabelMapVolumeNode.
+    """
+    if key not in Metadata(node):
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        if isinstance(node, slicer.vtkMRMLSegmentationNode):
+            node = getSourceVolume(node)
+        elif isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(node)
+            if isinstance(node, slicer.vtkMRMLSegmentationNode):
+                node = getSourceVolume(node)
+
+    return Metadata(node)[key]
+
+
+def copyMetadataFromNodeOrReferencedNode(node, targetNode):
+    """
+    Try to copy metadata from node to targetNode. If the node has a CorrelatedNodeAttributes.PROPORTION_NODE
+    attribute, or is a labelmap or a segmentation, copy the metadata from the reference node
+    """
+    sourceNode = node
+    if (
+        node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+        == CorrelatedNodeAttributes.PROPORTION_NODE.value
+    ):
+        sourceNode = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+    if isinstance(sourceNode, slicer.vtkMRMLSegmentationNode):
+        sourceNode = getSourceVolume(sourceNode)
+    elif isinstance(sourceNode, slicer.vtkMRMLLabelMapVolumeNode):
+        sourceNode = getSourceVolume(sourceNode)
+        if isinstance(sourceNode, slicer.vtkMRMLSegmentationNode):
+            sourceNode = getSourceVolume(sourceNode)
+
+    copy_metadata(sourceNode, targetNode)
+
+
+def getHierarchyItemAttributeFromNodeOrReferencedNode(node, attribute: str):
+    """
+    Get attribute from node's item ID in hierarchy. If the attribute is absent, try to retrieve it from a
+    reference node - the case of a Proportions node, or a SegmentationNode or LabelMapVolumeNode.
+    """
+    subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    itemID = subjectHierarchyNode.GetItemByDataNode(node)  # the hierarchy item ID corresponding to node
+    if not subjectHierarchyNode.GetItemAttribute(itemID, attribute):
+        if (
+            node.GetAttribute(CorrelatedNodeAttributes.CORRELATED_NODE_TYPE.value)
+            == CorrelatedNodeAttributes.PROPORTION_NODE.value
+        ):
+            node = tryGetNode(node.GetAttribute(CorrelatedNodeAttributes.REFERENCE_NODE_ID.value))
+        if isinstance(node, slicer.vtkMRMLSegmentationNode) or isinstance(node, slicer.vtkMRMLLabelMapVolumeNode):
+            node = getSourceVolume(node)
+
+        itemID = subjectHierarchyNode.GetItemByDataNode(node)
+
+    return subjectHierarchyNode.GetItemAttribute(itemID, attribute)
 
 
 # TODO change that name
@@ -1007,7 +1183,7 @@ def updateSegmentationFromLabelMap(
             color = [0, 0, 0, 0]
             colorNode.GetColor(segmentIndex, color)
             color = color[:3]
-            segmentationNode.GetSegmentation().AddEmptySegment(segmentID, segmentID, color)
+            segmentationNode.GetSegmentation().AddEmptySegment(str(segmentID), str(segmentID), color)
         success = slicer.modules.segmentations.logic().ImportLabelmapToSegmentationNode(
             labelmapVolumeNode, segmentationNode, segmentStrArray
         )
@@ -1207,7 +1383,10 @@ def setVolumeNullValue(volumeNode, value):
     if volumeNode is None:
         return False
 
-    volumeNode.SetAttribute("NullValue", str(value))
+    volumeNode.SetAttribute(
+        "NullValue", str(value)
+    )  # TODO (AM-11): erase this after complete migration to the Metadata structure
+    Metadata(volumeNode)["NullValue"] = str(value)
     return True
 
 
@@ -1215,7 +1394,10 @@ def getVolumeNullValue(volumeNode):
     if volumeNode is None:
         return None
 
-    value = volumeNode.GetAttribute("NullValue")
+    # value = Metadata(volumeNode).get("NullValue", None)
+    value = volumeNode.GetAttribute(
+        "NullValue"
+    )  # TODO (AM-11): change this for the commented line above after complete migration to the Metadata structure
 
     if value == "None" or value is None:
         return None
@@ -1305,6 +1487,8 @@ def create_color_table(
     for label, color in enumerate(colors, start=start):
         color_lookup_table.SetTableValue(label, *color)
 
+    color_lookup_table.SetTableRange(0, color_lookup_table.GetNumberOfTableValues() - 1)
+
     color_table_node = slicer.vtkMRMLColorTableNode()
     color_table_node.SetTypeToUser()
     color_table_node.SetName(node_name)
@@ -1314,8 +1498,10 @@ def create_color_table(
     color_table_node.SetLookupTable(color_lookup_table)
 
     if color_names:
-        color_table_node.ClearNames()
-        color_table_node.SetColorNames(color_names)
+        # TODO
+        # color_table_node.SetColorNames(color_names)
+        for i, name in enumerate(color_names):
+            color_table_node.SetColorName(i, name)
 
     color_table_node.NamesInitialisedOn()
 
@@ -1536,6 +1722,7 @@ def extractLabelsFromLabelMap(labelMapVolumeNode, segments=None):
     Returns:
         dict: a dictionary with segment's indices as key and segment's label as value.
     """
+    labels = dict()
     if not labelMapVolumeNode.IsA(slicer.vtkMRMLLabelMapVolumeNode.__name__):
         raise RuntimeError("The node is not a label map volume node.")
 
@@ -1543,10 +1730,11 @@ def extractLabelsFromLabelMap(labelMapVolumeNode, segments=None):
         return labels
 
     segments_dict = segmentProportionFromLabelMap(labelMapVolumeNode)
-    segments = range(0, len(segments_dict)) if segments is None else segments
-    labels = [
-        (idx, segment["name"]) for idx, segment in segments_dict.items() if idx - 1 in segments
-    ]  # -1 due to selecte segments indexes starts with 0 but Background (0) is not listed.
+    if segments is None:
+        labels = [(idx, segment["name"]) for idx, segment in segments_dict.items()]
+        return dict(labels)
+
+    labels = [(idx, segment["name"]) for idx, segment in segments_dict.items() if idx in segments]
     labels_dict = dict(labels)
 
     return labels_dict
@@ -1999,7 +2187,7 @@ def getVolumeVisibilityIn3D(volumeNode):
     viewNode = slicer.app.layoutManager().threeDWidget(0).mrmlViewNode()
     volumeRenderingLogic = slicer.modules.volumerendering.logic()
     renderingNode = volumeRenderingLogic.GetVolumeRenderingDisplayNodeForViewNode(volumeNode, viewNode)
-    return renderingNode.GetVisibility() if renderingNode else False
+    return bool(renderingNode.GetVisibility()) if renderingNode else False
 
 
 def get_memory_usage(mode="bytes"):
@@ -2214,7 +2402,7 @@ def handleNodeNameToRegex(nodeName: str) -> str:
     return nodeName
 
 
-def make_directory_writable(func=None, path=None, exc_info=None):
+def make_directory_writable(func, path, exc):
     """
     Error handler for ``shutil.rmtree``.
 
@@ -2222,16 +2410,16 @@ def make_directory_writable(func=None, path=None, exc_info=None):
     it attempts to add write permission and then retries.
 
     If the error is for another reason it re-raises the error.
-
-    Usage : ``shutil.rmtree(path, onerror=make_directory_writable)``
     """
-    if path is None:
-        raise RuntimeError("Invalid path.")
-
-    if not os.access(path, os.W_OK):
-        os.chmod(path, stat.S_IWUSR)
-        if func is not None:
+    if isinstance(exc, PermissionError):
+        os.chmod(path, stat.S_IWRITE)
+        try:
             func(path)
+        except PermissionError:
+            time.sleep(0.1)
+            func(path)
+    else:
+        raise exc
 
 
 def copy_display(from_: slicer.vtkMRMLScalarVolumeNode, to: slicer.vtkMRMLScalarVolumeNode):
@@ -2309,6 +2497,23 @@ def save_path(pathLineEdit):
     """
     with BlockSignals(pathLineEdit):
         pathLineEdit.addCurrentPathToHistory()
+
+
+def is_dir_listable(path) -> bool:
+    """Whether path is a directory whose contents can be listed.
+
+    Returns False when path is a directory that exists but cannot be read (e.g.
+    permission denied), and True otherwise - including for files and missing
+    paths, whose accessibility is a job for os.path.exists.
+    """
+    if not os.path.isdir(path):
+        return True
+    try:
+        with os.scandir(path) as entries:
+            next(entries, None)
+    except OSError:
+        return False
+    return True
 
 
 def getScalarTypesAsString(scalarType: int):

@@ -6,6 +6,15 @@ from pathlib import Path, PurePosixPath
 
 import slicer
 
+from ltrace.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_PROGRESS,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_FAILED,
+    JOB_STATE_RUNNING,
+)
 from ltrace.remote.utils import argstring
 from ltrace.remote.jobs import JobManager
 from ltrace.remote import utils as slurm_utils
@@ -58,13 +67,13 @@ class PUCModelExecutionHandler:
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
         client = kwargs.get("client")
 
-        if action == "DEPLOY":
+        if action == JOB_EVENT_DEPLOY:
             self.deploy(caller, uid, client)
-        elif action == "PROGRESS":
+        elif action == JOB_EVENT_PROGRESS:
             self.progress(caller, uid, client)
-        elif action == "CANCEL":
+        elif action == JOB_EVENT_CANCEL:
             self.cancel(caller, uid, client)
-        elif action == "COLLECT":
+        elif action == JOB_EVENT_COLLECT:
             self.collect(caller, uid, client)
         else:
             raise ValueError(f"Unknown action: {action}")
@@ -93,7 +102,7 @@ class PUCModelExecutionHandler:
         local_job_dir = self.jobs_local_path / dirname
 
         if not local_job_dir.exists():
-            caller.set_state(uid, "FAILED", 0, message=f"Unable to copy data. Cannot find '{local_job_dir}'.")
+            caller.set_state(uid, JOB_STATE_FAILED, 0, message=f"Unable to copy data. Cannot find '{local_job_dir}'.")
             return
 
         image_log_node = slicer.util.getNode(self.image_log_node_id)
@@ -127,13 +136,15 @@ class PUCModelExecutionHandler:
         tsnow = datetime.now().timestamp()
 
         if len(output["stderr"]) > 0:
-            caller.set_state(uid, "FAILED", 0, message=f"Failed to run command: {full_cmd}", traceback=output["stderr"])
+            caller.set_state(
+                uid, JOB_STATE_FAILED, 0, message=f"Failed to run command: {full_cmd}", traceback=output["stderr"]
+            )
             return  # FAILED
 
         findings = self.job_id_pattern.search(output["stdout"])
 
         if not findings:
-            caller.set_state(uid, "FAILED", 0, message="Failed to match the job id")
+            caller.set_state(uid, JOB_STATE_FAILED, 0, message="Failed to match the job id")
             return  # FAILED
 
         self.jobid = findings.group(1)
@@ -149,10 +160,12 @@ class PUCModelExecutionHandler:
             "bin_path": self.bin_path.as_posix(),
         }
 
-        caller.set_state(uid, "RUNNING", 37, message="Execution in progress.", start_time=tsnow, details=details)
+        caller.set_state(
+            uid, JOB_STATE_RUNNING, 37, message="Execution in progress.", start_time=tsnow, details=details
+        )
         caller.persist(uid)
 
-        caller.schedule(uid, "PROGRESS")
+        caller.schedule(uid, JOB_EVENT_PROGRESS)
 
     def progress(self, caller: JobManager, uid: str, client: Any):
         tsnow = datetime.now().timestamp()
@@ -176,7 +189,7 @@ class PUCModelExecutionHandler:
                 end_time=tsnow,
                 traceback=repr(e),
             )
-            caller.schedule(uid, "PROGRESS")
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
             return
 
         if slurm_utils.all_done(jobstatus):  # job finished and got out of queue
@@ -186,7 +199,7 @@ class PUCModelExecutionHandler:
             if not output_filepath.exists():
                 caller.set_state(
                     uid,
-                    "FAILED",
+                    JOB_STATE_FAILED,
                     0,
                     message=f"Failed to check job results: '{output_filepath}' not found!",
                     traceback=output["stderr"],
@@ -198,16 +211,18 @@ class PUCModelExecutionHandler:
             slurm_out = self.get_slurm_log(job_dir)
 
             """job finished and got out of queue"""
-            caller.set_state(uid, "COMPLETED", 100, message="Execution Completed.", end_time=tsnow, traceback=slurm_out)
+            caller.set_state(
+                uid, JOB_STATE_COMPLETED, 100, message="Execution Completed.", end_time=tsnow, traceback=slurm_out
+            )
 
         else:
-            caller.set_state(uid, "RUNNING", 47)
-            caller.schedule(uid, "PROGRESS")
+            caller.set_state(uid, JOB_STATE_RUNNING, 47)
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
 
     def cancel(self, caller: JobManager, uid: str, client: Any):
         try:
             self.cleanup(caller, uid, client)
-            # caller.set_state(uid, "CANCELLED", 0, message="Execution Cancelled.")
+            # caller.set_state(uid, JOB_STATE_CANCELLED, 0, message="Execution Cancelled.")
         except:
             pass
 

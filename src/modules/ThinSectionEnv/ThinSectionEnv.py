@@ -40,7 +40,7 @@ class ThinSectionEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         addAction(relatedModules["CustomizedData"], self.modulesToolbar)
         addAction(relatedModules["ThinSectionLoader"], self.modulesToolbar)
         addAction(relatedModules["QEMSCANLoader"], self.modulesToolbar)
-        addAction(relatedModules["CustomizedCropVolume"], self.modulesToolbar)
+        addAction(relatedModules["CropTool"], self.modulesToolbar)
         addAction(relatedModules["ImageTools"], self.modulesToolbar)
         addMenu(
             svgToQIcon(getResourcePath("Icons") / "svg" / "Register2D.svg"),
@@ -70,6 +70,7 @@ class ThinSectionEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["CustomizedSegmentEditor"],
                 modules["Segmenter"],
                 modules["SegmentInspector"],
+                modules["InteractiveSegmenter"],
                 modules["ThinSectionInstanceEditor"],
                 modules["LabelMapEditor"],
                 modules["PoreStats"],

@@ -141,13 +141,13 @@ class ImageLogView:
         elif type(node) is slicer.vtkMRMLTableNode:
             if node.GetTable().GetColumn(0) is not None:
                 table_type = self.__get_table_type(node)
-                is_NMR = False
-                if (
-                    table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH
-                    and self.__get_histogram_in_depth_type(node) == HistogramGraphType.NMR.value
+                NMR_or_PSDPerDepth = False
+                if table_type == self.TABLE_TYPE_HISTOGRAM_IN_DEPTH and (
+                    self.__get_histogram_in_depth_type(node) == HistogramGraphType.NMR.value
+                    or self.__get_histogram_in_depth_type(node) == HistogramGraphType.PSD_PER_DEPTH.value
                 ):
-                    is_NMR = True
-                graphicViewData = GraphicViewData("#00550090" if is_NMR else "#000000")
+                    NMR_or_PSDPerDepth = True
+                graphicViewData = GraphicViewData("#00550090" if NMR_or_PSDPerDepth else "#000000")
                 graphicViewData.primaryNodeId = node.GetID()
                 if table_type in [self.TABLE_TYPE_IMAGE_LOG, self.TABLE_TYPE_POROSITY_PER_REALIZATION]:
                     columns = self.__getParametersForGraphicViewData(node)
@@ -211,6 +211,8 @@ class ImageLogView:
     def __get_histogram_in_depth_type(self, table_node: slicer.vtkMRMLTableNode) -> str:
         if table_node.GetTable().GetRow(0).GetValue(0) == "X":
             return HistogramGraphType.IN_DEPTH.value
+        elif table_node.GetAttribute("Property") and table_node.GetAttribute("Property") == "Pore size (mm)":
+            return HistogramGraphType.PSD_PER_DEPTH.value
         elif table_node.GetAttribute(HistogramGraphType.name()) == HistogramGraphType.MULTI_HISTOGRAM.value:
             return HistogramGraphType.MULTI_HISTOGRAM.value
         else:

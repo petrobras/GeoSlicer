@@ -161,7 +161,7 @@ class CurvePlot(QtWidgets.QWidget):
         return function
 
     def __setup_widget(self):
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
 
         # Plot widgets
         self._graphics_layout_widget = CustomGraphicLayoutWidget()
@@ -516,9 +516,9 @@ class PlotControlsEventFilter(QtCore.QObject):
         self.scalingSpeed = scalingSpeed
 
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.GraphicsSceneWheel:
+        if event.type() == QtCore.QEvent.Type.GraphicsSceneWheel:
             modifiers = QtWidgets.QApplication.keyboardModifiers()
-            if modifiers == QtCore.Qt.ControlModifier:
+            if modifiers == QtCore.Qt.KeyboardModifier.ControlModifier:
                 # Wheel + Ctrl does the scaling
                 mask = (0, 1)
 

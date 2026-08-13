@@ -90,5 +90,5 @@ class NetCDFLoaderWidget(LTracePluginWidget):
         self.progress_bar.visible = True
         self.status_label.visible = True
         self.status_label.setText(message)
-        self.progress_bar.setValue(progress * 100)
+        self.progress_bar.setValue(int(progress * 100))
         slicer.app.processEvents()

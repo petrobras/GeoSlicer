@@ -10,7 +10,8 @@ import slicer
 import vtk
 from scipy.ndimage import zoom
 
-from ltrace.slicer.helpers import triggerNodeModified
+from ltrace.slicer.helpers import triggerNodeModified, copy_attributes
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer_utils import *
 from ltrace.transforms import transformPoints
 from ltrace.units import global_unit_registry as ureg
@@ -335,8 +336,11 @@ class QualityIndicatorLogic(LTracePluginLogic):
         if "Completed" in status or status == "Cancelled":
             logging.info(status)
             if status == "Completed":
+                inputVolume = slicer.mrmlScene.GetNodeByID(self.cliNode.GetParameterAsString("inputVolume1"))
                 if self.outputAsImage:
+                    copy_attributes(inputVolume, self.outputVolumeNode)
                     self.outputVolumeNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+                    copy_metadata(inputVolume, self.outputVolumeNode)
                     self.outputVolumeNode.HideFromEditorsOff()
                     triggerNodeModified(self.outputVolumeNode)
                 else:
@@ -359,7 +363,10 @@ class QualityIndicatorLogic(LTracePluginLogic):
 
                     table = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
                     table.SetName(self.outputVolumeNode.GetName())
+
+                    copy_attributes(inputVolume, self.outputVolumeNode)
                     table.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+                    copy_metadata(inputVolume, table)
 
                     # Reducing the number of data points to 1/10
                     shrinkFactor = 0.1

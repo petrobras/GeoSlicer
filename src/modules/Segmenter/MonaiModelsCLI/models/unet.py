@@ -1,6 +1,17 @@
+import sympy  # import it before torch to avoid crash
 import torch
 import monai
 from monai.networks.blocks.convolutions import Convolution, ResidualUnit
+
+
+def _get_last_act_layer(last_act):
+    if last_act is None:
+        return torch.nn.Identity()
+
+    if last_act == "softmax":
+        return monai.networks.layers.utils.get_act_layer(name=("softmax", {"dim": 1}))
+
+    return monai.networks.layers.utils.get_act_layer(last_act)
 
 
 class UNetAct(torch.nn.Module):
@@ -31,18 +42,11 @@ class UNetAct(torch.nn.Module):
             num_res_units=num_res_units,
         )
 
-        if last_act is not None:
-            self.last_act = monai.networks.layers.utils.get_act_layer(last_act)
-        else:
-            self.last_act = lambda x: x
+        self.last_act = _get_last_act_layer(last_act)
 
     def forward(self, x):
         x = self.unet(x)
-        try:
-            x = self.last_act(x, dim=1)
-        except Exception as e:
-            print(e)
-            x = self.last_act(x)
+        x = self.last_act(x)
         return x
 
 
@@ -98,10 +102,7 @@ class UNetActWithBoundarySupervision(torch.nn.Module):
             dropout=self.unet.dropout,
         )
 
-        if last_act is not None:
-            self.last_act = monai.networks.layers.utils.get_act_layer(last_act)
-        else:
-            self.last_act = lambda x: x
+        self.last_act = _get_last_act_layer(last_act)
 
         self.main_model = torch.nn.Sequential(self.unet, self.segmentation_head)
 

@@ -8,6 +8,7 @@ import ctk
 import qt
 import slicer
 from ltrace.slicer import helpers
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer_utils import *
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widgets import PixelLabel
@@ -212,6 +213,11 @@ class CustomizedGaussianBlurImageFilterLogic(LTracePluginLogic):
 
             slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
             helpers.copy_display(self.inputVolume, self.outputVolume)
+            """ FIXME MUSA-150 - Should we copy attributes by default? And references?
+            helpers.copy_attributes(self.inputVolume, self.outputVolume)
+            copy_metadata(self.inputVolume, self.outputVolume)
+            helpers.copy_hierarchy_attributes(self.inputVolume, self.outputVolume)
+            self.outputVolume.CopyReferences(self.inputVolume) """
 
             if status == "Completed":
                 pass

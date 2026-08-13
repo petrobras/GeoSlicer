@@ -31,7 +31,6 @@ class ThumbnailDownloader:
         batch_size: int = 20,
         thumbnail_size: Tuple[int, int] = (900, 900),
     ) -> None:
-        super().__init__()
         self._cache_files = CacheFiles(name="thumbnails", expiration_days=30, root_directory_path=cache_root_directory)
         self._session = biaep_session
         self._df = df
@@ -115,9 +114,7 @@ class ThumbnailDownloader:
         else:
             self._download_thumbnails()
 
-    def _download_thumbnails(
-        self, temporary_download_directory_path: Path = Path(tempfile.TemporaryDirectory().name)
-    ) -> None:
+    def _download_thumbnails(self, temporary_download_directory_path: Path = None) -> None:
         """Download process handler. Download thumbnails in batch sizes, based on the defined class atributtes.
            At the end of the download process, and the end of each batch download process, the callback methods
            'on_download_batch_finished_callback' and 'on_download_process_finished_callback' will be called with the respectively results.
@@ -129,6 +126,9 @@ class ThumbnailDownloader:
             RuntimeError: When download process is already running.
             RuntimeError: When defined DataFrame is invalid.
         """
+        if temporary_download_directory_path is None:
+            temporary_download_directory_path = Path(tempfile.TemporaryDirectory().name)
+
         if self.state == DownloadState.DOWNLOADING:
             message = "Thumbnails download already in progress..."
             logging.info(message)

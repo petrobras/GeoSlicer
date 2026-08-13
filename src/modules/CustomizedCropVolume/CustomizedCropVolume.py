@@ -8,7 +8,8 @@ import slicer
 import vtk
 
 from ltrace.slicer import ui
-from ltrace.slicer import helpers
+from ltrace.slicer.helpers import copy_display, bounds2size, copy_attributes, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import *
 from ltrace.slicer_utils import getResourcePath
@@ -309,7 +310,12 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
         subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(croppedVolume), itemParent)
 
         slicer.util.setSliceViewerLayers(background=croppedVolume, fit=True)
-        helpers.copy_display(volume, croppedVolume)
+        copy_display(volume, croppedVolume)
+        copy_metadata(volume, croppedVolume)
+        """ TODO (MUSA-150) - Should we copy hierarchy attributes by default? And references?
+        copy_attributes(volume, croppedVolume)
+        copy_hierarchy_attributes(volume, croppedVolume)
+        croppedVolume.CopyReferences(volume)"""
 
         if self.roi is not None:
             self.roi.SetDisplayVisibility(False)
@@ -332,7 +338,7 @@ class CustomizedCropVolumeLogic(LTracePluginLogic):
                 min(volumeExtents[i * 2 + 1], position[i] + radius[i]),
             ]
 
-        rasSize = helpers.bounds2size(rasExtents)
+        rasSize = bounds2size(rasExtents)
         spacing = volume.GetSpacing()
         ijkSize = tuple(round(rasDim / spacingDim) for rasDim, spacingDim in zip(rasSize, spacing))
         return ijkSize

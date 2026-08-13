@@ -6,7 +6,6 @@
 from __future__ import print_function
 
 import vtk
-
 import mrml
 from ltrace.slicer.cli_utils import writeDataInto, progressUpdate, readFrom
 

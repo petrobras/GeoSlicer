@@ -17,11 +17,15 @@ import vtk
 from numba import njit
 
 from ltrace.pore_networks.functions_extract import _get_paired_throats_table
-from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
+from ltrace.pore_networks.simulation_parameters_node import (
+    dict_to_parameter_node,
+    TWO_PHASE_SIMULATION_TYPE,
+    ONE_PHASE_SIMULATION_TYPE,
+)
 from ltrace.slicer import helpers
 from ltrace.slicer.binary_node import createBinaryNode, getBinary
-from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, hide_nodes_of_type, tableNodeToDict
+from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.slicer_utils import LTracePluginLogic, hide_nodes_of_type, tableNodeToDict
 from .constants import ONE_ANGLE, MULTI_ANGLE
 
 NUM_THREADS = 48
@@ -160,7 +164,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         with open(self.cwd / "throat_network.pkl", "wb") as f:
             pickle.dump(throat_network, f)
 
-        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
+        with open(str(self.cwd / "one_phase_simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         self.cliNode = slicer.cli.run(
@@ -218,7 +222,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             )
         folderTree.SetItemExpanded(self.rootDir, False)
 
-        dict_to_parameter_node(self.params, self.rootDir)
+        dict_to_parameter_node(self.params, self.rootDir, node_type=ONE_PHASE_SIMULATION_TYPE)
 
         if self.params["simulation type"] == ONE_ANGLE:
             self.createTableNodes()
@@ -737,7 +741,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         with open(self.cwd / "throat_network.pkl", "wb") as f:
             pickle.dump(throat_network, f)
 
-        with open(str(self.cwd / "simulation_params_dict.json"), "w") as file:
+        with open(str(self.cwd / "two_phase_simulation_params_dict.json"), "w") as file:
             json.dump(self.params, file)
 
         if snapshot_node is not None:
@@ -769,10 +773,10 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     folderTree.SetItemExpanded(self.rootDir, False)
 
                     # Reload updated params
-                    with open(str(self.cwd / "simulation_params_dict.json"), "r") as f:
+                    with open(str(self.cwd / "two_phase_simulation_params_dict.json"), "r") as f:
                         self.params = json.load(f)
 
-                    dict_to_parameter_node(self.params, self.rootDir)
+                    dict_to_parameter_node(self.params, self.rootDir, node_type=TWO_PHASE_SIMULATION_TYPE)
 
                     krelResultsTableNode = createTableNode("Krel_results", "krel_simulation_results")
                     self.krelResultsTableNodeId = krelResultsTableNode.GetID()

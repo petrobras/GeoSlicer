@@ -5,16 +5,93 @@ from scipy.spatial.distance import pdist
 from skimage.measure import regionprops, find_contours, marching_cubes
 from skimage.measure import label as sklabel
 from skimage.segmentation import relabel_sequential
-from ltrace.algorithms.measurements import LabelStatistics2D, exportSegmentsAsDataFrame
+from ltrace.algorithms.measurements import LabelStatistics2D, _executor_task, _separator_task
+from ltrace.algorithms.find_objects import find_objects
 from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
+from multiprocessing import Process, Queue, Value
+from queue import Empty
+from threading import Thread
+from typing import Tuple
+
 import json
 import math
+import multiprocessing.util
 import numpy as np
 import pandas as pd
+import psutil
 import slicer
+import sys
 
 
 Arguments = namedtuple("Arguments", ["labelVolume", "params"])
+
+
+def export_segments_as_data_frame(
+    im: np.ndarray, operator: object, callback=None, cpu_count=None
+) -> Tuple[pd.DataFrame, int]:
+    if hasattr(sys, "stdin") and not hasattr(sys.stdin, "close"):
+        try:
+            sys.stdin.close = lambda: None
+        except AttributeError:
+            # Fallback for objects that don't allow attribute assignment (e.g. Slicer's PythonQtStdInRedirect)
+            if hasattr(multiprocessing.util, "_close_stdin"):
+                multiprocessing.util._close_stdin = lambda: None
+    cpu_available = cpu_count if cpu_count is not None else max(1, (psutil.cpu_count(logical=False) or 2) - 1)
+
+    n_artifacts = np.max(im)
+
+    if cpu_available == 1:
+        results = []
+        processed = 0
+        for row, artifacts in find_objects(im):
+            for label, artifact in artifacts.items():
+                stats = operator(label, artifact)
+                if stats is not None:
+                    results.append(stats)
+            processed += len(artifacts)
+            if callback:
+                callback(processed, n_artifacts)
+        table_df = pd.DataFrame(results)
+        return table_df, n_artifacts
+
+    tasks = Queue()
+    broker = Queue()
+
+    for _ in range(cpu_available):
+        proc = Process(target=_executor_task, args=(operator, tasks, broker))
+        proc.start()
+
+    producer = Thread(target=_separator_task, args=(im, tasks, cpu_available))
+    producer.start()
+
+    _1s = 1000
+
+    done = 0
+    processed = 0
+    results = []
+    while done < cpu_available:
+        try:
+            n, stats_collected = broker.get(block=True, timeout=600 * _1s)
+
+            if n == -1:
+                done += 1
+                continue
+
+            # Update final table
+            results.extend(stats_collected)
+
+            # Update progress bar
+            processed += n
+            if callback:
+                callback(processed, n_artifacts)
+
+        except Empty:
+            done += 1
+            break
+
+    table_df = pd.DataFrame(results)
+
+    return table_df, n_artifacts
 
 
 class Rectangle:
@@ -37,9 +114,10 @@ class Rectangle:
 
 
 class ThroatAnalysis:
-    def __init__(self, labelVolume, params, progress_update_callback=None):
+    def __init__(self, labelVolume, params, progress_update_callback=None, cpu_count=None):
         self.__boundary_labeled_array = None
         self.__throat_report_df = None
+        self.__cpu_count = cpu_count
         args = Arguments(labelVolume=labelVolume, params=params)
         self.__progress_update_callback = (
             progress_update_callback if progress_update_callback is not None else lambda x: None
@@ -58,9 +136,12 @@ class ThroatAnalysis:
         if isinstance(args.params, str):
             params = json.loads(args.params)
         elif isinstance(args.params, dict):
-            params = args.params
+            params = args.params.copy()
         else:
             raise NotImplementedError(f"Parameters input type {type(args.params)} not implemented.")
+
+        if "spacing" not in params:
+            params["spacing"] = args.labelVolume.GetSpacing()
 
         image = slicer.util.arrayFromVolume(args.labelVolume).astype(np.uint8)
         shape = np.array(image.shape)
@@ -191,13 +272,14 @@ class ThroatAnalysis:
         direction_vector = params.get("direction", None)
         spacing = params.get("spacing", None)
 
-        operator = LabelStatistics2D(regions, spacing, direction_vector, 0, is_pore=True)
+        operator = LabelStatistics2D(regions, spacing, direction_vector, is_pore=True)
 
         volume_operator = VolumeOperator(args.labelVolume, dtype=np.uint16)  # uint16 to accept 2^16 labels at least.
-        df, nlabels = exportSegmentsAsDataFrame(
+        df, nlabels = export_segments_as_data_frame(
             regions,
             SegmentOperator(operator, volume_operator.ijkToRasOperator),
-            stepcb=lambda i, total: self.__progress_update_callback(i / total),
+            callback=lambda i, total: self.__progress_update_callback(i / total),
+            cpu_count=self.__cpu_count,
         )
         df = df.set_axis(operator.ATTRIBUTES, axis=1)
         df = df.sort_values(by=["label"], ascending=True)

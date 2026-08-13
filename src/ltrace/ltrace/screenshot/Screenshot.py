@@ -307,6 +307,9 @@ class ScreenshotWidget(qt.QDialog):
         if not fileName:
             return
 
+        if not fileName.lower().endswith(".png"):
+            fileName += ".png"
+
         directory = str(Path(fileName).parent.absolute())
         slicer.app.settings().setValue(self.VIEW_SETTINGS_KEY, viewName)
         slicer.app.settings().setValue(self.IS_TRANSPARENT_SETTINGS_KEY, str(isTransparent))

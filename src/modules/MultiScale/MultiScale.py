@@ -9,9 +9,11 @@ from pathlib import Path
 
 import ctk
 import mpslib as mps
+import logging
 import numpy as np
 import qt
 import slicer
+
 from tifffile import tifffile
 from functools import partial
 
@@ -64,7 +66,10 @@ class MultiScale(LTracePlugin):
 
 class MultiScaleWidget(LTracePluginWidget):
     def __init__(self, parent):
+        print("MultiScale init begin")
         LTracePluginWidget.__init__(self, parent)
+
+        print("MultiScale init 1")
         self.logic = None
         self.valuesList = []
         self.isViewOn = False
@@ -73,7 +78,11 @@ class MultiScaleWidget(LTracePluginWidget):
         self.resampleObserver = None
         self.resampleQueue = []
 
+        print("MultiScale init end")
+
     def setup(self):
+
+        print("MultiScale setup begin")
 
         LTracePluginWidget.setup(self)
 
@@ -100,10 +109,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.trainingImageWidget.formLayout.setContentsMargins(0, 0, 0, 6)
         self.trainingImageWidget.mainInput.currentItemChanged.connect(self.onTrainingImageChange)
         self.trainingImageWidget.onReferenceSelectedSignal.connect(self.trainingImageSourceChange)
-        self.trainingImageWidget.segmentListGroup[1].itemChanged.connect(
-            lambda item: self.listItemChange(item, INPUT_TYPES["TI"])
-        )
-        self.trainingImageWidget.autoPorosityCalcCb.stateChanged.connect(self.onTrainingImageChange)
+        self.trainingImageWidget.segmentListWidget.itemChanged.connect(self.listItemChangeTi)
 
         self.hardDataWidget = MultiscaleSingleShotWidget(
             hideSoi=True,
@@ -121,12 +127,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.hardDataWidget.formLayout.setContentsMargins(0, 0, 0, 0)
         self.hardDataWidget.mainInput.currentItemChanged.connect(self.onHardDataChange)
         self.hardDataWidget.onReferenceSelectedSignal.connect(self.onHardDataSourceChange)
-        self.hardDataWidget.segmentListGroup[1].itemChanged.connect(
-            lambda item: self.listItemChange(item, INPUT_TYPES["HD"])
-        )
-        self.hardDataWidget.autoPorosityCalcCb.stateChanged.connect(
-            lambda: self.checkListItems(self.hardDataWidget.segmentListGroup[1])
-        )
+        self.hardDataWidget.segmentListWidget.itemChanged.connect(self.listItemChangeHd)
 
         self.depthTopSpinBox = qt.QDoubleSpinBox()
         self.depthTopSpinBox.setToolTip(
@@ -203,9 +204,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
         self.maskWidget.mainInput.currentItemChanged.connect(self.onMaskInputChange)
         self.maskWidget.onReferenceSelectedSignal.connect(self.onMaskSourceChange)
-        self.maskWidget.segmentListGroup[1].itemChanged.connect(
-            lambda item: self.listItemChange(item, INPUT_TYPES["Mask"])
-        )
+        self.maskWidget.segmentListWidget.itemChanged.connect(self.listItemChangeMask)
 
         inputFormLayout = qt.QFormLayout(inputSection)
         inputFormLayout.addRow(self.trainingImageWidget)
@@ -678,7 +677,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def setSimulationGridSize(self, dimensions, enableWidgets=True):
         for dim in range(3):
-            self.finalImageSize[dim].setValue(dimensions[dim])
+            self.finalImageSize[dim].setValue(int(dimensions[dim]))
             self.finalImageSize[dim].enabled = enableWidgets
 
     def onHardDataSourceChange(self, node=None):
@@ -713,7 +712,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def onHardDataChange(self, nodeID):
         self.changePreviewOptionsVisibility()
-        self.checkListItems(self.hardDataWidget.segmentListGroup[1])
+        self.checkListItems(self.hardDataWidget.segmentListWidget)
 
         node = self.hardDataWidget.mainInput.currentNode()
         if node:
@@ -783,7 +782,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.outputPrefix.text = text
 
     def onTrainingImageChange(self):
-        self.checkListItems(self.trainingImageWidget.segmentListGroup[1])
+        self.checkListItems(self.trainingImageWidget.segmentListWidget)
         self.checkPatchesState()
 
     def checkListItems(self, segmentList):
@@ -900,6 +899,20 @@ class MultiScaleWidget(LTracePluginWidget):
             if self.continuousDataCheckBox.isChecked():
                 trainingImageReference = self.trainingImageWidget.referenceInput.currentNode()
 
+        # Should we copy references by default? And hierarchy attributes? MUSA-150
+        # (Note that if spacing is changed - in the case of a resampling...), keeping the geometryReference may be problematic)
+        # Also, should we move the setting of some attributes and references from createOutput() to this method?
+        metadataReferenceNode = None
+
+        if trainingImageReference:
+            if isinstance(self.trainingImageWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
+                metadataReferenceNode = helpers.getSourceVolume(self.trainingImageWidget.mainInput.currentNode())
+                # copy_metadata(helpers.getSourceVolume(self.trainingImageWidget.mainInput.currentNode()), trainingImageReference)
+            else:
+                metadataReferenceNode = trainingImageReference
+                # copy_metadata(trainingImageNode, trainingImageReference)
+            copy_metadata(metadataReferenceNode, trainingImageReference)
+
         preprocessing = {
             "trainingDataVolume": trainingImageNode,
             "trainingReference": trainingImageReference,
@@ -930,6 +943,19 @@ class MultiScaleWidget(LTracePluginWidget):
             preprocessing["hardDataValues"] = [segment + 1 for segment in self.hardDataWidget.getSelectedSegments()]
             preprocessing["hardDataResolution"] = hardDataResolution
 
+            if hardDataReference:
+                if isinstance(hardDataReference, slicer.vtkMRMLSegmentationNode):
+                    metadataReferenceNode = helpers.getSourceVolume(hardDataReference)
+                else:
+                    metadataReferenceNode = hardDataReference
+                copy_metadata(metadataReferenceNode, hardDataReference)
+            else:
+                if isinstance(self.hardDataWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
+                    metadataReferenceNode = helpers.getSourceVolume(self.hardDataWidget.mainInput.currentNode())
+                else:
+                    metadataReferenceNode = hardDataNode
+                copy_metadata(metadataReferenceNode, hardDataNode)
+
         # Mask
         elif self.maskWidget.mainInput.currentNode() is not None:
             if len(resampledNodes) > 1:
@@ -948,6 +974,7 @@ class MultiScaleWidget(LTracePluginWidget):
             ),
             if self.continuousDataCheckBox.isChecked():
                 preprocessing.update({"maskReference": self.maskWidget.referenceInput.currentNode()}),
+                metadataReferenceNode = preprocessing["maskReference"]
             else:
                 preprocessing.update(
                     {
@@ -957,6 +984,11 @@ class MultiScaleWidget(LTracePluginWidget):
                         "maskSegmentList": helpers.getSegmentList(self.maskWidget.mainInput.currentNode()),
                     }
                 )
+                if isinstance(self.maskWidget.mainInput.currentNode(), slicer.vtkMRMLSegmentationNode):
+                    metadataReferenceNode = helpers.getSourceVolume(self.maskWidget.mainInput.currentNode())
+                else:
+                    metadataReferenceNode = self.maskWidget.mainInput.currentNode()
+            copy_metadata(metadataReferenceNode, maskNode)
 
         self.runLogic(preprocessing)
 
@@ -980,7 +1012,11 @@ class MultiScaleWidget(LTracePluginWidget):
                 gridDimensions = np.array([box.value for box in self.finalImageSize])
                 flipAxis = False
 
-                tiDimensions = preprocessing["trainingDataVolume"].GetImageData().GetDimensions()
+                tiDataVolume = preprocessing.get("trainingDataVolume")
+                if not tiDataVolume or not tiDataVolume.GetImageData():
+                    raise ValueError("Invalid Training Data Volume")
+
+                tiDimensions = tiDataVolume.GetImageData().GetDimensions()
                 if tiDimensions[2] > tiDimensions[0]:
                     flipAxis = True
 
@@ -1032,7 +1068,8 @@ class MultiScaleWidget(LTracePluginWidget):
 
                 self.cancelButton.enabled = True
                 self.changeRunButtonsState(False)
-            except:
+            except Exception as error:
+                logging.exception("Failed to execute MultiScale process.")
                 self.changeRunButtonsState(True)
 
     def segmentationInputToLabelmap(self, segmentationNode, volumeType=""):
@@ -1046,6 +1083,7 @@ class MultiScaleWidget(LTracePluginWidget):
         labelmapVolumeNode.GetDisplayNode().GetColorNode().SetAttribute(
             "NodeEnvironment", self.logic.__class__.__name__
         )
+        copy_metadata(segmentationNode, labelmapVolumeNode)
         helpers.makeNodeTemporary(labelmapVolumeNode, hide=True)
         helpers.makeNodeTemporary(labelmapVolumeNode.GetDisplayNode().GetColorNode(), hide=True)
         return labelmapVolumeNode
@@ -1123,11 +1161,11 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def getSegmentListWidget(self):
         if self.currentPreview == INPUT_TYPES["TI"]:
-            return self.trainingImageWidget.segmentListGroup[1]
+            return self.trainingImageWidget.segmentListWidget
         elif self.currentPreview == INPUT_TYPES["Mask"]:
-            return self.maskWidget.segmentListGroup[1]
+            return self.maskWidget.segmentListWidget
         else:
-            return self.hardDataWidget.segmentListGroup[1]
+            return self.hardDataWidget.segmentListWidget
 
     def checkSegmentsVisibility(self, displayNode):
         segmentWidget = self.getSegmentListWidget()
@@ -1206,6 +1244,15 @@ class MultiScaleWidget(LTracePluginWidget):
 
     def updateStatusLabel(self, status, text=""):
         self.statusLabel.text = f"Status: {status}{text}"
+
+    def listItemChangeTi(self, item):
+        self.listItemChange(item, INPUT_TYPES["TI"])
+
+    def listItemChangeHd(self, item):
+        self.listItemChange(item, INPUT_TYPES["HD"])
+
+    def listItemChangeMask(self, item):
+        self.listItemChange(item, INPUT_TYPES["Mask"])
 
 
 class MultiScaleLogic(LTracePluginLogic):
@@ -1849,6 +1896,7 @@ class MultiScaleLogic(LTracePluginLogic):
             if outputDir:
                 self.setSubjectHierarchy(labelmapNode, outputDir)
 
+            labelmapNode.CopyReferences(refVolume)
             labelmapNode.SetSpacing(outputSpacing)
             slicer.util.setSliceViewerLayers(background=None, label=labelmapNode, fit=True)
             return labelmapNode
@@ -1856,8 +1904,10 @@ class MultiScaleLogic(LTracePluginLogic):
         else:
             newVolume = slicer.mrmlScene.AddNewNodeByClass(refVolume.GetClassName(), name)
             newVolume.CopyOrientation(refVolume)
-            for attrName in refVolume.GetAttributeNames():
-                newVolume.SetAttribute(attrName, refVolume.GetAttribute(attrName))
+            helpers.copy_attributes(refVolume, newVolume)
+            copy_metadata(refVolume, newVolume)
+            helpers.copyMetadataFromNodeOrReferencedNode(refVolume, newVolume)
+            helpers.copy_hierarchy_attributes(refVolume, newVolume)
 
             if self.mask_options:
                 referenceArray = slicer.util.arrayFromVolume(refVolume)
@@ -1873,13 +1923,17 @@ class MultiScaleLogic(LTracePluginLogic):
             slicer.util.setSliceViewerLayers(background=newVolume, label=None, fit=True)
             newVolume.GetDisplayNode().SetAndObserveColorNodeID(refVolume.GetDisplayNode().GetColorNodeID())
 
+            # Should we copy references by default? MUSA-150.
+            # (Note that if spacing is changed, keeping the geometryReference may be problematic)
+            # newVolume.CopyReferences(refVolume)
+
             return newVolume
 
     def saveRealizationFiles(self, grid_cell_size, nreal, directory, name):
         for i in range(nreal):
             tifffile.imwrite(
                 f"{directory}/{name}_r{i}.tif",
-                np.flip(np.transpose(self.image[i]), axis=0).astype("float32"),
+                np.flip(np.transpose(self.image[i]), axis=0).astype(np.float32),
                 imagej=True,
                 resolution=(1 / (grid_cell_size[0] * CONVERSION_FACTOR), 1 / (grid_cell_size[1] * CONVERSION_FACTOR)),
                 metadata={"spacing": grid_cell_size[2] * CONVERSION_FACTOR, "unit": "microns"},

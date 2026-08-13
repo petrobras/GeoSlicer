@@ -1,7 +1,7 @@
 ---
 icon: VolumesPreProcessing
 ---
-{{ include_markdown("CustomizedCropVolume") }}
+{{ include_markdown("CropTool") }}
 ---
 {{ include_markdown("CustomResampleScalarVolume") }}
 ---

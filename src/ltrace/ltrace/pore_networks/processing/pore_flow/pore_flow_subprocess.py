@@ -45,7 +45,7 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             return None
 
     @staticmethod
-    def caller(cwd, params_in, statoil_data, snapshot_file=None, write_debug_files=False):
+    def caller(cwd, params_in, statoil_data, snapshot_file=None, write_debug_files=False, queue=None):
         link1 = statoil_data["link1"]
         link2 = statoil_data["link2"]
         link3 = statoil_data["link3"]
@@ -55,6 +55,13 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
 
         params = params_in.copy()
         os.chdir(cwd)
+
+        # DEPRECATED: backward compatibility for older parameter nodes that saved batch_invasions as "T" or "F"
+        batch_invasions_param = params.get("batch_invasions", "none")
+        if batch_invasions_param in ("T", True):
+            batch_invasions_param = "partial"
+        elif batch_invasions_param in ("F", False):
+            batch_invasions_param = "none"
 
         py_pore_flow_parameters = {
             "seed": int(params["seed"]),
@@ -101,7 +108,7 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             "skip_2nd_drainage": False,
             "enforced_swi_1": params["enforced_swi_1"],
             "enforced_swi_2": params["enforced_swi_2"],
-            "batch_invasions": "partial" if params["batch_invasions"] == "T" else "none",
+            "batch_invasions": batch_invasions_param,
         }
 
         generate_vtu = params["create_sequence"] == "T"
@@ -115,7 +122,12 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             pn, parameters, config = ppf.load_snapshot(snapshot_file)
             parameters.update(py_pore_flow_parameters)
             cycle, Pc, Sw, Krw, Kro = ppf.run_two_phase_simulation(
-                pn, parameters, generate_vtu=generate_vtu, generate_cas=True, setup_network=False, config=config
+                pn,
+                parameters,
+                generate_vtu=generate_vtu,
+                generate_cas=True,
+                setup_network=False,
+                config=config,
             )
         else:
             input_file = open("input.txt", "w")
@@ -141,16 +153,26 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             node3_file.close()
 
             openpn = openpnm.io.network_from_statoil(".", "Image")
-            pn = ppf.network.PoreNetwork.from_openpnm(openpn)
-            pn["pore.N"], pn["throat.N"] = PoreFlowSubprocess.__get_n_from_statoil(pn, link3, node3)
+            pn = ppf.PoreNetwork.from_openpnm(openpn)
+            (
+                pn["pore.number_of_capilaries"],
+                pn["throat.number_of_capilaries"],
+            ) = PoreFlowSubprocess.__get_n_from_statoil(pn, link3, node3)
 
             if params["create_drainage_snapshot"] == "T":
                 drainage_snapshot_pc = "final"
             else:
                 drainage_snapshot_pc = None
 
+            def progress_callback(cycle_number, cycle_progress):
+                queue.put((cycle_number, cycle_progress))
+
             cycle, Pc, Sw, Krw, Kro = ppf.run_two_phase_simulation(
-                pn, py_pore_flow_parameters, generate_vtu=generate_vtu, drainage_snapshot_pc=drainage_snapshot_pc
+                pn,
+                py_pore_flow_parameters,
+                generate_vtu=generate_vtu,
+                drainage_snapshot_pc=drainage_snapshot_pc,
+                progress_callback=progress_callback,
             )
         result_string = json.dumps(
             {"cycle": cycle.tolist(), "Pc": Pc.tolist(), "Sw": Sw.tolist(), "Krw": Krw.tolist(), "Kro": Kro.tolist()}

@@ -285,7 +285,7 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         variogramReportForm.addRow(variogramReportTitle)
 
         # add pyqtgraph widgets in pyside wrapped layout
-        pysideVariogramReportForm = shiboken2.wrapInstance(hash(variogramReportForm), pyside.QtWidgets.QFormLayout)
+        self.pysideVariogramReportForm = shiboken2.wrapInstance(hash(variogramReportForm), pyside.QtWidgets.QFormLayout)
 
         self.variogramGraphicsLayout = GraphicsLayoutWidget()
         size_policy = self.variogramGraphicsLayout.sizePolicy()
@@ -319,7 +319,7 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         self.variogramPlotItem.getAxis("left").setLabel("Semivariance")
         self.variogramPlotItem.getAxis("bottom").setLabel("Distance (mm)")
 
-        pysideVariogramReportForm.addRow(self.variogramGraphicsLayout)
+        self.pysideVariogramReportForm.addRow(self.variogramGraphicsLayout)
 
         variogramResultTitle = self._create_title_widget("Fitted variogram parameters")
         variogramResultFrame = qt.QFrame()
@@ -377,8 +377,8 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         self.subvolumePlotItem.getAxis("left").setLabel("Mean's Standard deviation")
         self.subvolumePlotItem.getAxis("bottom").setLabel("Distance (mm)")
 
-        pysideSubvolumeReportForm = shiboken2.wrapInstance(hash(subvolumeReportForm), pyside.QtWidgets.QFormLayout)
-        pysideSubvolumeReportForm.addRow(self.subvolumeGraphicsLayout)
+        self.pysideSubvolumeReportForm = shiboken2.wrapInstance(hash(subvolumeReportForm), pyside.QtWidgets.QFormLayout)
+        self.pysideSubvolumeReportForm.addRow(self.subvolumeGraphicsLayout)
 
         # Add vertical spacer
         self.layout.addStretch(1)

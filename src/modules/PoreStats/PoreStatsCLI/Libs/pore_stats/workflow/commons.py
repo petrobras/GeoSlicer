@@ -2,8 +2,10 @@ import glob
 import os
 import subprocess
 import sys
+import tempfile
 
 import nrrd
+import sympy  # import it before torch to avoid crash
 import torch
 
 
@@ -129,20 +131,30 @@ def get_model_type(model_type_or_path):
 
 
 def run_subprocess(args):
-    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-    for line in process.stdout:
-        if line.startswith(r"No module named 'logic'"):
-            continue
-        if not line.startswith("<filter-progress>"):
-            print(f"\n\n{line}", end="")
-        else:
-            print(
-                f"\r{line[:-1]}".ljust(70), end="", flush=True
-            )  # to update the progress line in terminal instead of printing in subsequent lines
-    _, error = process.communicate()
-    if process.returncode != 0:
-        raise RuntimeError(error)
-    print()
+    # Route stderr to a temp file instead of a pipe: we only read stdout during
+    # execution, and if the child writes more than the OS pipe buffer (~64 KB
+    # on Windows) it would block on stderr and freeze stdout too. The file is
+    # kept after the run so its contents can be inspected.
+    stderr_log = tempfile.NamedTemporaryFile(mode="wb+", prefix="porestats_sub_stderr_", suffix=".log", delete=False)
+    try:
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=stderr_log, text=True, bufsize=1)
+
+        for line in process.stdout:
+            if line.startswith(r"No module named 'logic'"):
+                continue
+            if not line.startswith("<filter-progress>"):
+                print(f"\n\n{line}", end="")
+            else:
+                print(
+                    f"\r{line[:-1]}".ljust(70), end="", flush=True
+                )  # to update the progress line in terminal instead of printing in subsequent lines
+        process.wait()
+        if process.returncode != 0:
+            stderr_log.seek(0)
+            raise RuntimeError(stderr_log.read().decode("utf-8", errors="replace"))
+        print()
+    finally:
+        stderr_log.close()
 
 
 # from SegmentInspectorCLI.py

@@ -45,7 +45,7 @@ def multithresh(lazy_data, threshs, colors, names, url, version, hostData):
         name: {"chunksizes": (min(128, segment_shape[0]), min(128, segment_shape[1]), min(128, segment_shape[2]))}
     }
 
-    task = dataset.to_netcdf(url, encoding=encoding, format="NETCDF4", compute=False)
+    task = dataset.to_netcdf(url, encoding=encoding, format="NETCDF4", compute=False, engine="h5netcdf")
 
     with DaskCLICallback():
         task.compute()

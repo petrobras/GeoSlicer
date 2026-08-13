@@ -72,7 +72,9 @@ def run(params: dict) -> None:
     encoding = {name: {"chunksizes": (min(128, segmentShape[0]), min(128, segmentShape[1]), min(128, segmentShape[2]))}}
 
     # Export xarray.DataSet to .nc file
-    task = dataset.to_netcdf(params["exportPath"], encoding=encoding, format="NETCDF4", compute=False)
+    task = dataset.to_netcdf(
+        params["exportPath"], encoding=encoding, format="NETCDF4", compute=False, engine="h5netcdf"
+    )
 
     # Compute
     with DaskCLICallback():

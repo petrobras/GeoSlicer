@@ -4,10 +4,13 @@ import pandas as pd
 import os
 import qt
 import slicer
+import logging
+import traceback
 
 from typing import Union
 from pathlib import Path
 from abc import abstractmethod
+from contextlib import contextmanager
 
 from SegmentEditorEffects import *
 from slicer import ScriptedLoadableModule
@@ -39,6 +42,53 @@ class LTraceSegmentEditorEffectMixin:
             parameterSetNode.SourceVolumeIntensityMaskOff()
         except Exception as error:
             logging.debug(f"Error {error}. Traceback:\n{traceback.format_exc()}")
+
+    def cancel(self):
+        pass
+
+    @contextmanager
+    def progress(self, text="Calculating...", cancel=True):
+        """Context manager to handle progress bar visibility and updates."""
+        progressBar = None
+        progressLabel = None
+        cancelButton = None
+        try:
+            widget = slicer.modules.customizedsegmenteditor.widgetRepresentation().self()
+            progressBar = widget.progressBar
+            progressLabel = widget.progressLabel
+            cancelButton = widget.cancelButton
+        except AttributeError:
+            pass
+
+        if progressLabel:
+            progressLabel.setText(text)
+            progressLabel.setVisible(True)
+
+        if progressBar:
+            progressBar.setVisible(True)
+            progressBar.setValue(0)
+
+        if cancelButton and cancel:
+            cancelButton.setVisible(True)
+            cancelButton.clicked.connect(self.cancel)
+
+        def update_progress(value, label=None):
+            if progressLabel and label:
+                progressLabel.setText(label)
+            if progressBar and progressBar.value != int(value):
+                progressBar.setValue(int(value))
+            slicer.app.processEvents()
+
+        try:
+            yield update_progress
+        finally:
+            if progressBar:
+                progressBar.setVisible(False)
+            if progressLabel:
+                progressLabel.setVisible(False)
+            if cancelButton and cancel:
+                cancelButton.setVisible(False)
+                cancelButton.clicked.disconnect(self.cancel)
 
 
 class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
@@ -124,11 +174,26 @@ class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
 
 
 class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
+    DEFAULT_MINIMUM_WIDTH = 250
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
     def setup(self):
         super().setup()
+
+        # insert frame to make module widget fully shrinkable
+        main_frame = qt.QFrame()
+        main_frame.setSizePolicy(qt.QSizePolicy.Policy.Ignored, main_frame.sizePolicy.verticalPolicy())
+        main_frame.setLayout(self.layout)
+        main_layout = qt.QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(main_frame)
+        main_layout.setSizeConstraint(qt.QLayout.SizeConstraint.SetNoConstraint)
+        self.parent.setLayout(main_layout)
+
+        self.setModuleMinimumWidth(self.DEFAULT_MINIMUM_WIDTH)
 
     def enter(self) -> None:
         ApplicationObservables().moduleWidgetEnter.emit(self)
@@ -147,6 +212,9 @@ class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
                 pluginWidget.setParent(None)
         except ValueError:
             pass  # parent already deleted
+
+    def setModuleMinimumWidth(self, width: int):
+        self.layout.parent().setMinimumWidth(width)
 
 
 class LTracePluginLogicMeta(type(qt.QObject), type(ScriptedLoadableModule.ScriptedLoadableModuleLogic)):

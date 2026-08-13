@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Tools</category>
+  <index>3</index>
+  <title>Image Log PSDGeneration CLI</title>
+  <description><![CDATA[LTrace Algorithms Wrapper]]></description>
+  <version>0.0.1</version>
+  <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
+  <license />
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+
+  <parameters>
+    <label>Parameters configuration</label>
+    <string>
+      <longflag>psdLib</longflag>
+      <name>psdLib</name>
+      <label>PSD Lib</label>
+      <description><![CDATA[Backend PSD lib.]]></description>
+      <channel>input</channel>
+    </string>
+    <image>
+      <longflag>inputVolume</longflag>
+      <name>inputVolume</name>
+      <label>Input Volume</label>
+      <description><![CDATA[Input LabelMap volume.]]></description>
+      <channel>input</channel>
+    </image>
+    <image>
+      <longflag>outputVolume</longflag>
+      <name>outputVolume</name>
+      <label>Output Volume</label>
+      <description><![CDATA[Output scalar volume.]]></description>
+      <channel>output</channel>
+    </image>
+    <string>
+      <longflag>workspace</longflag>
+      <name>workspace</name>
+      <label>Workspace</label>
+      <description><![CDATA[Workspace to run.]]></description>
+      <channel>input</channel>
+    </string>
+    <string>
+      <longflag>params</longflag>
+      <name>params</name>
+      <label>Parameters</label>
+      <description><![CDATA[PSD lib parameters.]]></description>
+      <default></default>
+      <channel>input</channel>
+    </string>
+    <string>
+      <name>imageLogPSDGeneration</name>
+      <label>Imagelog PSD Generation</label>
+      <description><![CDATA[Execution info JSON format.]]></description>
+      <channel>output</channel>
+      <default></default>
+    </string>
+  </parameters>
+</executable>

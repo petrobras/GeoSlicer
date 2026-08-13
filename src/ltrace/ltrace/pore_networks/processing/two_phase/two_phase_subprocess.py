@@ -1,6 +1,6 @@
 from abc import abstractmethod
 import ctypes
-from multiprocessing import Process
+import multiprocessing
 import time
 
 
@@ -25,9 +25,13 @@ class TwoPhaseSubprocess:
 
         self.start_time = 0
         self.run_count = 0
+        self.queue = None
+        self.progress = (0.0, 0.0)
 
     def start(self):
-        self.process = Process(
+        context = multiprocessing.get_context("spawn")
+        self.queue = context.Queue()
+        self.process = context.Process(
             target=self.caller,
             args=(
                 self.cwd,
@@ -35,6 +39,7 @@ class TwoPhaseSubprocess:
                 self.statoil_data,
                 self.snapshot_file,
                 self.write_debug_files,
+                self.queue,
             ),
         )
         self.start_time = time.time()
@@ -79,6 +84,14 @@ class TwoPhaseSubprocess:
     def get_id(self) -> int:
         return self.id
 
+    def get_progress(self):
+        while not self.queue.empty():
+            self.progress = self.queue.get(block=False)
+        return self.progress
+
+    def has_progress_changed(self):
+        return not self.queue.empty()
+
     def _process_parameters(self, params):
         return params
 
@@ -92,5 +105,5 @@ class TwoPhaseSubprocess:
 
     @staticmethod
     @abstractmethod
-    def caller(cwd, input_string, link1, link2, node1, node2, write_debug_files=False):
+    def caller(cwd, input_string, link1, link2, node1, node2, write_debug_files=False, queue=None):
         pass

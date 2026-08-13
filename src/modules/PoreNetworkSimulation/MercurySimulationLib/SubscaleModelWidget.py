@@ -26,7 +26,7 @@ from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
 
 MICRON_TO_MM = 0.001
-MM_TO_MICRON = 1000
+MM_TO_MICRON = 1000.0
 
 # Heuristics for auto-parameter detection relative to voxel spacing
 SPACING_TO_MEAN_RADIUS = 0.5
@@ -37,6 +37,16 @@ SPACING_TO_CUTOFF_RADIUS = 2.0
 
 
 def get_volume_min_spacing_microns(volume_node):
+    if volume_node.GetAttribute("x_spacing") is None and hasattr(volume_node, "GetSpacing"):
+        spacing = volume_node.GetSpacing()
+        min_spacing = min(spacing[0], spacing[1], spacing[2])
+    else:
+        scalar_volume_data = get_pore_network_volume_data(volume_node)
+        min_spacing = min(
+            scalar_volume_data["spacing"]["x"],
+            scalar_volume_data["spacing"]["y"],
+            scalar_volume_data["spacing"]["z"],
+        )
     if volume_node.GetAttribute("x_spacing") is None and hasattr(volume_node, "GetSpacing"):
         spacing = volume_node.GetSpacing()
         min_spacing = min(spacing[0], spacing[1], spacing[2])
@@ -245,8 +255,9 @@ class SubscaleModelWidget(qt.QWidget):
 
         self.microscale_model_dropdown.setCurrentText(params["subres_model_name"])
         subscale_widget = self.parameter_widgets[params["subres_model_name"]]
-        if params["subres_params"] is not None:
-            subscale_widget.set_params(params["subres_params"])
+        subres_params = params.get("subres_params")
+        if subres_params is not None:
+            subscale_widget.set_params(subres_params)
 
     def setVolumeNode(self, volume_node):
         for widget in self.parameter_widgets.values():

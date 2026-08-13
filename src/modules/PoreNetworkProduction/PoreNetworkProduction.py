@@ -1,16 +1,16 @@
-import os
 from pathlib import Path
 
-import PySide2 as pyside
 import ctk
+import os
+import qt
+import slicer
+import vtk
+import sympy as sym
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-import qt
 import shiboken2
-import slicer
-import sympy as sym
-import vtk
+import PySide2 as pyside
 from numba import njit
 from pyqtgraph import QtCore
 from scipy import optimize, ndimage, interpolate
@@ -26,7 +26,7 @@ from ltrace.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.PoreNetworkProductionTest import PoreNetworkProductionTest
-except ImportError:
+except ImportError as e:
     PoreNetworkProductionTest = None  # tests not deployed to final version or closed source
 
 
@@ -148,7 +148,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         visualizationFormLayout.addRow("Input Production Table: ", self.visualizationSelector)
 
         # Single visualization plot
-        visualizationPlotForm = shiboken2.wrapInstance(hash(visualizationFormLayout), pyside.QtWidgets.QFormLayout)
+        self.visualizationPlotForm = shiboken2.wrapInstance(hash(visualizationFormLayout), pyside.QtWidgets.QFormLayout)
         self.visualizationGraphicsLayout = GraphicsLayoutWidget()
         self.visualizationGraphicsLayout.setMinimumHeight(800)
         self.visualizationGraphicsLayout.setMinimumWidth(100)
@@ -166,7 +166,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
             right="fw [Fractional flow]",
         )
         self.fractionPlotItem.addLegend()
-        visualizationPlotForm.addRow(self.visualizationGraphicsLayout)
+        self.visualizationPlotForm.addRow(self.visualizationGraphicsLayout)
 
         self.seriesNpD = self.productionPlotItem.plot(
             name="NpD", pen=pg.mkPen("b", width=4), symbol=None, symbolPen=None, symbolSize=None, symbolBrush=None
@@ -179,7 +179,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         )
         self.seriesKrw_attenuated = self.fractionPlotItem.plot(
             name="Krw moving average",
-            pen=pg.mkPen((0, 0, 230, 230), width=2, style=QtCore.Qt.SolidLine),
+            pen=pg.mkPen((0, 0, 230, 230), width=2, style=QtCore.Qt.PenStyle.SolidLine),
             symbol=None,
             symbolPen=None,
             symbolSize=None,
@@ -187,7 +187,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         )
         self.seriesKro_attenuated = self.fractionPlotItem.plot(
             name="Kro moving average",
-            pen=pg.mkPen((200, 0, 0, 230), width=2, style=QtCore.Qt.SolidLine),
+            pen=pg.mkPen((200, 0, 0, 230), width=2, style=QtCore.Qt.PenStyle.SolidLine),
             symbol=None,
             symbolPen=None,
             symbolSize=None,
@@ -211,7 +211,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
         )
         self.seriesTangent = self.fractionPlotItem.plot(
             name="Shock Tangent",
-            pen=pg.mkPen((230, 100, 0, 255), width=3, style=QtCore.Qt.DashDotLine),
+            pen=pg.mkPen((230, 100, 0, 255), width=3, style=QtCore.Qt.PenStyle.DashDotLine),
             symbol=None,
             symbolPen=None,
             symbolSize=None,
@@ -234,7 +234,7 @@ class PoreNetworkProductionWidget(LTracePluginWidget):
             row=1, col=1, rowspan=1, colspan=1, left="NpD", bottom="tD"
         )
         self.sensitivityPlotItem.addLegend()
-        visualizationPlotForm.addRow(self.SensitivityVisualizationGraphicsLayout)
+        self.visualizationPlotForm.addRow(self.SensitivityVisualizationGraphicsLayout)
 
         self.pessimisticNpD = self.sensitivityPlotItem.plot(
             name="Pessimistic NpD",

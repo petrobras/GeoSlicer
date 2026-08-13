@@ -10,6 +10,7 @@ import numpy as np
 
 import slicer
 from ltrace.slicer import helpers
+from ltrace.slicer import metadata
 from ltrace.image import optimized_transforms
 from SegmentEditorEffects import *
 
@@ -189,6 +190,13 @@ Simple instructions: Select the input segment by selecting it from the segment l
             # Create new node for output
             volumesLogic = slicer.modules.volumes.logic()
             outputVolume = volumesLogic.CreateAndAddLabelVolume(sourceVolumeNode, outputSegmentName)
+            """ FIXME MUSA-150 - Should we copy attributes by default? And references?
+            helpers.copy_attributes(sourceVolumeNode, outputVolume)
+            metadata.copy_metadata(sourceVolumeNode, outputVolume)
+            helpers.copy_hierarchy_attributes(sourceVolumeNode, outputVolume)
+            SetNodeReferenceID("AssociatedNodeID", is called on CreateAndAddLabelVolume
+            but maybe there are more references to copy? (e.g., "referenceImageGeometryRef")
+            """
             helpers.makeNodeTemporary(outputVolume)
 
             self.scriptedEffect.parameterSetNode().SetNodeReferenceID(

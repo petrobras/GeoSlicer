@@ -92,28 +92,33 @@ class ImageLogDataWidget(CustomizedDataWidget):
         self.subjectHierarchyTreeView.setEditMenuActionVisible(False)
         self.subjectHierarchyTreeView.setFocusPolicy(qt.Qt.NoFocus)
 
-        infoFrameLayout = self.infoFrame.layout()
+        layoutIndex = 0
         self.trackImageWidget = TrackImageWidget()
-        infoFrameLayout.addWidget(self.trackImageWidget)
+        self.infoWidgetLayout.insertWidget(layoutIndex, self.trackImageWidget)
+        layoutIndex += 1
         self.trackImageWidget.setVisible(False)
 
         self.tableWidget = TableWidget()
-        infoFrameLayout.addWidget(self.tableWidget)
+        self.infoWidgetLayout.insertWidget(layoutIndex, self.tableWidget)
+        layoutIndex += 1
         self.tableWidget.setVisible(False)
 
         self.labelMapWidget = LabelMapWidget()
-        infoFrameLayout.addWidget(self.labelMapWidget)
+        self.infoWidgetLayout.insertWidget(layoutIndex, self.labelMapWidget)
+        layoutIndex += 1
         self.labelMapWidget.setVisible(False)
 
         self.segmentationWidget = SegmentationWidget()
-        infoFrameLayout.addWidget(self.segmentationWidget)
+        self.infoWidgetLayout.insertWidget(layoutIndex, self.segmentationWidget)
+        layoutIndex += 1
         self.segmentationWidget.setVisible(False)
 
         # Settings section
         self.settingsCollapsibleButton = ctk.ctkCollapsibleButton()
         self.settingsCollapsibleButton.setText("Settings")
         self.settingsCollapsibleButton.collapsed = True
-        infoFrameLayout.addWidget(self.settingsCollapsibleButton)
+        self.infoWidgetLayout.insertWidget(layoutIndex, self.settingsCollapsibleButton)
+        layoutIndex += 1
         settingsFormLayout = qt.QFormLayout(self.settingsCollapsibleButton)
         settingsFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
@@ -209,6 +214,22 @@ class ImageLogDataWidget(CustomizedDataWidget):
         self.segmentationWidget.setVisible(False)
 
         node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemID)
+
+        if itemID == 0 or not node:
+            self.tabWidget.setVisible(False)
+            return
+
+        self.tabWidget.setVisible(True)
+
+        # Handle attributes tab
+        metadataNodeId = node.GetAttribute("MetadataNode")
+        metadataNode = slicer.mrmlScene.GetNodeByID(metadataNodeId) if metadataNodeId else None
+        if metadataNode:
+            self.attributesWidget.setNode(metadataNode)
+        else:
+            self.attributesWidget.textEdit.setPlainText("")
+            self.attributesWidget.highlightMatches()
+
         try:
             if type(node) is slicer.vtkMRMLScalarVolumeNode or type(node) is slicer.vtkMRMLVectorVolumeNode:
                 self.trackImageWidget.setNode(node)
@@ -778,12 +799,12 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         axisWidgetLayout.setSpacing(0)
         axisWidgetVerticalLayout.addWidget(axisWidgetFrame)
 
-        pysideQHBoxLayout = shiboken2.wrapInstance(hash(axisWidgetLayout), PySide2.QtWidgets.QHBoxLayout)
-        pysideQHBoxLayout.setContentsMargins(0, 10, 0, 0)
+        self.pysideQHBoxLayout = shiboken2.wrapInstance(hash(axisWidgetLayout), PySide2.QtWidgets.QHBoxLayout)
+        self.pysideQHBoxLayout.setContentsMargins(0, 10, 0, 0)
 
         self.depthOverview = pg.GraphicsLayoutWidget()
         self.depthOverview.setBackground("#FFFFFF")
-        pysideQHBoxLayout.addWidget(self.depthOverview, 0, PySide2.QtCore.Qt.AlignRight)
+        self.pysideQHBoxLayout.addWidget(self.depthOverview, 0, PySide2.QtCore.Qt.AlignmentFlag.AlignRight)
 
         self.depthOverviewAxisItem = DepthOverviewAxisItem()
         self.depthOverviewAxisItem.setStyle(tickTextOffset=2, autoReduceTextSpace=True, tickLength=-7, tickAlpha=128)
@@ -801,7 +822,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
 
         self.graphicsLayoutWidget = pg.GraphicsLayoutWidget()
         self.graphicsLayoutWidget.setBackground("#FFFFFF")
-        pysideQHBoxLayout.addWidget(self.graphicsLayoutWidget, 0, PySide2.QtCore.Qt.AlignRight)
+        self.pysideQHBoxLayout.addWidget(self.graphicsLayoutWidget, 0, PySide2.QtCore.Qt.AlignmentFlag.AlignRight)
         self.axisItem = CustomAxisItem(self.delayedAdjustViewsVisibleRegion)
         self.axisItem.setStyle(tickTextOffset=4, tickLength=30)
         self.axisItem.setPen(color=(0, 0, 0))
@@ -829,7 +850,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                     observerID = displayNode.AddObserver(
                         "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateColorBar(identifier_)
                     )
-                    self.observedDisplayNodes.append([displayNode, observerID])
+                    self.observedDisplayNodes.append([displayNode.GetID(), observerID])
                     colorBarWidget.setColorTableNode(displayNode.GetColorNode())
                     displayNode.Modified()  # To update the color bar
 
@@ -1153,6 +1174,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         qt.QTimer.singleShot(self.REFRESH_DELAY, self.addPrimaryNodeObservers)
 
     def addPrimaryNodeObservers(self):
+        # TODO (PL-3076): ImageLogView view process duplicated when opening and using the view for the first time.
         for identifier in self.getViewDataListIdentifiers():
             viewData = self.imageLogViewList[identifier].viewData
             primaryNode = self.getNodeById(viewData.primaryNodeId)
@@ -1160,7 +1182,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 observerID = primaryNode.AddObserver(
                     "ModifiedEvent", lambda display, event, identifier_=identifier: self.updateViewLabel(identifier_)
                 )
-                self.observedPrimaryNodes.append([primaryNode, observerID])
+                self.observedPrimaryNodes.append([primaryNode.GetID(), observerID])
 
     def updateViewLabel(self, identifier):
         if identifier >= len(self.imageLogViewList) or identifier >= len(self.viewControllerWidgets):
@@ -1219,7 +1241,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if len(self.imageLogViewList) == 0:
             self.currentRange = None
 
-        self.removeAllObservers()
+        self.removeAllDataObservers()
         self.nodeAboutToBeRemoved = False
         for viewControllerWidget in self.viewControllerWidgets:
             self.deleteWidget(viewControllerWidget)
@@ -1242,9 +1264,14 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         except Exception as error:
             logging.debug(error)
 
-    def removeAllObservers(self) -> None:
+    def removeAllDataObservers(self) -> None:
         for observerList in [self.observedDisplayNodes, self.observedPrimaryNodes, self.observedInteractors]:
             for obj, tag in observerList:
+                if isinstance(obj, str):  # is a node ID
+                    obj = tryGetNode(obj)
+                    if obj is None:
+                        continue
+
                 obj.RemoveObserver(tag)
 
             observerList.clear()
@@ -1327,7 +1354,13 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if not self.nodeAboutToBeRemoved:
             if identifier < len(self.imageLogViewList):
                 self.imageLogViewList[identifier] = ImageLogView(node)
-            self.refreshViews("primaryNodeChanged")
+
+                if node:
+                    porosityReference = node.GetNodeReference("TrainingImagePorosityTable")
+                    if porosityReference is not None:
+                        self.imageLogViewList[identifier].set_new_secondary_node(porosityReference)
+
+        self.refreshViews("primaryNodeChanged")
 
     def secondaryTableNodeChanged(self, identifier, node):
         if not self.nodeAboutToBeRemoved:
@@ -1685,11 +1718,11 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         )
         if showHidePrimaryNodeButton.checked:
             showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeClosed.png"))
-            sliceCompositeNode.SetBackgroundOpacity(0)
+            sliceCompositeNode.SetBackgroundVolumeID(None)
             viewData.primaryNodeHidden = True
         else:
             showHidePrimaryNodeButton.setIcon(qt.QIcon(getResourcePath("Icons") / "png" / "EyeOpen.png"))
-            sliceCompositeNode.SetBackgroundOpacity(1)
+            sliceCompositeNode.SetBackgroundVolumeID(viewData.primaryNodeId)
             viewData.primaryNodeHidden = False
 
             # Disabling the proportions from the slice view

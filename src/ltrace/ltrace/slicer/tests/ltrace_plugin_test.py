@@ -146,16 +146,10 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             # Disconnect signals that keep the widget's method alive
             self._module_widget.cleanup()
 
-        # Close scene before attempt to delete the module widget instance
-        if self.__after_clear:
-            self.__close_project()
-
-        if self._module_widget is not None:
             # Delete the module widget immediately after processing events.
             # deleteLater() only deletes after the tests are finished.
             slicer.app.processEvents(1000)
-            if self._module_widget.parent != slicer.modules.AppContextInstance.mainWindow:
-                self._module_widget.parent.delete()
+            self._module_widget.parent.delete()
             slicer.app.processEvents(1000)
 
             weak_widget = weakref.ref(self._module_widget)
@@ -424,7 +418,7 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
         Args:
             interval_ms (int, optional): The maximum duration in milliseconds. Defaults to 1000 ms.
         """
-        self.__timeout_timer = qt.QTimer(self)
+        self.__timeout_timer = qt.QTimer(slicer.modules.AppContextInstance.mainWindow)
         self.__timeout_timer.setSingleShot(True)
         self.__timeout_timer.timeout.connect(self.__on_timeout)
         self.__timeout_timer.setInterval(interval_ms)
@@ -436,7 +430,6 @@ class LTracePluginTest(qt.QObject, ScriptedLoadableModule.ScriptedLoadableModule
             return
 
         self.__timeout_timer.stop()
-        self.__timeout_timer.deleteLater()
         self.__timeout_timer = None
 
     def __on_timeout(self) -> None:

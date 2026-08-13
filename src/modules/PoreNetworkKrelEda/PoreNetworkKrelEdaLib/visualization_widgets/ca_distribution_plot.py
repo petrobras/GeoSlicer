@@ -48,8 +48,8 @@ class CaDistributionPlot(PlotBase):
         formLayout.addRow("Simulation:", self.simulationCombobox)
         formLayout.addRow("Phase:", self.phaseCombobox)
 
-        pySideMainLayout = shiboken2.wrapInstance(hash(formLayout), PySide2.QtWidgets.QFormLayout)
-        pySideMainLayout.addRow(self.graphics_layout_widget)
+        self.pySideMainLayout = shiboken2.wrapInstance(hash(formLayout), PySide2.QtWidgets.QFormLayout)
+        self.pySideMainLayout.addRow(self.graphics_layout_widget)
 
         frameLayout = qt.QVBoxLayout()
         frameLayout.addLayout(formLayout)
@@ -110,10 +110,10 @@ class CaDistributionPlot(PlotBase):
 
         hist, edges = np.histogram(df[f"{preffix}-advancing"], bins=20)
         self.plot_item.plot(
-            edges, hist, name="advancing", stepMode=True, fillLevel=0, brush=(0, 0, 255, 80), pen=(0, 0, 0)
+            edges, hist, name="advancing", stepMode="center", fillLevel=0, brush=(0, 0, 255, 80), pen=(0, 0, 0)
         )
 
         hist, edges = np.histogram(df[f"{preffix}-receding"], bins=20)
         self.plot_item.plot(
-            edges, hist, name="receding", stepMode=True, fillLevel=0, brush=(255, 0, 0, 80), pen=(0, 0, 0)
+            edges, hist, name="receding", stepMode="center", fillLevel=0, brush=(255, 0, 0, 80), pen=(0, 0, 0)
         )

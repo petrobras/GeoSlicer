@@ -1,24 +1,36 @@
-from multiprocessing.shared_memory import SharedMemory
-
-import time
 import json
-import sys
+import logging
+import mmap
+import os
 import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
 import qt
 import slicer
-import logging
+
+from ltrace.utils import ProgressBarWidget
 
 if sys.platform.startswith("win32"):
     import win32gui
     import win32con
     import pywintypes
 
-from ltrace.utils import ProgressBarWidget
-from ..slicer_utils import base_version
+
+_SHM_SIZE = 1024
+_ICON_RELATIVE_PATH = "LTrace/Resources/Icons/ico/GeoSlicer.ico"
+
+# Published to in-process consumers (currently the patched h5pyd download loop in
+# tools/deploy/Patches/h5pyd/0001-Progress-Bar.patch) so they can mmap the same
+# region and push live status into the widget without going through the parent.
+_SHM_PATH_ENV_VAR = "GEOSLICER_PROGRESS_SHM_PATH"
 
 
 class ProgressBarProc:
     """Creates a progress bar window in a new process.
+
     Usage:
     >>> from ltrace.utils.ProgressBarProc import ProgressBarProc
     >>> with ProgressBarProc() as pb:
@@ -30,8 +42,26 @@ class ProgressBarProc:
 
     def __init__(self):
         palette = slicer.app.palette()
-        bg_color = palette.color(qt.QPalette.Background).name()
-        fg_color = palette.color(qt.QPalette.WindowText).name()
+        bgColor = palette.color(qt.QPalette.Background).name()
+        fgColor = palette.color(qt.QPalette.WindowText).name()
+
+        iconPath = slicer.app.toSlicerHomeAbsolutePath(_ICON_RELATIVE_PATH)
+        if not Path(iconPath).exists():
+            raise FileNotFoundError(f"Icon file '{iconPath}' does not exist")
+
+        mainWindow = slicer.util.mainWindow()
+        screenIndex = qt.QApplication.desktop().screenNumber(mainWindow) if mainWindow else 0
+
+        fd, self._shmPath = tempfile.mkstemp(prefix="geoslicer-pb-", suffix=".shm")
+        os.write(fd, b"\x00" * _SHM_SIZE)
+        os.close(fd)
+        self._shmFile = open(self._shmPath, "r+b")
+        self.sharedMem = mmap.mmap(self._shmFile.fileno(), _SHM_SIZE)
+        self.sharedDict = {}
+        os.environ[_SHM_PATH_ENV_VAR] = self._shmPath
+
+        self.setTitle("Processing")
+        self.setMessage("Processing, please wait...")
 
         si = None
         if sys.platform.startswith("win32"):
@@ -39,81 +69,82 @@ class ProgressBarProc:
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             si.wShowWindow = subprocess.SW_HIDE
 
-        # Due to a Python bug it's not possible to unlink() shared memory
-        # on Windows so we create the file once and reuse it when needed.
-        # https://bugs.python.org/issue40882
-        try:
-            self.sharedMem = SharedMemory(name="ProgressBar", create=True, size=1024)
-        except Exception as error:
-            logging.debug(
-                f"Failed to create shared memory. Trying to open existent resource if available. Error: {error}"
-            )
-            self.sharedMem = SharedMemory(name="ProgressBar", create=False)
-
-        self.sharedDict = {}
-        self.progress = None
-
-        progressbar_icon_file = "GeoSlicer-ProgressBar.ico"
-        icon_path = f"lib/{base_version()}/qt-scripted-modules/Resources/{progressbar_icon_file}"
-        self.setTitle("Processing")
-        self.setMessage("Processing, please wait...")
-
         self.proc = subprocess.Popen(
             [
                 sys.executable,
                 ProgressBarWidget.__file__,
-                slicer.app.toSlicerHomeAbsolutePath(icon_path),
-                bg_color,
-                fg_color,
+                self._shmPath,
+                iconPath,
+                bgColor,
+                fgColor,
+                str(screenIndex),
             ],
             startupinfo=si,
         )
-        try:
-            if sys.platform.startswith("win32"):
-                # time to find the process
-                time.sleep(1)
-                window_title = self.title
-                hwnd = win32gui.FindWindow(None, window_title)
 
-                # If the window handle is found, bring it to the foreground
+        if sys.platform.startswith("win32"):
+            self._bringWindowToForeground()
+
+    def _bringWindowToForeground(self):
+        try:
+            deadline = time.monotonic() + 2.0
+            hwnd = 0
+            while time.monotonic() < deadline:
+                hwnd = win32gui.FindWindow(None, self.title)
                 if hwnd:
-                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                    win32gui.SetForegroundWindow(hwnd)
-        except pywintypes.error as e:
+                    break
+                time.sleep(0.05)
+            if hwnd:
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetForegroundWindow(hwnd)
+        except pywintypes.error:
             pass
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.sharedMem.buf[:] = b"\x00" * self.sharedMem.size
-
-        self.__releaseProcess()
+        self._release()
 
     def __del__(self):
-        self.__releaseProcess()
+        self._release()
 
-    def __releaseProcess(self):
+    def _release(self):
         if self.proc is not None:
+            # Graceful shutdown: zero the shared buffer. The widget polls and
+            # quits when it reads an empty payload. This is the only reliable
+            # shutdown signal on Windows, where sys.executable is a wrapper
+            # that spawns the real interpreter as a grandchild — terminate()
+            # kills only the wrapper and leaves the window running.
+            if self.sharedMem is not None:
+                self.sharedMem[:] = b"\x00" * _SHM_SIZE
             try:
-                self.proc.terminate()
-                self.proc.wait(timeout=5)  # Wait up to 5 seconds for the subprocess to terminate
+                self.proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait()
-
-            del self.proc
+                self._killProcessTree()
             self.proc = None
 
         if self.sharedMem is not None:
-            try:
-                self.sharedMem.close()
-                self.sharedMem.unlink()
-            except:
-                pass
-
-            del self.sharedMem
+            os.environ.pop(_SHM_PATH_ENV_VAR, None)
+            self.sharedMem.close()
+            self._shmFile.close()
             self.sharedMem = None
+            self._shmFile = None
+            try:
+                os.unlink(self._shmPath)
+            except OSError as e:
+                logging.debug(f"Could not remove {self._shmPath}: {e}")
+
+    def _killProcessTree(self):
+        if sys.platform.startswith("win32"):
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(self.proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            self.proc.kill()
+        self.proc.wait()
 
     def setTitle(self, title: str):
         self.title = title
@@ -133,6 +164,5 @@ class ProgressBarProc:
         self.setMessage(message)
 
     def _updateSharedMem(self):
-        dataBytes = json.dumps(self.sharedDict).encode()
-        self.sharedMem.buf[:] = b"\x00" * self.sharedMem.size
-        self.sharedMem.buf[: len(dataBytes)] = dataBytes
+        data = json.dumps(self.sharedDict).encode()
+        self.sharedMem[:] = data + b"\x00" * (_SHM_SIZE - len(data))

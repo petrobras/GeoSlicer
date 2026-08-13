@@ -3,7 +3,7 @@ from ..BasePlotWidget import BasePlotWidget
 from ltrace.slicer.helpers import segmentListAndProportionsFromSegmentation
 from ltrace.slicer.widget.customized_pyqtgraph.AngleAxisItem import AngleAxisItem
 
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 import logging
 import numpy as np
@@ -23,7 +23,7 @@ class BarPlotWidget(BasePlotWidget):
 
     def setupUi(self):
         """Initialize widgets"""
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         self.__graphicsLayoutWidget = pg.GraphicsLayoutWidget()
         self.__graphicsLayoutWidget.setBackground("w")
         axisBottom = AngleAxisItem(angle=45, orientation="bottom")
@@ -34,14 +34,14 @@ class BarPlotWidget(BasePlotWidget):
         self.__plotItem.legend = legend
         self.__graphicsLayoutWidget.addItem(legend, row=0, col=6, rowspan=1, colspan=1)
 
-        self.__tableWidget = QtGui.QTableWidget()
+        self.__tableWidget = QtWidgets.QTableWidget()
         self.__tableWidget.setAlternatingRowColors(True)
-        self.__tableWidget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.__tableWidget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
 
         layout.addWidget(self.__graphicsLayoutWidget, 10)
         layout.addWidget(self.__tableWidget)
 
-        widget = QtGui.QWidget()
+        widget = QtWidgets.QWidget()
         widget.setLayout(layout)
 
         self.setLayout(layout)
@@ -162,7 +162,7 @@ class BarPlotWidget(BasePlotWidget):
         self.__tableWidget.setColumnCount(dataFrame.shape[1])
         self.__tableWidget.setHorizontalHeaderLabels(headers)
         self.__tableWidget.setVerticalHeaderLabels(headers)
-        self.__tableWidget.horizontalHeader().setResizeMode(QtGui.QHeaderView.ResizeToContents)
+        self.__tableWidget.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         dataFrameArray = dataFrame.values
         for row in range(dataFrame.shape[0]):
@@ -176,9 +176,9 @@ class BarPlotWidget(BasePlotWidget):
                 else:
                     continue
 
-                tableItem = QtGui.QTableWidgetItem("{:0.4f}".format(dataCell))
-                tableItem.setFlags(tableItem.flags() & ~QtCore.Qt.ItemIsEditable)
-                tableItem.setTextAlignment(QtCore.Qt.AlignCenter)
+                tableItem = QtWidgets.QTableWidgetItem("{:0.4f}".format(dataCell))
+                tableItem.setFlags(tableItem.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
+                tableItem.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
                 self.__tableWidget.setItem(row, column, tableItem)
 
     def __getColorsRelationFromNode(self):
@@ -244,7 +244,7 @@ class CustomBarGraph(pg.BarGraphItem):
         """
         try:
             point = QtCore.QPoint(event.lastScreenPos().x(), event.lastScreenPos().y())
-            QtGui.QToolTip.showText(point, str(self.name()))
+            QtWidgets.QToolTip.showText(point, str(self.name()))
         except:
             pass
         finally:

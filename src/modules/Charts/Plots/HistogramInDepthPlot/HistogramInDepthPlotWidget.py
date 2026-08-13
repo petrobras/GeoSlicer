@@ -1,7 +1,7 @@
 from ..BasePlotWidget import BasePlotWidget
 from .HistogramInDepthPlotWidgetModel import HistogramInDepthPlotWidgetModel
 from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data
-from pyqtgraph.Qt import QtGui
+from pyqtgraph.Qt import QtGui, QtWidgets
 
 import pyqtgraph as pg
 import numpy as np
@@ -16,7 +16,7 @@ class HistogramInDepthPlotWidget(BasePlotWidget):
 
     def setupUi(self):
         """Initialize widgets"""
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         self.__graphicsLayoutWidget = pg.GraphicsLayoutWidget()
         self.__plotItem = self.__graphicsLayoutWidget.addPlot(row=0, col=0, rowspan=5, colspan=5)
         layout.addWidget(self.__graphicsLayoutWidget)

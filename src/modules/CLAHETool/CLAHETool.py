@@ -4,6 +4,7 @@ import qt
 import slicer
 
 from ltrace.slicer import helpers
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
 from ltrace.slicer.ui import hierarchyVolumeInput, numericInput, numberParamInt
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
@@ -245,7 +246,7 @@ class CLAHEToolLogic(LTracePluginLogic):
 
         # Convert pixels to uint16 type (skimage.exposure.equalize_adapthist expects int type and will convert to 16 bits
         # anyway). Note also that we are in the context of image visualization - our color look up tables have 16 bits...
-        image_dyn_uint16 = volumeArray.astype("uint16")
+        image_dyn_uint16 = volumeArray.astype(np.uint16)
 
         callback(5)
 
@@ -256,13 +257,14 @@ class CLAHEToolLogic(LTracePluginLogic):
 
         callback(80)
 
-        # Add new volume to the hierarchy
-        newVolume = slicer.mrmlScene.AddNewNodeByClass(volume_node.GetClassName(), prefix)
-        newVolume.SetName(slicer.mrmlScene.GenerateUniqueName(newVolume.GetName()))
-        newVolume.CopyOrientation(volume_node)
-        newVolume.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
+        # All meta-data is copied (also data, but that will be overwritten below) as well as hierarchy
+        newVolume = helpers.clone_volume(volume_node, name=volume_node.GetName() + "_clahe", as_temporary=False)
+        helpers.copy_display(volume_node, newVolume)
+        helpers.copy_attributes(volume_node, newVolume)
+        copy_metadata(volume_node, newVolume)
+        helpers.copy_hierarchy_attributes(volume_node, newVolume)
 
-        callback(85)
+        callback(90)
 
         # Scale the image back to the range
         image_converted = (img_clahe * (volumeArray.max() - volumeArray.min())) + volumeArray.min()
@@ -270,14 +272,5 @@ class CLAHEToolLogic(LTracePluginLogic):
         final_image = np.zeros((volumeArray.shape[0], 1, volumeArray.shape[1]))
         final_image[:, 0, :] = image_converted
         slicer.util.updateVolumeFromArray(newVolume, final_image)
-
-        callback(90)
-
-        helpers.copy_display(volume_node, newVolume)
-
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        parent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volume_node))
-
-        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(newVolume), parent)
 
         callback(100)

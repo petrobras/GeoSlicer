@@ -12,22 +12,55 @@ import slicer
 import xarray as xr
 
 
-def register_eye_event():
-    def current_lazy_node_changed(*args):
-        sh = slicer.mrmlScene.GetSubjectHierarchyNode()
-        node_id = sh.GetAttribute("CurrentLazyNode")
-        current_module = slicer.util.selectedModule()
-        slicer.util.selectModule("BigImage")
-        big_image_widget = slicer.modules.BigImageWidget
-        if node_id:
-            node = sh.GetItemDataNode(int(node_id))
-            slicer.util.selectModule(big_image_widget.moduleName)
-            big_image_widget.startPreview(node)
-        else:
-            big_image_widget.stopPreview()
-            slicer.util.selectModule(current_module)
+_eye_observer_tag = None
+_previous_module_name = None  # New variable to track the previous module
 
-    slicer.mrmlScene.GetSubjectHierarchyNode().AddObserver("CurrentLazyNodeChanged", current_lazy_node_changed)
+
+def _current_lazy_node_changed(caller, event):
+    global _previous_module_name
+
+    sh = slicer.mrmlScene.GetSubjectHierarchyNode()
+    node_id = sh.GetAttribute("CurrentLazyNode")
+    big_image_widget = slicer.modules.bigimage.widgetRepresentation().self()
+
+    if node_id:
+        node = sh.GetItemDataNode(int(node_id))
+        loadMfDatasetSection = slicer.modules.BigImageWidget.loadMfDatasetSection
+
+        if node.GetAttribute("pnmremoteworkflow") == "True":
+            loadMfDatasetSection.hide()
+        else:
+            loadMfDatasetSection.show()
+
+        # Capture the current module before switching to Big Image
+        current_module = slicer.util.moduleSelector().selectedModule
+        if current_module != big_image_widget.moduleName:
+            _previous_module_name = current_module
+
+        slicer.util.selectModule(big_image_widget.moduleName)
+        big_image_widget.startPreview(node)
+    else:
+        slicer.modules.BigImageWidget.loadMfDatasetSection.show()
+        big_image_widget.stopPreview()
+
+        # Revert back to the previous module if it exists
+        if _previous_module_name is not None:
+            slicer.util.selectModule(_previous_module_name)
+            _previous_module_name = None
+
+
+def register_eye_event():
+    global _eye_observer_tag
+
+    sh_node = slicer.mrmlScene.GetSubjectHierarchyNode()
+
+    # 1. Clean up the previous observer if it exists
+    if _eye_observer_tag is not None:
+        sh_node.RemoveObserver(_eye_observer_tag)
+        _eye_observer_tag = None
+
+    # 2. Add the new observer and save the new tag
+    _eye_observer_tag = sh_node.AddObserver("CurrentLazyNodeChanged", _current_lazy_node_changed)
 
 
 def set_visibility(node, visible):

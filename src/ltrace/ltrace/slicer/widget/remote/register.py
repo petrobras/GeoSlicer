@@ -7,7 +7,6 @@ import qt, ctk, slicer
 from ltrace.remote.hosts import PROTOCOL_HANDLERS
 from ltrace.remote.hosts.base import Host
 
-
 INDEX = {name: i for i, name in enumerate(PROTOCOL_HANDLERS)}
 
 

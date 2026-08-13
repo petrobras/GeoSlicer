@@ -1333,7 +1333,7 @@ class MultiThresholdWidget(qt.QWidget):
     def __adjustTableColumnSize(self, headers):
         for idx, header in enumerate(headers):
             if str(header).lower() == "name":
-                self.table.horizontalHeader().setSectionResizeMode(idx, qt.QHeaderView.Stretch)
+                self.table.horizontalHeader().setSectionResizeMode(idx, qt.QHeaderView.ResizeMode.Stretch)
             else:
                 self.table.horizontalHeader().setSectionResizeMode(idx, qt.QHeaderView.ResizeToContents)
 

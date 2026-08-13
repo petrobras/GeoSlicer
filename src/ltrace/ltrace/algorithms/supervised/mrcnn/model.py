@@ -25,11 +25,11 @@ import tensorflow.keras.models as KM
 from ltrace.algorithms.supervised.mrcnn import utils
 
 # Requires TensorFlow 2.0+
-from distutils.version import LooseVersion
+from packaging import version
+import tensorflow as tf
 
-assert LooseVersion(tf.__version__) >= LooseVersion("2.0")
+assert version.parse(tf.__version__) >= version.parse("2.0")
 
-tf.compat.v1.disable_eager_execution()
 
 ############################################################
 #  Utility Functions
@@ -1236,13 +1236,13 @@ def load_image_gt(dataset, config, image_id, augmentation=None):
         # Make augmenters deterministic to apply similarly to images and masks
         det = augmentation.to_deterministic()
         image = det.augment_image(image)
-        # Change mask to np.uint8 because imgaug doesn't support np.bool
+        # Change mask to np.uint8 because imgaug doesn't support bool
         mask = det.augment_image(mask.astype(np.uint8), hooks=imgaug.HooksImages(activator=hook))
         # Verify that shapes didn't change
         assert image.shape == image_shape, "Augmentation shouldn't change image size"
         assert mask.shape == mask_shape, "Augmentation shouldn't change mask size"
         # Change mask back to bool
-        mask = mask.astype(np.bool)
+        mask = mask.astype(bool)
 
     # Note that some boxes might be all zeros if the corresponding mask got cropped out.
     # and here is to filter them out
@@ -2496,9 +2496,13 @@ class MaskRCNN(object):
             log("image_metas", image_metas)
             log("anchors", anchors)
         # Run object detection
-        detections, _, _, mrcnn_mask, _, _, _ = self.keras_model.predict(
-            [molded_images, image_metas, anchors], verbose=0
-        )
+        if tf.executing_eagerly():
+            outputs = self.keras_model([molded_images, image_metas, anchors], training=False)
+            detections, _, _, mrcnn_mask, _, _, _ = [o.numpy() for o in outputs]
+        else:
+            detections, _, _, mrcnn_mask, _, _, _ = self.keras_model.predict(
+                [molded_images, image_metas, anchors], verbose=0
+            )
         # Process detections
         results = []
         for i, image in enumerate(images):
@@ -2554,9 +2558,13 @@ class MaskRCNN(object):
             log("image_metas", image_metas)
             log("anchors", anchors)
         # Run object detection
-        detections, _, _, mrcnn_mask, _, _, _ = self.keras_model.predict(
-            [molded_images, image_metas, anchors], verbose=0
-        )
+        if tf.executing_eagerly():
+            outputs = self.keras_model([molded_images, image_metas, anchors], training=False)
+            detections, _, _, mrcnn_mask, _, _, _ = [o.numpy() for o in outputs]
+        else:
+            detections, _, _, mrcnn_mask, _, _, _ = self.keras_model.predict(
+                [molded_images, image_metas, anchors], verbose=0
+            )
         # Process detections
         results = []
         for i, image in enumerate(molded_images):

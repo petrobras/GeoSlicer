@@ -197,7 +197,7 @@ $dockerArgs = @(
 )
 $dockerArgs += $volumeArgs
 $dockerArgs += @(
-    "--env", "PYTHONUNBUFFERED=1",
+    "--env", "CODESIGN_KEY_STRING",
     $dockerServiceName,
     "powershell",
     "-Command", "python ${mountedRepoPath}/tools/deploy/deploy_slicer.py $mountedArchiveFilePath $Arguments --output-dir $mountedOutputDir"

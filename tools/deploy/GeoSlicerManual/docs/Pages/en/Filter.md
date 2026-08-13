@@ -70,13 +70,14 @@ Tomography images often exhibit variations in intensity values that are not char
 
 The entire procedure described below is performed slice by slice, in the axial (z-axis) plane of the sample.
 
-For each slice, based on the "Number of fitting points" parameter, a random sample is taken from intensity values at points belonging to the shading mask. These points are used to fit a second-degree polynomial function in two variables, which defines the image background:
+For each slice, based on the "Number of fitting points" parameter, a random sample is taken from intensity values at points belonging to the shading mask. These points are used to fit a mathematical function that defines the image background. Depending on the chosen function, this could be a generic Cartesian polynomial, a strict radial polynomial, or a spline profile. For example, a basic second-degree Cartesian polynomial follows this equation:
 
-$$ f(x,y) = a (x-b)^2+c(y-d)^2+e(x-b)+f(y-d)+g(x-b)(y-d) + h $$
+$$f(x,y) = a (x-b)^2+c(y-d)^2+e(x-b)+f(y-d)+g(x-b)(y-d) + h$$
 
 The fitted function is then used to perform the correction on the slice, following the equation:
 
-$$ s'(x,y) = \frac{s(x,y)}{f(x,y)}M $$
+$$s'(x,y) = \frac{s(x,y)}{f(x,y)}M$$
+
 Where, $s'(x,y)$ is the corrected slice, $s(x,y)$ is the original, and $M$ is the average of all data in the shading mask (constant value).
 
 The _Shading Correction_ module workflow is divided into three steps: initialization, sampling mask definition, and processing.
@@ -89,7 +90,7 @@ The _Shading Correction_ module workflow is divided into three steps: initializa
 
 #### Threshold
 
-1.  After initialization, a segment editor interface with the **Threshold** effect will be displayed to create a mask that covers the image areas affected by shading. This mask will be used to sample points for polynomial fitting.
+1.  After initialization, a segment editor interface with the **Threshold** effect will be displayed to create a mask that covers the image areas affected by shading. This mask will be used to sample points for fitting.
 2.  After adjusting the threshold, click **Apply** in the Threshold effect panel.
 
 !!!tip
@@ -102,9 +103,20 @@ The _Shading Correction_ module workflow is divided into three steps: initializa
 
 #### Parameter Selection
 
-1.  **Slice group size:** Define the number of slices that will share the same fitted polynomial function.
-2.  **Number of fitting points:** Define the number of points to be sampled from the mask for function fitting.
-3.  **Output image name:** Enter a name for the corrected output image.
+1.  **Function:** Select the mathematical model used for the shading correction:
+    * **Polynomial:** Fits a 2D Cartesian surface. Best for general, non-symmetric shading gradients across the image.
+    * **Polynomial Radial:** Fits a curve based strictly on the distance from the center. Best for broad, circular shading effects like standard beam hardening.
+    * **Spline Radial:** Calculates a median radial profile and uses splines to handle fine, high-frequency ring artifacts.
+2.  **Center:** Define the center point for the radial mathematical curve fitting:
+    * **Default:** Automatically uses the geometric center of the image (leave "Custom" unchecked).
+    * **Set:** Check to manually input the X and Y center coordinates.
+    * **Pick Red View:** Click to interactively select the center point directly on the Red slice view.
+3.  **Order:** Select the complexity of the polynomial curve (2, 4, or 6). *Note: This parameter is ignored if 'Spline Radial' is selected.*
+    * **Lower orders (2):** Capture broad, gentle shading gradients. Less prone to errors.
+    * **Higher orders (6):** Allow for more complex, wavy curves but increase the risk of overfitting to local image features instead of the overall shading trend.
+4.  **Group size:** Define the number of slices that will share the same fitted mathematical function. **Smaller values yield better results, but processing is slower** as more individual fits must be calculated.
+5.  **Fitting points:** Define the number of points to be randomly sampled from the mask for the function fitting process. **Larger values yield better results, but processing is slower** due to the increased computational load of the fitting algorithm.
+6.  **Output image name:** Enter the desired name for the corrected output image volume.
 
 #### Apply
 

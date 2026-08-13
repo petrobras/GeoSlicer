@@ -3,8 +3,9 @@
 [![Apache 2.0][apache-shield]][apache] 
 [![Code style][black-shield]][black]
 ![OS](https://img.shields.io/badge/OS-linux%2C%20windows-0078D4)
-![language](https://img.shields.io/badge/python-3.9-blue)
+![language](https://img.shields.io/badge/python-3.12-blue)
 [![based](https://img.shields.io/badge/Based_on-3D_Slicer-1F65B0)](https://github.com/Slicer/Slicer)
+[![Discourse](https://img.shields.io/badge/discourse-forum-brightgreen.svg)](https://discourse.ltrace.com.br/)
 
 [apache]: https://opensource.org/licenses/Apache-2.0
 [apache-shield]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
@@ -40,6 +41,33 @@ GeoSlicer is built on top of [3D Slicer](https://www.slicer.org/) medical imagin
 ## Getting Started
 
 This section will guide you through the process of installing and running GeoSlicer on your local machine.
+
+### System requirements
+
+GeoSlicer runs on most Windows or Linux computers released within the last 5 years. Performance is primarily determined by graphics capabilities and available system memory.
+
+#### Operating System Versions
+
+| OS | Recommended | Notes |
+| :--- | :--- | :--- |
+| **Windows** | Windows 11 | Windows 10 and older are not officially supported or tested. |
+| **Linux** | Ubuntu 22.04+, Debian 11+, Fedora 35+, AlmaLinux 8+ | Latest LTS versions are strongly recommended. |
+
+#### Recommended Hardware Configuration
+
+| Component | Minimum | Recommended |
+| :--- | :--- | :--- |
+| **Memory** | 8 GB RAM | 10x the size of your loaded dataset (e.g., 16GB RAM for 1.6GB data). |
+| **Display** | 1366 x 768 | 1920 x 1080 or higher. |
+| **Graphics** | OpenGL 3.2 support | Discrete NVIDIA GPU with VRAM > largest dataset size. |
+
+> **NVIDIA Driver Compatibility**  
+> For stable operation and compatibility with GeoSlicer's Python environment, we recommend using **NVIDIA Driver version 576.28 or earlier**. Newer versions may exhibit stability issues with specific internal dependencies.
+
+#### Graphics & Rendering Details
+*   **Discrete GPU:** Highly recommended for interactive 3D volume rendering and fluid navigation of complex scenes.
+*   **VRAM:** Texture memory should ideally be larger than your largest dataset to avoid performance bottlenecks.
+*   **Integrated Graphics:** Suitable for basic 2D visualization and data exploration only.
 
 ### Developers
 
@@ -85,6 +113,7 @@ We welcome contributions from the community! If you'd like to contribute to GeoS
 
 Join our community to ask questions, share your work, and connect with other GeoSlicer users.
 
+*   **GeoSlicer discourse:** [General discussion, bugs, usage questions, examples and solutions](https://discourse.ltrace.com.br/)
 *   **GitHub Issues:** [Report bugs and request features](https://github.com/petrobras/geoslicer/issues)
 
 ## License
@@ -100,3 +129,6 @@ If you use GeoSlicer in your work, please cite this repository using the right-h
 *   Carneiro, I., Souza, J., Zanellato, D., Mei, M., Sapucaia, V., Figueiredo, L., Bordignon, F., Matias, J., Honório, Bruno César Zanardo, & Surmas, R. (2024). Multiscale analysis of carbonate rocks for the digital rocks platform GeoSlicer, an open source plugin. ROG.e 2024, (2975).
 *   Arenhart, R., Bordignon, F., Figueiredo, L., Pereira, M., Formighieri, G., Pacheco, R., Cenci R., & Surmas, R. (2025). Geoslicer open source platform for digital rock image analysis. 5th International Rock Imaging Summit, (276)
 *   Arenhart, R., Bordignon, F., Figueiredo, L., Pereira, M., Formighieri, G., Pacheco, R., Cenci R., Melo, R., & Surmas, R. (2025). A Multiscale Approach to Pore-Network Two-Phase Flow Simulation Applied to a Carbonate Reservoir. 17th Annual Meeting Interpore, (7844)
+*   Carneiro, I. B., Bordignon, F., Moreira, A. C., Figueiredo, L. P., Mantovani, I. F., Fernandes, C. P., & Volpatto, D. T. (2026). Influence of REV Selection on Multiscale Porosity and Permeability Assessment Using Digital Rock Imaging. 18th Annual Meeting InterPore, MS09 Pore-Scale Physics and Modeling, Poster Presentation.
+*   Bordignon, F., Figueiredo, L., Carneiro, I., Arenhart, R., Honório, B., & Surmas, R. (2026). GeoSlicer a Platform for Digital Rock Physics: Integrated Machine Learning, Data Preparation, and Generative AI with SinGAN. 18th Annual Meeting InterPore, MS15 Machine Learning in Porous Media, Oral Presentation.
+*   Arenhart, R., Bordignon, F., Figueiredo, L. P., Formighieri, G., Pacheco, R., Cenci, R., Melo, R., & Surmas, R. (2026). Multiscale Pore-Network Model of Carbonate Reservoirs: Experimental Validation and Wettability Analysis. 18th Annual Meeting InterPore, MS09 Pore-Scale Physics and Modeling, Oral Presentation.

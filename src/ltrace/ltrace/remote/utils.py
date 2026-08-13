@@ -11,8 +11,18 @@ import time
 import slicer
 
 from ltrace.slicer.app import getApplicationVersion
-from ltrace.slicer_utils import print_debug
-from ltrace.remote.jobs import JobManager
+from ltrace.remote import errors
+from ltrace.remote.constants import (
+    DISCONNECT_BACKOFF_MAX_SECONDS,
+    JOB_EVENT_PROGRESS,
+    JOB_POLL_INTERVAL_SECONDS,
+    JOB_STATE_CANCELLED,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_FAILED,
+    JOB_STATE_NOTCONNECTED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+)
 
 
 def argstring(params):
@@ -86,7 +96,7 @@ def sacct(client, jobs: list):
         logging.info(f"Unable to parse sacct output. Returning empty list. Received:\n{content}")
         raise RuntimeError(e)
     except Exception as e:
-        print_debug(f"Error during sacct parsing: {repr(e)}")
+        logging.error(f"Error during sacct parsing: {repr(e)}")
         raise RuntimeError(e)
 
 
@@ -98,7 +108,7 @@ def any_running(jobs: list):
         raise RuntimeError("Job list is empty")
 
     for job in jobs:
-        if job["state"] == "RUNNING":
+        if job["state"] == JOB_STATE_RUNNING:
             return True
     return False
 
@@ -111,7 +121,7 @@ def all_complete(jobs: list):
         raise RuntimeError("Job list is empty")
 
     for job in jobs:
-        if job["state"] != "COMPLETED":
+        if job["state"] != JOB_STATE_COMPLETED:
             return False
     return True
 
@@ -124,7 +134,7 @@ def any_failed(jobs: list):
         raise RuntimeError("Job list is empty")
 
     for job in jobs:
-        if job["state"] == "FAILED":
+        if job["state"] == JOB_STATE_FAILED:
             return True
     return False
 
@@ -137,7 +147,7 @@ def all_failed(jobs: list):
         raise RuntimeError("Job list is empty")
 
     for job in jobs:
-        if job["state"] != "FAILED":
+        if job["state"] != JOB_STATE_FAILED:
             return False
     return True
 
@@ -151,7 +161,7 @@ def all_done(jobs: list):
 
     for job in jobs:
         state = job["state"]
-        if state != "COMPLETED" and state != "FAILED" and "CANCELLED" not in state:
+        if state != JOB_STATE_COMPLETED and state != JOB_STATE_FAILED and JOB_STATE_CANCELLED not in state:
             return False
     return True
 
@@ -198,21 +208,35 @@ class SlurmJobStatusMixin:
         super().__init__(*args, **kwargs)
         self._timeout_seconds = timeout_seconds
         self._sacct_failure_start_time = None
+        self._disconnect_attempts = 0
 
         self.slurm_job_ids = []
 
-    def progress(self, caller: JobManager, uid: str, client: Any = None):
+    def progress(self, job_manager, uid: str, client: Any = None):
+        if client is None:
+            self.disconnected(job_manager, uid, client)
+            return
+
         tsnow = datetime.now().timestamp()
         try:
             jobstatus = sacct(client, self.slurm_job_ids)
             if not jobstatus:
                 raise RuntimeError("Job list is empty")
 
-            # Reset failure start time on success
+            # Reset failure counters on success
             self._sacct_failure_start_time = None
+            self._disconnect_attempts = 0
 
-            self._post_status_update(caller, uid, client, jobstatus)
+            self._post_status_update(job_manager, uid, client, jobstatus)
+        except errors.ChannelError as e:
+            # SSH-level failure (mid-command or while reading results):
+            # the connection is gone, hand over to the reconnection backoff.
+            self.disconnected(job_manager, uid, client, error=e)
         except RuntimeError as e:
+            # The command reached the server, so the connection is alive:
+            # this is a slurm/parsing failure, not a disconnection.
+            self._disconnect_attempts = 0
+
             if self._sacct_failure_start_time is None:
                 self._sacct_failure_start_time = time.time()
 
@@ -220,35 +244,72 @@ class SlurmJobStatusMixin:
 
             if elapsed_time < self._timeout_seconds:
                 logging.debug(
-                    f"Slurm job status fetch failed for job {self.slurm_job_ids}. Retrying after {elapsed_time:.2f}s (timeout {self._timeout_seconds}s). Error: {repr(e)}"
+                    f"Slurm job status fetch failed for job {self.slurm_job_ids}. Retrying after {elapsed_time:.2f}s (Time out in {self._timeout_seconds}s). Error: {repr(e)}"
                 )
-                caller.set_state(
+                job_manager.set_state(
                     uid,
-                    "PENDING",
+                    JOB_STATE_PENDING,
                     0,
                     message=f"Requesting job status. Waiting for response (elapsed: {elapsed_time:.2f}s).",
-                    end_time=tsnow,
                     traceback=repr(e),
                 )
-                caller.schedule(uid, "PROGRESS")
+                job_manager.schedule(uid, JOB_EVENT_PROGRESS)
             else:
                 logging.error(
                     f"Slurm job status fetch failed for job {self.slurm_job_ids} after timeout ({self._timeout_seconds}s). Error: {repr(e)}"
                 )
-                caller.set_state(
+                job_manager.set_state(
                     uid,
-                    "FAILED",
+                    JOB_STATE_FAILED,
                     0,
                     message=f"Failed to get job status after timeout ({self._timeout_seconds}s). Check your connection or account authorization.",
                     end_time=tsnow,
                     traceback=repr(e),
                 )
 
-    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: list):
+    def disconnected(self, job_manager, uid: str, client: Any = None, error: Exception = None):
+        """Handle a lost connection: drop the dead client and retry with backoff.
+
+        Reschedules PROGRESS with an exponentially growing delay (capped at
+        DISCONNECT_BACKOFF_MAX_SECONDS) and retries indefinitely; the user can
+        reconnect manually at any time, which supersedes the parked retry.
+        """
+        job = job_manager.jobs.get(uid)
+        if job is None:
+            # Job removed mid-flight
+            return
+
+        job_manager.connections.drop_client(job.host, stale_client=client)
+
+        # The sacct timeout only measures failures over a live connection
+        self._sacct_failure_start_time = None
+
+        delay = min(
+            JOB_POLL_INTERVAL_SECONDS * 2 ** min(self._disconnect_attempts, 16),
+            DISCONNECT_BACKOFF_MAX_SECONDS,
+        )
+        self._disconnect_attempts += 1
+
+        logging.warning(
+            f"Connection to {job.host.name} lost for job {uid}. "
+            f"Retrying in {delay:.0f}s (attempt {self._disconnect_attempts}). Error: {repr(error)}"
+        )
+        job_manager.set_state(
+            uid,
+            JOB_STATE_NOTCONNECTED,
+            message=(
+                f"Connection to {job.host.name} lost. Retrying in {delay:.0f}s "
+                f"(attempt {self._disconnect_attempts}). Use 'Reconnect' to retry now."
+            ),
+            traceback={"[WARNING] Connection lost": repr(error)} if error else None,
+        )
+        job_manager.schedule(uid, JOB_EVENT_PROGRESS, delay=delay)
+
+    def _post_status_update(self, job_manager, uid: str, client: Any, jobstatus: list):
         raise NotImplementedError("Subclasses must implement _post_sacct_progress method")
 
 
-def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], use_gpu=False, time=None):
+def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], remote_version=None, use_gpu=False, time=None):
     python_calls = []
     for python_cmd in python_cmd_list:
         python_calls.append("--cmd '" + python_cmd + "'")
@@ -263,8 +324,9 @@ def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], use_gpu=False, time=None
         parameters_list.append(f'--time "{time}"')
     chained_parameters = " ".join(parameters_list)
 
-    geoslicer_version = getApplicationVersion()
-    geoslicer_path = Path("/atena/users/dibi/containers/geoslicer/") / get_posix_friendly_version()
+    if remote_version == None:
+        remote_version = get_posix_friendly_version()
+    geoslicer_path = Path("/atena/users/dibi/containers/geoslicer/") / remote_version
     geoslicer_path_string = geoslicer_path.as_posix()
     main_cmd = (
         f'RPS_DIR="{geoslicer_path_string}"; '

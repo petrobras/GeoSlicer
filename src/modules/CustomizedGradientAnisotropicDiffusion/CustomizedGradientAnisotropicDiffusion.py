@@ -8,7 +8,8 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
-from ltrace.slicer.helpers import copy_display
+from ltrace.slicer.helpers import copy_display, copy_attributes, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer_utils import *
@@ -102,6 +103,7 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         LTracePluginWidget.setup(self)
         self.progressBar = LocalProgressBar()
         self.logic = CustomizedGradientAnisotropicDiffusionLogic(self.progressBar, parent=self.parent)
+        self.logic.filteringStarted.connect(lambda: self.updateApplyButton(enabled=False))
         self.logic.filteringStopped.connect(lambda: self.updateApplyButton(enabled=True))
         self.logic.filteringCompleted.connect(self.exit)
         self.logic.previewFilteringStarted.connect(self.onPreviewFilteringStarted)
@@ -276,7 +278,13 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         else:
             self.togglePreviewButton.setText("Picking a spot in slice view, press Esc to cancel")
             self.togglePreviewButton.enabled = False
-            self.markup = MarkupFiducial(finish_callback=self.onFinishMarkup, cancel_callback=self.updatePreviewButton)
+            if self.markup:
+                self.markup.deleteLater()
+                self.markup = None
+
+            self.markup = MarkupFiducial(
+                finish_callback=self.onFinishMarkup, cancel_callback=self.updatePreviewButton, parent=self.parent
+            )
             self.markup.markups_node.SetName("Preview Center")
             self.markup.start_picking()
 
@@ -307,6 +315,9 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
         self.cancelButton.enabled = not enabled
 
     def onInputChanged(self, inputNode):
+        if self.logic is None:
+            return
+
         self.togglePreviewButton.enabled = inputNode is not None
         self.logic.setPreviewInput(inputNode)
         self.onSettingsChanged()
@@ -359,6 +370,12 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
 
     def cleanup(self):
         super().cleanup()
+        if self.markup:
+            del self.markup
+            self.markup = None
+
+        self.logic.delete()
+        self.logic = None
 
 
 class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
@@ -392,6 +409,12 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
         self.center = None
         self.orientation = "XY"
         self.previewSize = 120
+        self.destroyed.connect(self.__del__)
+
+    def __del__(self):
+        self.progressBar = None
+        self.cliNode = None
+        self.removePreviewNodes()
 
     def togglePreview(self):
         self.previewEnabled = not self.previewEnabled
@@ -407,10 +430,10 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
 
     def createPreviewNodes(self, inputVolume):
         self.inputPreviewVolume = helpers.createTemporaryNode(
-            slicer.vtkMRMLScalarVolumeNode, "Filter input preview", uniqueName=False
+            slicer.vtkMRMLScalarVolumeNode, "Filter input preview", uniqueName=False, environment="CGAD"
         )
         self.outputPreviewVolume = helpers.createTemporaryNode(
-            slicer.vtkMRMLScalarVolumeNode, "Filter output preview", uniqueName=False
+            slicer.vtkMRMLScalarVolumeNode, "Filter output preview", uniqueName=False, environment="CGAD"
         )
         self.inputPreviewVolume.CopyOrientation(inputVolume)
         helpers.copy_display(inputVolume, self.inputPreviewVolume)
@@ -419,7 +442,7 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
         loosen_threshold(self.outputPreviewVolume)
 
     def removePreviewNodes(self):
-        helpers.removeTemporaryNodes()
+        helpers.removeTemporaryNodes(environment="CGAD")
         self.inputPreviewVolume = None
         self.outputPreviewVolume = None
 
@@ -574,6 +597,11 @@ class CustomizedGradientAnisotropicDiffusionLogic(LTracePluginLogic):
                 slicer.util.setSliceViewerLayers(background=self.outputVolume, fit=True)
                 copy_display(self.inputVolume, self.outputVolume)
                 loosen_threshold(self.outputVolume)
+                """ TODO (MUSA-150) - Should we copy attributes by default? And references?
+                copy_attributes(self.inputVolume, self.outputVolume)
+                copy_metadata(self.inputVolume, self.outputVolume)
+                copy_hierarchy_attributes(self.inputVolume, self.outputVolume)
+                self.outputVolume.CopyReferences(self.inputVolume)"""
 
                 # When restoring the layout, show output volume instead of volume user was viewing earlier
                 self.lastVisibleVolume = self.outputVolume.GetID()

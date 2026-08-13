@@ -1,14 +1,21 @@
-import qt
-
+import ctk
 import numpy as np
-
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from .constants import *
-from ltrace.slicer import ui
-
-from ltrace.slicer.widget.help_button import HelpButton
+import qt
+import slicer
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from ltrace.pore_networks.simulation_parameters_node import (
+    parameter_node_to_dict,
+    save_dict_to_parameter_node,
+    ONE_PHASE_SIMULATION_TYPE,
+    PNM_PARAMETER_TYPE_ATTR,
+)
+from ltrace.pore_networks.subres_models import get_pore_network_volume_data
+from ltrace.slicer import ui
+from ltrace.slicer.widget.help_button import HelpButton
+from ltrace.slicer_utils import getResourcePath
+from .constants import *
+from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
 
 
 class OnePhaseSimulationWidget(qt.QFrame):
@@ -24,13 +31,29 @@ class OnePhaseSimulationWidget(qt.QFrame):
         "solver": "pypardiso",
         "solver_error": 1e-7,
         "pressure_drop": 101325.0,
-        "fluid_viscosity": 1.0,
+        "fluid_viscosity": 0.001,  # Fixed: Default 1.0 mPa.s is now properly stored as 0.001 Pa.s
         "cilindrical_sample": False,
     }
 
-    def __init__(self):
+    def __init__(self, hide_parameters_io=False):
         super().__init__()
         layout = qt.QFormLayout(self)
+        self.currentNode = None
+
+        # Load parameters IO section
+        self.loadParamsLayout = LoadParamsLayout(ONE_PHASE_SIMULATION_TYPE, self.onParameterInputLoad)
+        self.parameterInputLoadCollapsible = self.loadParamsLayout.collapsible
+        self.parameterInputWidget = self.loadParamsLayout.parameterInputWidget
+
+        if not hide_parameters_io:
+            layout.addRow(self.loadParamsLayout)
+
+        # Save parameters IO section
+        self.saveParamsLayout = SaveParamsLayout("one_phase_sim_input_parameters", self.onParameterInputSave)
+        self.parameterInputLineEdit = self.saveParamsLayout.lineEdit
+
+        if not hide_parameters_io:
+            layout.addRow(self.saveParamsLayout)
 
         # Pore-throat model selector
         pn_models = [
@@ -46,7 +69,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.solverComboBox.addItems(["pypardiso", "pyflowsolver", "openpnm"])
         self.solverComboBox.setCurrentIndex(0)
         solverHelpButton = HelpButton(
-            "'pypardiso' is the recomended solver, 'pyflowsolver' allows error tolerance control, but performance is usually lower than 'pypardiso', 'openpnm' is a legacy option"
+            "'pypardiso' is the recommended solver, 'pyflowsolver' allows error tolerance control, but performance is usually lower than 'pypardiso', 'openpnm' is a legacy option"
         )
         hbox.addWidget(self.solverComboBox)
         hbox.addWidget(solverHelpButton)
@@ -154,11 +177,12 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "clip_value": float(self.clipEdit.text),
             "visualization": self.generateVisualizationCheckbox.isChecked(),
             "pressure_drop": float(self.pressureDropFloat.text),
-            "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),  # converts from mPa.s to Pa.s
+            "fluid_viscosity": 0.001 * float(self.fluidViscosityFloat.text),
             "cilindrical_sample": self.cilindricalSample.isChecked(),
         }
 
-        params.update(get_pore_network_volume_data(pore_table_node))
+        if pore_table_node:
+            params.update(get_pore_network_volume_data(pore_table_node))
         return params
 
     def onSolverChanged(self, text):
@@ -175,6 +199,7 @@ class OnePhaseSimulationWidget(qt.QFrame):
         self.generateVisualizationCheckbox.setVisible(text == ONE_ANGLE)
 
     def setVolumeNode(self, node):
+        self.currentNode = node
         self.mercury_widget.setVolumeNode(node)
 
     def setParams(self, params):
@@ -188,11 +213,21 @@ class OnePhaseSimulationWidget(qt.QFrame):
             self.solverComboBox.setCurrentText(params.get("solver"))
         if params.get("solver_error"):
             self.errorEdit.text = params.get("solver_error")
+        if params.get("preconditioner"):
+            self.preconditionerComboBox.setCurrentText(params.get("preconditioner"))
+        if "clip_check" in params:
+            self.clipCheck.setChecked(params.get("clip_check"))
+        if params.get("clip_value"):
+            self.clipEdit.text = params.get("clip_value")
+        if "visualization" in params:
+            self.generateVisualizationCheckbox.setChecked(params.get("visualization"))
         if params.get("pressure_drop"):
             self.pressureDropFloat.text = params.get("pressure_drop")
-        if params.get("fluid_viscosity"):
-            self.fluidViscosityFloat.text = params.get("fluid_viscosity") * 1000  # converts from Pa.s to mPa.s
-        if params.get("cilindrical_sample"):
+
+        if "fluid_viscosity" in params and params.get("fluid_viscosity") is not None:
+            self.fluidViscosityFloat.text = float(params.get("fluid_viscosity")) * 1000
+
+        if "cilindrical_sample" in params:
             self.cilindricalSample.setChecked(params.get("cilindrical_sample"))
 
         mercury_params = {
@@ -202,3 +237,18 @@ class OnePhaseSimulationWidget(qt.QFrame):
             "subres_shape_factor": params.get("subres_shape_factor"),
         }
         self.mercury_widget.setParams(mercury_params)
+
+    def onParameterInputLoad(self):
+        selectedNode = self.parameterInputWidget.currentNode()
+        if selectedNode:
+            parameters_dict = parameter_node_to_dict(selectedNode)
+            self.setParams(parameters_dict)
+            self.parameterInputLoadCollapsible.collapsed = True
+
+    def onParameterInputSave(self):
+        parameterValues = self.getParams(self.currentNode)
+        parameterNode = save_dict_to_parameter_node(
+            parameterValues, self.parameterInputLineEdit.text, self.currentNode, node_type=ONE_PHASE_SIMULATION_TYPE
+        )
+        slicer.app.applicationLogic().GetSelectionNode().SetActiveTableID(parameterNode.GetID())
+        slicer.app.applicationLogic().PropagateTableSelection()

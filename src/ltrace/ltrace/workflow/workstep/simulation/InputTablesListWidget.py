@@ -33,7 +33,7 @@ def set_pressure_table_model(pressure_tables, subres_model, subres_params, idx):
         pressure_curve_node = slicer.util.getNode(pressure_curve_name)
         df = dataframeFromTable(pressure_curve_node)
         df = df.replace("", np.nan)
-        df = df.astype("float32")
+        df = df.astype(np.float32)
         Curve = df[curve_column].to_numpy()
         Fvol = df[fvol_column].to_numpy()
 
@@ -71,7 +71,7 @@ class InputTablesListWidget(qt.QWidget):
 
         self.queue = qt.QTableWidget()
         self.queue.horizontalHeader().setMinimumSectionSize(200)
-        self.queue.horizontalHeader().setStretchLastSection(qt.QHeaderView.Stretch)
+        self.queue.horizontalHeader().setStretchLastSection(qt.QHeaderView.ResizeMode.Stretch)
         self.queue.horizontalHeader().hide()
         self.queue.verticalHeader().hide()
         layout.addWidget(self.queue)

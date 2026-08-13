@@ -1,3 +1,5 @@
+import copy
+
 import ctk
 import numpy as np
 import qt
@@ -9,13 +11,13 @@ from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
 from ltrace.pore_networks.simulation_parameters_node import (
     parameter_node_to_dict,
     save_dict_to_parameter_node,
+    TWO_PHASE_SIMULATION_TYPE,
 )
+from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
 from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from ltrace.slicer import ui
 from ltrace.slicer.app import MANUAL_BASE_URL
-from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
+from ltrace.slicer_utils import dataframeFromTable, slicer_is_in_developer_mode
 
 
 class TwoPhaseParametersEditDialog:
@@ -57,10 +59,14 @@ class TwoPhaseParametersEditDialog:
 
             if self.node:
                 name = self.node.GetName()
-                outNode = save_dict_to_parameter_node(parameterValues, name, self.node, update_current_node=True)
+                outNode = save_dict_to_parameter_node(
+                    parameterValues, name, self.node, update_current_node=True, node_type=TWO_PHASE_SIMULATION_TYPE
+                )
             else:
                 name = "simulation_input_parameters"
-                outNode = save_dict_to_parameter_node(parameterValues, name, self.node)
+                outNode = save_dict_to_parameter_node(
+                    parameterValues, name, self.node, node_type=TWO_PHASE_SIMULATION_TYPE
+                )
 
             outNode.SetName(name)
             return status, outNode
@@ -98,6 +104,18 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         self.labels = {}
         self.currentNode = None
 
+        # Parameters Input/Output Sections
+        self.loadParamsLayout = LoadParamsLayout(TWO_PHASE_SIMULATION_TYPE, self.onParameterInputLoad)
+        self.parameterInputLoadCollapsible = self.loadParamsLayout.collapsible
+        self.parameterInputWidget = self.loadParamsLayout.parameterInputWidget
+
+        self.saveParamsLayout = SaveParamsLayout("two_phase_sim_input_parameters", self.onParameterInputSave)
+        self.parameterInputLineEdit = self.saveParamsLayout.lineEdit
+
+        if not hide_parameters_io:
+            layout.addRow(self.loadParamsLayout)
+            layout.addRow(self.saveParamsLayout)
+
         # Execution mode
         optionsLayout = qt.QHBoxLayout()
         optionsLayout.setAlignment(qt.Qt.AlignLeft)
@@ -134,29 +152,6 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         direction_layout.addWidget(self.direction_combo_box)
         layout.addRow(direction_layout)
 
-        self.parameterInputLoadCollapsible = ctk.ctkCollapsibleButton()
-        self.parameterInputLoadCollapsible.text = "Load parameters"
-        self.parameterInputLoadCollapsible.collapsed = True
-        self.parameterInputWidget = ui.hierarchyVolumeInput(
-            nodeTypes=["vtkMRMLTextNode"],
-            defaultText="Select node to load parameters from",
-        )
-        self.parameterInputWidget.objectName = "Parameter input"
-        self.parameterInputWidget.addNodeAttributeIncludeFilter(TableType.name(), TableType.PNM_INPUT_PARAMETERS.value)
-        self.parameterInputWidget.showEmptyHierarchyItems = False
-        parameterInputLoadButton = qt.QPushButton("Load parameters")
-        parameterInputLoadButton.objectName = "Parameter input load button"
-        parameterInputLoadButton.clicked.connect(self.onParameterInputLoad)
-        parameterInputLayout = qt.QFormLayout(self.parameterInputLoadCollapsible)
-        parameterInputLayout.addRow("Input parameter node:", self.parameterInputWidget)
-        parameterInputLayout.addRow(parameterInputLoadButton)
-        parameterInputLoadIcon = qt.QLabel()
-        parameterInputLoadIcon.setPixmap(
-            qt.QIcon(getResourcePath("Icons") / "png" / "Load.png").pixmap(qt.QSize(13, 13))
-        )
-        if not hide_parameters_io:
-            layout.addRow(parameterInputLoadIcon, self.parameterInputLoadCollapsible)
-
         ### Two-phase fluids properties inputs
 
         # Fluid Properties
@@ -175,8 +170,6 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         for layout_name, display_string in (
             ("water_parameters", "Water parameters"),
             ("oil_parameters", "Oil parameters"),
-            # ("clay_parameters", "Clay parameters"), # Temporarilly supressed by PL-2002,
-            # client will probably request this feature back in the future
         ):
             collapsible = ctk.ctkCollapsibleButton()
             collapsible.text = display_string
@@ -291,33 +284,12 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             }
         """
 
-        # self.contactSensitivityBox.setStyleSheet(style_sheet)
         fluidPropertiesBox.setStyleSheet(style_sheet)
         self.contactAngleBox.setStyleSheet(style_sheet)
         self.simulationOptionsBox.setStyleSheet(style_sheet)
 
-        # self.createSequenceCheck.connect("clicked(bool)", self.onAnimationCheckChange)
-        # self.contactSensitivityBox.connect("toggled(bool)", self.onSensitivityCheckChange)
-        # self.onSensitivityCheckChange()
-
         self.infoLabel = qt.QLabel()
         layout.addRow(self.infoLabel)
-
-        parameterInputSaveCollapsible = ctk.ctkCollapsibleButton()
-        parameterInputSaveCollapsible.text = "Save parameters"
-        parameterInputSaveCollapsible.collapsed = True
-        self.parameterInputLineEdit = qt.QLineEdit("simulation_input_parameters")
-        parameterInputSaveButton = qt.QPushButton("Save parameters")
-        parameterInputSaveButton.clicked.connect(self.onParameterInputSave)
-        parameterInputLayout = qt.QFormLayout(parameterInputSaveCollapsible)
-        parameterInputLayout.addRow("Output parameter node name:", self.parameterInputLineEdit)
-        parameterInputLayout.addRow(parameterInputSaveButton)
-        parameterInputSaveIcon = qt.QLabel()
-        parameterInputSaveIcon.setPixmap(
-            qt.QIcon(getResourcePath("Icons") / "png" / "Save.png").pixmap(qt.QSize(13, 13))
-        )
-        if not hide_parameters_io:
-            layout.addRow(parameterInputSaveIcon, parameterInputSaveCollapsible)
 
         self.widgets["create_sequence"].stateChanged.connect(self.onCreateSequenceChecked)
 
@@ -368,15 +340,21 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         for widget_name, widget_params in (i for i in PARAMETERS.items() if i[1]["layout"] == source_layout_name):
             if widget_params.get("hidden", False):
                 continue
-            new_widget = self.create_custom_widget(widget_name, widget_params)
-            new_label = qt.QLabel(widget_params["display_name"])
-            if "enabled" in widget_params:
-                enable = widget_params["enabled"]
+
+            _widget_params = widget_params
+            if widget_name == "batch_invasions" and slicer_is_in_developer_mode():
+                _widget_params = copy.deepcopy(widget_params)
+                _widget_params["display_names"]["Full"] = "full"
+
+            new_widget = self.create_custom_widget(widget_name, _widget_params)
+            new_label = qt.QLabel(_widget_params["display_name"])
+            if "enabled" in _widget_params:
+                enable = _widget_params["enabled"]
                 new_label.setEnabled(enable)
                 new_widget.setEnabled(enable)
-            if "tooltip" in widget_params:
-                new_label = simulation_widgets.TooltipLabel(widget_params["display_name"])
-                new_label.setToolTip(widget_params["tooltip"])
+            if "tooltip" in _widget_params:
+                new_label = simulation_widgets.TooltipLabel(_widget_params["display_name"])
+                new_label.setToolTip(_widget_params["tooltip"])
             target_layout.addRow(new_label, new_widget)
             widgets_list[widget_name] = new_widget
             label_list[widget_name] = new_label
@@ -421,10 +399,6 @@ class TwoPhaseSimulationWidget(qt.QFrame):
             widget.setEnabled(text == "Model 2 (constant difference)")
 
     def onChangedFraction(self, name):
-        """
-        This function is a callback that enable/disable items for the second distribution
-        as the Fraction parameter is available.
-        """
         fracion_widget = self.widgets[name]
         if fracion_widget.get_steps() >= 1 and (fracion_widget.get_start() > 0.0 or fracion_widget.get_stop() > 0.0):
             state = True
@@ -461,17 +435,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         }
         self.mercury_widget.setParams(mercury_params)
 
-    def getParams(self, pore_table_node):
-        """
-        Get a dictionary with the value of all parameter values plus simulator/direction/subresolution metadata
-
-        Return:
-            dict: With all values. Keys that describe sweepable inputs are named "input-<name>"
-                  and map to dicts with "start", "stop", "steps".
-        """
+    def getParams(self, pore_table_node=None):
         parameters_dict = {}
 
-        # gather widget inputs (multistep and single)
         for widget in self.widgets.values():
             parameter = widget.get_name()
             if parameter not in parameters_dict:
@@ -480,15 +446,14 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 parameters_dict[parameter]["start"] = widget.get_start()
                 parameters_dict[parameter]["stop"] = widget.get_stop()
                 parameters_dict[parameter]["steps"] = widget.get_steps()
+                parameters_dict[parameter]["conversion_factor"] = widget.get_conversion_factor()
                 if widget.step_spacing == "logarithmic":
                     parameters_dict[parameter]["step_spacing"] = widget.step_spacing
             else:
                 parameters_dict[parameter] = widget.get_value()
 
-        # simulator
         parameters_dict["simulator"] = self.simulator_combo_box.currentText
 
-        # direction mapping: display -> numpy direction
         geo_display_direction = self.direction_combo_box.currentText
         if geo_display_direction == "X":
             numpy_direction = "z"
@@ -497,10 +462,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         elif geo_display_direction == "Z":
             numpy_direction = "x"
         else:
-            numpy_direction = geo_display_direction  # fallback / unexpected value
+            numpy_direction = geo_display_direction
         parameters_dict["direction"] = numpy_direction
 
-        # subresolution model name & params
         subres_model_name = self.mercury_widget.subscaleModelWidget.microscale_model_dropdown.currentText
         raw_subres_params = self.mercury_widget.subscaleModelWidget.parameter_widgets[subres_model_name].get_params()
         subres_params = raw_subres_params
@@ -514,7 +478,7 @@ class TwoPhaseSimulationWidget(qt.QFrame):
                 if subres_model_name == "Throat Radius Curve":
                     subres_params["throat radii"] = df[raw_subres_params["throat radii"]].tolist()
                     subres_params["dsn"] = df[raw_subres_params["dsn"]].tolist()
-                else:  # Pressure Curve
+                else:
                     subres_params["capillary pressure"] = df[raw_subres_params["capillary pressure"]].tolist()
                     subres_params["dsn"] = df[raw_subres_params["dsn"]].tolist()
 
@@ -530,8 +494,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         parameters_dict["skip_imbibition"] = False
         parameters_dict["remote_execution"] = "T" if self.remoteQRadioButton.isChecked() else "F"
 
-        scalar_volume_data = get_pore_network_volume_data(pore_table_node)
-        parameters_dict.update(scalar_volume_data)
+        if pore_table_node:
+            scalar_volume_data = get_pore_network_volume_data(pore_table_node)
+            parameters_dict.update(scalar_volume_data)
 
         parameters_dict["save_tables"] = slicer_is_in_developer_mode()
 
@@ -572,6 +537,13 @@ class TwoPhaseSimulationWidget(qt.QFrame):
         selectedNode = self.parameterInputWidget.currentNode()
         if selectedNode:
             parameters_dict = parameter_node_to_dict(selectedNode)
+
+            if "batch_invasions" in parameters_dict:
+                if parameters_dict["batch_invasions"] in ("T", True):
+                    parameters_dict["batch_invasions"] = "partial"
+                elif parameters_dict["batch_invasions"] in ("F", False):
+                    parameters_dict["batch_invasions"] = "none"
+
             for name, widget in self.widgets.items():
                 if name in parameters_dict:
                     if isinstance(widget, simulation_widgets.MultistepEditWidget):
@@ -589,7 +561,9 @@ class TwoPhaseSimulationWidget(qt.QFrame):
 
     def onParameterInputSave(self):
         parameterValues = self.getParams(self.currentNode)
-        parameterNode = save_dict_to_parameter_node(parameterValues, self.parameterInputLineEdit.text, self.currentNode)
+        parameterNode = save_dict_to_parameter_node(
+            parameterValues, self.parameterInputLineEdit.text, self.currentNode, node_type=TWO_PHASE_SIMULATION_TYPE
+        )
         slicer.app.applicationLogic().GetSelectionNode().SetActiveTableID(parameterNode.GetID())
         slicer.app.applicationLogic().PropagateTableSelection()
 

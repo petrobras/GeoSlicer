@@ -1,84 +1,92 @@
-camelot-py==0.10.1
-cftime==1.6.0
+camelot-py==1.0.9
+cftime==1.6.5
 chardet==5.2.0
-cudnn-python-wrappers==1.0.0
-Cython==0.29.28
-dask-image==0.4.0
-dask[complete]==2021.1.0
-distinctipy==1.1.5
-dlisio==1.0.1
+colorcet==3.2.1
+cudnn-python-wrappers==1.0
+Cython==3.2.4
+dask-image==2025.11.0
+dask-jobqueue==0.9.0
+dask[complete]==2026.1.1
+distinctipy==1.3.4
+dlisio==1.0.4
 drd==0.1.2
 dliswriter==1.2.0
-h5netcdf==1.1.0
-h5py==3.6.0
-h5pyd==0.14.1
-humanize==3.13.1
-Jinja2==3.1.4
-ipywidgets==7.6.3
+h5netcdf==1.8.0
+h5py==3.15.1
+h5pyd==0.18.0
+humanize==4.15.0
+Jinja2==3.1.6
+ipywidgets==7.8.5
 itkwidgets==0.32.6
-joblib==1.1.1
-keyring==24.2.0
+joblib==1.5.3
+keyring==25.7.0
 lasio @ git+https://github.com/kinverarity1/lasio@b472b1f17f545fed03559e0e4fe26761e6769567
-loguru==0.6.0
-markdown2==2.5.0
-markupsafe==2.0.1
-matplotlib==3.9.2
-mkl==2022.2.1
-mmcv @ http://download.openmmlab.com/mmcv/dist/cu116/torch1.12.0/mmcv-2.0.0-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
-mmcv @ http://download.openmmlab.com/mmcv/dist/cu116/torch1.12.0/mmcv-2.0.0-cp39-cp39-manylinux1_x86_64.whl ; platform_system == "Linux"
-mmdet==3.1.0
-mmengine==0.8.4
-monai==1.1.0
-natsort==6.2.0
-netCDF4==1.5.4
+loguru==0.7.3
+markdown2==2.5.4
+MarkupSafe==3.0.3
+matplotlib==3.10.8
+matplotlib-inline==0.2.1
+mkl==2025.3.1
+mmcv @ https://github.com/ltracegeo/mmcv/releases/download/v2.1.1/mmcv-2.1.1-cp312-cp312-linux_x86_64.whl ; platform_system == "Linux"
+mmcv @ https://github.com/ltracegeo/mmcv/releases/download/v2.1.1/mmcv-2.1.1-cp312-cp312-win_amd64.whl ; platform_system == "Windows"
+mmdet==3.3.0
+mmengine==0.10.7
+monai==1.5.1
+natsort==8.4.0
+netCDF4==1.7.4
 numba==0.60.0
-numexpr==2.8.4
-numpy==1.23.1
-opencv-contrib-python-headless==4.5.5.64
-opencv-python==4.7.0.72
+numexpr==2.14.1
+numpy==1.26.4
+opencv-python==4.10.0.82
+opencv-python-headless==4.10.0.82
 openpnm==3.4.0
-pandas==2.2.2
-paramiko==3.4.0
-pathvalidate==2.5.0
-pint-pandas==0.2
-pint==0.19.2
-plotly==5.18.0
-psutil==5.9.0
-pyarrow==20.0.0
+pandas==2.3.3
+paramiko==4.0.0
+pathvalidate==3.3.1
+Pint-Pandas==0.7.1
+Pint==0.25.2
+plotly==6.5.2
+psutil==7.2.1
+pyarrow==23.0.0
 pyedt==0.1.5
-Pygments==2.18.0
-pynrrd==1.0.0
+pyevtk==1.7.0
+Pygments==2.19.2
+pylibCZIrw==6.0.1
+pynrrd==1.1.3
 pypardiso==0.4.3 # Fix version because they changed the package metadata and defined an invalid string for licence
-pyqtgraph @ git+https://github.com/ltracegeo/pyqtgraph.git@pyqtgraph-0.12.4.2
-PySide2==5.15.2
+shiboken2 @ https://github.com/ltracegeo/pyside-setup/releases/download/v5.15.12.1/shiboken2-5.15.12.1-5.15.2-cp312-cp312-linux_x86_64.whl ; platform_system == "Linux"
+PySide2 @ https://github.com/ltracegeo/pyside-setup/releases/download/v5.15.12.1/pyside2-5.15.12.1-5.15.2-cp312-cp312-linux_x86_64.whl ; platform_system == "Linux"
+shiboken2 @ https://github.com/ltracegeo/pyside-setup/releases/download/v5.15.12.1/shiboken2-5.15.12.1-5.15.2-cp312-cp312-win_amd64.whl ; platform_system == "Windows"
+PySide2 @ https://github.com/ltracegeo/pyside-setup/releases/download/v5.15.12.1/pyside2-5.15.12.1-5.15.2-cp312-cp312-win_amd64.whl ; platform_system == "Windows"
+pyqtgraph @ git+https://github.com/ltracegeo/pyqtgraph.git@ltrace-0.14.0
 pytesseract==0.3.7
-pywin32==306 ; platform_system == "Windows"
-pyzmq==22.3.0
-recordtype==1.3.0
-requests_toolbelt>=1.0.0
-sahi==0.11.15
-setuptools==61.3.1
-setuptools-scm==8.0.4
-scikit-gstat==1.0.1
-scikit-image==0.19.2
-scikit-learn==1.0.2
-scikit-mps==0.5.0
-scipy==1.8.1
-shapely==2.0.0
-statsmodels==0.14.0
+pywin32==311 ; platform_system == "Windows"
+pyzmq==27.1.0
+recordtype==1.4
+requests_toolbelt==1.0.0
+sahi==0.11.36
+setuptools==80.10.1
+setuptools-scm==9.2.2
+scikit-gstat==1.0.23
+scikit-image==0.26.0
+scikit-learn==1.8.0
+scikit-mps==0.6.0
+scipy==1.13.1
+shapely==2.1.2
+statsmodels==0.14.6
 stopit==1.1.2
-streamlit==1.22.0
-sympy==1.10.1
-#tbb>=2021.6.0
-tensorflow==2.8.2
-tomli==2.2.1
-tomli-w==1.2.0
-toolz==0.11.1
-torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
-torch @ https://download.pytorch.org/whl/cu116/torch-1.12.0%2Bcu116-cp39-cp39-linux_x86_64.whl ; platform_system == "Linux"
-torchvision @ https://download.pytorch.org/whl/cu116/torchvision-0.13.0%2Bcu116-cp39-cp39-win_amd64.whl ; platform_system == "Windows"
-torchvision @ https://download.pytorch.org/whl/cu116/torchvision-0.13.0%2Bcu116-cp39-cp39-linux_x86_64.whl ; platform_system == "Linux"
-trimesh==3.9.35
-widgetsnbextension==3.5.2
-xarray==2022.12.0
-zarr==2.5.0
+streamlit==1.53.0
+sympy==1.13.1
+tbb==2022.3.1
+tensorflow==2.20.0
+tomli==2.4.0
+tomli_w==1.2.0
+toolz==1.1.0
+torch @ https://download.pytorch.org/whl/cu121/torch-2.5.1%2Bcu121-cp312-cp312-win_amd64.whl ; platform_system == "Windows"
+torch @ https://download.pytorch.org/whl/cu121/torch-2.5.1%2Bcu121-cp312-cp312-linux_x86_64.whl ; platform_system == "Linux"
+torchvision @ https://download.pytorch.org/whl/cu121/torchvision-0.20.1%2Bcu121-cp312-cp312-win_amd64.whl ; platform_system == "Windows"
+torchvision @ https://download.pytorch.org/whl/cu121/torchvision-0.20.1%2Bcu121-cp312-cp312-linux_x86_64.whl ; platform_system == "Linux"
+trimesh==4.11.1
+widgetsnbextension==3.6.10
+xarray==2025.12.0
+zarr==3.1.5

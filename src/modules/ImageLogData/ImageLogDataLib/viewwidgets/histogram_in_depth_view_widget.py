@@ -115,6 +115,7 @@ class PlotWidget(QtWidgets.QWidget):
     TYPE = "Histograms in depth"
 
     signal_y_range_changed = QtCore.Signal(object, object)
+    signal_x_range_changed = QtCore.Signal(object, object)
 
     def __init__(self, histogramType, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -125,6 +126,8 @@ class PlotWidget(QtWidgets.QWidget):
         self.__plots = list()
         self.__graphicsLayoutWidget = None
         self.__histogramType = histogramType
+
+        self.__update_ranges = True
 
         self.setupUi()
 
@@ -146,7 +149,7 @@ class PlotWidget(QtWidgets.QWidget):
 
     def setupUi(self):
         """Initialize widgets"""
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         self.__graphicsLayoutWidget = pg.GraphicsLayoutWidget()
         self._plotItem = self.__graphicsLayoutWidget.addPlot(row=0, col=0, rowspan=5, colspan=5)
@@ -166,6 +169,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.export_action.triggered.connect(self.__on_export_to_las_clicked)
         menu.addAction(self.export_action)
 
+        self._plotItem.sigXRangeChanged.connect(self.__onXRangeChanged)
         self._plotItem.sigYRangeChanged.connect(self.__onYRangeChanged)
 
         # Hide Contents
@@ -216,6 +220,9 @@ class PlotWidget(QtWidgets.QWidget):
         self.__plots.append(plot_info)
         self.updateSecondPlot()
 
+    def setUpdateRangesFlag(self, update_ranges):
+        self.__update_ranges = update_ranges
+
     def updatePlot(self):
         self._plotItem.clear()
         if self.__curveIndexer is not None:
@@ -236,10 +243,15 @@ class PlotWidget(QtWidgets.QWidget):
             scale_plot = self.__scaleHistogram
 
             x, y, depth_hist = self._getPlotData(graph_data)
+
+            # Showing the histogram one y step below makes the visualization more intuitive
+            if graph_data.df().index.name == "Pore size (mm)":
+                depth_hist += self.getYStep(graph_data)
+
             y_scaled = -scale_plot * y + np.transpose(depth_hist)[:, np.newaxis]
 
-            self._plotItem.plot(x, y_scaled, fillLevel=depth_hist, brush=brush, pen=pen)
             for i in range(y_scaled.shape[0]):
+                self._plotItem.plot(x, y_scaled[i, :], fillLevel=depth_hist[i], brush=brush, pen=pen)
                 self.__curveIndexer.addCurve(x, y_scaled[i, :], y[i, :])
 
             # Apply plot customization
@@ -260,19 +272,21 @@ class PlotWidget(QtWidgets.QWidget):
                 yMin = min(yMin, minDepth)
                 yMax = max(yMax, maxDepth)
 
-        # Apply Log Scale
-        if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
-            self._plotItem.setLogMode(x=True, y=False)
-
-        if xMin is not None and xMax is not None:
+        # Sometimes we want to add/change data without updating the ranges of the plot
+        if self.__update_ranges:
+            # Apply Log Scale
             if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
-                xMin = np.log10(xMin) if xMin > 0 else 0
-                xMax = np.log10(xMax) if xMax > 0 else 0
+                self._plotItem.setLogMode(x=True, y=False)
 
-            self._plotItem.setXRange(xMin, xMax)
+            if xMin is not None and xMax is not None:
+                if self._getPlotScale() == PlotScaleXAxisAttribute.LOG_SCALE.value:
+                    xMin = np.log10(xMin) if xMin > 0 else 0
+                    xMax = np.log10(xMax) if xMax > 0 else 0
 
-        if yMin is not None and yMax is not None:
-            self._plotItem.setYRange(yMin, yMax)
+                self._plotItem.setXRange(xMin, xMax)
+
+            if yMin is not None and yMax is not None:
+                self._plotItem.setYRange(yMin, yMax)
 
         # Apply plot customization
         self._plotItem.showGrid(x=True, y=True)
@@ -366,6 +380,9 @@ class PlotWidget(QtWidgets.QWidget):
         max_depth = 1000 * tuple_range[1]
         self.signal_y_range_changed.emit(cls, (min_depth, max_depth))
 
+    def __onXRangeChanged(self, cls, tuple_range):
+        self.signal_x_range_changed.emit(cls, tuple_range)
+
     def _getPlotScale(self):
         return self.__model.plotScale
 
@@ -385,6 +402,8 @@ class PlotWidget(QtWidgets.QWidget):
         """
         if graph_data.data.get("X", None) is not None:
             x = np.array(graph_data.data["X"])
+        elif graph_data.df().index.name == "Pore size (mm)":
+            x = np.array(graph_data.df().index.values).astype(float)
         elif self.__histogramType == HistogramGraphType.MULTI_HISTOGRAM.value:
             x = self._instance_attributes_limits(graph_data.node)
         else:
@@ -437,6 +456,10 @@ class PlotWidget(QtWidgets.QWidget):
                 y_all = (y_all / ymax) * diff * 5
 
         return y_all, depth_hist
+
+    def getYStep(self, graph_data):
+        y_all, depth_hist = self._getYValues(graph_data)
+        return depth_hist[1] - depth_hist[0]
 
     def _getPlotData(self, graph_data):
         x = self._getXArray(graph_data)

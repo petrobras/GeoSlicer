@@ -783,6 +783,9 @@ class SegmenterWidget(LTracePluginWidget):
             self._onPxSelected()
 
     def _onChangedUserClassifier(self, selected):
+        if not self.userClassifierRadio.isChecked():
+            return
+
         validNode = selected and selected.IsA("vtkMRMLTextNode")
         if not validNode:
             self.classifierInfo.setText(
@@ -791,7 +794,13 @@ class SegmenterWidget(LTracePluginWidget):
             self.classifierInfoGroupBox.text = "Output classes: None"
             return
 
-        content = pickle.loads(getBinary(selected))
+        try:
+            content = pickle.loads(getBinary(selected))
+        except Exception as e:
+            self.classifierInfo.setText(f"Error loading user classifier:\n{e}")
+            self.classifierInfoGroupBox.text = "Output classes: Error"
+            return
+
         model_classes = [classes[1] for classes in content["colors"]]
         model_classes = "\n    * ".join(model_classes)
         model = content["model"]
@@ -1995,9 +2004,9 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                 options.setFlags(qt.Qt.ItemIsEnabled)
                 self.tableFilters.setItem(row, 1, options)
                 self.tableFilters.setHorizontalHeaderLabels(["Features", "Options"])
-                # self.tableFilters.horizontalHeader().setSectionResizeMode(qt.QHeaderView.Stretch)
+                # self.tableFilters.horizontalHeader().setSectionResizeMode(qt.QHeaderView.ResizeMode.Stretch)
                 self.tableFilters.horizontalHeader().setMinimumSectionSize(200)
-                self.tableFilters.horizontalHeader().setStretchLastSection(qt.QHeaderView.Stretch)
+                self.tableFilters.horizontalHeader().setStretchLastSection(qt.QHeaderView.ResizeMode.Stretch)
                 self.tableFilters.verticalHeader().hide()
         else:
             dialog = qt.QDialog(slicer.modules.AppContextInstance.mainWindow)
@@ -2052,7 +2061,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                     "Radius in mm on which to apply a gaussian filter. Accepts comma separated values in order to apply more than one filter with different parameter."
                 )
 
-                v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+                v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
                 sigmaValues.setValidator(v)
                 sigmaValues.editingFinished.connect(self.truncateValuesCallback(sigmaValues, 0, self.minSide / 4.0))
                 sigmaValues.setMinimumWidth(200)
@@ -2080,7 +2089,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                 )
 
                 # Valida os valores de sigma e trunca se necessário
-                v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+                v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
                 sigmaValues.setValidator(v)
                 sigmaValues.editingFinished.connect(self.truncateValuesCallback(sigmaValues, 0, self.minSide / 4.0))
 
@@ -2098,7 +2107,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                     "Wavelength of the sinusoidal factor. Accepts comma separated values in order to apply more than one filter with different parameter."
                 )
 
-                v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+                v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
                 lambdaValues.setValidator(v)
 
                 if filter_func in self.customFilters.keys():
@@ -2220,14 +2229,14 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                     "Threshold value for binarization used in Minkowsky filter. Accepts comma separated values in order to apply more than one filter with different parameter."
                 )
 
-                v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+                v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
                 thresholdValues.setValidator(v)
                 thresholdValues.editingFinished.connect(self.truncateValuesCallback(thresholdValues, 0, 1))
 
                 kernelSize = qt.QLineEdit()
                 kernelSize.setToolTip("Size of the kernel used to calculate Minkowsky functionals.")
 
-                v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+                v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
                 kernelSize.setValidator(v)
                 kernelSize.editingFinished.connect(self.truncateValuesCallback(kernelSize, 0, self.minSide / 4.0))
                 kernelSize.setMinimumWidth(200)
@@ -2293,9 +2302,9 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                 optionsTable.setFlags(qt.Qt.ItemIsEnabled)
                 self.tableFilters.setItem(row, 1, optionsTable)
                 self.tableFilters.setHorizontalHeaderLabels(["Features", "Options"])
-                # self.tableFilters.horizontalHeader().setSectionResizeMode(qt.QHeaderView.Stretch)
+                # self.tableFilters.horizontalHeader().setSectionResizeMode(qt.QHeaderView.ResizeMode.Stretch)
                 self.tableFilters.horizontalHeader().setMinimumSectionSize(200)
-                self.tableFilters.horizontalHeader().setStretchLastSection(qt.QHeaderView.Stretch)
+                self.tableFilters.horizontalHeader().setStretchLastSection(qt.QHeaderView.ResizeMode.Stretch)
                 self.tableFilters.verticalHeader().hide()
 
         return status
@@ -2375,7 +2384,7 @@ class BayesianInferenceSettingsWidget(BaseSettingsWidget):
 
         formLayout = qt.QFormLayout(self)
 
-        v = qt.QRegExpValidator(qt.QRegExp("\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
+        v = qt.QRegExpValidator(qt.QRegExp(r"\d*(?:\.\d+)?(?:,\d*(?:\.\d+)?)*"), self)
         self.kernelSize = qt.QLineEdit()
         self.kernelSize.objectName = "Kernel Size Line Edit"
         self.kernelSize.editingFinished.connect(self.truncateValuesCallback(self.kernelSize))

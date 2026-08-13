@@ -6,17 +6,21 @@
 from __future__ import print_function
 
 import vtk
-from multiprocessing.shared_memory import SharedMemory
 import sys
 from time import sleep
 
+from dask_jobqueue import SLURMCluster
+from dask.distributed import Client
 import json
 import numpy as np
+import os
+import pickle
 
 import slicer
 import mrml
 from ltrace.slicer.cli_utils import progressUpdate
 from ltrace.pore_networks.functions_extract import general_pn_extract
+from ltrace.utils.mmap_shared_memory import MmapSharedMemory
 
 
 def readFrom(volumeFile, builder):
@@ -52,6 +56,22 @@ def cli_extract(args, params):
     if method != "PoreSpy":
         raise ValueError(f"Only 'PoreSpy' method is currently supported. Chosen method: '{method}'")
 
+    if args.slurm:
+        geoslicer_base_path = os.getenv("GEOSLICER_BASE_PATH")
+        cluster = SLURMCluster(
+            cores=args.slurm_cores,
+            memory=args.slurm_memory,
+            scheduler_options={"interface": "bond0"},
+            python=f"{geoslicer_base_path}/scripts/run_apptainer.sh",
+            account="tcr_ext",
+            log_directory=os.getcwd(),
+            processes=1,
+            death_timeout=3600,
+            walltime="10:00:00",
+        )
+        cluster.scale(jobs=args.slurm_jobs)
+        client = Client(cluster)
+
     if params["is_multiscale"]:
         volumeNode = readFrom(args.scalar, mrml.vtkMRMLScalarVolumeNode)
         scale = volumeNode.GetSpacing()[::-1]
@@ -73,7 +93,11 @@ def cli_extract(args, params):
         scale=scale,
         is_multiscale=params["is_multiscale"],
         watershed_blur=params["watershed_blur"],
+        divs=args.divs,
     )
+
+    if args.slurm:
+        client.close()
 
     if extract_result is not None:
         pores_df, throats_df, network_df, output_watershed, _ = extract_result
@@ -84,12 +108,12 @@ def cli_extract(args, params):
     pores_df.to_pickle(f"{args.cwd}/pore_network.pkl")
     throats_df.to_pickle(f"{args.cwd}/throat_network.pkl")
     network_df.to_pickle(f"{args.cwd}/network.pkl")
-    if output_watershed is not None:
+    if output_watershed is not None and not args.no_save_watershed:
         np.save(f"{args.cwd}/watershed.npy", output_watershed)
 
 
 def cli_extract_shared_memory(args, params):
-    semaphore_shm = SharedMemory(args.semaphore)
+    semaphore_shm = MmapSharedMemory.from_file(args.semaphore)
     method = params["method"]
     if method != "PoreSpy":
         raise ValueError(f"Only 'PoreSpy' method is currently supported. Chosen method: '{method}'")
@@ -116,6 +140,7 @@ def cli_extract_shared_memory(args, params):
         is_multiscale=params["is_multiscale"],
         watershed_blur=params["watershed_blur"],
         use_shared_memory=True,
+        divs=args.divs,
     )
 
     if extract_result is not None:
@@ -145,8 +170,8 @@ def cli_extract_shared_memory(args, params):
     # shm.close()
 
 
-def _load_shared_array(memory_name, shape, dtype):
-    shared_memory = SharedMemory(memory_name)
+def _load_shared_array(memory_path, shape, dtype):
+    shared_memory = MmapSharedMemory.from_file(memory_path)
     shared_array = np.ndarray(
         tuple(int(i) for i in shape[1:-1].split(", ")),
         dtype=dtype,
@@ -163,6 +188,12 @@ if __name__ == "__main__":
     parser.add_argument("--label", type=str, default=None, required=False)
     parser.add_argument("--semaphore", type=str, required=False)
     parser.add_argument("--cwd", type=str, required=False)
+    parser.add_argument("--slurm", action="store_true")
+    parser.add_argument("--no_save_watershed", action="store_true")
+    parser.add_argument("--divs", type=int, default=2, required=False)
+    parser.add_argument("--slurm_jobs", type=int, default=4, required=False)
+    parser.add_argument("--slurm_cores", type=int, default=1, required=False)
+    parser.add_argument("--slurm_memory", type=str, default="2GB", required=False)
     args = parser.parse_args()
 
     with open(f"{args.cwd}/extractor_params_dict.json", "r") as file:

@@ -2,7 +2,7 @@ import time
 import typing
 from collections import OrderedDict
 import logging
-from queue import Queue
+from queue import PriorityQueue, Empty
 
 import json
 from pathlib import Path
@@ -10,8 +10,18 @@ from pathlib import Path
 from typing import Callable, Dict, List
 from threading import Lock, Thread
 
-from ltrace.remote import errors
 from ltrace.remote.connections import ConnectionManager, JobExecutor
+from ltrace.remote.constants import (
+    JOB_EVENT_PROGRESS,
+    JOB_EVENT_SHUTDOWN,
+    JOB_POLL_INTERVAL_SECONDS,
+    JOB_STATE_FAILED,
+    JOB_STATE_NOTCONNECTED,
+    JOB_STATE_PENDING,
+    JOB_STATE_CANCELLED,
+    JOB_STATE_IDLE,
+    JOB_STATE_DONE,
+)
 
 
 class JobManager:
@@ -19,9 +29,9 @@ class JobManager:
     storage: Path = None
     connections: ConnectionManager = None
     observers: List[Callable] = []
-    agenda = Queue()
+    agenda = PriorityQueue()  # entries are (due_time, uid, event, epoch)
     worker: Thread = None
-    endstates = set(("FAILED", "CANCELLED", "IDLE", "DONE"))
+    endstates = set((JOB_STATE_FAILED, JOB_STATE_CANCELLED, JOB_STATE_IDLE, JOB_STATE_DONE))
     compilers = {}
     keep_working: bool = True
 
@@ -87,12 +97,25 @@ class JobManager:
     #         raise
 
     @classmethod
-    def locked_send(cls, uid, event, **kwargs):
+    def locked_send(cls, uid, event, epoch=None, **kwargs):
         with cls.read_lock:
             try:
                 job = cls.jobs.get(uid, None)
-                if job and (job.status not in cls.endstates):
-                    job.process(event, cls, cls.connections, **kwargs)
+                if job is None or (job.status in cls.endstates):
+                    return
+
+                if event == JOB_EVENT_PROGRESS:
+                    if epoch is not None and epoch != job.progress_epoch:
+                        # Stale entry from a superseded polling chain
+                        # (e.g. a parked backoff retry after a manual
+                        # reconnect). Drop it.
+                        return
+                    # Turnstile: consuming the epoch on every accepted
+                    # delivery guarantees at most one live PROGRESS chain
+                    # per job, even if duplicates were ever scheduled.
+                    job.progress_epoch += 1
+
+                job.process(event, cls, cls.connections, **kwargs)
             except Exception as e:
                 print(f"Failed to deliver event {event} to job {uid}. Cause: {repr(e)}")
 
@@ -156,8 +179,19 @@ class JobManager:
             pass
 
     @classmethod
-    def schedule(cls, uid: str, event: str):
-        cls.agenda.put((uid, event))
+    def schedule(cls, uid: str, event: str, delay: float = None):
+        """Queue an event for delivery by the monitor thread, optionally delayed.
+
+        PROGRESS events default to JOB_POLL_INTERVAL_SECONDS so that polling
+        handlers rescheduling themselves cannot busy-loop the monitor thread.
+        """
+        if delay is None:
+            delay = JOB_POLL_INTERVAL_SECONDS if event == JOB_EVENT_PROGRESS else 0.0
+
+        job = cls.jobs.get(uid, None)
+        epoch = job.progress_epoch if job is not None else 0
+
+        cls.agenda.put((time.monotonic() + delay, uid, event, epoch))
 
     @classmethod
     def remove(cls, uid):
@@ -189,63 +223,50 @@ class JobManager:
 
     @classmethod
     def resume(cls, job):
+        """Mount the job and restart its polling.
 
+        The SSH connection is NOT opened here: this method runs on the Qt main
+        thread and a handshake would block the UI. JobExecutor.process opens
+        (or reuses) the connection on the monitor thread when the scheduled
+        event is delivered, and flags the job NOT CONNECTED if that fails.
+        """
         if job is None or not isinstance(job, JobExecutor):
             return
 
         uid = job.uid
 
         try:
-            client = ConnectionManager.connect(job.host)
             mounted_job = cls.mount(job)
 
             cls.manage(mounted_job)
 
-            if client and mounted_job and mounted_job.status == "IDLE":
-                cls.set_state(uid, status="RUNNING")
+            if mounted_job.status in (JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED):
+                cls.set_state(uid, status=JOB_STATE_PENDING, message="Resuming job...")
 
-            cls.schedule(uid, "PROGRESS")
+            # Invalidate any parked PROGRESS entry (e.g. a long backoff
+            # retry) so this resume becomes the only live polling chain.
+            mounted_job.progress_epoch += 1
+
+            cls.schedule(uid, JOB_EVENT_PROGRESS)
             return True
-        except errors.AuthException as e:
-            logging.warning(repr(e))
-            if mounted_job.host.rsa_key:
-                cls.set_state(
-                    uid,
-                    status="IDLE",
-                    traceback={
-                        "[ERROR] Authentication failed": "Please check your credentials (Identity file) and reconnect manually."
-                    },
-                )
-            else:
-                cls.set_state(
-                    uid,
-                    status="IDLE",
-                    traceback={"[ERROR] Authentication failed": "Password required, please reconnect manually."},
-                )
-            return False
-        except errors.BadHostKeyException as e:
-            logging.warning(repr(e))
-            cls.set_state(
-                uid,
-                status="IDLE",
-                traceback={
-                    "[ERROR] Authentication failed": "Please check your credentials (Identity file) and reconnect manually."
-                },
-            )
-            return False
         except Exception as e:
-            # TODO return for accounts instead of login
             import traceback
 
-            cls.set_state(uid, status="IDLE", traceback={"[ERROR] Unable to connect": traceback.format_exc()})
+            cls.set_state(uid, status=JOB_STATE_IDLE, traceback={"[ERROR] Unable to resume": traceback.format_exc()})
 
             return False
 
     @classmethod
     def resume_all(cls):
         for _, job in cls.jobs.items():
-            if not cls.resume(job):
-                job.status = "IDLE"
+            cls.resume(job)
+
+    @classmethod
+    def resume_host(cls, host):
+        for _, job in cls.jobs.items():
+            if host.get_key() == job.host.get_key():
+                if not cls.resume(job):
+                    job.status = JOB_STATE_IDLE
 
     @classmethod
     def load_jobs(cls):
@@ -260,7 +281,7 @@ class JobManager:
             pass
         except json.JSONDecodeError as je:
             logging.error(
-                f"Error loading previous jobs. Current file has a invalid JSON format.\nDetails: {repr(e)}. File: {jobfile}"
+                f"Error loading previous jobs. Current file has a invalid JSON format.\nDetails: {repr(je)}. File: {jobfile}"
             )
         except Exception as e:
             import traceback
@@ -302,13 +323,28 @@ def start_monitor():
     def monitor():
         while JobManager.keepWorking():
             try:
-                uid, event = JobManager.agenda.get()
-                if event == "SHUTDOWN":
+                try:
+                    item = JobManager.agenda.get(timeout=1.0)
+                except Empty:
+                    continue
+
+                due, uid, event, epoch = item
+
+                if event == JOB_EVENT_SHUTDOWN:
                     break
 
-                JobManager.locked_send(uid, event)
-            except:
-                pass
+                remaining = due - time.monotonic()
+                if remaining > 0:
+                    # Not due yet: wait a bounded slice and requeue, so
+                    # newly scheduled events (including SHUTDOWN) still get
+                    # picked up promptly.
+                    time.sleep(min(remaining, 1.0))
+                    JobManager.agenda.put(item)
+                    continue
+
+                JobManager.locked_send(uid, event, epoch=epoch)
+            except Exception:
+                logging.exception("Job monitor iteration failed.")
 
     t = Thread(target=monitor, daemon=False)
     t.start()

@@ -10,7 +10,15 @@ import slicer
 
 from ltrace.slicer.node_attributes import ImageLogDataSelectable
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer import helpers
+from ltrace.slicer.helpers import (
+    copy_display,
+    tryGetNode,
+    copy_attributes,
+    copy_hierarchy_attributes,
+    copy_subject_hierarchy_item_parent,
+)
+from ltrace.slicer.metadata import copy_metadata
+from ltrace.constants import DLISImportConst
 from ltrace.slicer_utils import *
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import global_unit_registry as ureg
@@ -302,28 +310,21 @@ class SpiralFilterLogic(LTracePluginLogic):
         self.outputVolumeNodeId = None
 
     def filter(self, p):
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        inputVolumeItemParent = subjectHierarchyNode.GetItemParent(
-            subjectHierarchyNode.GetItemByDataNode(p.inputVolume)
-        )
-
         outputVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", p.outputVolumeName)
         self.outputVolumeNodeId = outputVolumeNode.GetID()
-        subjectHierarchyNode.SetItemParent(
-            subjectHierarchyNode.GetItemByDataNode(outputVolumeNode), inputVolumeItemParent
-        )
-
-        helpers.copy_display(p.inputVolume, outputVolumeNode)
-
-        nullValue = p.inputVolume.GetAttribute("NullValue")
-        outputVolumeNode.SetAttribute("NullValue", nullValue)
+        # TODO (MUSA-150): should we copy references by default?
+        copy_subject_hierarchy_item_parent(p.inputVolume, outputVolumeNode)
+        copy_display(p.inputVolume, outputVolumeNode)
+        copy_attributes(p.inputVolume, outputVolumeNode)
+        copy_metadata(p.inputVolume, outputVolumeNode)
+        copy_hierarchy_attributes(p.inputVolume, outputVolumeNode)
 
         cliParams = {
             "inputVolume1": p.inputVolume.GetID(),
             "outputVolume_std": outputVolumeNode.GetID(),
             "wlength_max": p.maximumWavelength.m,
             "wlength_min": p.minimumWavelength.m,
-            "nullable": nullValue,
+            "nullable": outputVolumeNode.GetAttribute("NullValue"),
             "multip_factor": p.multiplicationFactor,
             "smoothstep_factor": p.smoothstepFactor,
         }
@@ -342,7 +343,7 @@ class SpiralFilterLogic(LTracePluginLogic):
             return
 
         status = caller.GetStatusString()
-        outputVolumeNode = helpers.tryGetNode(self.outputVolumeNodeId)
+        outputVolumeNode = tryGetNode(self.outputVolumeNodeId)
         filteredDiff = None
         if "Completed" in status or status == "Cancelled":
             logging.debug(status)

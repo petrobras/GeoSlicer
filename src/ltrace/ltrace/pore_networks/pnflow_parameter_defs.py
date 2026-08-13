@@ -174,10 +174,12 @@ PARAMETERS = {
     "batch_invasions": {
         "display_name": "Use batch invasion",
         "layout": "options",
-        "dtype": "singlecheckbox",
-        "true_value": "T",
-        "false_value": "F",
-        "default_value": False,
+        "dtype": "combobox",
+        "default_value": 0,
+        "display_names": {
+            "None": "none",
+            "Partial": "partial",
+        },
         "enabled": True,
     },
     "create_sequence": {

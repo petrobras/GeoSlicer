@@ -1117,7 +1117,9 @@ def run_generic_psd(
     script_file.write("    ds['mango'] = (('z', 'y', 'x'), mango_data.astype(np.uint8))\n")
     if verbose:
         script_file.write("ds['" + sim_type + "'] = (('z', 'y', 'x'), np.array(results['" + sim_type + "']))\n")
-    script_file.write("ds.to_netcdf('" + cluster + "_${SLURM_JOBID}.nc', 'w')\n\" > run_" + sim_type + ".py\n")
+    script_file.write(
+        "ds.to_netcdf('" + cluster + "_${SLURM_JOBID}.nc', 'w', engine='h5netcdf')\n\" > run_" + sim_type + ".py\n"
+    )
     # Run the python which has been created
     script_file.write("python run_" + sim_type + ".py\n")
     script_file.write("mv " + cluster + "_${SLURM_JOBID}.nc ../\n")

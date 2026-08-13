@@ -10,7 +10,6 @@ import cv2
 import numba as nb
 import numpy as np
 import pandas as pd
-import psutil
 import pyedt
 import scipy as sp
 import slicer.util
@@ -201,7 +200,7 @@ def findPeaks(values: np.ndarray, default=None):
         # offset = abs(np.min(values))
         # bins = np.bincount(values + offset)
         # largerBin = np.argmax(bins) - offset
-        largerBin = sp.stats.mode(values, axis=None).mode[0]
+        largerBin = np.atleast_1d(sp.stats.mode(values, axis=None).mode)[0]
     else:
         hist, edges = np.histogram(values, bins="auto")
         largerBin = edges[np.argmax(hist)]
@@ -307,15 +306,28 @@ def microporosity(
             label_count = label_count[label_values != v]
             label_values = label_values[label_values != v]
 
-    info = {"Image Size (voxels)": np.sum(label_count, dtype=_dtype)}
-    coverage = {}
+    valid_voxels_count = 0
+    coverage_intermediate = {}
+
     for name, values in labels.items():
+        if name == "Ignore":
+            continue
+
         sumup = 0
         for v in values:
             sumup += np.sum(label_count[(label_values == v).nonzero()], dtype=_dtype)
 
-        coverage[f"{name} Segment (vx)"] = sumup
-        coverage[f"{name} Segment (%)"] = sumup / info["Image Size (voxels)"] * 100
+        coverage_intermediate[name] = sumup
+        valid_voxels_count += sumup
+
+    valid_voxels_count = np.uint64(valid_voxels_count)
+
+    info = {"Image Size (voxels)": valid_voxels_count}
+    coverage = {}
+
+    for name, count in coverage_intermediate.items():
+        coverage[f"{name} Segment (vx)"] = count
+        coverage[f"{name} Segment (%)"] = count / valid_voxels_count * 100 if valid_voxels_count > 0 else 0
 
     info.update(
         {
@@ -324,10 +336,12 @@ def microporosity(
             **coverage,
             "Weighted Microporosity (%)": 100
             * np.sum(outputVoxelArray[microMediumMask], dtype=np.float32)
-            / info["Image Size (voxels)"],
-            "Weighted Total Porosity (%)": 100
-            * np.sum(outputVoxelArray, dtype=np.float32)
-            / info["Image Size (voxels)"],
+            / valid_voxels_count
+            if valid_voxels_count > 0
+            else 0,
+            "Weighted Total Porosity (%)": 100 * np.sum(outputVoxelArray, dtype=np.float32) / valid_voxels_count
+            if valid_voxels_count > 0
+            else 0,
         }
     )
 
@@ -571,53 +585,6 @@ def calculate_statistics_on_segments(im: np.ndarray, operator: object, callback=
         f"ELAPSED TIME = {tend - tstart}s",
     )
     return table_df, n_artifacts
-
-
-def exportSegmentsAsDataFrame(im, operator, stepcb=None):
-    from timeit import default_timer as timer
-
-    tstart = timer()
-    main_axis_size = im.shape[0]
-    queue = Queue()
-    results = Queue()
-    visited = Value("I", 0)
-
-    n_consumers = max(1, psutil.cpu_count(logical=False) - 1)
-    procs = []
-    for _ in range(n_consumers):
-        p = Process(target=object_consumer, args=(operator, queue, results, visited))
-        p.start()
-        procs.append(p)
-    for item in find_objects(im):
-        queue.put(item)
-    for _ in range(n_consumers):
-        queue.put(None)
-
-    table = []
-    finished_procs = 0
-
-    max_row = 0
-    while finished_procs < n_consumers or not results.empty():
-        item = results.get()
-        if item is None:
-            finished_procs += 1
-            continue
-
-        row, stats = item
-        table.append(stats)
-
-        # Don't let progress bar go back
-        max_row = max(max_row, row)
-        stepcb(max_row, main_axis_size)
-
-    table_df = pd.DataFrame(table)
-
-    tend = timer()
-    print(
-        f"ELAPSED TIME = {tend - tstart}s",
-    )
-
-    return table_df, visited.value
 
 
 class ScalarStatiscs:

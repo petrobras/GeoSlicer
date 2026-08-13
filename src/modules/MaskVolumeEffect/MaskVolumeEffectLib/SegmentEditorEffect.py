@@ -2,7 +2,8 @@ import os
 import vtk, qt, ctk, slicer
 import logging
 from SegmentEditorEffects import *
-from ltrace.slicer.helpers import getVolumeNullValue, setVolumeNullValue
+from ltrace.slicer.helpers import getVolumeNullValue, setVolumeNullValue, copy_attributes, copy_hierarchy_attributes
+from ltrace.slicer.metadata import copy_metadata
 
 from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
 
@@ -70,6 +71,10 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
         self.fillValueEdit = ctk.ctkDoubleSpinBox()
         self.fillValueEdit.setToolTip("Choose the voxel intensity that will be used to fill the masked region.")
         self.fillValueNullCheck = qt.QCheckBox("Null value")
+        self.fillValueNullCheck.setChecked(True)
+        self.fillValueNullCheck.setToolTip(
+            "Set the output null value to the chosen fill value. Null values are ignored in most image processing tasks."
+        )
         self.fillValueLabel = qt.QLabel("Fill value: ")
 
         # Binary mask fill outside value
@@ -387,10 +392,14 @@ Fill inside and outside operation creates a binary labelmap volume as output, wi
             if operationMode == "FILL_INSIDE_AND_OUTSIDE":
                 outputVolumeName = inputVolume.GetName() + " label"
                 outputVolume = volumesLogic.CreateAndAddLabelVolume(inputVolume, outputVolumeName)
+                copy_attributes(inputVolume, outputVolume)
             else:
                 outputVolumeName = inputVolume.GetName() + " masked"
                 outputVolume = volumesLogic.CloneVolumeGeneric(scene, inputVolume, outputVolumeName, False)
             self.outputVolumeSelector.setCurrentNode(outputVolume)
+
+        copy_hierarchy_attributes(inputVolume, outputVolume)
+        copy_metadata(inputVolume, outputVolume)
 
         if self.fillValueNullCheck.isChecked():
             nullValue = (

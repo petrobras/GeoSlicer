@@ -230,6 +230,7 @@ class LTraceTestsModel(qt.QObject):
         self.__is_running = False
         self.__running_test_class = None
         self.__cancelling = False
+        self.check_missing_test_suites()
         self.destroyed.connect(self.__del__)
 
     def __del__(self):
@@ -375,6 +376,34 @@ class LTraceTestsModel(qt.QObject):
             return True
 
         return False
+
+    def check_missing_test_suites(self):
+        """Recursively search for integration test suite modules in src/modules
+        and compare with the test suites that were successfully imported.
+        """
+        try:
+            src_path = Path(__file__).resolve().parents[4]
+            modules_path = src_path / "modules"
+            if not modules_path.exists():
+                return
+
+            # Search for test files following the pattern: src/modules/<module_name>/Test/<test_name>Test.py
+            test_files = list(modules_path.glob("**/Test/*Test.py"))
+            available_test_suites = set(f.stem for f in test_files)
+
+            imported_test_suite_names = set(suite.name for suite in self.test_suite_list)
+
+            missing_suites = sorted(list(available_test_suites - imported_test_suite_names))
+
+            if missing_suites:
+                logging.warning(
+                    f"The following test suites were found on disk but were not successfully imported: "
+                    f"{', '.join(missing_suites)}"
+                )
+            else:
+                logging.info("All test suites were successfully imported.")
+        except Exception as e:
+            logging.debug(f"Failed to check for missing test suites: {e}")
 
     def run_tests(self, **kwargs):
         self.__is_running = True

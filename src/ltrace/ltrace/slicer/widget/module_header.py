@@ -20,6 +20,7 @@ class ModuleHeader(qt.QWidget):
         self.baseLabel.setPixmap(self.baseIcon.pixmap(qt.QSize(16, 16)))
         self.moduleTitle = qt.QLabel("")
         self.moduleHelp = HelpButton()
+        self.moduleHelp.setFixedSize(21, 21)
 
         self.headerLayout.setAlignment(qt.Qt.AlignLeft)
         self.headerLayout.addWidget(self.baseLabel)

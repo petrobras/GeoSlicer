@@ -119,11 +119,11 @@ def define_env(env: object) -> None:
         extension = name.split(".")[-1].lower()
 
         page = env.variables["page"]
-        page_dir = Path(page.file.src_path).parent
-        depth = len(page_dir.parts) + 1
+        page_src_path = Path(page.file.src_path)
+        depth = len(page_src_path.parent.parts)
 
-        relative_path_to_videos = Path(*[".."] * depth) / "assets" / "videos"
-        video_path = (relative_path_to_videos / name).as_posix()
+        relative_path_to_root = Path(*[".."] * depth)
+        video_path = (relative_path_to_root / "assets" / "videos" / name).as_posix()
 
         video_html = (
             f'<video controls width="100%">'

@@ -78,7 +78,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         # Turn off effect-specific cursor for this effect
         return slicer.modules.AppContextInstance.mainWindow.cursor
 
-    def onSourceVolumeNodeChanged(self):
+    def sourceVolumeNodeChanged(self):
         parameterSetNode = self.scriptedEffect.parameterSetNode()
         sourceVolumeNode = parameterSetNode.GetSourceVolumeNode() if parameterSetNode is not None else None
 

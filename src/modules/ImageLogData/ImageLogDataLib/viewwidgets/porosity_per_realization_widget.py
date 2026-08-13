@@ -80,9 +80,9 @@ class PorosityPerRealizationViewWidget(BaseViewWidget):
                 view_box=SECONDARY_VIEW_BOX,
             )
 
-        pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
-        graphics_layout_widget = self.curve_plot._graphics_layout_widget
-        pyside_qvbox_layout.addWidget(graphics_layout_widget)
+        self.pyside_qvbox_layout = shiboken2.wrapInstance(hash(view_widget_layout), PySide2.QtWidgets.QVBoxLayout)
+        self.graphics_layout_widget = self.curve_plot._graphics_layout_widget
+        self.pyside_qvbox_layout.addWidget(self.graphics_layout_widget)
 
     def getPlot(self):
         return self.curve_plot

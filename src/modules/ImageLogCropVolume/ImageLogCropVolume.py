@@ -8,7 +8,16 @@ import numpy as np
 import vtk
 
 from ltrace.slicer import ui
-from ltrace.slicer.helpers import clone_volume, copy_display, highlight_error, remove_highlight
+from ltrace.slicer.helpers import (
+    clone_volume,
+    copy_display,
+    copy_subject_hierarchy_item_parent,
+    copy_hierarchy_attributes,
+    highlight_error,
+    remove_highlight,
+)
+from ltrace.slicer.metadata import Metadata, copy_metadata
+from ltrace.constants import DLISImportConst
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
@@ -16,6 +25,8 @@ try:
     from Test.ImageLogCropVolumeTest import ImageLogCropVolumeTest
 except ImportError:
     ImageLogCropVolumeTest = None  # tests not deployed to final version or closed source
+
+DLIS_FRAME_TAG = DLISImportConst.FRAME_TAG
 
 
 class ImageLogCropVolume(LTracePlugin):
@@ -158,9 +169,10 @@ class ImageLogCropVolumeWidget(LTracePluginWidget):
         self.logic.volume = subjectHierarchyNode.GetItemDataNode(itemId)
         if self.logic.volume:
             # first, refreshing the log view. Otherwise, the volume selected won't show up in the view
-            ImageLogDataWidget = slicer.modules.ImageLogDataWidget
-            ImageLogDataWidget.logic.refreshViews()
-
+            try:
+                slicer.modules.ImageLogDataWidget.logic.refreshViews()
+            except AttributeError:
+                pass
             self.origins = np.array(self.logic.volume.GetOrigin())
             self.spacing = np.array(self.logic.volume.GetSpacing())
             self.dimensions = np.array(self.logic.volume.GetImageData().GetDimensions())
@@ -207,7 +219,8 @@ class ImageLogCropVolumeWidget(LTracePluginWidget):
             self.volumeResolutionLabel.hide()
             self.outputPrefix.text = ""
 
-            self.logic.roi.SetDisplayVisibility(0)
+            if self.logic.roi:
+                self.logic.roi.SetDisplayVisibility(0)
 
     def onRoiModified(self, caller, event):
         if self.logic.volume is None:
@@ -357,15 +370,27 @@ class ImageLogCropVolumeLogic(LTracePluginLogic):
 
         nodeArray = slicer.util.arrayFromVolume(volumeNode)
         newNode = clone_volume(volumeNode, name, as_temporary=False)
+
         slicer.util.updateVolumeFromArray(newNode, nodeArray[int(topIndex) : int(bottomIndex) + 1, :, :])
         newNode.SetOrigin(origins[0], origins[1], topDepth)
         newNode.SetSpacing(spacing)
-
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volumeNode))
-        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(newNode), itemParent)
-
         copy_display(volumeNode, newNode)
+        copy_metadata(volumeNode, newNode)
+        # As the depth range has changed, the newNode can't belong to the same DLIS frame of the volumeNode
+        if volumeNode.GetAttribute(DLIS_FRAME_TAG):
+            newNode.SetAttribute(DLIS_FRAME_TAG, volumeNode.GetAttribute(DLIS_FRAME_TAG) + "_cropped")
+            Metadata(newNode)[DLIS_FRAME_TAG] = volumeNode.GetAttribute(DLIS_FRAME_TAG) + "_cropped"
+        else:
+            newNode.SetAttribute(DLIS_FRAME_TAG, "cropped")
+            Metadata(newNode)[DLIS_FRAME_TAG] = "cropped"
+        copy_metadata(volumeNode, newNode)
+        subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+        itemID = subjectHierarchyNode.GetItemByDataNode(volumeNode)  # the hierarchy item ID corresponding to node
+        value = subjectHierarchyNode.GetItemAttribute(itemID, DLIS_FRAME_TAG)
+        copy_hierarchy_attributes(volumeNode, newNode)
+        subjectHierarchyNode.SetItemAttribute(
+            subjectHierarchyNode.GetItemByDataNode(newNode), DLIS_FRAME_TAG, value + "_cropped"
+        )
 
     def getCroppedDepth(self, volume):
         position = [0] * 3

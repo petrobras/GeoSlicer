@@ -1,11 +1,11 @@
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtWidgets, QtCore
 from ltrace.slicer.graph_data import TEXT_SYMBOLS, LINE_STYLES, SCATTER_PLOT_TYPE, LINE_PLOT_TYPE
 
 NO_CHANGE = "No change"
 
 
-class StyleEditorWidget(QtGui.QWidget):
+class StyleEditorWidget(QtWidgets.QWidget):
     """
     Widget to edit pyqtgraph symbol and line styles
     """
@@ -33,18 +33,18 @@ class StyleEditorWidget(QtGui.QWidget):
             extraOption (str): Adds an extra options at the beggining of the comboBoxes.
         """
         self.setWindowTitle("Edit style for all data")
-        self.setWindowFlags(self.windowFlags() & ~QtGui.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowType.WindowContextHelpButtonHint)
 
-        formLayout = QtGui.QFormLayout()
+        formLayout = QtWidgets.QFormLayout()
 
         if symbol is not None:
-            self.symbolComboBox = QtGui.QComboBox()
+            self.symbolComboBox = QtWidgets.QComboBox()
             if extraOption:
                 self.symbolComboBox.addItem(extraOption)
             self.symbolComboBox.addItems(symbol.keys())
             self.symbolComboBox.setToolTip("Select a symbol style to be applied")
 
-            self.symbolSizeSpinBox = QtGui.QSpinBox()
+            self.symbolSizeSpinBox = QtWidgets.QSpinBox()
             self.symbolSizeSpinBox.setRange(0, 50)
             self.symbolSizeSpinBox.setValue(0)
             self.symbolSizeSpinBox.setToolTip("Set the size of the symbol")
@@ -53,7 +53,7 @@ class StyleEditorWidget(QtGui.QWidget):
             formLayout.addRow("Symbol size", self.symbolSizeSpinBox)
 
         if lineStyle is not None:
-            self.lineStyleComboBox = QtGui.QComboBox()
+            self.lineStyleComboBox = QtWidgets.QComboBox()
             if extraOption:
                 self.lineStyleComboBox.addItem(extraOption)
             self.lineStyleComboBox.addItems(lineStyle.keys())
@@ -61,7 +61,7 @@ class StyleEditorWidget(QtGui.QWidget):
                 "Select a line style to be applied. Select None to remove the line from the plot"
             )
 
-            self.lineSizeSpinBox = QtGui.QSpinBox()
+            self.lineSizeSpinBox = QtWidgets.QSpinBox()
             self.lineSizeSpinBox.setRange(0, 50)
             self.lineSizeSpinBox.setValue(0)
             self.lineSizeSpinBox.setToolTip("Set the width of the line")
@@ -70,13 +70,13 @@ class StyleEditorWidget(QtGui.QWidget):
             formLayout.addRow("Line size", self.lineSizeSpinBox)
 
         if useButtons:
-            applyButton = QtGui.QPushButton("Apply")
-            cancelButton = QtGui.QPushButton("Cancel")
+            applyButton = QtWidgets.QPushButton("Apply")
+            cancelButton = QtWidgets.QPushButton("Cancel")
 
             applyButton.clicked.connect(lambda: self.__applyClicked())
             cancelButton.clicked.connect(lambda: self.close())
 
-            buttonsLayout = QtGui.QHBoxLayout()
+            buttonsLayout = QtWidgets.QHBoxLayout()
             buttonsLayout.addWidget(applyButton)
             buttonsLayout.addWidget(cancelButton)
             formLayout.addRow(buttonsLayout)

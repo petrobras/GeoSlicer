@@ -8,8 +8,8 @@ import slicer
 
 
 class VectorVolumeWidget(qt.QWidget):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
         self.nodeObserver = None
         self.setup()
 
@@ -18,15 +18,20 @@ class VectorVolumeWidget(qt.QWidget):
         contentsFrameLayout.setLabelAlignment(qt.Qt.AlignRight)
         contentsFrameLayout.setContentsMargins(0, 0, 0, 0)
 
-        volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
-        volumesWidget.setParent(self)
-        volumesWidget.hide()
+        self.volumesWidget = slicer.modules.volumes.createNewWidgetRepresentation()
+        self.volumesWidget.setParent(self)
+        self.volumesWidget.hide()
 
-        volumeDisplayWidget = volumesWidget.findChild(
+        volumeDisplayWidget = self.volumesWidget.findChild(
             slicer.qSlicerScalarVolumeDisplayWidget, "qSlicerScalarVolumeDisplayWidget"
         )
 
-        self.activeVolumeNodeSelector = volumesWidget.findChild(slicer.qMRMLNodeComboBox, "ActiveVolumeNodeSelector")
+        self.activeVolumeNodeSelector = self.volumesWidget.findChild(
+            slicer.qMRMLSubjectHierarchyTreeView, "ActiveVolumeNodeSelector"
+        )
+        assert (
+            self.activeVolumeNodeSelector is not None
+        ), "Could not find ActiveVolumeNodeSelector in the volume display widget"
 
         imageDimensionsHBoxLayout = qt.QHBoxLayout()
         self.imageDimensions1LineEdit = qt.QLineEdit()
@@ -39,7 +44,6 @@ class VectorVolumeWidget(qt.QWidget):
         imageDimensionsHBoxLayout.addWidget(self.imageDimensions2LineEdit)
         imageDimensionsHBoxLayout.addWidget(self.imageDimensions3LineEdit)
         contentsFrameLayout.addRow("Dimensions:", imageDimensionsHBoxLayout)
-
         spacingHBoxLayout = qt.QHBoxLayout()
         self.imageSpacing1LineEdit = qt.QLineEdit()
         self.imageSpacing1LineEdit.setReadOnly(True)
@@ -52,7 +56,7 @@ class VectorVolumeWidget(qt.QWidget):
         spacingHBoxLayout.addWidget(self.imageSpacing3LineEdit)
         contentsFrameLayout.addRow("Pixel size (mm):", spacingHBoxLayout)
 
-        self.pixelSizeEditor = PixelSizeEditor()
+        self.pixelSizeEditor = PixelSizeEditor(self)
         contentsFrameLayout.addRow(self.pixelSizeEditor)
         self.pixelSizeEditor.imageSpacingSet.connect(self.update)
 
@@ -88,9 +92,8 @@ class VectorVolumeWidget(qt.QWidget):
         )
         contentsFrameLayout.addRow("", self.volumeThresholdRangeWidget)
         contentsFrameLayout.addRow(" ", None)
-
         self.histogramFrame = DisplayNodeHistogramFrame(
-            region_widget=self.windowLevelWidget, view_widget=self.thresholdWidget
+            parent=self, region_widget=self.windowLevelWidget, view_widget=self.thresholdWidget
         )
         self.histogramFrame.view_leeway = 0.05
         self.initializedNodes = []

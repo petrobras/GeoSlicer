@@ -39,7 +39,7 @@ def read_netcdf_file(filename):
         ds : xr.Dataset
             microtom xarray Dataset
     """
-    with xr.open_dataset(filename) as temp_ds:
+    with xr.open_dataset(filename, engine="h5netcdf") as temp_ds:
         ds = temp_ds
     return ds
 
@@ -89,7 +89,7 @@ def read_tif_files(foldername, out_of_memory=False, save_nc_to=None):
     ds.z.attrs["units"] = "mm"
 
     if save_nc_to is not None:
-        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w")
+        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w", engine="h5netcdf")
 
     return ds
 
@@ -156,7 +156,7 @@ def read_tar_file(filename, extract_dir=None, out_of_memory=False, save_nc_to=No
         shutil.rmtree(extract_dir)
 
     if save_nc_to is not None:
-        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w")
+        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w", engine="h5netcdf")
 
     return ds
 
@@ -262,7 +262,7 @@ def read_raw_file(
         ds["bin"] = (("z", "y", "x"), (img == 1).astype(np.uint8))
 
     if save_nc_to is not None:
-        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w")
+        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds) + ".nc"), "w", engine="h5netcdf")
 
     return ds
 
@@ -368,7 +368,9 @@ def read_vtk_file(
     ds.z.attrs["units"] = "mm"
 
     if save_nc_to is not None:
-        ds.to_netcdf(os.path.join(save_nc_to, build_filename(ds, data_array=data_array) + ".nc"), "w")
+        ds.to_netcdf(
+            os.path.join(save_nc_to, build_filename(ds, data_array=data_array) + ".nc"), "w", engine="h5netcdf"
+        )
 
     return ds
 

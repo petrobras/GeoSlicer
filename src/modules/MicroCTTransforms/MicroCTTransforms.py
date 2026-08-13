@@ -13,6 +13,11 @@ from ltrace.slicer.helpers import BlockSignals, setOrientationMarkers
 from ltrace.slicer_utils import getResourcePath
 from ltrace.slicer import ui
 
+try:
+    from Test.MicroCTTransformsTest import MicroCTTransformsTest
+except ImportError:
+    MicroCTTransformsTest = None
+
 
 def normalize_angle(angle):
     return (angle + 180) % 360 - 180
@@ -52,10 +57,11 @@ class MicroCTTransformsWidget(LTracePluginWidget):
     def __init__(self, parent):
         LTracePluginWidget.__init__(self, parent)
         self.transformInProgress = False
+        self.transformNodeObserverHandler = None
 
     def setup(self):
         LTracePluginWidget.setup(self)
-        self.logic = MicroCTTransformsLogic()
+        self.logic = MicroCTTransformsLogic(self.parent)
         transformWidget = slicer.modules.transforms.createNewWidgetRepresentation()
 
         for clsname in self.SLIDER_CLASS_NAMES:
@@ -255,6 +261,16 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         self.layout.addStretch(1)
         self.onTransformedVolumeChanged()
 
+    def cleanup(self):
+        super().cleanup()
+        self._clearObserver()
+        self.transformMatrix = None
+
+        if self.logic is not None:
+            self.logic.deleteLater()
+
+        self.logic = None
+
     def onTransformedVolumeChanged(self):
         slicer.app.processEvents(1000)
         node = self.movingNodeSelector.currentNode()
@@ -388,14 +404,14 @@ class MicroCTTransformsWidget(LTracePluginWidget):
     def renewHiddenTransformNode(self):
         self.setRotationSlidersValues([0, 0, 0])
         if self.transformNodeSelector.currentNode() is not None:
-            self.transformNodeSelector.currentNode().RemoveObserver(slicer.vtkMRMLTransformNode.TransformModifiedEvent)
+            self._clearObserver()
             slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())  # verify if this is necessary
         slicer.mrmlScene.ClearUndoStack()
         slicer.mrmlScene.ClearRedoStack()
-        self.transformNodeSelector.addNode()
+        self.transformNodeSelector.addNode("vtkMRMLTransformNode")
         self.transformNodeSelector.currentNode().UndoEnabledOn()
         self.transformMatrix = slicer.util.arrayFromTransformMatrix(self.transformNodeSelector.currentNode())
-        self.transformNodeSelector.currentNode().AddObserver(
+        self.transformNodeObserverHandler = self.transformNodeSelector.currentNode().AddObserver(
             slicer.vtkMRMLTransformNode.TransformModifiedEvent, self.onTransformNodeModified
         )
 
@@ -416,9 +432,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         if not self.transformInProgress:
             slicer.mrmlScene.SetUndoOff()
             if self.transformNodeSelector.currentNode():
-                self.transformNodeSelector.currentNode().RemoveObserver(
-                    slicer.vtkMRMLTransformNode.TransformModifiedEvent
-                )
+                self._clearObserver()
                 slicer.mrmlScene.RemoveNode(self.transformNodeSelector.currentNode())
                 self.onTransformedVolumeChanged()
 
@@ -449,10 +463,20 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             doubleSlider.blockSignals(False)
             doubleSpinBox.blockSignals(False)
 
+    def _clearObserver(self):
+        if self.transformNodeSelector.currentNode() is None:
+            return
+
+        if self.transformNodeObserverHandler is None:
+            return
+
+        self.transformNodeSelector.currentNode().RemoveObserver(self.transformNodeObserverHandler)
+        self.transformNodeObserverHandler = None
+
 
 class MicroCTTransformsLogic(LTracePluginLogic):
-    def __init__(self):
-        LTracePluginLogic.__init__(self)
+    def __init__(self, parent):
+        super().__init__(parent)
 
     def reflect(self, transformNode, plane, bounds):
         vtkMatrix = transformNode.GetMatrixTransformToParent()

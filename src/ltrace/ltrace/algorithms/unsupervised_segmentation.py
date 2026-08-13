@@ -36,6 +36,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from skimage import segmentation
+import sympy  # import it before torch to avoid crash
 import torch
 import torch.nn as nn
 

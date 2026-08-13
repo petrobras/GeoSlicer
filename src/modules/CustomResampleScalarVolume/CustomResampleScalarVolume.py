@@ -9,6 +9,8 @@ from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.node_attributes import NodeEnvironment
 from ltrace.units import SLICER_LENGTH_UNIT
 from ltrace.slicer import helpers as lsh
+from ltrace.slicer.metadata import copy_metadata
+from ltrace.constants import DLISImportConst
 from functools import partial
 import json
 
@@ -42,7 +44,7 @@ class CustomResampleScalarVolume(LTracePlugin):
     def __init__(self, parent):
         LTracePlugin.__init__(self, parent)
         self.parent.title = "Resample"
-        self.parent.categories = ["Tools", "MicroCT", "Multiscale"]
+        self.parent.categories = ["Tools", "MicroCT", "Multiscale", "ImageLog"]
         self.parent.dependencies = []
         self.parent.contributors = ["LTrace Geophysics Team"]
         self.parent.helpText = CustomResampleScalarVolume.help()
@@ -106,7 +108,7 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
         self.__xValueSpinBox.valueChanged.connect(lambda value: self.__onSpinBoxChanged(self.__xValueSpinBox, value))
         self.__yValueSpinBox.valueChanged.connect(lambda value: self.__onSpinBoxChanged(self.__yValueSpinBox, value))
         self.__zValueSpinBox.valueChanged.connect(lambda value: self.__onSpinBoxChanged(self.__zValueSpinBox, value))
-        self.registered_callbacks = list()
+        self._observerHandlers = list()
 
         # Applies startup rules
         self.__onNodeSelectionChanged()
@@ -296,10 +298,19 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
 
         return outputCollapsibleButton
 
+    def __clearObservers(self):
+        for nodeId, tag in self._observerHandlers:
+            node = lsh.tryGetNode(nodeId)
+            if node is None:
+                continue
+
+            node.RemoveObserver(tag)
+
+        self._observerHandlers.clear()
+
     def cleanup(self):
         super().cleanup()
-        for node, tag in self.registered_callbacks:
-            node.RemoveObserver(tag)
+        self.__clearObservers()
 
     def __onNodeSelectionChanged(self):
         """Handles input/output node selection change event"""
@@ -318,10 +329,7 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
         self.__zValueSpinBox.enabled = isSelectionValid
 
     def __registerCallbacks(self):
-        for node, tag in self.registered_callbacks:
-            node.RemoveObserver(tag)
-        self.registered_callbacks.clear()
-
+        self.__clearObservers()
         node = self.__inputSelector.currentNode()
         if node is None:
             return
@@ -329,7 +337,7 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
             vtk.vtkCommand.ModifiedEvent,
             self.__resetAspectValues,
         )
-        self.registered_callbacks.append((node, tag))
+        self._observerHandlers.append((node.GetID(), tag))
 
     def __resetInterpolations(self):
         node = self.__inputSelector.currentNode()
@@ -579,9 +587,7 @@ class CustomResampleScalarVolumeLogic(LTracePluginLogic):
                 inputVolume.__class__, name=f"{inputVolume.GetName()}_{data.outputSuffix}"
             )
 
-            subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-            itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(inputVolume))
-            subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(outputVolume), itemParent)
+            lsh.copy_subject_hierarchy_item_parent(inputVolume, outputVolume)
 
             if isinstance(outputVolume, slicer.vtkMRMLLabelMapVolumeNode):
                 outputVolume.CreateDefaultDisplayNodes()
@@ -591,6 +597,27 @@ class CustomResampleScalarVolumeLogic(LTracePluginLogic):
                 )
             elif isinstance(outputVolume, slicer.vtkMRMLScalarVolumeNode):
                 lsh.copy_display(inputVolume, outputVolume)
+            # Should we copy all references by default? MUSA-150.
+            # (Note that if the geometry changed, keeping the geometryReference may be problematic)
+            # outputVolumeNode.CopyReferences(p.inputVolume)
+
+            # Which attributes should be copied? All? See MUSA-150
+            imageLogAttrs = [
+                DLISImportConst.WELL_NAME_TAG,
+                DLISImportConst.FRAME_TAG,
+                DLISImportConst.ORIGIN_TAG,
+                DLISImportConst.LOGICAL_FILE_TAG,
+                DLISImportConst.NULL_VALUE_TAG,
+                DLISImportConst.UNITS_TAG,
+            ]
+            lsh.copy_attributes(inputVolume, outputVolume, imageLogAttrs)
+            imageLogHierarchyAttrs = [
+                DLISImportConst.FRAME_TAG,
+                DLISImportConst.LOGICAL_FILE_TAG,
+                # DLISImportConst.SCALAR_VOLUME_TYPE, ?
+            ]
+            copy_metadata(inputVolume, outputVolume)
+            lsh.copy_hierarchy_attributes(inputVolume, outputVolume, imageLogHierarchyAttrs)
 
             logging.info("Processing started")
 

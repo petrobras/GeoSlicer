@@ -1,32 +1,24 @@
 import logging
-import typing
-
 import ctk
-import numpy as np
 import qt
 import slicer
 
-from ltrace.slicer.ui import hierarchyVolumeInput
 from ltrace.slicer.microct import pcrMinMaxFromTableNode
+from ltrace.slicer.ui import hierarchyVolumeInput
+from ltrace.slicer.widget.segment_list_widget import SegmentListWidget
+from typing import List
 
 
 class CheckableSegmentListBoard(qt.QWidget):
 
     itemChanged = qt.Signal(qt.QListWidgetItem)
 
-    def __init__(self, defaultState=qt.Qt.Unchecked, parent=None):
+    def __init__(self, parent: qt.QWidget = None, defaultState: qt.Qt.CheckState = qt.Qt.Unchecked):
         super().__init__(parent)
-
-        self.defaultState = defaultState
 
         qt.QVBoxLayout(self)
 
-        self.segmentList = qt.QListWidget()
-        self.segmentList.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        self.segmentList.setFixedHeight(120)
-        self.segmentList.setToolTip(
-            "List of segments available in the segmentation. Check the segments to account them in the computation."
-        )
+        self.segmentList = SegmentListWidget(checkable=True, defaultState=defaultState)
 
         self.segmentListCollapsible = ctk.ctkCollapsibleButton()
         self.segmentListCollapsible.text = "Segments"
@@ -40,93 +32,23 @@ class CheckableSegmentListBoard(qt.QWidget):
 
         self.segmentList.itemChanged.connect(self.itemChanged)
 
-    def check(self, index):
-        item = self.segmentList.item(index)
-        item.setCheckState(qt.Qt.Checked)
+    def check(self, index: int) -> None:
+        self.segmentList.check(index)
 
-    def showBoard(self):
+    def showBoard(self) -> None:
         self.segmentListCollapsible.collapsed = False
 
-    def setData(self, node):
-        self.segmentList.clear()
+    def setData(self, node: slicer.vtkMRMLNode) -> None:
+        self.segmentList.setNode(node)
 
-        if node is None:
-            return
+    def setStateByID(self, id: str, state: qt.Qt.CheckState) -> None:
+        self.segmentList.setStateByID(id, state)
 
-        if node.IsA("vtkMRMLSegmentationNode"):
-            self.setDataFromSegmentation(node)
-        else:
-            self.setDataFromLabelMap(node)
+    def getCheckedItems(self) -> List[str]:
+        return self.segmentList.getCheckedItems()
 
-    def setDataFromSegmentation(self, node):
-        segmentation = node.GetSegmentation()
-
-        displayNode = node.GetDisplayNode()
-
-        for index in range(segmentation.GetNumberOfSegments()):
-            segment = segmentation.GetNthSegment(index)
-            segmentID = segmentation.GetNthSegmentID(index)
-            if segment and displayNode.GetSegmentVisibility(segmentID):
-                self.segmentList.addItem(
-                    self.createItem(
-                        segment.GetName(),
-                        np.array(segment.GetColor() + (1,)),
-                        segmentID,
-                        self.defaultState,
-                    )
-                )
-
-    def setDataFromLabelMap(self, node):
-        inputColors = node.GetDisplayNode().GetColorNode()
-
-        for index in range(inputColors.GetNumberOfColors()):
-            color = np.zeros(4)
-            inputColors.GetColor(index, color)
-            name = inputColors.GetColorName(index)
-
-            self.segmentList.addItem(
-                self.createItem(
-                    name,
-                    np.array(color),
-                    index,
-                    self.defaultState,
-                )
-            )
-
-    def setStateByID(self, id, state):
-        for index in range(self.segmentList.count):
-            item = self.segmentList.item(index)
-            if item.data(qt.Qt.UserRole) == id:
-                item.setCheckState(state)
-
-    def getCheckedItems(self) -> typing.List[str]:
-        checkedItems = []
-        for index in range(self.segmentList.count):
-            item = self.segmentList.item(index)
-            if item.checkState() == qt.Qt.Checked:
-                if item.data(qt.Qt.UserRole):
-                    checkedItems.append(item.data(qt.Qt.UserRole))
-        return checkedItems
-
-    def getCheckedIndexes(self) -> typing.List[int]:
-        checkedIndexes = []
-        for index in range(self.segmentList.count):
-            item = self.segmentList.item(index)
-            if item.checkState() == qt.Qt.Checked:
-                checkedIndexes.append(index)
-        return checkedIndexes
-
-    @classmethod
-    def createItem(cls, name, color, segmentID=None, state=qt.Qt.Unchecked):
-        from ltrace.slicer.widgets import ColoredIcon
-
-        item = qt.QListWidgetItem(name)
-        item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)
-        item.setCheckState(state)
-        icon = ColoredIcon(*[int(c * 255) for c in color[:3]])
-        item.setIcon(icon)
-        item.setData(qt.Qt.UserRole, segmentID)
-        return item
+    def getCheckedIndexes(self) -> List[int]:
+        return self.segmentList.getCheckedIndexes()
 
 
 class DoubleImageWithSegmentationInputWidget(qt.QWidget):

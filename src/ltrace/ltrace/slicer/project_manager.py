@@ -171,6 +171,21 @@ class ProjectManager(qt.QObject):
             slicer.mrmlScene.EndState(slicer.mrmlScene.SaveState)
             self.__resumeModifiedObserver(False)
 
+        # Stamp the saved project with the current environment so the onboarding
+        # RECENT list shows the right badge immediately. Recording only happens
+        # in loadEnvironment when the scene already has a URL, so a freshly saved
+        # (never-reopened) project would otherwise fall back to the generic
+        # "Project" label. Lazy imports avoid a circular dependency.
+        try:
+            from ltrace.slicer.app.onboard import getLastEnvironment
+            from ltrace.slicer.app.onboard_view import recordEnvironmentForPath
+
+            environment = getLastEnvironment()
+            if environment is not None:
+                recordEnvironmentForPath(fileProjectPath.as_posix(), environment.displayName)
+        except Exception as error:  # pragma: no cover - best effort, never blocks a save
+            logging.debug(f"Could not record environment for saved project: {error}")
+
         return SaveStatus.SUCCEED
 
     def __getSliceViewConfiguration(self) -> SliceViewConfiguration:

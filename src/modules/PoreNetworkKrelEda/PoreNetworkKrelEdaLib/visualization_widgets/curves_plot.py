@@ -1,6 +1,12 @@
 import numbers
+import warnings
 
 import PySide2
+
+# === ENHANCEMENT: Import QtGui for Custom Axis Fonts ===
+from PySide2 import QtGui
+
+# ======================================================
 import ctk
 import numpy as np
 import pandas as pd
@@ -8,7 +14,6 @@ import pyqtgraph as pg
 import qt
 import shiboken2
 import slicer
-import warnings
 from PoreNetworkKrelEdaLib.input_estimation import (
     closest_estimate,
     CurveFilter,
@@ -23,6 +28,7 @@ from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
 from ltrace.pore_networks.simulation_parameters_node import (
     dataframe_to_parameter_node,
     parameters_dict_to_dataframe,
+    TWO_PHASE_SIMULATION_TYPE,
 )
 from ltrace.slicer import ui, widgets
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
@@ -77,6 +83,16 @@ class CurvesPlot(PlotBase):
         self.checkboxes["Imbibition Kw"].setChecked(True)
         self.checkboxes["Mean"].setChecked(True)
 
+        self.showPointsCheckbox = qt.QCheckBox()
+        self.showPointsCheckbox.setChecked(False)
+        self.showPointsCheckbox.stateChanged.connect(self.update_curves_color_scale)
+        self.boxes_layout.addWidget(qt.QLabel("Show points"), 1, (i + 1) * 2)
+        self.boxes_layout.addWidget(self.showPointsCheckbox, 1, (i + 1) * 2 + 1)
+
+        # === ENHANCEMENT: DS Factor Layout Components ===
+        self._init_ds_factors_ui()
+        # ================================================
+
         self.mainLayout.addRow(" ", None)
 
         graphics_layout_widget, plot_item = self.__createKrelPlotWidget()
@@ -89,9 +105,9 @@ class CurvesPlot(PlotBase):
         self.__krel_curves_plot = None
         self.__ref_curves_plots = {}
 
-        pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), PySide2.QtWidgets.QFormLayout)
-        pySideMainLayout.addRow(graphics_layout_widget)
-        pySideMainLayout.addRow(logarithmic_graphics_layout_widget)
+        self.pySideMainLayout = shiboken2.wrapInstance(hash(self.mainLayout), PySide2.QtWidgets.QFormLayout)
+        self.pySideMainLayout.addRow(graphics_layout_widget)
+        self.pySideMainLayout.addRow(logarithmic_graphics_layout_widget)
 
         self.color_bar = ColorBar()
         self.mainLayout.addRow(self.color_bar)
@@ -125,6 +141,10 @@ class CurvesPlot(PlotBase):
         self.__ref_curves_plots = {}
         self.estimatedInputsTableWidget.setVisible(False)
         self.createParameterNodeButton.setVisible(False)
+
+        # === ENHANCEMENT: Clear Dynamic DS Group Elements ===
+        self._clear_ds_factors_ui()
+        # ====================================================
 
     def update_curves_color_scale(self):
         self.clear_saved_plots()
@@ -191,7 +211,14 @@ class CurvesPlot(PlotBase):
         # Create plots
         if not self.__krel_curves_plot:
             krel_result_curves = self.data_manager.get_krel_result_curves()
+
+            # === ENHANCEMENT: Auto-Inject DS Curves From Scene Node ===
+            self._inject_ds_columns_from_nodes(krel_result_curves)
+            # ==========================================================
+
             self.__krel_curves_plot = KrelCurvesPlot(self.__plot_item, krel_result_curves)
+
+        self.__krel_curves_plot.show_points = self.showPointsCheckbox.isChecked()
 
         ref_curve_node_list = self.filterListWidget.getReferenceCurvesNodes()
         for curve_node in ref_curve_node_list:
@@ -199,6 +226,8 @@ class CurvesPlot(PlotBase):
                 ref_curve_result = KrelResultCurves(curve_node)
                 new_krel_curves_plot = KrelCurvesPlot(self.__plot_item, ref_curve_result)
                 self.__ref_curves_plots[curve_node] = new_krel_curves_plot
+
+            self.__ref_curves_plots[curve_node].show_points = self.showPointsCheckbox.isChecked()
 
         # Set visibilities
         cycle_name_list = ((1, "Drainage"), (2, "Imbibition"), (3, "Second Drainage"))
@@ -214,8 +243,22 @@ class CurvesPlot(PlotBase):
                 ref_plot.set_visible(cycle_id, KrelCurvesPlot.KRO, plot_kro)
 
         filtered_simulation_id_list = self.__getSelectedSimulations(parameters_df)
+
+        # === ENHANCEMENT: Aggregate Data Detection and Checkbox Handling ===
+        has_ds_curves, all_ds_groups = self._detect_aggregated_ds_curves()
+        self._manage_dynamic_ds_checkboxes(has_ds_curves, all_ds_groups)
+        # ====================================================================
+
         if self.checkboxes["Mean"].isChecked():
-            filtered_simulation_id_list += ["middle"]
+            # === ENHANCEMENT: Filter Logic Adjustments for DS curves ===
+            if not has_ds_curves:
+                filtered_simulation_id_list += ["middle"]
+            # ===========================================================
+
+        # === ENHANCEMENT: Inject Checked DS Keys into Visual Mapping ===
+        filtered_simulation_id_list = self._append_checked_ds_keys(has_ds_curves, filtered_simulation_id_list)
+        # ===============================================================
+
         self.__krel_curves_plot.set_all_visible_simulations(filtered_simulation_id_list)
         self.filtered_simulation_list = [x for x in filtered_simulation_id_list if isinstance(x, numbers.Number)]
 
@@ -232,6 +275,10 @@ class CurvesPlot(PlotBase):
         for removed_node in self.__ref_curves_plots.keys() - ref_curve_node_list:
             removed_curve = self.__ref_curves_plots.pop(removed_node)
             removed_curve.remove_plots()
+
+        # === ENHANCEMENT: Dynamic Re-sorting and Sizing of Plot Legends ===
+        self.__plot_item.update_legends()
+        # ==================================================================
 
         slicer.app.processEvents()
 
@@ -302,7 +349,10 @@ class CurvesPlot(PlotBase):
 
     def __createParameterNode(self):
         parameterNode = dataframe_to_parameter_node(
-            self.estimatedInputsDf, "simulation_input_parameters", self.data_manager.input_node
+            self.estimatedInputsDf,
+            "simulation_input_parameters",
+            self.data_manager.input_node,
+            node_type=TWO_PHASE_SIMULATION_TYPE,
         )
         newParameterNodeName = parameterNode.GetName()
         self.parameterNodeStatus.setStatus(f"Sucessfully generated {newParameterNodeName} node")
@@ -331,17 +381,148 @@ class CurvesPlot(PlotBase):
 
         x_legend_label_item = pg.LabelItem(angle=0)
         y_legend_label_item = pg.LabelItem(angle=270)
-        x_legend_label_item.setText("Sw", color="k")
-        y_legend_label_item.setText("Krel", color="k")
+
+        # === ENHANCEMENT: Adjusted Legend Font Sizing ===
+        x_legend_label_item.setText("Sw", color="k", size="8pt")
+        y_legend_label_item.setText("Krel", color="k", size="8pt")
+        # ================================================
         graphics_layout_widget.addItem(x_legend_label_item, row=2, col=2, colspan=2)
         graphics_layout_widget.addItem(y_legend_label_item, row=0, col=1, rowspan=2)
 
         black_pen = pg.mkPen("k")
         axis_item_x = pg.AxisItem("bottom", pen=black_pen, textPen=black_pen, tickPen=black_pen)
         axis_item_y = pg.AxisItem("left", pen=black_pen, textPen=black_pen, tickPen=black_pen)
+
+        # === ENHANCEMENT: Configure Explicit Tick Font Sizing ===
+        font = QtGui.QFont()
+        font.setPointSize(8)
+        axis_item_x.setTickFont(font)
+        axis_item_y.setTickFont(font)
+        # ========================================================
+
         plot_item = graphics_layout_widget.addPlot(axisItems={"bottom": axis_item_x, "left": axis_item_y})
 
+        # === ENHANCEMENT: Setup and Font Size Standard Plots Legends ===
+        legend = plot_item.addLegend()
+        if hasattr(legend, "setLabelTextSize"):
+            legend.setLabelTextSize("8pt")
+        # ===============================================================
+
         return graphics_layout_widget, plot_item
+
+    # =========================================================================
+    # EXTENSION MODULE: DS FACTORS & ENHANCED PLOT FUNCTIONALITY HELPERS
+    # =========================================================================
+    def _init_ds_factors_ui(self):
+        self.ds_label = qt.QLabel("DS factors:")
+        self.ds_container_widget = qt.QWidget()
+        self.ds_layout = qt.QHBoxLayout(self.ds_container_widget)
+        self.ds_layout.setContentsMargins(0, 0, 0, 0)
+        self.ds_layout.addStretch()
+        self.mainLayout.addRow(self.ds_label, self.ds_container_widget)
+        self.ds_label.setVisible(False)
+        self.ds_container_widget.setVisible(False)
+        self.ds_checkboxes = {}
+
+    def _clear_ds_factors_ui(self):
+        if hasattr(self, "ds_label"):
+            self.ds_label.setVisible(False)
+        if hasattr(self, "ds_container_widget"):
+            self.ds_container_widget.setVisible(False)
+        if hasattr(self, "ds_checkboxes"):
+            for cb in list(self.ds_checkboxes.values()):
+                self.ds_layout.removeWidget(cb)
+                cb.deleteLater()
+            self.ds_checkboxes.clear()
+
+    def _inject_ds_columns_from_nodes(self, krel_result_curves):
+        try:
+            input_node = self.data_manager.input_node
+            if input_node:
+                for c_id in range(1, 4):
+                    cycle_table_id = input_node.GetAttribute(f"cycle_table_{c_id}_id")
+                    if cycle_table_id:
+                        cycle_node = slicer.mrmlScene.GetNodeByID(cycle_table_id)
+                        if cycle_node:
+                            cycle_df = dataframeFromTable(cycle_node)
+                            cycle_curves = krel_result_curves.get_cycle(c_id)
+                            if cycle_curves:
+                                for col in cycle_df.columns:
+                                    if col.startswith("Krw_DS"):
+                                        ds_key = col.replace("Krw_", "")
+                                        cycle_curves.krw_data[ds_key] = cycle_df[col].values
+                                    elif col.startswith("Kro_DS"):
+                                        ds_key = col.replace("Kro_", "")
+                                        cycle_curves.kro_data[ds_key] = cycle_df[col].values
+        except Exception as e:
+            import logging
+
+            logging.warning(f"Could not load DS curves: {e}")
+
+    def _detect_aggregated_ds_curves(self):
+        has_ds_curves = False
+        all_ds_groups = set()
+        if not self.__krel_curves_plot:
+            return has_ds_curves, all_ds_groups
+
+        for c_id in range(1, 4):
+            cycle_data = self.__krel_curves_plot._KrelCurvesPlot__krel_result_curves.get_cycle(c_id)
+            if cycle_data:
+                for key in list(cycle_data.krw_data.keys()) + list(cycle_data.kro_data.keys()):
+                    if isinstance(key, str) and key.startswith("DS"):
+                        has_ds_curves = True
+                        try:
+                            ds_value = float(key[2:])
+                            group_name = f"DS{ds_value:.2f}"
+                        except ValueError:
+                            group_name = key
+                        all_ds_groups.add(group_name)
+        return has_ds_curves, all_ds_groups
+
+    def _manage_dynamic_ds_checkboxes(self, has_ds_curves, all_ds_groups):
+        if has_ds_curves:
+            self.ds_label.setVisible(True)
+            self.ds_container_widget.setVisible(True)
+
+            if set(self.ds_checkboxes.keys()) != all_ds_groups:
+                for cb in list(self.ds_checkboxes.values()):
+                    self.ds_layout.removeWidget(cb)
+                    cb.deleteLater()
+                self.ds_checkboxes.clear()
+
+                for group in sorted(list(all_ds_groups)):
+                    cb = qt.QCheckBox(group)
+                    cb.setChecked(True)
+                    cb.stateChanged.connect(self.update)
+                    self.ds_layout.insertWidget(self.ds_layout.count() - 1, cb)
+                    self.ds_checkboxes[group] = cb
+        else:
+            self.ds_label.setVisible(False)
+            self.ds_container_widget.setVisible(False)
+            for cb in list(self.ds_checkboxes.values()):
+                self.ds_layout.removeWidget(cb)
+                cb.deleteLater()
+            self.ds_checkboxes.clear()
+
+    def _append_checked_ds_keys(self, has_ds_curves, filtered_simulation_id_list):
+        if has_ds_curves:
+            for c_id in range(1, 4):
+                cycle_data = self.__krel_curves_plot._KrelCurvesPlot__krel_result_curves.get_cycle(c_id)
+                if cycle_data:
+                    for key in list(cycle_data.krw_data.keys()) + list(cycle_data.kro_data.keys()):
+                        if isinstance(key, str) and key.startswith("DS"):
+                            try:
+                                ds_value = float(key[2:])
+                                group_name = f"DS{ds_value:.2f}"
+                            except ValueError:
+                                group_name = key
+
+                            if group_name in self.ds_checkboxes and self.ds_checkboxes[group_name].isChecked():
+                                if key not in filtered_simulation_id_list:
+                                    filtered_simulation_id_list.append(key)
+        return filtered_simulation_id_list
+
+    # =========================================================================
 
 
 class ColorBar(qt.QWidget):
@@ -362,7 +543,6 @@ class ColorBar(qt.QWidget):
 
         # Draw the first rectangle with a linear gradient
         rect1 = qt.QRect(horizontal_pad, 5, self.width - (2 * horizontal_pad), 23)
-        # gradient1 = qt.QLinearGradient(rect1.topLeft(), rect1.topRight())
         gradient1 = qt.QLinearGradient(0, 0, rect1.width(), 0)
         gradient1.setColorAt(0, qt.QColor(*water_color_gradient(0)))
         gradient1.setColorAt(1, qt.QColor(*water_color_gradient(1)))
@@ -373,7 +553,6 @@ class ColorBar(qt.QWidget):
 
         # Draw the second rectangle with another linear gradient
         rect2 = qt.QRect(horizontal_pad, 35, self.width - (2 * horizontal_pad), 23)
-        # gradient2 = qt.QLinearGradient(rect2.topLeft(), rect2.topRight())
         gradient2 = qt.QLinearGradient(0, 0, rect1.width(), 0)
         gradient2.setColorAt(0, qt.QColor(*oil_color_gradient(0)))
         gradient2.setColorAt(1, qt.QColor(*oil_color_gradient(1)))
@@ -394,8 +573,10 @@ class ColorBar(qt.QWidget):
         # Draw the tick marks and numeric values
         num_ticks = 5
         tick_spacing = (self.width - (2 * horizontal_pad + 2)) / (num_ticks - 1)
+
+        # Reduced font size for color bar (using qt.QFont here is safe since this is a qt.QWidget)
         font = qt.QFont()
-        font.setPointSize(10)
+        font.setPointSize(8)
         painter.setFont(font)
 
         scientific_notation = True if self.scale_min < 0.2 and self.scale_max < 0.2 else False
@@ -424,7 +605,6 @@ class ColorBar(qt.QWidget):
                 text = f"{value:.1f}"
                 text_width = 30
 
-            # text_width = painter.fontMetrics().boundingRect(text).width()
             painter.drawStaticText(x - text_width // 2, y + 10, qt.QStaticText(text))
 
     def set_scale_range(self, new_min, new_max):
@@ -433,16 +613,16 @@ class ColorBar(qt.QWidget):
 
 
 def water_color_gradient(normalized_value):
-    r = 0  # 0
-    g = int(100 + 140 * normalized_value)  # 100 --> 240
-    b = int(200 * (1 - normalized_value))  # 200 --> 0
+    r = 0
+    g = int(100 + 140 * normalized_value)
+    b = int(200 * (1 - normalized_value))
     return (r, g, b)
 
 
 def oil_color_gradient(normalized_value):
-    r = int(200 + 55 * normalized_value)  # 200 --> 255
-    g = int(0 + 110 * normalized_value)  # 0 --> 110
-    b = int(10 + 190 * (1 - normalized_value))  # 200 --> 10
+    r = int(200 + 55 * normalized_value)
+    g = int(0 + 110 * normalized_value)
+    b = int(10 + 190 * (1 - normalized_value))
     return (r, g, b)
 
 
@@ -673,6 +853,11 @@ class KrelCurvesPlot:
     IMBIBITION = 2
     SECOND_DRINAGE = 3
 
+    LINE_WIDTH = 2
+    SYMBOL_SIZE = 5
+    SYMBOL_PEN_WIDTH = None
+    SYMBOL_PEN_COLOR = (128, 128, 128, 255)
+
     DEFAULT_COLOR_DICT = {
         "middle": {
             KRW: "blue",
@@ -684,6 +869,43 @@ class KrelCurvesPlot:
         self.__plot_item = plot_item
         self.__krel_result_curves = krel_result_curves
         self.__plot_manager = PlotManager()
+        self.show_points = False
+
+        # === ENHANCEMENT: Setup Map Tracking for Dynamic Legends/Styles ===
+        self.__legend_added = {"krw": set(), "kro": set()}
+        self.__ds_index_map = {}
+        # ==================================================================
+
+    def _get_ds_index(self, simulation_id):
+        if simulation_id not in self.__ds_index_map:
+            self.__ds_index_map[simulation_id] = len(self.__ds_index_map)
+        return self.__ds_index_map[simulation_id]
+
+    def _get_plot_kwargs(self, color, name=None, simulation_id=None):
+        pen_kwargs = {"color": color, "width": self.LINE_WIDTH}
+
+        # === ENHANCEMENT: Distinguish DS Line Styles Dynamically ===
+        self._apply_ds_line_style(simulation_id, pen_kwargs)
+        # ===========================================================
+
+        kwargs = {
+            "pen": pg.mkPen(**pen_kwargs),
+        }
+        if name:
+            kwargs["name"] = name
+
+        if self.show_points:
+            kwargs.update(
+                {
+                    "symbol": "o",
+                    "symbolSize": self.SYMBOL_SIZE,
+                    "symbolBrush": color,
+                    "symbolPen": (
+                        pg.mkPen(self.SYMBOL_PEN_COLOR, width=self.SYMBOL_PEN_WIDTH) if self.SYMBOL_PEN_WIDTH else None
+                    ),
+                }
+            )
+        return kwargs
 
     def recalculate_middle(self, filtered_list):
         for cycle_id in range(1, 4):
@@ -708,6 +930,10 @@ class KrelCurvesPlot:
                 cycle.kro_data["middle"] = list(kro_mean)
 
     def plot(self, color_callback=None):
+        # === ENHANCEMENT: Reset Legend Session Elements ===
+        self.__legend_added = {"krw": set(), "kro": set()}
+        # ==================================================
+
         for cycle_id in range(1, 4):
             krel_cycle_curves = self.__krel_result_curves.get_cycle(cycle_id)
 
@@ -715,12 +941,18 @@ class KrelCurvesPlot:
                 cycle_id, krel_cycle_curves, "middle", color_callback, evidence=True, replace_plot=True
             )
 
-            number_of_simulations = krel_cycle_curves.get_number_of_simulations()
-            if number_of_simulations > 0:
-                self.transparency = 128 + 64 // number_of_simulations
+            # === ENHANCEMENT: Handle Arbitrary Key Types (e.g. "DS1") Safely ===
+            all_sim_ids = set(krel_cycle_curves.krw_data.keys()).union(set(krel_cycle_curves.kro_data.keys()))
+            sim_ids_to_plot = [sid for sid in all_sim_ids if sid != "middle"]
+
+            int_simulations = [sid for sid in sim_ids_to_plot if isinstance(sid, int)]
+            if len(int_simulations) > 0:
+                self.transparency = 128 + 64 // len(int_simulations)
             else:
                 self.transparency = 128
-            for simulation_id in range(number_of_simulations):
+            # ===================================================================
+
+            for simulation_id in sim_ids_to_plot:
                 self.__plot_with_color(cycle_id, krel_cycle_curves, simulation_id, color_callback)
 
     def set_visible(self, cycle, type, visible):
@@ -744,46 +976,65 @@ class KrelCurvesPlot:
         krw_color = color_callback(simulation_id, self.KRW) or self.__generate_color(simulation_id, self.KRW)
         kro_color = color_callback(simulation_id, self.KRO) or self.__generate_color(simulation_id, self.KRO)
 
+        # === ENHANCEMENT: Build Aggregated Legend Label Meta Data ===
+        krw_name, kro_name = self._get_ds_or_mean_legend_names(simulation_id)
+        # ============================================================
+
         if replace_plot and self.__plot_manager.exists(cycle_id, simulation_id, self.KRW):
             self.__plot_manager.remove_plot(cycle_id, simulation_id)
 
         if not self.__plot_manager.exists(cycle_id, simulation_id, self.KRW) and self.__plot_manager.is_visible(
             cycle_id, simulation_id, self.KRW
         ):
-            krw_plot = self.__plot_krw(krel_cycle_curves, simulation_id, krw_color, evidence)
+            krw_plot = self.__plot_krw(krel_cycle_curves, simulation_id, krw_color, evidence, name=krw_name)
             if krw_plot:
                 self.__plot_manager.add_plot(cycle_id, simulation_id, self.KRW, krw_plot)
+                # === ENHANCEMENT: Track Added Legend Keys ===
+                if krw_name:
+                    self.__legend_added["krw"].add(simulation_id)
+                # ============================================
+
         if not self.__plot_manager.exists(cycle_id, simulation_id, self.KRO) and self.__plot_manager.is_visible(
             cycle_id, simulation_id, self.KRO
         ):
-            kro_plot = self.__plot_kro(krel_cycle_curves, simulation_id, kro_color, evidence)
+            kro_plot = self.__plot_kro(krel_cycle_curves, simulation_id, kro_color, evidence, name=kro_name)
             if kro_plot:
                 self.__plot_manager.add_plot(cycle_id, simulation_id, self.KRO, kro_plot)
+                # === ENHANCEMENT: Track Added Legend Keys ===
+                if kro_name:
+                    self.__legend_added["kro"].add(simulation_id)
+                # ============================================
 
-    def __plot_krw(self, krel_cycle_curves, simulation_id, color, evidence=False):
+    def __plot_krw(self, krel_cycle_curves, simulation_id, color, evidence=False, name=None):
         sw = krel_cycle_curves.get_sw_data()
 
         krw_plot = None
 
         krw = krel_cycle_curves.get_krw_data(simulation_id)
-        if not krw:
+        if krw is None or len(krw) == 0:
             return
-        krw_plot = self.__plot_item.plot(pen=pg.mkPen(color, width=2))
+
+        plot_kwargs = self._get_plot_kwargs(color, name=name, simulation_id=simulation_id)
+
+        krw_plot = self.__plot_item.plot(**plot_kwargs)
         krw_plot.setData(sw, krw)
         if evidence:
             krw_plot.setZValue(1)
 
         return krw_plot
 
-    def __plot_kro(self, krel_cycle_curves, simulation_id, color, evidence=False):
+    def __plot_kro(self, krel_cycle_curves, simulation_id, color, evidence=False, name=None):
         sw = krel_cycle_curves.get_sw_data()
 
         kro_plot = None
 
         kro = krel_cycle_curves.get_kro_data(simulation_id)
-        if not kro:
+        if kro is None or len(kro) == 0:
             return
-        kro_plot = self.__plot_item.plot(pen=pg.mkPen(color, width=2))
+
+        plot_kwargs = self._get_plot_kwargs(color, name=name, simulation_id=simulation_id)
+
+        kro_plot = self.__plot_item.plot(**plot_kwargs)
         kro_plot.setData(sw, kro)
         if evidence:
             kro_plot.setZValue(1)
@@ -791,14 +1042,91 @@ class KrelCurvesPlot:
         return kro_plot
 
     def __generate_color(self, simulation_id, simulation_type):
-        if simulation_id in KrelCurvesPlot.DEFAULT_COLOR_DICT:
-            color = KrelCurvesPlot.DEFAULT_COLOR_DICT[simulation_id][simulation_type]
+        if simulation_id == "middle":
+            return KrelCurvesPlot.DEFAULT_COLOR_DICT["middle"][simulation_type]
+        # === ENHANCEMENT: Redirect DS Identifier Queries to Color Matrix Generator ===
+        elif isinstance(simulation_id, str) and simulation_id.startswith("DS"):
+            return self._get_ds_color_palette(simulation_id, simulation_type)
+        # ==============================================================================
         else:
             if simulation_type == self.KRW:
-                color = (128, 128, 170, self.transparency)
+                return (128, 128, 170, getattr(self, "transparency", 128))
             else:
-                color = (160, 128, 128, self.transparency)
-        return color
+                return (160, 128, 128, getattr(self, "transparency", 128))
+
+    # =========================================================================
+    # EXTENSION MODULE: KrelCurvesPlot DS FACTORS CONFIGURATION HELPERS
+    # =========================================================================
+    def _apply_ds_line_style(self, simulation_id, pen_kwargs):
+        if isinstance(simulation_id, str) and simulation_id.startswith("DS"):
+            idx = self._get_ds_index(simulation_id)
+            styles = [
+                pg.QtCore.Qt.SolidLine,
+                pg.QtCore.Qt.DashLine,
+                pg.QtCore.Qt.DotLine,
+                pg.QtCore.Qt.DashDotLine,
+                pg.QtCore.Qt.DashDotDotLine,
+            ]
+            pen_kwargs["style"] = styles[idx % len(styles)]
+
+    def _get_ds_or_mean_legend_names(self, simulation_id):
+        krw_name = None
+        kro_name = None
+        is_ds_or_middle = isinstance(simulation_id, str) and (
+            simulation_id.startswith("DS") or simulation_id == "middle"
+        )
+
+        if is_ds_or_middle:
+            display_id = simulation_id
+            if isinstance(simulation_id, str) and simulation_id.startswith("DS"):
+                try:
+                    ds_value = float(simulation_id[2:])
+                    display_id = f"DS{ds_value:.2f}"
+                except ValueError:
+                    pass
+
+            if simulation_id not in self.__legend_added["krw"]:
+                krw_name = f"Krw {display_id}" if simulation_id != "middle" else "Krw Mean"
+            if simulation_id not in self.__legend_added["kro"]:
+                kro_name = f"Kro {display_id}" if simulation_id != "middle" else "Kro Mean"
+        return krw_name, kro_name
+
+    def _get_ds_color_palette(self, simulation_id, simulation_type):
+        idx = self._get_ds_index(simulation_id)
+        if simulation_type == self.KRW:
+            colors = [
+                (0, 150, 255, 200),
+                (0, 200, 200, 200),
+                (100, 100, 255, 200),
+                (0, 100, 255, 200),
+                (0, 255, 150, 200),
+                (0, 191, 255, 200),
+                (30, 144, 255, 200),
+                (65, 105, 225, 200),
+                (70, 130, 180, 200),
+                (0, 206, 209, 200),
+                (95, 158, 160, 200),
+                (100, 149, 237, 200),
+            ]
+            return colors[idx % len(colors)]
+        else:
+            colors = [
+                (255, 120, 0, 200),
+                (255, 0, 150, 200),
+                (200, 0, 0, 200),
+                (255, 200, 0, 200),
+                (200, 50, 150, 200),
+                (255, 69, 0, 200),
+                (255, 140, 0, 200),
+                (220, 20, 60, 200),
+                (178, 34, 34, 200),
+                (255, 99, 71, 200),
+                (255, 165, 0, 200),
+                (218, 165, 32, 200),
+            ]
+            return colors[idx % len(colors)]
+
+    # =========================================================================
 
 
 class PlotManager:
@@ -934,6 +1262,13 @@ class DualPlotItem:
         self.__plot.clear()
         self.__log_plot.clear()
 
+        # === ENHANCEMENT: Completely Wipe Dynamic Elements from Memory Legends ===
+        if getattr(self.__plot, "legend", None):
+            self.__plot.legend.clear()
+        if getattr(self.__log_plot, "legend", None):
+            self.__log_plot.legend.clear()
+        # =========================================================================
+
     def disableAutoRange(self):
         self.__plot.disableAutoRange()
         self.__log_plot.disableAutoRange()
@@ -950,6 +1285,45 @@ class DualPlotItem:
         plot_a = self.__plot.plot(*args, **kwargs)
         plot_b = self.__log_plot.plot(*args, **kwargs)
         return DualPlot(plot_a, plot_b)
+
+    # === ENHANCEMENT: Automated Dynamic Legends Sorting & Rendering Logic ===
+    def update_legends(self):
+        def sort_key(item_tuple):
+            name = item_tuple[0]
+            if "Mean" in name:
+                ds_factor = -1
+            elif "DS" in name:
+                try:
+                    ds_factor = int("".join(filter(str.isdigit, name)))
+                except ValueError:
+                    ds_factor = 999
+            else:
+                ds_factor = 999
+
+            phase = 0 if "Krw" in name else 1
+            return (phase, ds_factor, name)
+
+        for p in (self.__plot, self.__log_plot):
+            legend = getattr(p, "legend", None)
+            if legend:
+                legend.clear()
+
+                visible_items = []
+                for item in p.listDataItems():
+                    name = item.opts.get("name", None)
+                    if name and item.isVisible():
+                        visible_items.append((name, item))
+
+                visible_items.sort(key=sort_key)
+
+                added_names = set()
+                for name, item in visible_items:
+                    if name not in added_names:
+                        rich_name = f'<span style="font-size: 6pt">{name}</span>'
+                        legend.addItem(item, rich_name)
+                        added_names.add(name)
+
+    # =========================================================================
 
 
 class DualPlot:

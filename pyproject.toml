@@ -1,12 +1,12 @@
 [build-system]
 requires = [
-            "setuptools==61.3.1",
-            "wheel==0.37.0",
-            "Cython==0.29.28",
-            "vswhere==1.3.0",
-            "patch==1.16",
-            "packaging==23.2",
-            "setuptools-scm>=8"
+            "setuptools==80.10.1",
+            "wheel",
+            "Cython",
+            "vswhere",
+            "patch",
+            "packaging",
+            "setuptools-scm"
             ]
 
 [tool.autopep8]
@@ -24,7 +24,8 @@ disable = [
            "C0116", # Missing function or method docstring
            "C0114", # Missing module docstring
            "W1203", # Use lazy % formatting in logging functions (logging-fstring-interpolation)
-           "R0913", # Too many arguments (x/y) (too-many-arguments)
+           "R0913", # Too many arguments (x/y) (too-many-arguments),
+           "C0103", # snake_case naming style
           ]
 
 [tool.pylint.format]
@@ -36,48 +37,76 @@ exclude = "tools/resources/*|src/submodules/*|env|venv|.eggs/*"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-v --cov=. --cov-report=html"
+addopts = "-v --cov=src --cov-report=html"
 testpaths = [
     "tests/unit",
+]
+pythonpath = [
+    "src/ltrace",
+    "src/modules",
+    "src/submodules/porespy",
+    "src/submodules/biaep",
+    "src/submodules/py_pore_flow",
+    "src/submodules/pyflowsolver"
 ]
 env = [
     "QT_QPA_PLATFORM = offscreen"
 ]
+filterwarnings = [
+    "ignore:Type PySide2\\..* uses PyType_Spec with a metaclass that has custom tp_new:DeprecationWarning",
+    "ignore:The hookimpl CovPlugin\\..* uses old-style configuration options:pytest.PytestDeprecationWarning",
+]
 
-[tool.liccheck]
-level = "STANDARD"
-authorized_licenses = [
-    "3-Clause BSD",
+[tool.pylic]
+safe_licenses = [
+    "3-Clause BSD License",
     "Apache 2.0",
     "Apache License 2.0",
-    "Apache License, Version 2.0",    
-    "Apache Software",
+    "Apache Software License",
+    "Apache-2.0",
+    "Apache-2.0 OR BSD-3-Clause",
     "BSD",
-    "FreeBSD",
-    "BSD-3-clause",
-    "BSD 3-Clause",
     "BSD License",
-    "CC-BY",
-    "GNU Library or Lesser General Public License (LGPL)",
+    "BSD-2-Clause",
+    "BSD-3-Clause, Apache-2.0, dependency licenses",
+    "BSD-3-clause",
+    "FreeBSD",
+    "GNU General Public License v2 (GPLv2)",
+    "GNU General Public License v3 (GPLv3)",
+    "GNU Lesser General Public License v2 (LGPLv2)",
     "GNU Lesser General Public License v2 or later (LGPLv2+)",
+    "GNU Library or Lesser General Public License (LGPL)",
     "ISC License (ISCL)",
-    "LGPL",
-    "LGPL-3.0",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-only",
     "MIT",
     "MIT License",
+    "MIT-CMU",
     "Mozilla Public License 2.0 (MPL 2.0)",
-    "new BSD",
-    "OSI Approved",
-    "Python Software Foundation",
-    "Historical Permission Notice and Disclaimer (HPND)",
-    "CMU License (MIT-CMU)",
+    "MPL-2.0 AND MIT",
+    "Other/Proprietary License",
+    "PSF-2.0",
+    "Proprietary",
+    "Public Domain",
+    "Python Software Foundation License",
+    "GNU Lesser General Public License v3 (LGPLv3)",
+    "BSD 3-Clause",
+    "LGPL",
+    "LGPL-3.0",
+    "CC-BY-4.0",
 ]
-unauthorized_licenses = [
-    "GNU General Public License v3 (GPLv3)"
+
+unsafe_packages = [
+    "edt",
+    "google-crc32c",
+    "matplotlib-inline",
+    "namex",
+    "pyflowsolver",
+    "requests-unixsocket",
+    "tools",
+    "py_pore_flow",
+    "ltrace",
+    "modules",
+    "mrml",
 ]
-[tool.liccheck.authorized_packages]
-# The packages below are listed as "Other/Proprietary"
-# They use Intel licenses that allow distribution
-mkl = ">=2022.2.1"
-tbb = ">=2021.9.0"
-intel-openmp = ">=2022.2.1"
