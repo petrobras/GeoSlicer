@@ -121,7 +121,6 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["ImageLogSegmentEditor"],
                 modules["ImageLogInstanceSegmenter"],
                 modules["InstanceSegmenterEditor"],
-                modules["InteractiveSegmenter"],
             ]
 
         addMenu(

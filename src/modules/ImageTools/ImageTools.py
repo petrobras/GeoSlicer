@@ -267,14 +267,11 @@ class ImageToolsWidget(LTracePluginWidget):
         self.clearWorkingNode()
         if saveImageAnswer != qt.QMessageBox.Cancel:
             self.hideToolWidgets()
+            self.__resetAllObservers()
             if node is not None:
                 currentNode = helpers.clone_volume(
                     node, name=f"{node.GetName()}_Processed", as_temporary=True, hidden=True, uniqueName=True
                 )
-
-                self._resetNodeObserver(self.__referenceNodeObserver)
-                self._resetNodeObserver(self.__currentNodeObserver)
-
                 self.__referenceNodeObserver = NodeObserver(node, parent=self.parent)
                 self.__referenceNodeObserver.removedSignal.connect(self.onNodeRemoved)
                 self.__currentNodeObserver = NodeObserver(currentNode, parent=self.parent)
@@ -282,8 +279,6 @@ class ImageToolsWidget(LTracePluginWidget):
                 self.imageArray = slicer.util.arrayFromVolume(currentNode).copy()
             else:
                 currentNode = None
-                self._resetNodeObserver(self.__referenceNodeObserver)
-                self._resetNodeObserver(self.__currentNodeObserver)
 
             self.toolComboBox.blockSignals(True)
             self.toolComboBox.setCurrentIndex(self.TOOL_NONE)
@@ -471,8 +466,7 @@ class ImageToolsWidget(LTracePluginWidget):
     def clearWorkingNode(self, removeNode: bool = True) -> None:
         workingNode = self.currentNode
 
-        self._resetNodeObserver(self.__currentNodeObserver)
-        self._resetNodeObserver(self.__referenceNodeObserver)
+        self.__resetAllObservers()
 
         if removeNode and workingNode is not None:
             slicer.mrmlScene.RemoveNode(workingNode)
@@ -495,6 +489,12 @@ class ImageToolsWidget(LTracePluginWidget):
 
         nodeObserver.removedSignal.disconnect(self.onNodeRemoved)
         nodeObserver.deleteLater()
+
+    def __resetAllObservers(self):
+        self._resetNodeObserver(self.__currentNodeObserver)
+        self._resetNodeObserver(self.__referenceNodeObserver)
+        self.__currentNodeObserver = None
+        self.__referenceNodeObserver = None
 
 
 class ImageToolsInfo(RuntimeError):

@@ -1,11 +1,9 @@
 import logging
-import platform
 import re
 import shutil
 import traceback
 from datetime import datetime
-from pathlib import Path
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, List
 
 import numpy as np
@@ -27,9 +25,27 @@ from ltrace.remote.constants import (
     JOB_STATE_RUNNING,
 )
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
+from ltrace.remote.utils import SlurmJobStatusMixin, argstring, dump_via_slicer_temp
 
 _1hour = 3600  # seconds
+
+
+def fast_copy(src: Path, dst: Path, buffer_size: int = 64 * 1024 * 1024) -> None:
+    """Copies a file using a large buffer optimized for high network mount throughput."""
+    with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+        shutil.copyfileobj(fsrc, fdst, length=buffer_size)
+
+
+def export_volume_node(node_id: str, export_dir: Path):
+    """Exports a single MRML volume node to a NRRD file inside export_dir.
+    Returns the Path to the exported file, or None if node is not found.
+    """
+    node = slicer.mrmlScene.GetNodeByID(node_id)
+    if not node:
+        return None
+    file_path = export_dir / f"{node_id}.nrrd"
+    slicer.util.exportNode(node, str(file_path), world=True)
+    return file_path
 
 
 class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
@@ -51,6 +67,15 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
 
         self.last_slurm_out_size = 0
 
+        # Pre-export MRML volume nodes to a local temp directory on the Main Thread
+
+        self.temp_export_dir = Path(slicer.util.tempDirectory())
+        self.temp_input_path = export_volume_node(self.input_node_id, self.temp_export_dir)
+
+        self.temp_label_path = None
+        if self.label_node_id:
+            self.temp_label_path = export_volume_node(self.label_node_id, self.temp_export_dir)
+
         self.__action_map = {
             JOB_EVENT_DEPLOY: self.deploy,
             JOB_EVENT_DISCONNECTED: self.disconnected,
@@ -59,6 +84,10 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             JOB_EVENT_CANCEL: self.cancel,
             JOB_EVENT_COLLECT: self.collect,
         }
+
+    def _cleanup_temp_export_dir(self):
+        if self.temp_export_dir and self.temp_export_dir.exists():
+            shutil.rmtree(self.temp_export_dir, ignore_errors=True)
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
         try:
@@ -80,14 +109,20 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
 
             dump_via_slicer_temp(self.params, "extractor_params_dict.json", self.job_local_path)
 
-            input_node = slicer.mrmlScene.GetNodeByID(self.input_node_id)
-            input_node_path = self.job_local_path / f"{self.input_node_id}.nrrd"
-            slicer.util.exportNode(input_node, input_node_path, world=True)
+            caller.set_state(uid, JOB_STATE_DEPLOYING, 5, message="Copying volume files to job path...")
 
-            if self.label_node_id:
-                label_node = slicer.mrmlScene.GetNodeByID(self.label_node_id)
-                label_node_path = self.job_local_path / f"{self.label_node_id}.nrrd"
-                slicer.util.exportNode(label_node, label_node_path, world=True)
+            files_to_copy = []
+            if self.temp_input_path and self.temp_input_path.exists():
+                files_to_copy.append((self.temp_input_path, self.job_local_path / f"{self.input_node_id}.nrrd"))
+
+            if self.temp_label_path and self.temp_label_path.exists():
+                files_to_copy.append((self.temp_label_path, self.job_local_path / f"{self.label_node_id}.nrrd"))
+
+            try:
+                for src, dst in files_to_copy:
+                    fast_copy(src, dst)
+            finally:
+                self._cleanup_temp_export_dir()
 
             self.cli_params = {
                 "scalar": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
@@ -119,6 +154,7 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             caller.schedule(uid, JOB_EVENT_START)
         except Exception:
             traceback.print_exc()
+            self._cleanup_temp_export_dir()
             caller.set_state(uid, "FAILED", 100, message=f"Failed to deploy job.")
 
     def start(self, caller: JobManager, uid: str, client: Any = None):
@@ -229,6 +265,8 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             traceback.print_exc()
 
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):
+        self._cleanup_temp_export_dir()
+
         if self.slurm_job_ids:
             job_list = ",".join(self.slurm_job_ids)
             try:
@@ -242,7 +280,7 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             client.run_command(f"rm -rf {self.job_remote_path}")
         except Exception:
             local_path = self.job_local_path
-            if local_path.exists():
+            if local_path and local_path.exists():
                 shutil.rmtree(local_path, ignore_errors=True)
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
@@ -270,6 +308,5 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             logging.error(error_message)
             slicer.util.errorDisplay(f"Cannot create Pore Network.\n\n{error_message}", windowTitle="Missing Data")
         except Exception as e:
-            # Catch-all for other potential issues during node creation
             logging.error(f"Unexpected error creating nodes: {str(e)}")
             slicer.util.errorDisplay(f"An error occurred: {str(e)}")

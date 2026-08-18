@@ -8,7 +8,7 @@ import os
 
 from datetime import datetime
 
-MANUAL_BASE_URL = "https://ltracegeo.github.io/GeoSlicerManual/latest/"
+MANUAL_BASE_URL = "https://ltracegeo.github.io/GeoSlicerManual/latest/en/"
 
 
 def parseApplicationVersion(data: Dict) -> str:

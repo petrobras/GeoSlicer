@@ -1,3 +1,14 @@
+# v2.9.1 - 2026-08-18
+
+## Highlights:
+- Improved stability and performance for remote data extraction.
+
+## Bug fixes:
+- Resolved issues with node observers in Filters/ImageTools to prevent bugs and redefinition errors.
+- Addressed a bug in the Multiscale environment that occurred when using the Interactive Segmenter.
+- Corrected the Help Button to redirect to the correct manual URL.
+- Optimized remote data extraction by increasing buffer size, simplifying data transfer, and improving stream handling.
+
 # v2.9.0 - 2026-08-07
 
 ## Highlights:

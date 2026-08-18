@@ -104,8 +104,7 @@ def _verify_integrity(payload: bytes, integrity: str, spec: dict) -> None:
     actual = base64.b64encode(digest).decode("ascii")
     if actual != expected:
         raise IntegrityError(
-            f"integrity mismatch for '{spec['name']}': expected {integrity}, "
-            f"got {algorithm}-{actual}"
+            f"integrity mismatch for '{spec['name']}': expected {integrity}, " f"got {algorithm}-{actual}"
         )
 
 
@@ -125,7 +124,7 @@ def _download_and_extract(spec: dict, target: Path) -> None:
         for member in tar.getmembers():
             if not member.isfile() or not member.name.startswith(prefix):
                 continue
-            rel = member.name[len(prefix):]
+            rel = member.name[len(prefix) :]
             if not rel or not spec["keep"](rel):
                 continue
 

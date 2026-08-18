@@ -22,10 +22,11 @@ class HelpButton(qt.QToolButton):
         message: str = None,
         url: str = None,
         replacer: typing.Union[None, typing.Callable] = None,
+        parent=None,
         *args,
         **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(parent, *args, **kwargs)
 
         if not is_url(url):
             url = None
@@ -103,14 +104,13 @@ class HelpButton(qt.QToolButton):
         text_browser.installEventFilter(self)
         self.text_browser = text_browser
 
-    # IMPORTANT: this method
     def handleLinkClick(self, url: typing.Union[str, qt.QUrl]) -> None:
         try:
             if isinstance(url, qt.QUrl) and url.isValid():
                 qt.QDesktopServices.openUrl(url)
                 return
 
-            if isinstance(url, str) and is_url(url) and url.lower().endswith(".html"):
+            if isinstance(url, str) and is_url(url):
                 if qt.QDesktopServices.openUrl(qt.QUrl(url)):
                     return
 

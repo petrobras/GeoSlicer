@@ -413,7 +413,11 @@ def collect_two_phase_simulation(source_path, destination_folder_item, prefix):
 
             # Detect the per-group columns by their suffix index
             group_indices = sorted(
-                set(int(col.split("_")[-1]) for col in df.columns if any(col.startswith(prefix) for prefix in group_prefixes))
+                set(
+                    int(col.split("_")[-1])
+                    for col in df.columns
+                    if any(col.startswith(prefix) for prefix in group_prefixes)
+                )
             )
 
             renamed = {}

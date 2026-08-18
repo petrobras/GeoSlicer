@@ -45,9 +45,7 @@ class SshHost(Host):
                 # so raise a distinct error. AuthException here would wrongly
                 # delete a (non-existent) password and mask the real state
                 # (e.g. an unavailable server the connect never got to reach).
-                raise errors.MissingCredentialsError(
-                    ValueError("Missing password and/or identity file."), self.address
-                )
+                raise errors.MissingCredentialsError(ValueError("Missing password and/or identity file."), self.address)
 
             password = password if isinstance(password, str) else None
 
