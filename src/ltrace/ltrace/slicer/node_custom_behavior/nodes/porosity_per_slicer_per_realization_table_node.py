@@ -17,8 +17,8 @@ class PorosityPerSlicePerRealizationTableNodeCustomBehavior(NodeCustomBehaviorBa
         nodeTypes=[slicer.vtkMRMLTableNode], attributes={TableType.name(): TableType.POROSITY_PER_REALIZATION.value}
     )
 
-    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
-        super().__init__(node=node, event=event)
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
+        super().__init__(node=node, event=event, eventArgs=eventArgs)
 
     def _afterSave(self) -> None:
         storagePath = self._node.GetStorageNode().GetFileName()

@@ -1,4 +1,5 @@
 import ctk
+import math
 import os
 import qt
 import slicer
@@ -13,11 +14,13 @@ import psutil
 import traceback
 
 from vtk.util.numpy_support import vtk_to_numpy
+from humanize import naturaldelta, naturalsize
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from ltrace.interactive import seg_consumer
-from ltrace.interactive.seg_ipc import (
+from ltrace.interactive import consumer
+from ltrace.interactive.features import feature_display_name
+from ltrace.interactive.ipc import (
     InterprocessPaths,
     safe_save_numpy,
     safe_save_numpy_stacked,
@@ -32,6 +35,7 @@ from ltrace.interactive.seg_ipc import (
 from ltrace.interactive.slice_view_util import Slice, get_volume_extents_in_slice_view
 from ltrace.interactive.scale_estimate import suggest_multiplier, SUPPORTED_MULTIPLIERS
 from ltrace.slicer.side_by_side_image_layout import enable_zoom_sync
+from ltrace.slicer.widget.global_progress_bar import CompanionProgressBar
 
 from ltrace.slicer import ui
 import numpy as np
@@ -47,9 +51,178 @@ from ltrace.flow.util import (
     onSegmentEditorExit,
 )
 
+FULL_APPLY_TIMEOUT_SECONDS = 2**30
+
 ANNOTATION_SLICE = "SideBySideDumb1"
 PREVIEW_SLICE = "SideBySideDumb2"
 VIEW_PLANES = ("XY", "XZ", "YZ")
+ANNOTATION_REFERENCE_ROLE = "InteractiveSegmenterAnnotation"
+LEGACY_ANNOTATION_ATTRIBUTE = "InteractiveSegmenterAnnotationNode"
+
+# --- User-facing copy --------------------------------------------------------
+# Every string shown to the user lives here so the copy can be reviewed and
+# edited in one place. Templates use str.format placeholders.
+
+# Input section
+INPUT_SECTION_TITLE = "Input"
+INPUT_IMAGE_LABEL = "Image 1:"
+INPUT_IMAGE_TOOLTIP = "Select the volume to segment."
+EXTRA_CHANNELS_GROUP_TITLE = "Extra channels (optional):"
+EXTRA_IMAGE_LABEL = "Image {index}:"
+EXTRA_IMAGE_TOOLTIP = (
+    "Optional co-registered image of the same dimensions, appended as extra channels for "
+    "segmentation (e.g. xpol0/xpol45 images of a thin section, or a saturated microCT scan)."
+)
+
+# Parameters section
+PARAMETERS_SECTION_TITLE = "Parameters"
+FEATURE_SCALE_LABEL = "Feature Scale:"
+FEATURE_SCALE_AUTO = "Auto"
+FEATURE_SCALE_ITEM = "{multiplier}x"
+FEATURE_SCALE_TOOLTIP = (
+    "Scale every feature kernel for coarser-textured images. "
+    "Auto estimates the multiplier from the image's characteristic texture length."
+)
+
+# Run button
+RUN_START_TEXT = "Start Annotation"
+RUN_START_TOOLTIP = "Start annotating with a real-time preview of the result."
+RUN_STOP_TEXT = "Cancel"
+RUN_STOP_TOOLTIP = (
+    "Stop the real-time segmentation preview. Your annotation will remain in project and you can resume later."
+)
+
+# Resume-annotation banner
+RESUME_PROMPT_TEXT = "View layout changed. Would you like to resume annotation?"
+RESUME_BUTTON_TEXT = "Resume Annotation"
+RESUME_BUTTON_TOOLTIP = "Resume annotating with a real-time preview of the result."
+
+# Annotation section
+ANNOTATION_SECTION_TITLE = "Annotation"
+VIEW_PLANE_LABEL = "View Plane:"
+VIEW_PLANE_TOOLTIP = "Choose which plane of the volume to annotate and preview."
+VIEW_PLANE_TOOLTIP_2D = "The image is 2D; only the XY plane is available."
+FEATURE_SET_LABEL = "Feature Set:"
+DEFAULT_FEATURE_PRESET = "Balanced"
+FEATURE_SET_TOOLTIP = "Change the smoothness of the result by selecting which filters to apply before training."
+FEATURE_SET_TOOLTIP_WARMING_UP = (
+    "Other feature sets become selectable once feature computation finishes in the background."
+)
+FEATURE_LIST_TITLE = "Feature List"
+FEATURE_LIST_TOOLTIP = "List of features used for segmentation. Values are in voxels."
+FEATURE_LIST_AUTO_HEADER = "<i>Auto — sizes shown at 1×; the multiplier is estimated when you start.</i>"
+FEATURE_LIST_SCALE_HEADER = "<i>Feature scale ×{scale}</i>"
+UNCERTAINTY_TOOLTIP = (
+    "Highlight in the left view the voxels the preview classifier is least certain about. "
+    "These are the most useful places to add annotations."
+)
+UNCERTAINTY_CHECKBOX_LABEL = 'Show <a href="#" style="color:#ff6600; text-decoration:none;">uncertain</a> regions'
+UNCERTAIN_SEGMENT_NAME = "Uncertain"
+
+# Output section
+OUTPUT_SECTION_TITLE = "Output"
+APPLY_BUTTON_TEXT = "Apply to Full Image"
+APPLY_BUTTON_TOOLTIP = "Apply the trained model to the whole of Image 1."
+CANCEL_BUTTON_TEXT = "Cancel"
+CANCEL_BUTTON_TOOLTIP = "Stop the current run. Your annotation will remain in project and you can resume later."
+BATCH_BUTTON_TEXT = "Apply to Other Images..."
+BATCH_BUTTON_TOOLTIP = "Apply the trained model to images other than Image 1."
+BATCH_BUTTON_TOOLTIP_MULTIPLE_INPUTS = "Batch processing not available when using multiple inputs."
+
+# Status line and progress
+STATUS_READY = "Ready"
+STATUS_PREVIEW_READY = "Preview ready."
+STATUS_COMPUTING_PREVIEW = "Computing preview: {message}"
+STATUS_START_ANNOTATING = "Computing preview — you can start annotating now"
+STATUS_AUTO_FEATURE_SCALE = "Auto feature scale: x{scale}"
+STATUS_APPLYING = "Applying segmentation..."
+STATUS_APPLIED = "Segmentation applied to {image}."
+# The status line carries only the action under way; the detail lives in the log.
+STATUS_APPLY_STEP = "{position}{step}"
+STATUS_APPLY_STEP_ETA = "{position}{step} - ETA: {eta}"
+
+# Apply log. It is append-only: nothing written to it is ever rewritten, so a
+# finished run can be read back as the whole story of what happened.
+APPLY_LOG_QUEUE_PREFIX = "[{position}/{total}] "
+APPLY_LOG_STARTING = "{prefix}Running full inference for image '{image}' of size {size} ({memory})"
+APPLY_LOG_DONE = "Done in {elapsed}, created {result}"
+APPLY_LOG_FINISHED = "Finished."
+APPLY_LOG_FINISHED_BATCH = "Finished all {total} images in {elapsed}."
+# The log outlives the run that wrote it, so it says which of the three states the
+# run it is showing ended in rather than leaving the reader to guess from the text.
+APPLY_LOG_HEADER_RUNNING = "Applying the segmentation. Live log:"
+APPLY_LOG_HEADER_DONE = "Segmentation complete. Logs for the last run:"
+APPLY_LOG_HEADER_STOPPED = "Segmentation stopped before finishing. Logs for the last run:"
+
+# Large-image warning dialog
+LARGE_IMAGE_VOXEL_LIMIT = 700**3
+LARGE_IMAGE_TEXT = (
+    "The input image is large. "
+    "For better performance, it is recommended to crop the image. "
+    "You can apply the segmentation to the full image later."
+)
+LARGE_IMAGE_INFORMATIVE_TEXT = "Would you like to crop the volume?"
+LARGE_IMAGE_CROP_BUTTON = "Crop Image"
+LARGE_IMAGE_CONTINUE_BUTTON = "Continue Anyways"
+
+# Warnings and errors
+ERROR_NO_SOURCE_VOLUME = "Could not find the source volume for the selected segmentation node."
+ERROR_EXTRA_IMAGE_DIMENSIONS = "Extra image '{name}' must have the same dimensions as the input image."
+ERROR_START_FAILED = "Failed to start segmentation process: {error}"
+ERROR_BATCH_WITH_EXTRA_IMAGES = "Applying to another image is not supported when extra input images are used."
+ERROR_INFERENCE_NODE_MISMATCH = (
+    "'{name}' must have the same dimensionality (2D/3D) and number of channels as the input image."
+)
+WARNING_PROCESS_CRASHED = (
+    "The segmentation process has crashed or terminated unexpectedly. "
+    "Please check the logs for more details. The UI has been reset."
+)
+WARNING_FEATURES_NOT_READY = "Features are not ready yet. Please wait."
+
+# "Apply to other images" dialog
+BATCH_DIALOG_TITLE = "Apply to Other Images"
+BATCH_DIALOG_HELP = (
+    "<p>The model trained on your current annotation can segment other images too. "
+    "Select the images to segment with it. Selecting a folder segments every image in it.</p>"
+    "<p>The images are segmented one at a time in the background.</p>"
+)
+BATCH_DIALOG_CANCEL_TEXT = "Cancel"
+BATCH_DIALOG_CANCEL_TOOLTIP = "Close this dialog without segmenting anything."
+BATCH_DIALOG_APPLY_TEXT = "Apply"
+BATCH_DIALOG_APPLY_TOOLTIP = "Segment each selected image with the trained model."
+BATCH_DIALOG_NO_SELECTION = "<i>No image selected.</i>"
+BATCH_DIALOG_IMAGE_COUNT_SINGULAR = "1 image"
+BATCH_DIALOG_IMAGE_COUNT_PLURAL = "{count} images"
+BATCH_DIALOG_SUMMARY = "Will apply a model with {segments} segments to {images}."
+
+
+def is_large_3d_image(dims):
+    """
+    Whether a 3D image is big enough to be worth cropping before segmenting.
+
+    ``math.prod`` (not ``np.prod``) on purpose: numpy would multiply the
+    dimensions at the platform's default integer width, which is 32-bit on
+    Windows, and silently wrap around past ~1300**3 -- exactly the volumes this
+    is meant to catch.
+    """
+    return dims[2] > 1 and math.prod(dims) > LARGE_IMAGE_VOXEL_LIMIT
+
+
+def _elapsed_text(seconds):
+    """How long a run took, in the units someone reading the log thinks in.
+
+    Deliberately not ``naturaldelta``: it rounds a 90-second apply to "a minute",
+    and the point of these totals is comparing runs against each other. The units
+    match the per-slab lines, so the parts and the whole read the same way.
+    """
+    # Rounded before the comparison: 59.96 s would otherwise print as "60.0 s".
+    if round(seconds, 1) < 60:
+        return f"{seconds:.1f} s"
+    minutes, seconds = divmod(int(round(seconds)), 60)
+    if minutes < 60:
+        return f"{minutes} min {seconds} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min"
 
 
 def _copy_segment_names_and_colors(source_segmentation, target_segmentation):
@@ -95,6 +268,15 @@ def _kill_process_and_children(proc: subprocess.Popen, timeout=5):
             psutil.wait_procs(alive, timeout=timeout)
     except psutil.NoSuchProcess:
         pass
+
+
+def get_annotation_node(source_node):
+    node = source_node.GetNodeReference(ANNOTATION_REFERENCE_ROLE)
+    if node is not None:
+        return node
+    # Projects saved by earlier releases carry the link as an attribute instead.
+    legacy_id = source_node.GetAttribute(LEGACY_ANNOTATION_ATTRIBUTE)
+    return slicer.mrmlScene.GetNodeByID(legacy_id) if legacy_id else None
 
 
 def _get_annotated_voxel_values_from_array(segmentationNode):
@@ -187,6 +369,27 @@ def _get_annotated_voxel_values_from_array(segmentationNode):
     return np.vstack((final_labels, final_ijk[:, 0], final_ijk[:, 1], final_ijk[:, 2]))
 
 
+_shared_segment_editor_widget = None
+MERGE_EDITOR_SINGLETON_TAG = "InteractiveSegmenterMerge"
+
+
+def shared_segment_editor():
+    global _shared_segment_editor_widget
+    if _shared_segment_editor_widget is None:
+        _shared_segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
+
+    node = slicer.mrmlScene.GetSingletonNode(MERGE_EDITOR_SINGLETON_TAG, "vtkMRMLSegmentEditorNode")
+    if node is None:
+        node = slicer.mrmlScene.CreateNodeByClass("vtkMRMLSegmentEditorNode")
+        node.UnRegister(None)
+        node.SetSingletonTag(MERGE_EDITOR_SINGLETON_TAG)
+        node = slicer.mrmlScene.AddNode(node)
+
+    _shared_segment_editor_widget.setMRMLScene(slicer.mrmlScene)
+    _shared_segment_editor_widget.setMRMLSegmentEditorNode(node)
+    return _shared_segment_editor_widget, node
+
+
 @dataclass
 class RealTimeSegLogic:
     # Fields are grouped by responsibility. The class still owns all of them, but
@@ -212,6 +415,10 @@ class RealTimeSegLogic:
     pending_debug: bool = False
     applying_full_image: bool = False
     features_ready: bool = False
+    # How much of the consumer's append-only apply log has already been handed to
+    # the widget. The file is only ever appended to (and the base dir is wiped on
+    # start_segmentation), so the offset alone says what is new.
+    apply_log_offset: int = 0
 
     # --- Input & result MRML nodes ---
     # The user's annotation and source volumes, optional extra channels and a
@@ -250,6 +457,7 @@ class RealTimeSegLogic:
     on_full_segmentation_complete_callback: callable = None
     on_process_crashed_callback: callable = None
     on_progress_callback: callable = None
+    on_apply_log_callback: callable = None
     on_model_trained_callback: callable = None
     on_features_complete_callback: callable = None
     on_debug_capture_ready_callback: callable = None
@@ -259,11 +467,6 @@ class RealTimeSegLogic:
         temp_dir = Path(slicer.app.temporaryPath) / "InteractiveSegmenter"
         self.paths = InterprocessPaths(temp_dir)
         self.calculated_extents = []
-
-        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
-        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
-        self.segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segment_editor_widget.setMRMLSegmentEditorNode(self.segment_editor_node)
 
     def set_timers(self, main_loop, progress):
         self.main_loop_timer = main_loop
@@ -310,7 +513,7 @@ class RealTimeSegLogic:
         self.source_volume_node = helpers.getSourceVolume(self.annotation_node)
 
         if not self.source_volume_node:
-            raise ValueError("Could not find the source volume for the selected segmentation node.")
+            raise ValueError(ERROR_NO_SOURCE_VOLUME)
 
         self.is_2d = self.source_volume_node.GetImageData().GetDimensions()[2] == 1
 
@@ -348,9 +551,7 @@ class RealTimeSegLogic:
         for extra_node in self.extra_volume_nodes:
             extra_array = slicer.util.arrayFromVolume(extra_node)
             if extra_array.shape[:3] != source_arrays[0].shape[:3]:
-                raise ValueError(
-                    f"Extra image '{extra_node.GetName()}' must have the same dimensions as the input image."
-                )
+                raise ValueError(ERROR_EXTRA_IMAGE_DIMENSIONS.format(name=extra_node.GetName()))
             source_arrays.append(extra_array)
 
         if len(source_arrays) == 1:
@@ -368,14 +569,11 @@ class RealTimeSegLogic:
 
         command = [
             str(python_slicer_executable),
-            seg_consumer.__file__,
+            consumer.__file__,
             "--data-dir",
             self.paths.base_dir.resolve().as_posix(),
             "--parent-pid",
             str(os.getpid()),
-            # Compute the active preset's features first so the preview appears sooner.
-            "--initial-features",
-            ",".join(str(i) for i in self.feature_indices),
             # Scale every feature kernel for coarser-textured images (1/2/4).
             "--feature-scale",
             str(self.feature_scale),
@@ -393,7 +591,40 @@ class RealTimeSegLogic:
         self.progress_timer.timeout.connect(self._check_progress)
         self.progress_timer.start()
 
+    def _drain_apply_log(self):
+        """Hand the widget every apply-log line written since the last drain.
+
+        Read before the progress file, so the lines describing the last slab are
+        delivered even on the tick that also sees the completion marker and stops
+        the timer. A trailing partial line (the consumer mid-write) is left for
+        the next drain rather than parsed."""
+        if not self.on_apply_log_callback or not self.paths.apply_log.exists():
+            return
+        try:
+            # Binary, because a byte offset is not a valid text-mode seek cookie.
+            with open(self.paths.apply_log, "rb") as f:
+                f.seek(self.apply_log_offset)
+                data = f.read()
+        except OSError:
+            return
+
+        complete, newline, _ = data.rpartition(b"\n")
+        if not newline:
+            return
+        self.apply_log_offset += len(complete) + len(newline)
+
+        entries = []
+        for line in complete.decode("utf-8", errors="replace").splitlines():
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                logging.warning(f"Unparseable apply log line: {line}")
+        if entries:
+            self.on_apply_log_callback(entries)
+
     def _check_progress(self):
+        self._drain_apply_log()
+
         if self.paths.progress.exists():
             try:
                 with open(self.paths.progress, "r") as f:
@@ -408,6 +639,9 @@ class RealTimeSegLogic:
 
                 # During a full-image apply the progress file alone signals completion.
                 if self.applying_full_image and progress_data["progress"] >= 100:
+                    # Last chance: the timer is about to stop, so anything the
+                    # consumer logged since the drain above would never be shown.
+                    self._drain_apply_log()
                     self.progress_timer.stop()
                     logging.debug("Full image task complete.")
                     self.check_and_update_result()
@@ -423,7 +657,7 @@ class RealTimeSegLogic:
             self.features_ready = True
             logging.debug("Preview features ready.")
             if self.on_progress_callback:
-                self.on_progress_callback(100, "Preview ready.")
+                self.on_progress_callback(100, STATUS_PREVIEW_READY)
             self._start_main_loop()
 
         # Features-complete: every feature is computed, so preset switching is safe.
@@ -545,7 +779,7 @@ class RealTimeSegLogic:
         string on failure.
         """
         if not self.features_ready:
-            return "Features are not ready yet. Please wait."
+            return WARNING_FEATURES_NOT_READY
         is_trained = False
         if self.paths.model_status.exists():
             is_trained = safe_read_json(self.paths.model_status).get("is_trained", False)
@@ -654,7 +888,7 @@ class RealTimeSegLogic:
         if self.pending_inference:
             # The consumer may still hold result.npz open while rewriting it, so
             # on Windows the delete can raise WinError 32. Skip this cycle if so;
-            # the next tick retries (mirrors seg_ipc.safe_replace's tolerance).
+            # the next tick retries (mirrors ipc.safe_replace's tolerance).
             try:
                 self.paths.result.unlink(missing_ok=True)
             except PermissionError:
@@ -682,14 +916,13 @@ class RealTimeSegLogic:
             if mtime <= self.last_result_read_time:
                 return
 
-            result_arrays = np.load(self.paths.result)
-            result_array = result_arrays.get("result", None)
-            uncertainty_array = result_arrays.get("uncertainty", None)
-
-            if self.result_segmentation_node and result_array.size > 0:
+            with np.load(self.paths.result) as result_arrays:
+                result_array = result_arrays.get("result", None)
+                uncertainty_array = result_arrays.get("uncertainty", None)
                 extents = result_arrays.get("extents", None)
                 factor = int(result_arrays.get("factor", 1))
 
+            if self.result_segmentation_node and result_array.size > 0:
                 source_for_geometry = self.source_volume_node
                 if self.applying_full_image and self.inference_volume_node:
                     source_for_geometry = self.inference_volume_node
@@ -778,16 +1011,60 @@ class RealTimeSegLogic:
             # Don't delete later
             self.result_segmentation_node = None
 
-            self.on_full_segmentation_complete_callback(result_node)
+            self.on_full_segmentation_complete_callback(result_node, self.inference_volume_node)
 
-    def _setup_result_node(self):
+    def request_full_apply(self, inference_node):
+        """Ask the consumer for a full-image prediction on `inference_node`, into a
+        fresh result node. Called once per image of an apply queue."""
+        self.applying_full_image = True
+        self.inference_volume_node = inference_node
+        if self.result_segmentation_node is None:
+            self._create_result_segmentation_node()
+        else:
+            # The preview accumulated so far belongs to the input image. Clear it,
+            # as we are now segmenting a potentially different image.
+            self.result_segmentation_node.GetSegmentation().RemoveAllSegments()
+        helpers.setSourceVolume(self.result_segmentation_node, inference_node)
+        self.tmp_labelmap_node.CopyOrientation(inference_node)
+        self.calculated_extents.clear()
+        self.last_result_read_time = 0
+
+        safe_unlink(self.paths.result)
+
+        if inference_node is not self.source_volume_node:
+            safe_save_numpy(slicer.util.arrayFromVolume(inference_node), self.paths.inference_source)
+            logging.debug(f"Inference image saved to {self.paths.inference_source}")
+
+        extents_inclusive = inference_node.GetImageData().GetExtent()
+        task_params = {
+            "action": "predict",
+            "extents": [
+                extents_inclusive[0],
+                extents_inclusive[1] + 1,
+                extents_inclusive[2],
+                extents_inclusive[3] + 1,
+                extents_inclusive[4],
+                extents_inclusive[5] + 1,
+            ],
+            "features": self.feature_indices,
+            "is_full_inference": True,
+        }
+
+        self.main_loop_timer.stop()
+        self.progress_timer.start()
+        safe_dump_json(task_params, self.paths.task)
+        logging.debug(f"Requested full image segmentation of '{inference_node.GetName()}'. Waiting for result...")
+
+    def _create_result_segmentation_node(self):
         self.result_segmentation_node = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLSegmentationNode", "SegmentationPreview"
         )
         self.result_segmentation_node.SaveWithSceneOff()
         self._setup_segmentation_display(self.result_segmentation_node, self.preview_slice.node.GetID())
-
         helpers.setSourceVolume(self.result_segmentation_node, self.source_volume_node)
+
+    def _setup_result_node(self):
+        self._create_result_segmentation_node()
         self.tmp_labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", "TemporaryResult")
         self.tmp_labelmap_node.HideFromEditorsOn()
         self.tmp_labelmap_node.SaveWithSceneOff()
@@ -867,28 +1144,24 @@ class RealTimeSegLogic:
 
         for i in range(segmentation.GetNumberOfSegments()):
             segment = segmentation.GetSegment(segmentation.GetNthSegmentID(i))
-            segment.SetName("Uncertain")
+            segment.SetName(UNCERTAIN_SEGMENT_NAME)
             segment.SetColor(1.0, 0.4, 0.0)
 
     def _cleanup(self):
-        # Detach the segment editor widget from its segmentation node and scene
-        # *before* removing any node. add_segment_to_segment() leaves this widget
-        # observing result_segmentation_node, so removing that node while the
-        # widget is still attached re-enters its segments model during teardown
-        # and corrupts the sort/filter proxy mapping (crash in
-        # qMRMLSegmentsModel::onSegmentRemoved).
-        if self.segment_editor_widget:
-            self.segment_editor_widget.setSegmentationNode(None)
-            self.segment_editor_widget.setMRMLScene(None)
-            self.segment_editor_widget = None
+        # Detach the shared segment editor widget from its segmentation node and
+        # scene *before* removing any node. add_segment_to_segment() leaves that
+        # widget observing result_segmentation_node, so removing that node while
+        # the widget is still attached re-enters its segments model during
+        # teardown and corrupts the sort/filter proxy mapping (crash in
+        # qMRMLSegmentsModel::onSegmentRemoved). The widget itself outlives the
+        # session; shared_segment_editor() reattaches it on the next merge.
+        if _shared_segment_editor_widget is not None:
+            _shared_segment_editor_widget.setSegmentationNode(None)
+            _shared_segment_editor_widget.setMRMLScene(None)
 
         if self.tmp_labelmap_node and slicer.mrmlScene.IsNodePresent(self.tmp_labelmap_node):
             slicer.mrmlScene.RemoveNode(self.tmp_labelmap_node)
             self.tmp_labelmap_node = None
-
-        if self.segment_editor_node and slicer.mrmlScene.IsNodePresent(self.segment_editor_node):
-            slicer.mrmlScene.RemoveNode(self.segment_editor_node)
-            self.segment_editor_node = None
 
         if self.result_segmentation_node and slicer.mrmlScene.IsNodePresent(self.result_segmentation_node):
             slicer.mrmlScene.RemoveNode(self.result_segmentation_node)
@@ -918,42 +1191,139 @@ class RealTimeSegLogic:
     def add_segment_to_segment(self, seg_node, segment_a, segment_b):
         modifierSegmentID = segment_b
         selectedSegmentID = segment_a
-        self.segment_editor_widget.setSegmentationNode(seg_node)
-        self.segment_editor_node.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
-        self.segment_editor_node.SetMaskMode(slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere)
-        self.segment_editor_node.SetSelectedSegmentID(selectedSegmentID)
-        self.segment_editor_widget.setActiveEffectByName("Logical operators")
-        effect = self.segment_editor_widget.activeEffect()
+        editor_widget, editor_node = shared_segment_editor()
+        editor_widget.setSegmentationNode(seg_node)
+        editor_node.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
+        editor_node.SetMaskMode(slicer.vtkMRMLSegmentationNode.EditAllowedEverywhere)
+        editor_node.SetSelectedSegmentID(selectedSegmentID)
+        editor_widget.setActiveEffectByName("Logical operators")
+        effect = editor_widget.activeEffect()
         effect.setParameter("BypassMasking", "1")
         effect.setParameter("ModifierSegmentID", modifierSegmentID)
         effect.setParameter("Operation", "UNION")
         effect.self().onApply()
 
 
-class InteractiveSegmenterFrame(qt.QFrame):
-    START_TEXT = "Start Annotation"
-    START_TIP = "Start annotating with a real-time preview of the result."
-    STOP_TEXT = "Cancel"
-    STOP_TIP = (
-        "Stop the real-time segmentation preview. Your annotation will remain in project and you can resume later."
-    )
+class ApplyToOtherImagesDialog(qt.QDialog):
+    def __init__(self, segment_count, parent=None):
+        super().__init__(parent or slicer.util.mainWindow())
+        self._segmentCount = segment_count
+        self.setWindowTitle(BATCH_DIALOG_TITLE)
+        self.setMinimumWidth(500)
 
+        layout = qt.QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
+
+        helpLabel = qt.QLabel(BATCH_DIALOG_HELP)
+        helpLabel.setWordWrap(True)
+        layout.addWidget(helpLabel)
+
+        self._treeView = slicer.qMRMLSubjectHierarchyTreeView()
+        self._treeView.setMRMLScene(slicer.mrmlScene)
+        for column in (2, 3, 4, 5):
+            self._treeView.hideColumn(column)
+        self._treeView.nodeTypes = ["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"]
+        self._treeView.setMultiSelection(True)
+        self._treeView.setContextMenuEnabled(False)
+        self._treeView.setEditMenuActionVisible(False)
+        self._treeView.setMinimumHeight(250)
+        layout.addWidget(self._treeView)
+
+        self._summaryLabel = qt.QLabel()
+        self._summaryLabel.setWordWrap(True)
+        layout.addWidget(self._summaryLabel)
+
+        self._cancelButton = qt.QPushButton(BATCH_DIALOG_CANCEL_TEXT)
+        self._cancelButton.toolTip = BATCH_DIALOG_CANCEL_TOOLTIP
+        self._cancelButton.setFixedSize(140, 40)
+        self._cancelButton.clicked.connect(lambda: self.reject())
+
+        self._applyButton = qt.QPushButton(BATCH_DIALOG_APPLY_TEXT)
+        self._applyButton.toolTip = BATCH_DIALOG_APPLY_TOOLTIP
+        self._applyButton.setFixedSize(140, 40)
+        self._applyButton.setProperty("class", "actionButtonBackground")
+        self._applyButton.clicked.connect(lambda: self.accept())
+
+        buttonRowLayout = qt.QHBoxLayout()
+        buttonRowLayout.setSpacing(12)
+        buttonRowLayout.addStretch(1)
+        buttonRowLayout.addWidget(self._cancelButton)
+        buttonRowLayout.addWidget(self._applyButton)
+        layout.addLayout(buttonRowLayout)
+
+        # Connected only now: populating the tree emits a selection change, and the
+        # summary needs the label and the button above.
+        self._treeView.currentItemsChanged.connect(lambda _: self._updateSummary())
+        self._updateSummary()
+
+    def selectedNodes(self):
+        """Volume nodes selected in the tree, expanding selected folders."""
+        sh = slicer.mrmlScene.GetSubjectHierarchyNode()
+        selectedItems = vtk.vtkIdList()
+        self._treeView.currentItems(selectedItems)
+
+        itemIds = []
+        for i in range(selectedItems.GetNumberOfIds()):
+            itemId = selectedItems.GetId(i)
+            if itemId == sh.GetSceneItemID():
+                continue
+            itemIds.append(itemId)
+            children = vtk.vtkIdList()
+            sh.GetItemChildren(itemId, children, True)
+            itemIds.extend(children.GetId(j) for j in range(children.GetNumberOfIds()))
+
+        nodes = []
+        for itemId in dict.fromkeys(itemIds):
+            node = sh.GetItemDataNode(itemId)
+            if isinstance(node, slicer.vtkMRMLScalarVolumeNode) and node not in nodes:
+                nodes.append(node)
+        return nodes
+
+    def _updateSummary(self):
+        nodes = self.selectedNodes()
+        if not nodes:
+            self._summaryLabel.setText(BATCH_DIALOG_NO_SELECTION)
+            self._applyButton.enabled = False
+            return
+        images = (
+            BATCH_DIALOG_IMAGE_COUNT_SINGULAR
+            if len(nodes) == 1
+            else BATCH_DIALOG_IMAGE_COUNT_PLURAL.format(count=len(nodes))
+        )
+        self._summaryLabel.setText(BATCH_DIALOG_SUMMARY.format(segments=self._segmentCount, images=images))
+        self._applyButton.enabled = True
+
+
+class InteractiveSegmenterFrame(qt.QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._state = None
+        # Images still waiting for a full-image apply; the head of it is running.
+        self._applyQueue = []
+        self._applyTotal = 0
+        self._applyProgress = 0
+        # Slab bookkeeping for the running image, feeding the ETA: the slab last
+        # reported, how many there are, and when the first one started.
+        self._applySlab = 0
+        self._applySlabTotal = 0
+        self._applyFirstSlabTime = None
+        # When the whole queue started, and when the image now running started.
+        self._applyStartTime = None
+        self._applyImageStartTime = None
 
         layout = qt.QVBoxLayout(self)
 
         self._resumeSegFrame = qt.QGroupBox()
         resumeSegLayout = qt.QVBoxLayout(self._resumeSegFrame)
         resumeSegLayout.addSpacing(20)
-        self._resumeSegLabel = qt.QLabel("View layout changed. Would you like to resume annotation?")
+        self._resumeSegLabel = qt.QLabel(RESUME_PROMPT_TEXT)
         self._resumeSegLabel.setAlignment(qt.Qt.AlignCenter)
         resumeSegLayout.addWidget(self._resumeSegLabel)
         resumeSegLayout.addSpacing(10)
-        self._resumeSegButton = qt.QPushButton("Resume Annotation")
+        self._resumeSegButton = qt.QPushButton(RESUME_BUTTON_TEXT)
         self._resumeSegButton.setFixedHeight(40)
-        self._resumeSegButton.toolTip = "Resume annotating with a real-time preview of the result."
+        self._resumeSegButton.toolTip = RESUME_BUTTON_TOOLTIP
         self._resumeSegButton.setProperty("class", "actionButtonBackground")
         resumeSegLayout.addWidget(self._resumeSegButton)
         resumeSegLayout.addSpacing(20)
@@ -965,7 +1335,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
         self._inputSection = ctk.ctkCollapsibleButton()
         self._inputSection.collapsed = False
-        self._inputSection.text = "Input"
+        self._inputSection.text = INPUT_SECTION_TITLE
         layout.addWidget(self._inputSection)
         inputLayout = qt.QFormLayout(self._inputSection)
 
@@ -975,13 +1345,13 @@ class InteractiveSegmenterFrame(qt.QFrame):
             nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
         )
         self._inputSelector.setMRMLScene(slicer.mrmlScene)
-        self._inputSelector.setToolTip("Select the volume to segment.")
+        self._inputSelector.setToolTip(INPUT_IMAGE_TOOLTIP)
         inputLayout.addRow(" ", None)
-        inputLayout.addRow("Image 1:", self._inputSelector)
+        inputLayout.addRow(INPUT_IMAGE_LABEL, self._inputSelector)
         inputLayout.addRow(" ", None)
 
         self._extraImageSelectors = []
-        extraImageGroupBox = qt.QGroupBox("Extra channels (optional):")
+        extraImageGroupBox = qt.QGroupBox(EXTRA_CHANNELS_GROUP_TITLE)
         extraImageLayout = qt.QFormLayout(extraImageGroupBox)
         inputLayout.addRow(extraImageGroupBox)
         for index in (2, 3):
@@ -990,64 +1360,57 @@ class InteractiveSegmenterFrame(qt.QFrame):
                 nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
             )
             extraSelector.setMRMLScene(slicer.mrmlScene)
-            extraSelector.setToolTip(
-                "Optional co-registered image of the same dimensions, appended as extra channels for "
-                "segmentation (e.g. xpol0/xpol45 images of a thin section, or a saturated microCT scan)."
-            )
-            extraImageLayout.addRow(f"Image {index}:", extraSelector)
+            extraSelector.setToolTip(EXTRA_IMAGE_TOOLTIP)
+            extraImageLayout.addRow(EXTRA_IMAGE_LABEL.format(index=index), extraSelector)
             self._extraImageSelectors.append(extraSelector)
 
         self._paramSection = ctk.ctkCollapsibleButton()
         self._paramSection.collapsed = False
-        self._paramSection.text = "Parameters"
-        layout.addWidget(self._paramSection)
+        self._paramSection.text = PARAMETERS_SECTION_TITLE
+        inputLayout.addRow(self._paramSection)
         paramLayout = qt.QFormLayout(self._paramSection)
 
         self._featureScaleComboBox = qt.QComboBox()
-        self._featureScaleComboBox.addItems(["Auto"] + [f"{m}x" for m in SUPPORTED_MULTIPLIERS])
-        self._featureScaleComboBox.setToolTip(
-            "Scale every feature kernel for coarser-textured images. "
-            "Auto estimates the multiplier from the image's characteristic texture length."
+        self._featureScaleComboBox.addItems(
+            [FEATURE_SCALE_AUTO] + [FEATURE_SCALE_ITEM.format(multiplier=m) for m in SUPPORTED_MULTIPLIERS]
         )
+        self._featureScaleComboBox.setToolTip(FEATURE_SCALE_TOOLTIP)
         self._featureScaleComboBox.currentTextChanged.connect(self._onFeatureScaleChanged)
-        paramLayout.addRow("Feature Scale:", self._featureScaleComboBox)
+        paramLayout.addRow(FEATURE_SCALE_LABEL, self._featureScaleComboBox)
 
         self._runButton = qt.QPushButton()
         self._runButton.setFixedHeight(40)
         self._runButton.objectName = "Run Button"
 
-        layout.addSpacing(10)
-        layout.addWidget(self._runButton)
-        layout.addSpacing(10)
+        inputLayout.addRow(" ", None)
+        inputLayout.addRow(self._runButton)
 
         self._annotationSection = ctk.ctkCollapsibleButton()
         self._annotationSection.visible = False
-        self._annotationSection.text = "Annotation"
+        self._annotationSection.text = ANNOTATION_SECTION_TITLE
         layout.addWidget(self._annotationSection)
         annotationLayout = qt.QFormLayout(self._annotationSection)
 
         self._viewPlaneComboBox = qt.QComboBox()
         self._viewPlaneComboBox.addItems(list(VIEW_PLANES))
-        self._viewPlaneTooltip = "Choose which plane of the volume to annotate and preview."
+        self._viewPlaneTooltip = VIEW_PLANE_TOOLTIP
         self._viewPlaneComboBox.setToolTip(self._viewPlaneTooltip)
         self._viewPlaneComboBox.currentTextChanged.connect(self._onViewPlaneChanged)
-        annotationLayout.addRow("View Plane:", self._viewPlaneComboBox)
+        annotationLayout.addRow(VIEW_PLANE_LABEL, self._viewPlaneComboBox)
 
         self._featurePresetComboBox = qt.QComboBox()
         self._featurePresetComboBox.addItems(list(PRESETS.keys()))
-        self._featurePresetComboBox.setCurrentText("Balanced")
-        self._featurePresetTooltip = (
-            "Change the smoothness of the result by selecting which filters to apply before training."
-        )
+        self._featurePresetComboBox.setCurrentText(DEFAULT_FEATURE_PRESET)
+        self._featurePresetTooltip = FEATURE_SET_TOOLTIP
         self._featurePresetComboBox.setToolTip(self._featurePresetTooltip)
         self._featurePresetComboBox.currentTextChanged.connect(self._onFeaturePresetChanged)
-        annotationLayout.addRow("Feature Set:", self._featurePresetComboBox)
+        annotationLayout.addRow(FEATURE_SET_LABEL, self._featurePresetComboBox)
 
         self._featureListGroupBox = ctk.ctkCollapsibleButton()
-        self._featureListGroupBox.text = "Feature List"
+        self._featureListGroupBox.text = FEATURE_LIST_TITLE
         self._featureListGroupBox.flat = True
         self._featureListGroupBox.collapsed = True
-        featureToolTip = "List of features used for segmentation. Values are in voxels."
+        featureToolTip = FEATURE_LIST_TOOLTIP
         self._featureListGroupBox.setToolTip(featureToolTip)
         featureListLayout = qt.QVBoxLayout(self._featureListGroupBox)
         self._featureListLabel = qt.QLabel()
@@ -1056,10 +1419,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
         featureListLayout.addWidget(self._featureListLabel)
         annotationLayout.addRow(self._featureListGroupBox)
 
-        uncertaintyToolTip = (
-            "Highlight in the left view the voxels the preview classifier is least certain about. "
-            "These are the most useful places to add annotations."
-        )
+        uncertaintyToolTip = UNCERTAINTY_TOOLTIP
         self._showUncertaintyCheckBox = qt.QCheckBox()
         self._showUncertaintyCheckBox.setChecked(True)
         self._showUncertaintyCheckBox.setToolTip(uncertaintyToolTip)
@@ -1067,9 +1427,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
         # QCheckBox text is plain-text only, so the word is rendered in a sibling
         # rich-text label colored to match the uncertainty overlay (rgb 255,102,0).
-        uncertaintyLabel = qt.QLabel(
-            'Show <a href="#" style="color:#ff6600; text-decoration:none;">uncertain</a> regions'
-        )
+        uncertaintyLabel = qt.QLabel(UNCERTAINTY_CHECKBOX_LABEL)
         uncertaintyLabel.setToolTip(uncertaintyToolTip)
         uncertaintyLabel.linkActivated.connect(lambda _: self._showUncertaintyCheckBox.toggle())
 
@@ -1105,30 +1463,39 @@ class InteractiveSegmenterFrame(qt.QFrame):
         annotationLayout.addRow(self._segmentEditor)
 
         self.outputSection = ctk.ctkCollapsibleButton()
-        self.outputSection.text = "Output"
+        self.outputSection.text = OUTPUT_SECTION_TITLE
         self.outputSection.visible = False
 
         outputLayout = qt.QFormLayout(self.outputSection)
 
-        self._inferenceImageSelector = ui.hierarchyVolumeInput(
-            onChange=self._onInferenceNodeChanged,
-            hasNone=True,
-            nodeTypes=["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"],
-        )
-        self._inferenceImageSelector.setMRMLScene(slicer.mrmlScene)
-        self._inferenceImageSelector.setToolTip(
-            "Select an image to apply the segmentation to. If None, the input image is used."
-        )
-        outputLayout.addRow("Inference Image:", self._inferenceImageSelector)
-
-        self._applyButton = qt.QPushButton("Apply to Full Image")
-        self._applyButton.toolTip = "Apply the current segmentation to the full image."
+        self._applyButton = qt.QPushButton(APPLY_BUTTON_TEXT)
+        self._applyButton.toolTip = APPLY_BUTTON_TOOLTIP
         self._applyButton.setFixedHeight(40)
         self._applyButton.setProperty("class", "actionButtonBackground")
         self._applyButton.clicked.connect(self._onApplyButtonClicked)
         self._applyButton.enabled = False
+
+        self._cancelButton = qt.QPushButton(CANCEL_BUTTON_TEXT)
+        self._cancelButton.toolTip = CANCEL_BUTTON_TOOLTIP
+        self._cancelButton.setFixedHeight(40)
+        self._cancelButton.clicked.connect(self._onRunButtonClicked)
+
+        applyRow = qt.QWidget()
+        applyRowLayout = qt.QHBoxLayout(applyRow)
+        applyRowLayout.setContentsMargins(0, 0, 0, 0)
+        applyRowLayout.addWidget(self._applyButton, 3)
+        applyRowLayout.addWidget(self._cancelButton, 1)
+
         inputLayout.addRow(" ", None)
-        outputLayout.addRow(self._applyButton)
+        outputLayout.addRow(applyRow)
+
+        self._batchButton = qt.QPushButton(BATCH_BUTTON_TEXT)
+        self._batchTooltip = BATCH_BUTTON_TOOLTIP
+        self._batchButton.setToolTip(self._batchTooltip)
+        self._batchButton.setFixedHeight(40)
+        self._batchButton.clicked.connect(self._onBatchButtonClicked)
+        self._batchButton.enabled = False
+        outputLayout.addRow(self._batchButton)
 
         # Developer aid: dump and render a montage explaining how the current
         # preview was computed (features, computed region, training samples,
@@ -1142,18 +1509,35 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._progressBar = qt.QProgressBar()
         self._progressBar.setRange(0, 100)
         outputLayout.addRow(self._progressBar)
-        self._statusLabel = qt.QLabel("Ready")
+        self._statusLabel = qt.QLabel(STATUS_READY)
         self._statusLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
         outputLayout.addRow(self._statusLabel)
 
         layout.addWidget(self.outputSection)
+
+        # What the user reads to follow an apply run, and to read back afterwards
+        # what it did. It sits in the panel's own layout rather than in the Output
+        # section because a finished apply closes the session that produced it: from
+        # inside the section, the record would disappear at the exact moment the user
+        # turns to it. Once shown it stays, and its header says which run it belongs to.
+        self._applyLogFrame = qt.QWidget()
+        applyLogLayout = qt.QVBoxLayout(self._applyLogFrame)
+        applyLogLayout.setContentsMargins(0, 0, 0, 0)
+        self._applyLogHeaderLabel = qt.QLabel()
+        self._applyLogHeaderLabel.setWordWrap(True)
+        applyLogLayout.addWidget(self._applyLogHeaderLabel)
+        self._applyLogTextEdit = qt.QPlainTextEdit()
+        self._applyLogTextEdit.setReadOnly(True)
+        applyLogLayout.addWidget(self._applyLogTextEdit)
+        self._applyLogFrame.visible = False
+        layout.addWidget(self._applyLogFrame)
 
         self._runButton.clicked.connect(self._onRunButtonClicked)
 
         layout.addSpacing(300)
 
         self._onInputNodeChanged(None)
-        self._onStatusUpdate("Ready", show_progress=False)
+        self._onStatusUpdate(STATUS_READY, show_progress=False)
         self._setRunButtonState(True)
         self._onFeaturePresetChanged(self._featurePresetComboBox.currentText)
 
@@ -1162,15 +1546,36 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._progressTimer = qt.QTimer(self)
 
         self._sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self._onCloseEvent)
+        self.destroyed.connect(lambda *_: self._releaseGlobalCallbacks())
+
+        # Reports full-image apply progress on the application status bar.
+        self._cliProgressBar = CompanionProgressBar()
+
+    def _releaseGlobalCallbacks(self):
+        """The scene and the layout manager outlive this widget and hold references to
+        its bound methods, so they go on calling a destroyed widget unless dropped."""
+        if self._sceneCloseObserver is None:
+            return
+        slicer.mrmlScene.RemoveObserver(self._sceneCloseObserver)
+        self._sceneCloseObserver = None
+        slicer.app.layoutManager().layoutChanged.disconnect(self._onLayoutChanged)
 
     def _onCloseEvent(self, *args, **kwargs):
         self._stopSegmentation()
 
+    def exit(self):
+        if self._state and self._state.applying_full_image:
+            logging.debug("Module exit: full image apply continues in the background.")
+            onSegmentEditorExit(self._segmentEditor)
+            return
+        if self._state:
+            self._stopSegmentation()
+
     def cleanup(self):
-        if self._state and self._state.is_running():
+        if self._state:
             logging.debug("Module cleanup: Stopping segmentation process.")
             self._stopSegmentation()
-        slicer.mrmlScene.RemoveObserver(self._sceneCloseObserver)
+        self._releaseGlobalCallbacks()
 
     def _onInputNodeChanged(self, vtkId):
         is_running = self._state and self._state.is_running()
@@ -1178,25 +1583,47 @@ class InteractiveSegmenterFrame(qt.QFrame):
             self._runButton.enabled = True
         else:
             self._runButton.enabled = self._inputSelector.currentNode() is not None
-        self._inferenceImageSelector.setCurrentNode(self._inputSelector.currentNode())
 
-    def _onStatusUpdate(self, status_message, show_progress=False):
+    def _setStatusText(self, status_message):
+        """Say what is being done right now, leaving the progress bar as it is.
+
+        The status line holds one line: the action under way. Everything worth
+        keeping goes to the apply log, which is never rewritten."""
         if self._statusLabel:
             self._statusLabel.setText(status_message)
+
+    def _onStatusUpdate(self, status_message, show_progress=False):
+        self._setStatusText(status_message)
+        if self._statusLabel:
             self._progressBar.setVisible(show_progress)
             self._progressBar.setRange(0, 0) if show_progress else self._progressBar.setRange(0, 100)
 
+    def _startGlobalProgress(self):
+        self._cliProgressBar.processStopped()
+        self._cliProgressBar.start(f"interactive_segmenter_{time.time_ns()}", FULL_APPLY_TIMEOUT_SECONDS)
+
+    def _updateGlobalProgress(self, value):
+        if self._cliProgressBar.isRunning():
+            self._cliProgressBar.update(value)
+
     def _onFeatureProgressUpdate(self, progress, message):
+        if self._state and self._state.applying_full_image:
+            # The bar covers the whole queue; the consumer only knows the current
+            # image. This channel's text is not shown during an apply: the log and
+            # the status line are driven by the apply log instead, which -- unlike
+            # this one -- cannot drop a step another step quickly follows.
+            self._setApplyProgress(self._queueProgress(progress))
+            return
+
         # Annotation is already enabled (see _startSegmentation); this only reports
         # how close the preview is while the user annotates.
         self._progressBar.setRange(0, 100)
-        self._progressBar.setValue(progress)
         self._progressBar.setVisible(True)
-
+        self._progressBar.setValue(progress)
         if progress >= 100:
-            self._onStatusUpdate("Ready", show_progress=False)
+            self._onStatusUpdate(STATUS_READY, show_progress=False)
         else:
-            self._statusLabel.setText(f"Computing preview: {message}")
+            self._setStatusText(STATUS_COMPUTING_PREVIEW.format(message=message))
 
     def _onFeaturesComplete(self):
         # Every feature is now cached, so switching presets no longer risks reading
@@ -1207,24 +1634,28 @@ class InteractiveSegmenterFrame(qt.QFrame):
     def _onModelTrained(self, status):
         if self._state:
             self._applyButton.enabled = status
+            self._batchButton.enabled = status and not self._state.extra_volume_nodes
 
     def _onResumeSegButtonClicked(self):
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(SIDE_BY_SIDE_DUMB_LAYOUT_ID)
 
     def _onLayoutChanged(self, layout):
-        if layout != SIDE_BY_SIDE_DUMB_LAYOUT_ID and self._state:
+        if layout != SIDE_BY_SIDE_DUMB_LAYOUT_ID and self._state and not self._state.applying_full_image:
             self._resumeSegFrame.visible = True
         else:
             self._resumeSegFrame.visible = False
 
     def _stopSegmentation(self):
         logging.debug("Stopping real-time segmentation process.")
+        self._updateGlobalProgress(1.0)
+        self._applyQueue.clear()
         if self._state:
             self._state.stop_segmentation()
             self._state = None
 
         self._setRunButtonState(True)
+        self._inputSection.enabled = True
         self._inputSelector.enabled = True
         self._featureScaleComboBox.enabled = True
         self._featurePresetComboBox.enabled = True
@@ -1238,27 +1669,29 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
         self._annotationSection.visible = False
         self.outputSection.visible = False
+        self._inputSection.collapsed = False
+        # The log itself stays: it is the record of the run, and this is where a
+        # completed apply lands. Only the header, which still promises a running
+        # apply, has to be corrected -- a finished run has already replaced it.
+        if self._applyLogHeaderLabel.text == APPLY_LOG_HEADER_RUNNING:
+            self._applyLogHeaderLabel.text = APPLY_LOG_HEADER_STOPPED
 
         self._applyButton.enabled = False
+        self._batchButton.enabled = False
         self._resumeSegFrame.visible = False
-        self._onStatusUpdate("Ready", show_progress=False)
+        self._onStatusUpdate(STATUS_READY, show_progress=False)
         slicer.app.layoutManager().layoutChanged.disconnect(self._onLayoutChanged)
 
     def _startSegmentation(self):
         source_node = self._inputSelector.currentNode()
 
         dims = source_node.GetImageData().GetDimensions()
-        is_3d = dims[2] > 1
-        if is_3d and np.prod(dims) > 700**3:
+        if is_large_3d_image(dims):
             msgBox = qt.QMessageBox(slicer.util.mainWindow())
-            msgBox.setText(
-                "The input image is large. "
-                "For better performance, it is recommended to crop the image. "
-                "You can apply the segmentation to the full image later."
-            )
-            msgBox.setInformativeText("Would you like to crop the volume?")
-            cropButton = msgBox.addButton("Crop Image", qt.QMessageBox.YesRole)
-            continueButton = msgBox.addButton("Continue Anyways", qt.QMessageBox.NoRole)
+            msgBox.setText(LARGE_IMAGE_TEXT)
+            msgBox.setInformativeText(LARGE_IMAGE_INFORMATIVE_TEXT)
+            cropButton = msgBox.addButton(LARGE_IMAGE_CROP_BUTTON, qt.QMessageBox.YesRole)
+            continueButton = msgBox.addButton(LARGE_IMAGE_CONTINUE_BUTTON, qt.QMessageBox.NoRole)
             cancelButton = msgBox.addButton(qt.QMessageBox.Cancel)
             msgBox.setDefaultButton(cancelButton)
             msgBox.exec_()
@@ -1272,43 +1705,46 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
         annotation_node = None
         try:
-            annotation_node = source_node.GetAttribute("InteractiveSegmenterAnnotationNode")
-            if annotation_node is not None:
-                annotation_node = slicer.mrmlScene.GetNodeByID(annotation_node)
+            annotation_node = get_annotation_node(source_node)
+            # vtkMRMLNode.Copy does carry references over, so verify ownership too.
+            if annotation_node and helpers.getSourceVolume(annotation_node) is not source_node:
+                annotation_node = None
             annotation_node = annotation_node or slicer.mrmlScene.AddNewNodeByClass(
                 "vtkMRMLSegmentationNode", f"{source_node.GetName()}_Annotation"
             )
-            source_node.SetAttribute("InteractiveSegmenterAnnotationNode", annotation_node.GetID())
+            source_node.SetNodeReferenceID(ANNOTATION_REFERENCE_ROLE, annotation_node.GetID())
+            source_node.RemoveAttribute(LEGACY_ANNOTATION_ATTRIBUTE)
             helpers.setSourceVolume(annotation_node, source_node)
 
             logging.debug("Starting real-time segmentation process.")
-            self._onStatusUpdate("Computing preview — you can start annotating now", show_progress=True)
+            self._onStatusUpdate(STATUS_START_ANNOTATING, show_progress=True)
             # Let the user annotate immediately while features warm up; the preview
             # appears once they are ready. Preset switching stays disabled until all
             # features are computed (3D), so a switch can't reference missing features.
             self._annotationSection.enabled = True
             self._featurePresetComboBox.enabled = False
-            self._featurePresetComboBox.setToolTip(
-                "Other feature sets become selectable once feature computation finishes in the background."
-            )
+            self._featurePresetComboBox.setToolTip(FEATURE_SET_TOOLTIP_WARMING_UP)
             self._applyButton.enabled = False
 
             self._state = RealTimeSegLogic()
             self._state.on_full_segmentation_complete_callback = self._onFullSegmentationComplete
             self._state.on_process_crashed_callback = self._onProcessCrashed
             self._state.on_progress_callback = self._onFeatureProgressUpdate
+            self._state.on_apply_log_callback = self._onApplyLog
             self._state.on_model_trained_callback = self._onModelTrained
             self._state.on_features_complete_callback = self._onFeaturesComplete
             self._state.on_debug_capture_ready_callback = self._onDebugCaptureReady
             self._state.on_view_plane_changed_callback = self._onViewPlaneChangedInView
             self._state.set_timers(self._mainLoopTimer, self._progressTimer)
             self._state.set_feature_preset(self._featurePresetComboBox.currentText)
-            self._state.inference_volume_node = self._inferenceImageSelector.currentNode()
             self._state.extra_volume_nodes = [
                 selector.currentNode()
                 for selector in self._extraImageSelectors
                 if selector.currentNode() and selector.currentNode() is not source_node
             ]
+            self._batchButton.setToolTip(
+                BATCH_BUTTON_TOOLTIP_MULTIPLE_INPUTS if self._state.extra_volume_nodes else self._batchTooltip
+            )
             self._state.show_uncertainty = self._showUncertaintyCheckBox.isChecked()
             self._state.feature_scale = self._resolveFeatureScale(source_node)
             self._updateFeatureList()  # reflect the resolved (possibly Auto) scale
@@ -1317,11 +1753,9 @@ class InteractiveSegmenterFrame(qt.QFrame):
             self._viewPlaneComboBox.blockSignals(True)
             self._viewPlaneComboBox.setCurrentText(default_plane)
             self._viewPlaneComboBox.blockSignals(False)
-            is_2d = not is_3d
+            is_2d = dims[2] == 1
             self._viewPlaneComboBox.enabled = not is_2d
-            self._viewPlaneComboBox.setToolTip(
-                "The image is 2D; only the XY plane is available." if is_2d else self._viewPlaneTooltip
-            )
+            self._viewPlaneComboBox.setToolTip(VIEW_PLANE_TOOLTIP_2D if is_2d else self._viewPlaneTooltip)
             self._state.view_plane = default_plane
 
             self._state.start_segmentation(annotation_node)
@@ -1337,31 +1771,28 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
             self._annotationSection.visible = True
             self.outputSection.visible = True
+            # Keep the panel on the work at hand; the input is read-only during a session.
+            self._inputSection.collapsed = True
             slicer.app.layoutManager().layoutChanged.connect(self._onLayoutChanged)
         except Exception as e:
-            slicer.util.errorDisplay(f"Failed to start segmentation process: {e}")
+            slicer.util.errorDisplay(ERROR_START_FAILED.format(error=e))
             self._stopSegmentation()
             raise e
 
     def _setRunButtonState(self, is_start):
         if is_start:
-            self._runButton.text = self.START_TEXT
-            self._runButton.toolTip = self.START_TIP
+            self._runButton.text = RUN_START_TEXT
+            self._runButton.toolTip = RUN_START_TOOLTIP
             self._runButton.setProperty("class", "actionButtonBackground")
         else:
-            self._runButton.text = self.STOP_TEXT
-            self._runButton.toolTip = self.STOP_TIP
+            self._runButton.text = RUN_STOP_TEXT
+            self._runButton.toolTip = RUN_STOP_TOOLTIP
             self._runButton.setProperty("class", "regularButton")
 
         # Force style update
         self._runButton.style().unpolish(self._runButton)
         self._runButton.style().polish(self._runButton)
         self._runButton.update()
-
-    def _onInferenceNodeChanged(self, vtkId):
-        if self._state:
-            node = self._inferenceImageSelector.currentNode()
-            self._state.inference_volume_node = node
 
     def _onRunButtonClicked(self):
         is_running = self._state and (self._state.is_running() or self._state.progress_timer.isActive())
@@ -1374,13 +1805,13 @@ class InteractiveSegmenterFrame(qt.QFrame):
         """Resolve the Feature Scale combobox to an integer multiplier, estimating
         it from the image's characteristic texture length when set to Auto."""
         text = self._featureScaleComboBox.currentText
-        if text != "Auto":
+        if text != FEATURE_SCALE_AUTO:
             return int(text.rstrip("x"))
         try:
             array = slicer.util.arrayFromVolume(source_node)
             scale = suggest_multiplier(array)
             logging.info(f"Auto feature scale: estimated x{scale} for '{source_node.GetName()}'.")
-            self._onStatusUpdate(f"Auto feature scale: x{scale}", show_progress=True)
+            self._onStatusUpdate(STATUS_AUTO_FEATURE_SCALE.format(scale=scale), show_progress=True)
             return scale
         except Exception as e:
             logging.warning(f"Auto feature scale estimation failed ({e}); falling back to x1.")
@@ -1426,20 +1857,20 @@ class InteractiveSegmenterFrame(qt.QFrame):
         if self._state is not None:
             return self._state.feature_scale, False
         text = self._featureScaleComboBox.currentText
-        if text == "Auto":
+        if text == FEATURE_SCALE_AUTO:
             return 1, True
         return int(text.rstrip("x")), False
 
     def _updateFeatureList(self):
         scale, is_auto = self._currentDisplayScale()
         items = "".join(
-            f"<li>{seg_consumer.feature_display_name(FeatureIndex(i), scale)}</li>"
+            f"<li>{feature_display_name(FeatureIndex(i), scale)}</li>"
             for i in getattr(self, "_currentFeatureIndices", [])
         )
         if is_auto:
-            header = "<i>Auto — sizes shown at 1×; the multiplier is estimated when you start.</i>"
+            header = FEATURE_LIST_AUTO_HEADER
         elif scale != 1:
-            header = f"<i>Feature scale ×{scale}</i>"
+            header = FEATURE_LIST_SCALE_HEADER.format(scale=scale)
         else:
             header = ""
         self._featureListLabel.setText(header + "<ul>" + items + "</ul>")
@@ -1448,10 +1879,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
         self._updateFeatureList()
 
     def _onProcessCrashed(self):
-        slicer.util.warningDisplay(
-            "The segmentation process has crashed or terminated unexpectedly. "
-            "Please check the logs for more details. The UI has been reset."
-        )
+        slicer.util.warningDisplay(WARNING_PROCESS_CRASHED)
         self._stopSegmentation()
 
     def _onDebugPreviewClicked(self):
@@ -1465,7 +1893,7 @@ class InteractiveSegmenterFrame(qt.QFrame):
 
     def _onDebugCaptureReady(self, npz_path):
         try:
-            from ltrace.interactive.seg_debug_render import render_capture
+            from ltrace.interactive.debug_render import render_capture
 
             pdf_path = render_capture(npz_path)
             qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(pdf_path)))
@@ -1474,95 +1902,183 @@ class InteractiveSegmenterFrame(qt.QFrame):
             logging.error(f"Failed to render debug preview: {exc}\n{traceback.format_exc()}")
             slicer.util.warningDisplay(f"Failed to render debug preview: {exc}")
 
-    def _onApplyButtonClicked(self):
-        if not self._state or not self._state.features_ready:
-            slicer.util.warningDisplay("Features are not ready yet. Please wait.")
-            return
-
-        inference_node = self._state.inference_volume_node
+    def _inferenceNodeError(self, node):
+        """Why `node` can't be segmented with the current model, or None if it can."""
         source_node = self._state.source_volume_node
-        if inference_node and inference_node is not source_node:
-            if self._state.extra_volume_nodes:
-                slicer.util.warningDisplay(
-                    "Applying to a different inference image is not supported when extra input images are used."
-                )
-                return
-            source_image = source_node.GetImageData()
-            inference_image = inference_node.GetImageData()
-            if (source_image.GetDimensions()[2] == 1) != (inference_image.GetDimensions()[2] == 1) or (
-                source_image.GetNumberOfScalarComponents() != inference_image.GetNumberOfScalarComponents()
-            ):
-                slicer.util.warningDisplay(
-                    "The inference image must have the same dimensionality (2D/3D) and "
-                    "number of channels as the input image."
-                )
+        if node is source_node:
+            return None
+        if self._state.extra_volume_nodes:
+            return ERROR_BATCH_WITH_EXTRA_IMAGES
+        source_image = source_node.GetImageData()
+        image = node.GetImageData()
+        if (source_image.GetDimensions()[2] == 1) != (image.GetDimensions()[2] == 1) or (
+            source_image.GetNumberOfScalarComponents() != image.GetNumberOfScalarComponents()
+        ):
+            return ERROR_INFERENCE_NODE_MISMATCH.format(name=node.GetName())
+        return None
+
+    def _onApplyButtonClicked(self):
+        self._startApply([self._state.source_volume_node] if self._state else [])
+
+    def _onBatchButtonClicked(self):
+        segments = self._state.annotation_node.GetSegmentation().GetNumberOfSegments()
+        dialog = ApplyToOtherImagesDialog(segments, self)
+        nodes = dialog.selectedNodes() if dialog.exec_() == qt.QDialog.Accepted else []
+        dialog.deleteLater()
+        if nodes:
+            self._startApply(nodes)
+
+    def _startApply(self, nodes):
+        if not self._state or not self._state.features_ready:
+            slicer.util.warningDisplay(WARNING_FEATURES_NOT_READY)
+            return
+        for node in nodes:
+            error = self._inferenceNodeError(node)
+            if error:
+                slicer.util.warningDisplay(error)
                 return
 
+        self._applyQueue = list(nodes)
+        self._applyTotal = len(nodes)
+        self._applyProgress = 0
+        self._applyStartTime = time.time()
+        self._applyLogTextEdit.clear()
+        self._applyLogHeaderLabel.text = APPLY_LOG_HEADER_RUNNING
+        self._applyLogFrame.visible = True
         self._applyButton.enabled = False
+        self._batchButton.enabled = False
         self._inputSection.enabled = False
         self._annotationSection.enabled = False
+        self._startGlobalProgress()
+        self._onStatusUpdate(STATUS_APPLYING, show_progress=True)
+        self._setApplyProgress(0)
+        self._applyNextInQueue()
 
-        self._state.applying_full_image = True
+    def _applyLogPrefix(self):
+        """The running image's place in the queue, or nothing when it is the only one."""
+        if self._applyTotal <= 1:
+            return ""
+        return APPLY_LOG_QUEUE_PREFIX.format(position=self._applyTotal - len(self._applyQueue), total=self._applyTotal)
 
-        if self._state.inference_volume_node:
-            helpers.setSourceVolume(self._state.result_segmentation_node, self._state.inference_volume_node)
-            self._state.tmp_labelmap_node.CopyOrientation(self._state.inference_volume_node)
+    @staticmethod
+    def _imageSizeText(node):
+        """The image's size as the user thinks of it (IxJxK), and what it occupies."""
+        image = node.GetImageData()
+        dimensions = image.GetDimensions()
+        voxel_bytes = image.GetScalarSize() * image.GetNumberOfScalarComponents()
+        # Deliberately not np.prod: that returns a platform int, which overflows on
+        # Windows past ~1300^3 -- exactly the sizes worth logging.
+        voxels = dimensions[0] * dimensions[1] * dimensions[2]
+        return "x".join(str(d) for d in dimensions), naturalsize(voxels * voxel_bytes, binary=True)
 
-        # The consumer may still hold result.npz open from the last real-time
-        # predict (WinError 32). This is a one-shot path -- it stops the main
-        # loop right after -- so the stale result must actually be gone before
-        # we request the full-image run, hence safe_unlink's retry rather than
-        # the update loop's swallow-and-skip.
-        safe_unlink(self._state.paths.result)
+    def _onApplyLog(self, entries):
+        """Show everything the consumer reported since the last poll, in order."""
+        for entry in entries:
+            message = entry.get("message", "")
+            self._logApply(message)
+            self._updateApplyStatus(entry, message)
 
-        inference_node = self._state.inference_volume_node or self._state.source_volume_node
-        if (
-            self._state.inference_volume_node
-            and self._state.inference_volume_node is not self._state.source_volume_node
-        ):
-            inference_array = slicer.util.arrayFromVolume(self._state.inference_volume_node)
-            safe_save_numpy(inference_array, self._state.paths.inference_source)
-            logging.debug(f"Inference image saved to {self._state.paths.inference_source}")
+    def _updateApplyStatus(self, entry, message):
+        """Put the step under way on the status line, with an ETA once one can be had.
 
-        extents_inclusive = inference_node.GetImageData().GetExtent()
-        full_extents = [
-            extents_inclusive[0],
-            extents_inclusive[1] + 1,
-            extents_inclusive[2],
-            extents_inclusive[3] + 1,
-            extents_inclusive[4],
-            extents_inclusive[5] + 1,
-        ]
-        task_params = {
-            "action": "predict",
-            "extents": full_extents,
-            "features": self._state.feature_indices,
-            "is_full_inference": True,
-        }
+        The estimate extrapolates the average time a finished slab took over the
+        slabs left, so it only exists from the second slab on: before that there is
+        nothing measured to extrapolate from, and a guess would be worse than silence.
+        """
+        if entry.get("slabs"):
+            self._applySlabTotal = entry["slabs"]
+        slab = entry.get("slab")
+        if not slab:
+            return
+        if slab != self._applySlab:
+            if self._applyFirstSlabTime is None:
+                self._applyFirstSlabTime = time.time()
+            self._applySlab = slab
 
-        self._state.main_loop_timer.stop()
-        self._state.progress_timer.start()
-        self._applyButton.enabled = False
+        finished = self._applySlab - 1
+        position = self._applyLogPrefix()
+        if finished < 1 or self._applyFirstSlabTime is None:
+            self._setStatusText(STATUS_APPLY_STEP.format(position=position, step=message))
+            return
 
-        safe_dump_json(task_params, self._state.paths.task)
+        average = (time.time() - self._applyFirstSlabTime) / finished
+        remaining = average * max(0, self._applySlabTotal - finished)
+        self._setStatusText(STATUS_APPLY_STEP_ETA.format(position=position, step=message, eta=naturaldelta(remaining)))
 
-        logging.debug("Requested full image segmentation. Waiting for result...")
-        self._onStatusUpdate("Applying segmentation to full image...", show_progress=True)
+    def _queueProgress(self, progress):
+        """How far the whole apply queue is, given `progress` on the running image."""
+        finished = self._applyTotal - len(self._applyQueue) - 1
+        return round((finished + progress / 100) / self._applyTotal * 100)
 
-    def _onFullSegmentationComplete(self, final_result_node):
-        input_node = self._state.inference_volume_node if self._state else None
-        if not input_node:
-            input_node = self._inputSelector.currentNode()
+    def _setApplyProgress(self, progress):
+        """Show the queue's progress on both bars, never going backwards."""
+        self._applyProgress = max(self._applyProgress, progress)
+        self._progressBar.setRange(0, 100)
+        self._progressBar.setVisible(True)
+        self._progressBar.setValue(self._applyProgress)
+        self._updateGlobalProgress(self._applyProgress / 100)
 
-        input_name = input_node.GetName()
-        output_name = slicer.mrmlScene.GenerateUniqueName(f"{input_name}_Segmented")
-        final_result_node.SetName(output_name)
+    def _logApply(self, message):
+        """Append one line to the apply log.
 
+        Nothing here is ever rewritten: a run's log is the whole story of what it
+        did, in order, which is what makes it worth reading after the fact. Every
+        line also goes to the application log, which outlives this widget.
+
+        The view follows the tail only while the user is already at the tail, so
+        scrolling back to read something is not undone by the next line.
+        """
+        logging.info(f"Interactive segmenter: {message}")
+        scrollBar = self._applyLogTextEdit.verticalScrollBar()
+        wasAtEnd = scrollBar.value >= scrollBar.maximum - 4
+        self._applyLogTextEdit.appendPlainText(message)
+        if wasAtEnd:
+            scrollBar.setValue(scrollBar.maximum)
+
+    def _applyNextInQueue(self):
+        node = self._applyQueue.pop(0)
+        self._state.request_full_apply(node)
+        # The slab timings of the image just finished say nothing about this one.
+        self._applySlab = 0
+        self._applySlabTotal = 0
+        self._applyFirstSlabTime = None
+        self._applyImageStartTime = time.time()
+        size, memory = self._imageSizeText(node)
+        self._logApply(
+            APPLY_LOG_STARTING.format(prefix=self._applyLogPrefix(), image=node.GetName(), size=size, memory=memory)
+        )
+
+    def _onFullSegmentationComplete(self, final_result_node, input_node):
+        final_result_node.SetName(slicer.mrmlScene.GenerateUniqueName(f"{input_node.GetName()}_Segmented"))
+        elapsed = _elapsed_text(time.time() - self._applyImageStartTime)
+        self._logApply(APPLY_LOG_DONE.format(elapsed=elapsed, result=final_result_node.GetName()))
+
+        # Only the last result is shown: overlapping results from a batch run would
+        # otherwise all be drawn on top of each other.
+        self._revealResultNode(final_result_node, visible=not self._applyQueue)
+
+        if self._applyQueue:
+            self._applyNextInQueue()
+            return
+
+        # A single image already reported its own time on the line above; only a
+        # batch has a total that is not just a repeat of it.
+        if self._applyTotal > 1:
+            batch_elapsed = _elapsed_text(time.time() - self._applyStartTime)
+            self._logApply(APPLY_LOG_FINISHED_BATCH.format(total=self._applyTotal, elapsed=batch_elapsed))
+        else:
+            self._logApply(APPLY_LOG_FINISHED)
+        self._applyLogHeaderLabel.text = APPLY_LOG_HEADER_DONE
         self._stopSegmentation()
+        slicer.util.setSliceViewerLayers(background=input_node, fit=True)
+        self._onStatusUpdate(STATUS_APPLIED.format(image=input_node.GetName()), show_progress=False)
 
+    @staticmethod
+    def _revealResultNode(final_result_node, visible):
+        """Take the finished result out of the preview-only view it was computed in."""
         displayNode = final_result_node.GetDisplayNode()
         if displayNode:
-            displayNode.SetVisibility(True)
+            displayNode.SetVisibility(visible)
             displayNode.SetDisplayableOnlyInView(None)
 
         previewDisplayNode = final_result_node.GetNthDisplayNode(1)
@@ -1570,9 +2086,6 @@ class InteractiveSegmenterFrame(qt.QFrame):
             final_result_node.RemoveNthDisplayNodeID(1)
             # Can't remove node, otherwise a crash occurs later in vtkMRMLSegmentationsDisplayableManager3D::ProcessMRMLNodesEvents
             # slicer.mrmlScene.RemoveNode(previewDisplayNode)
-        slicer.util.setSliceViewerLayers(background=input_node, fit=True)
-        self._inputSection.enabled = True
-        self._onStatusUpdate("Segmentation applied to full image.", show_progress=False)
 
     def _switchToCropModule(self):
         slicer.util.selectModule("CustomizedCropVolume")

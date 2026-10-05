@@ -37,6 +37,13 @@ class HierarchyVolumeInput(qt.QWidget):
         self.selectorWidget.noneEnabled = hasNone
         self.selectorWidget.setCurrentItem(0)
 
+        # The combo box sizes itself to the selected node's full name, which would
+        # squeeze the neighboring form label out of the module panel. Its text elides,
+        # so keep it shrinkable, like the enclosing panel widgets (see PL-3191).
+        self.selectorWidget.setSizePolicy(
+            qt.QSizePolicy.Policy.Ignored, self.selectorWidget.sizePolicy.verticalPolicy()
+        )
+
         layout = qt.QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.selectorWidget)

@@ -44,11 +44,11 @@ The workflow is designed to be interactive, providing immediate feedback on the 
 #### Step 5: Apply to Full Image
 
 1.  Once you are satisfied with the preview, go to the **Output** section.
-2.  (Optional) If you want to apply the segmentation to a different image (e.g., the original, uncropped volume), select it in the **Inference Image** selector. If no image is selected, the original input image will be used.
-3.  Click the **Apply to Full Image** button. The trained model will be applied to the entire selected volume.
-4.  A progress bar will show the status of the full segmentation. When complete, the side-by-side layout will be closed, and a new segmentation node will be added to the scene.
+2.  Click the **Apply to Full Image** button. The trained model will be applied to the whole of **Image 1**.
+3.  (Optional) To reuse the same model on other images (e.g., the original, uncropped volume, or a whole folder of scans), click **Apply to Other Images...**, select them in the tree of the dialog that opens and click **Apply**. They are segmented one after the other. Note: this button is currently disabled when **Image 2** or **Image 3** is in use.
+4.  A progress bar will show how far the whole run is, and a log in the **Output** section lists each image as it is worked on and the segmentation node it produced. When complete, the side-by-side layout will be closed, and a new segmentation node will be added to the scene for each segmented image.
 
-To stop the interactive session at any time, click the **Cancel** button. Your annotations will be saved in a segmentation node, and you can resume the session later by starting the module again with the same input image.
+To stop the interactive session at any time, click the **Cancel** button. Your annotations will remain in the project, and you can resume the session later by starting the module again with the same input image.
 
 ### Method
 

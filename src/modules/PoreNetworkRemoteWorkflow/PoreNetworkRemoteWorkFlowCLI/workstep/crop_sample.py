@@ -1,9 +1,9 @@
 import math
 
-import SimpleITK as sitk
 import numpy as np
+import SimpleITK as sitk
 
-from .workstep import Workstep, WorkflowContext
+from .workstep import WorkflowContext, Workstep
 
 TARGET_Z_PREVIEW_SIZE = 400
 
@@ -144,7 +144,9 @@ class CropSampleWorkstep(Workstep):
         z_dim, y_dim, x_dim = mask_array.shape
         min_required_pixels = slice_occupancy_threshold * y_dim * x_dim
 
-        valid_slices = np.where(mask_array.sum(axis=(1, 2)) >= min_required_pixels)[0]
+        # count_nonzero is faster and consumes less memory than sum
+        slice_counts = np.count_nonzero(mask_array, axis=(1, 2))
+        valid_slices = np.flatnonzero(slice_counts >= min_required_pixels)
 
         if len(valid_slices) > 0:
             z_start = valid_slices[0]
@@ -153,9 +155,9 @@ class CropSampleWorkstep(Workstep):
             mask_array = mask_array[z_start:z_end, :, :]
             self.context.array = self.context.array[z_start:z_end, :, :]
 
-        # Update context
+        # Update context using in-place zeroing to avoid duplicating the array
         self.context.crop_sample_mask_array = mask_array
-        self.context.array = np.where(mask_array, self.context.array, 0)
+        self.context.array[~mask_array] = 0
 
     def _cylindrical_crop(self):
         params = self.context.workflow_params["crop_sample_params"]
@@ -189,9 +191,9 @@ class CropSampleWorkstep(Workstep):
         # Broadcast the 2D circular mask to 3D cylinder
         mask_array = np.broadcast_to(mask_2d, (z_dim, y_dim, x_dim)).copy()
 
-        # Update context
+        # Update context with in-place masking
         self.context.crop_sample_mask_array = mask_array
-        self.context.array = np.where(mask_array, self.context.array, 0)
+        self.context.array[~mask_array] = 0
 
     def _apply_z_discard(self):
         """
@@ -220,22 +222,29 @@ class CropSampleWorkstep(Workstep):
         """
         Crops the X, Y, and Z dimensions of the volume and mask arrays
         to tightly fit the bounding box of the active mask, removing
-        unnecessary background data.
+        unnecessary background data without allocating 3D coordinate arrays.
         """
         mask = self.context.crop_sample_mask_array
 
+        # 1D boolean projections along axes to avoid allocating 3D indices
+        z_any = np.any(mask, axis=(1, 2))
+
         # Guard against an entirely empty mask to prevent errors
-        if not np.any(mask):
+        if not np.any(z_any):
             self.logger.warning("Fit to Mask: Mask is completely empty. Skipping volume reduction.")
             return
 
-        # Get all coordinates where the mask is active
-        z_indices, y_indices, x_indices = np.where(mask)
+        y_any = np.any(mask, axis=(0, 2))
+        x_any = np.any(mask, axis=(0, 1))
 
-        # Determine the bounding box (min and max across all 3 dimensions)
-        z_min, z_max = z_indices.min(), z_indices.max()
-        y_min, y_max = y_indices.min(), y_indices.max()
-        x_min, x_max = x_indices.min(), x_indices.max()
+        # Determine min/max bounding indices using 1D arrays (O(1) extra memory)
+        z_indices = np.flatnonzero(z_any)
+        y_indices = np.flatnonzero(y_any)
+        x_indices = np.flatnonzero(x_any)
+
+        z_min, z_max = z_indices[0], z_indices[-1]
+        y_min, y_max = y_indices[0], y_indices[-1]
+        x_min, x_max = x_indices[0], x_indices[-1]
 
         # Slice both arrays to the bounding box (+1 because upper bounds are exclusive)
         self.context.crop_sample_mask_array = mask[z_min : z_max + 1, y_min : y_max + 1, x_min : x_max + 1]
@@ -282,12 +291,12 @@ class CropSampleWorkstep(Workstep):
         # Print the final array shape after all cropping is completed
         self.logger.info(f"Final array size after cropping: {self.context.array.shape}")
 
-        # --- NEW: UPDATE CACHED SHAPE ---
+        # --- UPDATE CACHED SHAPE ---
         self.context.array_shape = self.context.array.shape
 
         # 4. Export results
         self._export_nc(
-            self.context.crop_sample_mask_array.astype(np.uint8),
+            self.context.crop_sample_mask_array,
             "cropped_sample_mask",
             "cropped_sample_mask",
             labels=["Name,Index,Color", "Mask,1,#0080ff"],

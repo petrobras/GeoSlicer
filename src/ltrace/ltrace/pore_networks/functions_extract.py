@@ -733,7 +733,11 @@ def general_pn_extract(
 
         multiphase_array = _phases_from_porosity_map(scalar_array)
 
-        _parallel_kw = {"divs": divs} if divs > 0 else None
+        if isinstance(divs, (list, tuple, np.ndarray)):
+            _parallel_kw = {"divs": divs} if any(d > 0 for d in divs) else None
+        else:
+            _parallel_kw = {"divs": divs} if divs > 0 else None
+
         snow_results = snow2(
             phases=multiphase_array,
             porosity_map=scalar_array,
@@ -746,12 +750,16 @@ def general_pn_extract(
         )
         pn_properties = snow_results.network
 
+        snow_regions = snow_results.regions
+        if not is_contiguous(snow_regions):
+            snow_regions = make_contiguous(snow_regions)
+
         if use_shared_memory:
-            watershed_output_array, watershed_output = _create_shared_array(snow_results.regions)
+            watershed_output_array, watershed_output = _create_shared_array(snow_regions)
             label_array = watershed_output_array
             watershed_output_shape = watershed_output_array.shape
         else:
-            watershed_output = snow_results.regions
+            watershed_output = snow_regions
             label_array = watershed_output
             watershed_output_shape = watershed_output.shape
             watershed_output_array = watershed_output
@@ -1096,6 +1104,50 @@ class ExtractionNodesCreator:
         table.SetAttribute("is_multiscale", "false")
         slicer.mrmlScene.AddNode(table)
         return table
+
+
+def calculateTransformNodeFromVolume(tableNode):
+    """Builds an unhardened vtkMRMLTransformNode carrying a pore table's IJK-to-RAS transform.
+
+    Reads the "PoresLabelMap" node reference (set by the classic PoreNetworkExtractor path) when
+    present, otherwise falls back to the "ijktoras"/"origin" string attributes (set by the unified
+    porespy/watershed extractor, which cannot rely on a labelmap node persisting in the scene for
+    remote jobs). Caller owns the returned node and must remove it from the scene when done with it.
+    """
+    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
+
+    refNode = tableNode.GetNodeReference("PoresLabelMap")
+    if refNode:
+        vtkTransformationMatrix = vtk.vtkMatrix4x4()
+        refNode.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
+        origin = refNode.GetOrigin()
+        for i in range(3):
+            vtkTransformationMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
+        return transformNode
+
+    ijktoras_attr = tableNode.GetAttribute("ijktoras")
+    origin_attr = tableNode.GetAttribute("origin")
+    if ijktoras_attr and origin_attr:
+        values = [float(v) for v in ijktoras_attr.split(";")]
+        transformMatrix = vtk.vtkMatrix4x4()
+        for row in range(3):
+            for col in range(4):
+                transformMatrix.SetElement(row, col, values[row * 4 + col])
+        origin = [float(v) for v in origin_attr.split(";")]
+        for i in range(3):
+            transformMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(transformMatrix)
+    elif origin_attr:
+        origin = [float(v) for v in origin_attr.split(";")]
+        transformMatrix = vtk.vtkMatrix4x4()
+        for i in range(3):
+            transformMatrix.SetElement(i, 3, origin[i])
+        transformNode.SetMatrixTransformToParent(transformMatrix)
+    else:
+        logging.warning(f"No spatial reference found for {tableNode.GetName()}. Using identity transform.")
+
+    return transformNode
 
 
 def visualize_network(

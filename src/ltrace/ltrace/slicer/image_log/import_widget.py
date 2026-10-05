@@ -11,7 +11,7 @@ from .import_logic import (
     LoaderError,
     ImageLogImportError,
 )
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES
+from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES, format_null_values, parse_null_values
 from ltrace.slicer import ui, widgets
 from ltrace.utils.ProgressBarProc import ProgressBarProc
 from ltrace.slicer import helpers
@@ -67,14 +67,14 @@ class WellLogImportWidget(qt.QWidget):
         nullsLayout = qt.QHBoxLayout()
         self.nullValuesListText = qt.QLineEdit()
         self.nullValuesListText.setObjectName("Null Values List Text")
-        self.nullValuesListText.text = str(DEFAULT_NULL_VALUES)[1:-1]
+        self.nullValuesListText.text = format_null_values(DEFAULT_NULL_VALUES)
         self.nullValuesListText.textChanged.connect(lambda: self.setNullValuesFieldState(widgets.InputState.OK))
         nullsLayout.addWidget(self.nullValuesListText)
 
         self.resetNullValuesListButton = qt.QPushButton("Reset list")
         self.resetNullValuesListButton.setObjectName("Reset Null Values List Button")
         self.resetNullValuesListButton.clicked.connect(
-            lambda: self.nullValuesListText.setText(str(DEFAULT_NULL_VALUES)[1:-1])
+            lambda: self.nullValuesListText.setText(format_null_values(DEFAULT_NULL_VALUES))
         )
         nullsLayout.addWidget(self.resetNullValuesListButton)
 
@@ -89,26 +89,20 @@ class WellLogImportWidget(qt.QWidget):
         formLayout.addRow(wellDiameterLabel, self.wellDiameter)
 
         def onPathChanged(filepath):
+            nullvalues = self.parsedNullValues()
+            if nullvalues is None:
+                self.tableView.statusLabel.setStatus("Invalid null values list.", color="red")
+                return
+
             with ProgressBarProc() as progressBar:
                 try:
                     progressBar.nextStep(5, "Loading metadata...")
 
                     progressBar.nextStep(80, "Setting context variables...")
-                    nullvalues = set(self.nullValuesListText.text.split(","))
-
-                    if self.nullValuesListText.text.split(",")[0]:
-                        nullvalues = set(map(float, nullvalues))
-                    else:  # an empty nullValuesListText will give us a 1-element set ([""]). Reinitializing the set here
-                        nullvalues = set()
-
                     self.dataLoader = get_loader(filepath, nullvalues)
 
-                    nullvalues.union(self.dataLoader.null_value)
-
-                    if len(nullvalues):
-                        self.nullValuesListText.text = str(nullvalues)[1:-1]
-                    else:
-                        self.nullValuesListText.text = ""
+                    nullvalues |= self.dataLoader.null_value
+                    self.nullValuesListText.text = format_null_values(nullvalues)
 
                     progressBar.nextStep(90, "Showing metadata...")
                     well_name, metadata = self.dataLoader.load_metadata()
@@ -139,8 +133,9 @@ class WellLogImportWidget(qt.QWidget):
             self.setWellDiameterFieldState(widgets.InputState.MISSING)
             return
 
-        if not self.nullValuesListText.text and self.nullValuesListText.visible:
-            self.setNullValuesFieldState(widgets.InputState.MISSING)
+        nullvalues = self.parsedNullValues()
+        if nullvalues is None:
+            self.tableView.statusLabel.setStatus("Invalid null values list.", color="red")
             return
 
         with ProgressBarProc() as progressBar:
@@ -154,9 +149,6 @@ class WellLogImportWidget(qt.QWidget):
                 curves = self.dataLoader.load_data(self.ioFileInputLineEdit.currentPath, mnemonic_and_files)
 
                 helpers.save_path(self.ioFileInputLineEdit)
-
-                nullvalues = set(self.nullValuesListText.text.split(","))
-                nullvalues = set(map(float, nullvalues))
 
                 well_diameter = float(self.wellDiameter.text) * 25.4  # inches to mm
                 well_name = self.wellNameInput.text
@@ -184,6 +176,17 @@ class WellLogImportWidget(qt.QWidget):
                 time.sleep(0.5)
                 self.tableView.statusLabel.setStatus("Error while loading curves.", color="red")
                 slicer.util.errorDisplay(e)
+
+    def parsedNullValues(self):
+        """Null values from the field, or None if its text is malformed (the field is flagged)."""
+        try:
+            nullvalues = parse_null_values(self.nullValuesListText.text)
+        except ValueError:
+            self.setNullValuesFieldState(widgets.InputState.MISSING)
+            return None
+
+        self.setNullValuesFieldState(widgets.InputState.OK)
+        return nullvalues
 
     def setWellDiameterFieldState(self, state):
         color = widgets.get_input_widget_color(state)

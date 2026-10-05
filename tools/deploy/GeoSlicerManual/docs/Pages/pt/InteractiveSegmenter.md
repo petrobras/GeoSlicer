@@ -44,11 +44,11 @@ O fluxo de trabalho foi projetado para ser interativo, fornecendo feedback imedi
 #### Passo 5: Aplicar à Imagem Completa
 
 1.  Quando estiver satisfeito com a pré-visualização, vá para a seção **Output**.
-2.  (Opcional) Se você deseja aplicar a segmentação a uma imagem diferente (por exemplo, o volume original, sem recortes), selecione-a no seletor **Inference Image**. Se nenhuma imagem for selecionada, a imagem de entrada original será usada.
-3.  Clique no botão **Apply to Full Image**. O modelo treinado será aplicado a todo o volume selecionado.
-4.  Uma barra de progresso mostrará o status da segmentação completa. Quando concluído, o layout lado a lado será fechado e um novo nó de segmentação será adicionado à cena.
+2.  Clique no botão **Apply to Full Image**. O modelo treinado será aplicado a toda a **Image 1**.
+3.  (Opcional) Para reutilizar o mesmo modelo em outras imagens (por exemplo, o volume original, sem recortes, ou uma pasta inteira de aquisições), clique em **Apply to Other Images...**, selecione-as na árvore da janela que se abre e clique em **Apply**. Elas são segmentadas uma após a outra. No momento, esse botão fica desabilitado quando a **Image 2** ou a **Image 3** está em uso.
+4.  Uma barra de progresso mostrará o andamento da execução completa, e um log na seção **Output** lista cada imagem conforme ela é processada e o nó de segmentação que ela produziu. Quando concluído, o layout lado a lado será fechado e um novo nó de segmentação será adicionado à cena para cada imagem segmentada.
 
-Para interromper a sessão interativa a qualquer momento, clique no botão **Cancel**. Suas anotações serão salvas em um nó de segmentação, e você poderá retomar a sessão mais tarde, iniciando o módulo novamente com a mesma imagem de entrada.
+Para interromper a sessão interativa a qualquer momento, clique no botão **Cancel**. Suas anotações permanecerão no projeto, e você poderá retomar a sessão mais tarde, iniciando o módulo novamente com a mesma imagem de entrada.
 
 ### Método
 

@@ -12,7 +12,7 @@ from ltrace.slicer.app.custom_3dview import customize_3d_view
 from ltrace.slicer.app.custom_colormaps import customize_color_maps
 from ltrace.slicer.app.drawer import ExpandDataDrawer
 from ltrace.slicer.app.onboard import loadEnvironmentByName
-from ltrace.slicer.app.onboard_view import showOnboardView
+from ltrace.slicer.app.onboard_view import OnboardLayout, showOnboardView
 from ltrace.slicer.application_observables import ApplicationObservables
 from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
 from ltrace.slicer.debounce_caller import DebounceCaller
@@ -212,6 +212,7 @@ class ModuleManager:
             "OpenRockData",
             "NetCDF",
             "SurfaceLoader3D",
+            "FolderMonitor",
         ]
 
         toolModules = []
@@ -306,15 +307,28 @@ class ProjectEventsLogic:
 
     def __loadScenePath(self, projectFilePath: Path) -> bool:
         if projectFilePath == Path(slicer.mrmlScene.GetURL()):
+            self.__dismissOnboarding()
             return True
         if not self.onCloseScene():
+            # The user backed out of the unsaved-changes prompt: nothing was
+            # loaded, so leave whatever is on screen alone.
             return False
         status, errorMessage = self.__projectManager.load(projectFilePath)
         if not status:
             slicer.util.errorDisplay(errorMessage)
             return False
         self.setupRecentlyLoadedMenu()
+        self.__dismissOnboarding()
         return True
+
+    @staticmethod
+    def __dismissOnboarding() -> None:
+        """Close the onboarding overlay once a project has been opened.
+        """
+        try:
+            OnboardLayout.hide()
+        except Exception as error:  # pragma: no cover - never block a load
+            logging.debug(f"Could not dismiss the onboarding view: {error}")
 
     def saveScene(self):
         """Save current scene/project

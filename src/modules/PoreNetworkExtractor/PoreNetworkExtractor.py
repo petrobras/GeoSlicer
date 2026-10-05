@@ -696,37 +696,37 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
 
         self.params["scale"] = str(inputVolumeNode.GetSpacing()[::-1])
 
-        if self.params["is_multiscale"] is False:
-            self.scalar_memory = None
-            label_array = slicer.util.arrayFromVolume(inputVolumeNode)
-            self.label_memory = MmapSharedMemory.create_array(label_array)
-            label_dtype = label_array.dtype.str
-            label_shape = str(label_array.shape)
-            self.params["label_dtype"] = label_dtype
-            self.params["label_shape"] = label_shape
-            cliParams["label"] = self.label_memory.name
-
-        elif self.params["is_multiscale"] is True:
-            scalar_array = slicer.util.arrayFromVolume(inputVolumeNode)
-            self.scalar_memory = MmapSharedMemory.create_array(scalar_array)
-            scalar_dtype = scalar_array.dtype.str
-            scalar_shape = str(scalar_array.shape)
-            self.params["scalar_dtype"] = scalar_dtype
-            self.params["scalar_shape"] = scalar_shape
-            cliParams["scalar"] = self.scalar_memory.name
-
-            if inputLabelMap:
-                label_array = slicer.util.arrayFromVolume(inputLabelMap)
+        if localMode:
+            if self.params["is_multiscale"] is False:
+                self.scalar_memory = None
+                label_array = slicer.util.arrayFromVolume(inputVolumeNode)
                 self.label_memory = MmapSharedMemory.create_array(label_array)
                 label_dtype = label_array.dtype.str
                 label_shape = str(label_array.shape)
                 self.params["label_dtype"] = label_dtype
                 self.params["label_shape"] = label_shape
                 cliParams["label"] = self.label_memory.name
-            else:
-                self.label_memory = None
 
-        if localMode:
+            elif self.params["is_multiscale"] is True:
+                scalar_array = slicer.util.arrayFromVolume(inputVolumeNode)
+                self.scalar_memory = MmapSharedMemory.create_array(scalar_array)
+                scalar_dtype = scalar_array.dtype.str
+                scalar_shape = str(scalar_array.shape)
+                self.params["scalar_dtype"] = scalar_dtype
+                self.params["scalar_shape"] = scalar_shape
+                cliParams["scalar"] = self.scalar_memory.name
+
+                if inputLabelMap:
+                    label_array = slicer.util.arrayFromVolume(inputLabelMap)
+                    self.label_memory = MmapSharedMemory.create_array(label_array)
+                    label_dtype = label_array.dtype.str
+                    label_shape = str(label_array.shape)
+                    self.params["label_dtype"] = label_dtype
+                    self.params["label_shape"] = label_shape
+                    cliParams["label"] = self.label_memory.name
+                else:
+                    self.label_memory = None
+
             self.semaphore_shm = MmapSharedMemory.create(1)
             self.semaphore_shm.buf[0] = 0
             cliParams["semaphore"] = self.semaphore_shm.name

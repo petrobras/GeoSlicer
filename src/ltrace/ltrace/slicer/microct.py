@@ -9,6 +9,7 @@ import slicer
 import xarray as xr
 from ltrace.slicer import netcdf
 from ltrace.slicer import loader
+from ltrace.slicer import metadata as metadata_module
 from ltrace.slicer.metadata import Metadata
 from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
@@ -325,6 +326,26 @@ class PCRNotFoundError(Exception):
         super().__init__(f"No PCR data associated with the image node '{nodeName}'.")
 
 
+def _minMaxFromMetadataAttrs(imageNode):
+    nodeAttrs = metadata_module.get_node_metadata(imageNode)
+    minValue = nodeAttrs.get("min_value")
+    maxValue = nodeAttrs.get("max_value")
+    if minValue is not None and maxValue is not None:
+        return minValue, maxValue
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    itemId = shNode.GetItemByDataNode(imageNode)
+    if not itemId:
+        return None, None
+
+    parentItemId = shNode.GetItemParent(itemId)
+    if not parentItemId:
+        return None, None
+
+    datasetAttrs = metadata_module.get_item_metadata(parentItemId)
+    return datasetAttrs.get("min_value"), datasetAttrs.get("max_value")
+
+
 def pcrMinMaxFromTableNode(imageNode):
     try:
         pcrDry = Metadata(imageNode).get("pcr", None)
@@ -339,6 +360,10 @@ def pcrMinMaxFromTableNode(imageNode):
             logging.debug("Migrated legacy PCR attribute to Metadata.")
 
         if not pcrDry:
+            minValue, maxValue = _minMaxFromMetadataAttrs(imageNode)
+            if minValue is not None and maxValue is not None:
+                return np.float32(minValue), np.float32(maxValue)
+
             raise PCRNotFoundError(imageNode.GetName())
 
         parser = configparser.ConfigParser()

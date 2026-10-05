@@ -1402,7 +1402,11 @@ def getVolumeNullValue(volumeNode):
     if value == "None" or value is None:
         return None
 
-    return float(value)
+    try:
+        return float(value)
+    except ValueError:
+        logging.warning(f"Ignoring unparseable NullValue attribute of {volumeNode.GetName()}: {value}")
+        return None
 
 
 def extractSegmentInfo(itemID: int, refNode: slicer.vtkMRMLVolumeNode = None):
@@ -1960,12 +1964,13 @@ def svgToQIcon(iconPath):
 
 
 def numberArrayToLabelArray(array: np.ndarray) -> np.ndarray:
-    """Convert float, int, or negative values to label values."""
+    """Converts an array of numbers to a label array, mapping negative and non-finite values to 0."""
     if np.issubdtype(array.dtype, np.floating):
-        array = np.rint(array).astype(np.uint16)
-
-    if np.min(array) < 0:
-        array = np.clip(array + 1, 0, None)
+        array = np.nan_to_num(np.rint(array), copy=False, nan=0, posinf=0, neginf=0)
+        # Saturating keeps an out-of-range value from wrapping onto a plausible label
+        array = array.clip(0, np.iinfo(np.uint16).max).astype(np.uint16)
+    elif np.min(array) < 0:
+        array = array.clip(0, None)
     return array
 
 

@@ -807,6 +807,7 @@ class ShowHideButton(qt.QPushButton):
         self.setCheckable(True)
         self.toggled.connect(self.update)
         self.setChecked(True)
+        self.setSizePolicy(qt.QSizePolicy.Fixed, self.sizePolicy.verticalPolicy())
 
     def update(self):
         if self.checked:

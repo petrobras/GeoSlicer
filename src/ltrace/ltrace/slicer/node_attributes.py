@@ -113,6 +113,17 @@ class TableType(NodeAttributeValue):
         return "table_type"
 
 
+class CustomNodeType(NodeAttributeValue):
+    """Define if the node's data source is a directory, pointed by its storage node's file name."""
+
+    LOSSLESS = "lossless"
+    DIRECTORY = "directory_node"
+
+    @classmethod
+    def name(cls) -> str:
+        return "custom_node_type"
+
+
 class HistogramGraphType(NodeAttributeValue):
     """Define type of histogram graph to show when table node is HISTOGRAM_IN_DEPTH"""
 

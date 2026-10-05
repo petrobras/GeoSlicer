@@ -2,6 +2,8 @@ camelot-py==1.0.9
 cftime==1.6.5
 chardet==5.2.0
 colorcet==3.2.1
+cuda-toolkit[cudart,nvcc,nvrtc,cccl,cublas,cufft,cusolver,cusparse]==12.1.1
+cuda-python==12.9.7
 cudnn-python-wrappers==1.0
 Cython==3.2.4
 dask-image==2025.11.0
@@ -34,14 +36,14 @@ mmengine==0.10.7
 monai==1.5.1
 natsort==8.4.0
 netCDF4==1.7.4
-numba==0.60.0
+numba==0.67.0
 numexpr==2.14.1
 numpy==1.26.4
-opencv-python==4.10.0.82
+nvidia-cudnn-cu12==9.1.0.70
 opencv-python-headless==4.10.0.82
 openpnm==3.4.0
 pandas==2.3.3
-paramiko==4.0.0
+paramiko==5.0.0
 pathvalidate==3.3.1
 Pint-Pandas==0.7.1
 Pint==0.25.2
@@ -78,7 +80,7 @@ stopit==1.1.2
 streamlit==1.53.0
 sympy==1.13.1
 tbb==2022.3.1
-tensorflow==2.20.0
+tensorflow==2.17.0
 tomli==2.4.0
 tomli_w==1.2.0
 toolz==1.1.0

@@ -1,17 +1,14 @@
 import json
-import pickle
-import shutil
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from typing import Any, Callable
 from datetime import datetime
 import time
 
-import slicer
-
 from ltrace.slicer.app import getApplicationVersion
 from ltrace.remote import errors
+from ltrace.remote.paths import ClusterStorage
 from ltrace.remote.constants import (
     DISCONNECT_BACKOFF_MAX_SECONDS,
     JOB_EVENT_PROGRESS,
@@ -19,9 +16,11 @@ from ltrace.remote.constants import (
     JOB_STATE_CANCELLED,
     JOB_STATE_COMPLETED,
     JOB_STATE_FAILED,
+    JOB_STATE_IDLE,
     JOB_STATE_NOTCONNECTED,
     JOB_STATE_PENDING,
     JOB_STATE_RUNNING,
+    JOB_TERMINAL_STATES,
 )
 
 
@@ -61,7 +60,7 @@ def remote_hash(client, location: Path):
     out = client.run_command(f'md5sum "{location}"')
 
     if len(out["stderr"]) > 0:
-        print("Error during hash check: ", out["stderr"])
+        logging.error(f"Error during hash check: {out['stderr']}")
         raise TimeoutError()
 
     tokens = out["stdout"].split("  ")
@@ -166,6 +165,61 @@ def all_done(jobs: list):
     return True
 
 
+# scancel writes to stderr for job ids that slurm no longer holds. None of
+# these mean the connection or the cancellation is broken: the remote job is
+# simply already gone, which is exactly the outcome a cancel asks for.
+BENIGN_SCANCEL_PATTERNS = (
+    "invalid job id",
+    "already completing or completed",
+    "already completed",
+    "already finished",
+    "job/step already completing or completed",
+)
+
+
+def is_benign_scancel_error(stderr: str) -> bool:
+    """True when every line scancel wrote to stderr only says the job is already gone.
+
+    Treating those as failures marks a job GHOST/NOT CONNECTED over a perfectly
+    healthy connection, and the resulting state is one the user can no longer
+    cancel — so the entry becomes impossible to remove.
+    """
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+
+    if not lines:
+        return True
+
+    return all(any(pattern in line.lower() for pattern in BENIGN_SCANCEL_PATTERNS) for line in lines)
+
+
+def try_scancel(client, job_ids) -> "str | None":
+    """Cancel remote slurm jobs, reporting only failures that really are failures.
+
+    Returns None when the remote jobs are gone (cancelled now, or already
+    finished), or a reason string when the cancellation could not be confirmed
+    and the local entry would no longer mirror a known remote state.
+    """
+    ids = [str(jid).strip() for jid in (job_ids or []) if jid is not None and str(jid).strip()]
+
+    if not ids:
+        return None
+
+    if client is None:
+        return "No connection to the host: the remote job could not be cancelled."
+
+    try:
+        output = client.run_command(f"scancel {','.join(ids)}")
+    except Exception as e:
+        return repr(e)
+
+    stderr = (output or {}).get("stderr", "")
+
+    if stderr and not is_benign_scancel_error(stderr):
+        return stderr
+
+    return None
+
+
 def find_submitted_jobs(jobid: str, logs: dict):
     for filename, log in logs.items():
         if jobid in filename:
@@ -186,23 +240,6 @@ def look_for_general_tracebacks_on_slurm_logs(client, deploy_path: Path):
     return error_check["stdout"].strip() == "yes"
 
 
-def dump_via_slicer_temp(obj, filename, final_dir, format="json"):
-    temp_path = Path(slicer.util.tempDirectory()) / filename
-    final_path = Path(final_dir) / filename
-
-    if format == "json":
-        with open(temp_path, "w") as f:
-            json.dump(obj, f)
-
-    elif format == "pickle":
-        with open(temp_path, "wb") as f:
-            pickle.dump(obj, f)
-    else:
-        raise ValueError(f"Unsupported format: {format}")
-
-    shutil.move(str(temp_path), str(final_path))
-
-
 class SlurmJobStatusMixin:
     def __init__(self, timeout_seconds, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -217,7 +254,11 @@ class SlurmJobStatusMixin:
             self.disconnected(job_manager, uid, client)
             return
 
-        tsnow = datetime.now().timestamp()
+        # A client in hand means the host answered: whatever happens next is a
+        # slurm-level problem, so the reconnection backoff must start over
+        # instead of compounding across unrelated failures.
+        self._disconnect_attempts = 0
+
         try:
             jobstatus = sacct(client, self.slurm_job_ids)
             if not jobstatus:
@@ -225,9 +266,9 @@ class SlurmJobStatusMixin:
 
             # Reset failure counters on success
             self._sacct_failure_start_time = None
-            self._disconnect_attempts = 0
 
             self._post_status_update(job_manager, uid, client, jobstatus)
+
         except errors.ChannelError as e:
             # SSH-level failure (mid-command or while reading results):
             # the connection is gone, hand over to the reconnection backoff.
@@ -258,12 +299,19 @@ class SlurmJobStatusMixin:
                 logging.error(
                     f"Slurm job status fetch failed for job {self.slurm_job_ids} after timeout ({self._timeout_seconds}s). Error: {repr(e)}"
                 )
+                # IDLE, not FAILED: nothing is known to have gone wrong with
+                # the processing. sacct stopped answering -- slurm restarted
+                # and lost the job from its history, the accounting database
+                # is down, the account lost authorization -- and the remote
+                # job may well still be running. FAILED is terminal, so it
+                # would end the polling for good, refuse a reconnect, and (on
+                # a host whose client is still cached) leave the row with only
+                # a Cancel/Delete that cannot reach the cluster. IDLE stops the
+                # polling just the same but stays resumable.
                 job_manager.set_state(
                     uid,
-                    JOB_STATE_FAILED,
-                    0,
-                    message=f"Failed to get job status after timeout ({self._timeout_seconds}s). Check your connection or account authorization.",
-                    end_time=tsnow,
+                    JOB_STATE_IDLE,
+                    message=f"Stopped checking the job status after {self._timeout_seconds}s without an answer. Use 'Reconnect' to resume. Check your connection or account authorization.",
                     traceback=repr(e),
                 )
 
@@ -280,6 +328,13 @@ class SlurmJobStatusMixin:
             return
 
         job_manager.connections.drop_client(job.host, stale_client=client)
+
+        if job.status in JOB_TERMINAL_STATES:
+            # Nothing left to poll: keep the outcome the job already reached
+            # instead of rewriting it to NOT CONNECTED (which the monitor
+            # refuses to cancel) and stop the retry chain here.
+            logging.info(f"Connection lost for finished job {uid} ({job.status}). Not retrying.")
+            return
 
         # The sacct timeout only measures failures over a live connection
         self._sacct_failure_start_time = None
@@ -309,7 +364,9 @@ class SlurmJobStatusMixin:
         raise NotImplementedError("Subclasses must implement _post_sacct_progress method")
 
 
-def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], remote_version=None, use_gpu=False, time=None):
+def get_python_cmd(
+    python_cmd_list=[], cli_cmd_list=[], remote_version=None, use_gpu=False, time=None, containers_root=None
+):
     python_calls = []
     for python_cmd in python_cmd_list:
         python_calls.append("--cmd '" + python_cmd + "'")
@@ -326,7 +383,10 @@ def get_python_cmd(python_cmd_list=[], cli_cmd_list=[], remote_version=None, use
 
     if remote_version == None:
         remote_version = get_posix_friendly_version()
-    geoslicer_path = Path("/atena/users/dibi/containers/geoslicer/") / remote_version
+    if containers_root is None:
+        # No host in hand: fall back to the shipped default.
+        containers_root = ClusterStorage().remote_path("geoslicer_containers")
+    geoslicer_path = PurePosixPath(containers_root) / remote_version
     geoslicer_path_string = geoslicer_path.as_posix()
     main_cmd = (
         f'RPS_DIR="{geoslicer_path_string}"; '

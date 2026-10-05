@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 import copy
 
-import mrml
 import numpy as np
 import pandas as pd
 
@@ -23,7 +22,9 @@ from dask.distributed import Client, LocalCluster, as_completed
 from ltrace.pore_networks.functions_extract import general_pn_extract
 from ltrace.pore_networks.functions_simulation import get_flow_rate, single_phase_permeability
 from ltrace.pore_networks.subres_models import get_subres_function
+from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
 from ltrace.slicer.cli_utils import progressUpdate
+
 
 logger = logging.getLogger("numba")
 logger.setLevel(logging.ERROR)
@@ -76,14 +77,6 @@ def crop_volume(array, size, translation=(0, 0, 0), is_labelmap=False):
     return cropped_array
 
 
-def readFrom(volumeFile, builder):
-    sn = slicer.vtkMRMLNRRDStorageNode()
-    sn.SetFileName(volumeFile)
-    nodeIn = builder()
-    sn.ReadData(nodeIn)  # read data from volumeFile into nodeIn
-    return nodeIn
-
-
 def writeDataFrame(df, path):
     df.to_pickle(str(path))
 
@@ -107,7 +100,7 @@ def process_chunk(args, volume_array=None):
             force_cpu=True,
             is_multiscale=True,
             scale=scale,
-            divs=1,
+            divs=0,
         )
     else:
         extract_result = general_pn_extract(
@@ -116,7 +109,7 @@ def process_chunk(args, volume_array=None):
             force_cpu=True,
             is_multiscale=False,
             scale=scale,
-            divs=1,
+            divs=0,
         )
 
     pores_df, throats_df, network_df, _, _ = extract_result
@@ -194,24 +187,17 @@ def process_chunk(args, volume_array=None):
 def KabsREV(args, params):
     cwd = Path(args.cwd)
 
-    if params["is_multiscale"]:
-        volume = readFrom(args.volume, mrml.vtkMRMLScalarVolumeNode)
-    else:
-        volume = readFrom(args.volume, mrml.vtkMRMLLabelMapVolumeNode)
+    volume_node_path = Path(args.volume)
+    with VolumeNodeObjectTransfer(volume_node_path.parent, volume_node_path.name) as transfer:
+        volume_array, volume_node_header = transfer.load()
+    scale = volume_node_header["spacing"][::-1]
+    dims = volume_array.shape[::-1]
 
     directions = "xyz"
     in_faces = ("xmin", "ymin", "zmin")
     out_faces = ("xmax", "ymax", "zmax")
 
     permeabilities = {ax: [] for ax in directions}
-
-    image_data = volume.GetImageData()
-    dims = image_data.GetDimensions()
-
-    volume_array = slicer.util.arrayFromVolume(volume).copy()
-
-    scale = volume.GetSpacing()[::-1]
-
     length_fractions = np.linspace(params["min_fraction"], 1.00, params["number_of_fractions"])
 
     tasks = []
@@ -304,8 +290,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(f"{args.cwd}/params_dict.json", "r") as file:
-        params = json.load(file)
+    with JsonObjectTransfer(args.cwd, "params_dict.json") as transfer:
+        params = transfer.load()
 
     progressUpdate(value=0.1)
 

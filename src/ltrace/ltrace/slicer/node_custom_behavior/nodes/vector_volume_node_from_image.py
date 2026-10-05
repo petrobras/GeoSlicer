@@ -32,8 +32,8 @@ class VectorVolumeNodeFromImageCustomBehavior(NodeCustomBehaviorBase):
         nodeTypes=[slicer.vtkMRMLVectorVolumeNode], attributes={LosslessAttribute.name(): LosslessAttribute.FALSE.value}
     )
 
-    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
-        super().__init__(node=node, event=event)
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
+        super().__init__(node=node, event=event, eventArgs=eventArgs)
 
     def _afterLoad(self) -> None:
         if self._event == TriggerEvent.NONE:

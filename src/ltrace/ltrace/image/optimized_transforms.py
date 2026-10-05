@@ -11,6 +11,16 @@ DEFAULT_NULL_VALUES = set((-999.25, -9999.00, -9999.25))
 ANP_880_2022_DEFAULT_NULL_VALUE = -999.25
 
 
+def parse_null_values(text: str) -> set:
+    """Parses a comma-separated list of decimal-dot numbers; blank text means no null values."""
+    return {float(item) for item in text.split(",")} if text.strip() else set()
+
+
+def format_null_values(values) -> str:
+    """Formats null values as a comma-separated list, sorted for a stable display order."""
+    return ", ".join(repr(float(value)) for value in sorted(values))
+
+
 @nb.jit(nopython=True)
 def trimPointSearch(data, nullvalue=DEFAULT_NULL_VALUES, reverse=False):
     end_ptr = len(data)

@@ -1,0 +1,93 @@
+#!/bin/bash
+# Stands in for the cluster-side microtom_<simulator> commands.
+#
+# GeoSlicer runs us as:   cd <job dir> && microtom_<sim> [--flag value ...] <input.raw> [diameters]
+# and then parses our stdout for "job_id = ", "work_dir = ", "final_results = "
+# and friends (see ltrace/readers/microtom/utils.py::parse_command_stdout).
+#
+# Two hard rules come from the caller (ltrace/remote/handlers/OneResultSlurm.py):
+#   * job_id must be an integer -- it is int()ed.
+#   * stderr must stay empty -- anything on it fails the job immediately.
+# So every diagnostic goes to stdout or to the log file, never to stderr.
+set -uo pipefail
+
+SIMULATOR="${0##*/microtom_}"
+CLUSTER="${CLUSTER_NAME:-atena}"
+JOB_DIR="$PWD"
+
+# Last argument that looks like a raw volume is the input; the rest are flags
+# whose exact meaning does not matter to a stub.
+INPUT=""
+for arg in "$@"; do
+    case "$arg" in
+        *.raw) INPUT="$arg" ;;
+    esac
+done
+
+# How long the fake simulation should take. A few seconds is enough to watch the
+# PENDING -> RUNNING -> COMPLETED transitions in the Job Monitor; raise it when
+# you want a job that stays around long enough to cancel.
+DURATION="${SLURMLAB_JOB_SECONDS:-20}"
+PARTITION="${SLURMLAB_PARTITION:-cpu}"
+
+batch="${JOB_DIR}/run_${SIMULATOR}.sh"
+cat > "$batch" <<EOF
+#!/bin/bash
+#SBATCH --job-name=microtom_${SIMULATOR}
+#SBATCH --partition=${PARTITION}
+#SBATCH --output=${JOB_DIR}/slurm-%j.out
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+set -uo pipefail
+cd "${JOB_DIR}"
+echo "microtom_${SIMULATOR} starting on \$(hostname) as slurm job \${SLURM_JOB_ID}"
+echo "input: ${INPUT:-<none>}"
+sleep ${DURATION}
+microtom-worker \\
+    --simulator "${SIMULATOR}" \\
+    --cluster "${CLUSTER}" \\
+    --job-dir "${JOB_DIR}" \\
+    --job-id "\${SLURM_JOB_ID}" \\
+    --input "${INPUT}"
+status=\$?
+echo "microtom_${SIMULATOR} finished with status \${status}"
+exit \${status}
+EOF
+chmod 0777 "$batch"
+
+# Same shape as the real thing: capture the id into a job_id file, which is how
+# the darcy_kabs_foam path reads it back (it ignores our stdout entirely).
+submit="$(sbatch "$batch" 2>&1)"
+JOBID="$(printf '%s' "$submit" | grep -oE '[0-9]+$' | tail -1)"
+
+if [ -z "$JOBID" ]; then
+    # No id means no job. Say so on stdout: parse_command_stdout finds no
+    # job_id, and the caller reports "failed to create a job on cluster".
+    echo "sbatch failed: ${submit}"
+    exit 1
+fi
+
+printf '%s\n' "$JOBID" > "${JOB_DIR}/job_id"
+
+case "$SIMULATOR" in
+darcy_kabs_foam)
+    # This one nests its result: the caller rebuilds the path itself as
+    # <job dir>/<cluster>_<id>/<cluster>_<id>.nc
+    RESULTS="${JOB_DIR}/${CLUSTER}_${JOBID}/${CLUSTER}_${JOBID}.nc"
+    ;;
+krel)
+    RESULTS="${JOB_DIR}/${SIMULATOR}/${CLUSTER}_${JOBID}/permeability.csv"
+    ;;
+*)
+    RESULTS="${JOB_DIR}/${CLUSTER}_${JOBID}.nc"
+    ;;
+esac
+
+echo "job_id = ${JOBID}"
+echo "work_dir = ${JOB_DIR}/${CLUSTER}_${JOBID}"
+echo "final_results = ${RESULTS}"
+echo "slurm_file = ${JOB_DIR}/slurm-${JOBID}.out"
+echo "start_time = $(date +%Y_%m_%d_%H_%M_%S)"
+echo "simulation_type = microtom_${SIMULATOR}"
+echo "simulation_output = ${JOB_DIR}/${CLUSTER}_${JOBID}/${SIMULATOR}.csv"
+echo "cluster = ${CLUSTER}"

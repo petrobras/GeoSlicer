@@ -1,0 +1,46 @@
+#!/bin/bash
+# Submit a trivial job and follow it to completion, to prove the scheduler works
+# end to end independently of GeoSlicer: `./run.sh selftest`.
+set -uo pipefail
+
+PARTITION="${1:-${SLURMLAB_PARTITION:-cpu}}"
+WORKDIR="$(mktemp -d /tmp/slurmlab-selftest.XXXXXX)"
+cd "$WORKDIR" || exit 1
+
+echo "submitting a 5s job to partition '${PARTITION}'"
+out="$(sbatch --partition="$PARTITION" --job-name=selftest \
+        --output="$WORKDIR/slurm-%j.out" --wrap 'echo running on $(hostname); sleep 5' 2>&1)"
+echo "  $out"
+jobid="$(printf '%s' "$out" | grep -oE '[0-9]+$' | tail -1)"
+if [ -z "$jobid" ]; then
+    echo "FAILED: sbatch did not return a job id" >&2
+    exit 1
+fi
+
+echo "watching job ${jobid}"
+for _ in $(seq 1 60); do
+    line="$(squeue -h -j "$jobid" -o '%T %R' 2>/dev/null)"
+    if [ -z "$line" ]; then
+        echo "  left the queue"
+        break
+    fi
+    echo "  $line"
+    case "$line" in
+        PENDING*) : ;;
+    esac
+    sleep 2
+done
+
+echo
+echo "final accounting record (this is the shape the Job Monitor parses):"
+sacct -P -ojobid,state,elapsed,start,end -j "$jobid"
+
+state="$(sacct -n -P -ostate -j "$jobid" 2>/dev/null | head -1)"
+echo
+case "$state" in
+    COMPLETED) echo "PASS: the scheduler runs jobs and records them in accounting" ;;
+    "")        echo "FAIL: no accounting record -- slurmdbd is not storing jobs" >&2; exit 1 ;;
+    *)         echo "FAIL: job ended as '${state}'" >&2
+               [ -f "$WORKDIR"/slurm-"$jobid".out ] && cat "$WORKDIR"/slurm-"$jobid".out
+               exit 1 ;;
+esac

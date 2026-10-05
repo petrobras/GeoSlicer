@@ -120,9 +120,12 @@ class ProjectManager(qt.QObject):
         Returns:
             bool: True if save process was successful, otherwise False.
         """
+        projectUrlPath = Path(projectUrl).resolve()
+        projectRootUrl = projectUrlPath.parent if projectUrlPath.is_file() else projectUrlPath
+
         projectModified = slicer.modules.AppContextInstance.mainWindow.windowModified
         if not internalCall:
-            self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.SAVE
+            self.__customBehaviorNodeManager.triggerEvent(TriggerEvent.SAVE, targetSaveDir=str(projectRootUrl))
             self.__pauseModifiedObserver()
             slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
 
@@ -134,14 +137,12 @@ class ProjectManager(qt.QObject):
 
         rootDirBeforeSave = slicer.mrmlScene.GetRootDirectory()
         self.__configStorageNodeDefaults(*args, **kwargs)
-        projectUrl = Path(projectUrl).resolve()
-        projectRootUrl = projectUrl.parent if projectUrl.is_file() else projectUrl
         slicer.mrmlScene.SetRootDirectory(projectRootUrl.as_posix())
-        firstSave = not projectUrl.exists()
+        firstSave = not projectUrlPath.exists()
 
         # Save Scene
         if not self.__saveNodes(firstSave=firstSave, *args, **kwargs) or not self.__saveScene(
-            projectUrl, *args, **kwargs
+            projectUrlPath, *args, **kwargs
         ):
             slicer.mrmlScene.SetRootDirectory(rootDirBeforeSave)
             status = SaveStatus.FAILED
@@ -178,13 +179,19 @@ class ProjectManager(qt.QObject):
         # "Project" label. Lazy imports avoid a circular dependency.
         try:
             from ltrace.slicer.app.onboard import getLastEnvironment
-            from ltrace.slicer.app.onboard_view import recordEnvironmentForPath
+            from ltrace.slicer.app.onboard_view import recordEnvironmentForPath, recordProjectSize
 
             environment = getLastEnvironment()
             if environment is not None:
                 recordEnvironmentForPath(fileProjectPath.as_posix(), environment.displayName)
+
+            # Measure the project now, while its files are still warm in the
+            # page cache and the user is already waiting on a save. Onboarding
+            # then reads the number instead of walking the folder, which on a
+            # network share is the difference between instant and noticeable.
+            recordProjectSize(fileProjectPath)
         except Exception as error:  # pragma: no cover - best effort, never blocks a save
-            logging.debug(f"Could not record environment for saved project: {error}")
+            logging.debug(f"Could not record metadata for saved project: {error}")
 
         return SaveStatus.SUCCEED
 
@@ -212,7 +219,7 @@ class ProjectManager(qt.QObject):
 
     def saveAs(self, scenePath, *args, **kwargs):
         """Handle custom save scene as operation."""
-        self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.SAVE_AS
+        self.__customBehaviorNodeManager.triggerEvent(TriggerEvent.SAVE_AS, targetSaveDir=scenePath)
         sliceViewConfig = self.__getSliceViewConfiguration()
         self.__pauseModifiedObserver()
         slicer.mrmlScene.StartState(slicer.mrmlScene.SaveState)
@@ -428,7 +435,7 @@ class ProjectManager(qt.QObject):
             return False, errorMessage
 
         if not internalCall:
-            self.__customBehaviorNodeManager.triggerEvent = TriggerEvent.LOAD
+            self.__customBehaviorNodeManager.triggerEvent(TriggerEvent.LOAD)
             self.__pauseModifiedObserver()
 
         self.__clearNodeObservers()

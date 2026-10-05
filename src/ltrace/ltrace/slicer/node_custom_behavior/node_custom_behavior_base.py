@@ -34,9 +34,10 @@ class NodeCustomBehaviorBase:
     The derived class can implement the folowing methods: '_afterLoad', '_afterSave' and '_beforeSave'.
     """
 
-    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
         self.__nodeId = node.GetID() if node is not None else None
         self._event = event
+        self._eventArgs = eventArgs
 
     @property
     def _node(self) -> None:

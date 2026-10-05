@@ -13,10 +13,12 @@ from typing import Any, List
 import numpy as np
 import pandas as pd
 import slicer
+import vtk
 
-from ltrace.pore_networks.functions_extract import _get_paired_throats_table
+from ltrace.pore_networks.functions_extract import _get_paired_throats_table, calculateTransformNodeFromVolume
 from ltrace.pore_networks.processing.two_phase.two_phase_simulation import TwoPhaseSimulation
 from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node, TWO_PHASE_SIMULATION_TYPE
+from ltrace.remote import errors
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.constants import (
     JOB_EVENT_CANCEL,
@@ -32,9 +34,9 @@ from ltrace.remote.constants import (
     JOB_STATE_RUNNING,
 )
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
+from ltrace.remote.object_transfer import JsonObjectTransfer, PickleObjectTransfer
+from ltrace.remote.utils import argstring, SlurmJobStatusMixin
 from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer.node_attributes import TableType
 from ltrace.slicer_utils import tableNodeToDict
 from ltrace.sys_utils import priority_lock
 
@@ -43,7 +45,6 @@ _1hour = 3600  # seconds
 
 
 class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
-    JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
     def __init__(self, pore_table_node_id, params, prefix, simulation_intervals=None, job_dir_name=None) -> None:
@@ -82,11 +83,12 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
         try:
             # Use provided job_dir_name or generate a new one
             job_executor = caller.jobs[uid]
+            storage = job_executor.host.get_storage()
             retried_job = self.job_dir_name is not None
             self.job_dir_name = self.job_dir_name or JobManager.dirname(job_executor)
-            self.job_remote_path = self.JOBS_REMOTE_PATH / self.job_dir_name
-            self.job_local_path = job_executor.host.get_mounted_path() / self.job_dir_name
-            self.temp_path = self.JOBS_REMOTE_PATH / self.job_dir_name / "temp"
+            self.job_remote_path = storage.remote_dir("geoslicer_jobs") / self.job_dir_name
+            self.job_local_path = storage.local_dir("geoslicer_jobs") / self.job_dir_name
+            self.temp_path = storage.remote_dir("geoslicer_jobs") / self.job_dir_name / "temp"
             self.params_to_save = self.params.copy()
 
             # Only create directories and write JSON files if job_dir_name was not provided
@@ -104,9 +106,12 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                         pore_table_node.AddNodeReferenceID("throat_table", throat_table.GetID())
                     throat_network = tableNodeToDict(throat_table)
 
-                dump_via_slicer_temp(pore_network, "pore_network.pkl", self.job_local_path, format="pickle")
-                dump_via_slicer_temp(throat_network, "throat_network.pkl", self.job_local_path, format="pickle")
-                dump_via_slicer_temp(self.params_to_save, "two_phase_simulation_params_dict.json", self.job_local_path)
+                with PickleObjectTransfer(self.job_local_path, "pore_network.pkl") as transfer:
+                    transfer.save(pore_network)
+                with PickleObjectTransfer(self.job_local_path, "throat_network.pkl") as transfer:
+                    transfer.save(throat_network)
+                with JsonObjectTransfer(self.job_local_path, "two_phase_simulation_params_dict.json") as transfer:
+                    transfer.save(self.params_to_save)
 
             self.cli_params = {
                 "model": "TwoPhaseSensibilityTest",
@@ -116,6 +121,11 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
 
             caller.set_state(uid, JOB_STATE_DEPLOYING, 10, message="Configuration done. Starting job deployment.")
             caller.schedule(uid, JOB_EVENT_START)
+        except errors.ChannelError as e:
+            # The host dropped us mid-deploy: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
             caller.set_state(
@@ -130,6 +140,7 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
     def start(self, caller: JobManager, uid: str, client: Any = None):
         ts_start = datetime.now().timestamp()
         try:
+            storage = caller.jobs[uid].host.get_storage()
             if self.simulation_intervals:
                 intervals = self.simulation_intervals
             else:
@@ -157,7 +168,11 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                 host = caller.jobs[uid].host
                 opening_command = host.opening_command
                 remote_version = host.get_remote_version()
-                main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
+                main_cmd = slurm_utils.get_python_cmd(
+                cli_cmd_list=[script],
+                remote_version=remote_version,
+                containers_root=storage.remote_path("geoslicer_containers"),
+            )
                 full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
                 output = client.run_command(full_cmd, verbose=True)
@@ -170,7 +185,11 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
                         100,
                         message=f"Failed to match job id for interval [{start_sim}, {end_sim}]",
                     )
-                    caller.persist(uid)
+                    # Not persisted: no slurm job was created, so there is nothing
+                    # to follow across a restart. Writing it would bring the entry
+                    # back as a terminal FAILED with no job ids, which is how these
+                    # rows became unmanageable. The other handlers already return
+                    # here without persisting.
                     return
                 job_id = match.group(1)
                 self.slurm_job_ids.append(job_id)
@@ -199,6 +218,11 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
             )
             caller.persist(uid)
             caller.schedule(uid, JOB_EVENT_PROGRESS)
+        except errors.ChannelError as e:
+            # The host dropped us mid-submission: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
             caller.set_state(
@@ -278,6 +302,12 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
             else:
                 caller.set_state(uid, JOB_STATE_PENDING, 10)
                 caller.schedule(uid, JOB_EVENT_PROGRESS)
+        except errors.ChannelError:
+            # Let it out to SlurmJobStatusMixin.progress, whose own handler
+            # routes it to disconnected(). Catching it here is what used to
+            # turn a dropped connection into a terminal FAILED, defeating the
+            # reconnection backoff that already exists one frame up.
+            raise
         except Exception as e:
             traceback.print_exc()
             caller.set_state(
@@ -374,13 +404,75 @@ class PoreNetworkSimulationHandler(SlurmJobStatusMixin):
             params = json.load(file)
         dict_to_parameter_node(params, destination_dir, node_type=TWO_PHASE_SIMULATION_TYPE)
 
-        collect_two_phase_simulation(self.job_local_path, destination_dir, self.prefix)
+        collect_two_phase_simulation(
+            self.job_local_path, destination_dir, self.prefix, pore_table_node=pore_table_node, params=params
+        )
 
     def get_number_of_simulations(self):
         return len(TwoPhaseSimulation.get_params_list(TwoPhaseSimulation.expand_params(self.params)))
 
 
-def collect_two_phase_simulation(source_path, destination_folder_item, prefix):
+def _read_polydata(filename):
+    reader = vtk.vtkPolyDataReader()
+    reader.SetFileName(str(filename))
+    reader.Update()
+    return reader.GetOutput()
+
+
+def _create_animation_model_node(node_name, polydata, saturation_steps, simulation_id, pore_table_node, cycle_table_node_ids):
+    model_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", slicer.mrmlScene.GenerateUniqueName(node_name))
+    model_node.CreateDefaultDisplayNodes()
+    display_node = model_node.GetDisplayNode()
+    model_node.SetDisplayVisibility(False)
+    display_node.SetScalarVisibility(1)
+    display_node.SetColor(0.1, 0.1, 0.9)
+    display_node.SetAmbient(0.15)
+    display_node.SetDiffuse(0.85)
+
+    model_node.SetAndObservePolyData(polydata)
+    model_node.SetAttribute("saturation_steps", str(saturation_steps))
+    model_node.SetAttribute("data_table_id", json.dumps(cycle_table_node_ids))
+    model_node.SetAttribute("simulation_id", str(simulation_id))
+    display_node.SetActiveScalarName("saturation_0")
+
+    if pore_table_node:
+        transform_node = calculateTransformNodeFromVolume(pore_table_node)
+        model_node.SetAndObserveTransformNodeID(transform_node.GetID())
+        model_node.HardenTransform()
+        slicer.mrmlScene.RemoveNode(transform_node)
+
+    return model_node
+
+
+def _cycle_node_index(path):
+    match = re.search(r"(\d+)$", path.stem)
+    return int(match.group(1)) if match else -1
+
+
+def create_animation_nodes(source_path, root_dir, prefix, pore_table_node, cycle_table_node_ids, saturation_steps_list):
+    temp_dir = Path(source_path) / "temp"
+    if not temp_dir.is_dir() or not saturation_steps_list:
+        return
+
+    vtk_files = sorted((f for f in temp_dir.iterdir() if f.is_file()), key=_cycle_node_index)
+    if not vtk_files:
+        return
+
+    shn = slicer.mrmlScene.GetSubjectHierarchyNode()
+    animation_dir = shn.CreateFolderItem(root_dir, "Animation")
+    shn.SetItemExpanded(animation_dir, False)
+
+    for i, file in enumerate(vtk_files):
+        if i >= len(saturation_steps_list):
+            break
+        polydata = _read_polydata(file)
+        model_node = _create_animation_model_node(
+            f"{prefix}_{file.stem}", polydata, saturation_steps_list[i], i, pore_table_node, cycle_table_node_ids
+        )
+        shn.CreateItem(animation_dir, model_node)
+
+
+def collect_two_phase_simulation(source_path, destination_folder_item, prefix, pore_table_node=None, params=None):
     shn = slicer.mrmlScene.GetSubjectHierarchyNode()
     root_dir = shn.CreateFolderItem(destination_folder_item, f"{prefix}_Two_Phase_PN_Simulation")
     table_dir = shn.CreateFolderItem(root_dir, "Tables")
@@ -465,6 +557,7 @@ def collect_two_phase_simulation(source_path, destination_folder_item, prefix):
     shn.CreateItem(root_dir, krel_table_node)
 
     # Aggregate krel cycle dfs
+    cycle_table_node_ids = []
     for cycle in range(1, 4):
         pattern = f"krelCycle{cycle}*"
         files = list(source_path.glob(pattern))
@@ -478,4 +571,10 @@ def collect_two_phase_simulation(source_path, destination_folder_item, prefix):
         cycle_table_node.SetName(slicer.mrmlScene.GenerateUniqueName(f"{prefix}_krel_table_cycle{cycle}"))
         cycle_table_node.SetAttribute(f"table_type", "relative_permeability")
         krel_table_node.SetAttribute(f"cycle_table_{cycle}_id", cycle_table_node.GetID())
+        cycle_table_node_ids.append(cycle_table_node.GetID())
         shn.CreateItem(table_dir, cycle_table_node)
+
+    if params and "saturation_steps" in params:
+        create_animation_nodes(
+            source_path, root_dir, prefix, pore_table_node, cycle_table_node_ids, params["saturation_steps"]
+        )

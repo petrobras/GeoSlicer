@@ -13,11 +13,14 @@ import slicer
 import vtk
 
 from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
+from ltrace.pore_networks.remote_workflow.remote_workflow_report import generate_remote_workflow_report
 from ltrace.pore_networks.simulation_parameters_node import PNM_PARAMETER_TYPE_ATTR, REMOTE_WORKFLOW_TYPE
+from ltrace.remote import errors
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.handlers.PoreNetworkSimulationHandler import collect_two_phase_simulation
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring, dump_via_slicer_temp, SlurmJobStatusMixin
+from ltrace.remote.object_transfer import JsonObjectTransfer
+from ltrace.remote.utils import argstring, SlurmJobStatusMixin
 from ltrace.slicer.data_utils import dataFrameToTableNode
 from ltrace.slicer.lazy import lazy
 
@@ -25,12 +28,8 @@ _1hour = 3600  # seconds
 
 
 class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
-    JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
+
     JOB_ID_PATTERN = re.compile(r"job_id = ([a-zA-Z0-9]+)")
-    FILES_DIRECTORY = PurePosixPath(r"/atena/tcr/ia-drp/banco_de_dados/")
-    EXPERIMENTAL_KREL_LOCAL_PATH = PurePosixPath(
-        r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp\servicos\LTRACE\ROMULO\Giovanni\krel\filtrados"
-    )
 
     def __init__(
         self,
@@ -73,11 +72,17 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
         try:
             caller.set_state(uid, "DEPLOYING", 0, message="Job main directory created.")
             job_executor = caller.jobs[uid]
+            storage = job_executor.host.get_storage()
             self.workflow_dir_name = JobManager.dirname(job_executor)
-            self.workflow_remote_path = self.JOBS_REMOTE_PATH / self.workflow_dir_name
-            self.workflow_local_path = job_executor.host.get_mounted_path() / self.workflow_dir_name
+            self.workflow_remote_path = storage.remote_dir("geoslicer_jobs") / self.workflow_dir_name
+            self.workflow_local_path = storage.local_dir("geoslicer_jobs") / self.workflow_dir_name
             client.run_command(f"mkdir -p {self.workflow_remote_path} && chmod -R 777 {self.workflow_remote_path}")
             caller.schedule(uid, "START")
+        except errors.ChannelError as e:
+            # The host dropped us mid-deploy: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
             caller.set_state(uid, "FAILED", 100, message="Deployment failed.")
@@ -88,32 +93,42 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
         caller.set_state(uid, "SENDING JOBS", 5, message="Submitting master workflow job.")
 
         try:
-            # Package file list inside the main workflow parameter dict for the CLI to parse natively
+            storage = caller.jobs[uid].host.get_storage()
+
+            # Extract wall time and GPU settings from workflow_params
+            walltime = self.workflow_params.get("walltime", "72:00:00")
+            use_gpu = self.workflow_params.get("use_gpu", True)
+
+            # Package parameters for the CLI
             workflow_params = self.workflow_params.copy()
             workflow_params["files_data"] = self.files_data
+            workflow_params["walltime"] = walltime
+            workflow_params["use_gpu"] = use_gpu
 
-            dump_via_slicer_temp(workflow_params, "workflow_params_dict.json", self.workflow_local_path)
+            with JsonObjectTransfer(self.workflow_local_path, "workflow_params_dict.json") as transfer:
+                transfer.save(workflow_params)
 
             # Determine the maximum amount of Dask nodes to deploy
             factors = workflow_params.get("downsampling_factors", [1])
             total_tasks = len(self.files_data) * len(factors)
 
-            # Read max workers from UI workflow parameters (defaulting to 14)
+            # Read max workers from UI workflow parameters (defaulting to 9)
             workers = workflow_params.get("workers", 9)
             max_slurm_jobs = min(workers, total_tasks)
 
-            cli_params = {
-                "cwd": str(self.workflow_remote_path),
-                "slurm_jobs": max_slurm_jobs,
-                "slurm_memory": "256GB",
-                "slurm_cores": 16,
-            }
+            cli_params = {"cwd": str(self.workflow_remote_path), "slurm_jobs": max_slurm_jobs}
 
             # Manually append the --slurm flag so argstring doesn't convert it to "--slurm True"
             cli_cmd_str = " ".join(
-                ["PoreNetworkRemoteWorkFlowCLI.PoreNetworkRemoteWorkFlowCLI", argstring(cli_params), "--slurm"]
+                ["PoreNetworkRemoteWorkFlowCLI.PoreNetworkRemoteWorkFlowCLI", argstring(cli_params)]
             )
-            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[cli_cmd_str], time="14-00:00:00")
+
+            main_cmd = slurm_utils.get_python_cmd(
+                cli_cmd_list=[cli_cmd_str],
+                time=walltime,
+                use_gpu=use_gpu,
+            )
+
             full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.workflow_remote_path)
 
             output = client.run_command(full_cmd, verbose=True)
@@ -154,6 +169,11 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
             caller.persist(uid)
             caller.schedule(uid, "PROGRESS")
 
+        except errors.ChannelError as e:
+            # The host dropped us mid-submission: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
             caller.set_state(uid, "FAILED", 100, message="Failed to start master job.")
@@ -201,6 +221,12 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
             caller.set_state(uid, "RUNNING", avg_progress, details={"successful_job_ids": self.slurm_job_ids})
             caller.schedule(uid, "PROGRESS")
 
+        except errors.ChannelError:
+            # Let it out to SlurmJobStatusMixin.progress, whose own handler
+            # routes it to disconnected(). Catching it here is what used to
+            # turn a dropped connection into a terminal FAILED, defeating the
+            # reconnection backoff that already exists one frame up.
+            raise
         except Exception as e:
             traceback.print_exc()
             caller.set_state(
@@ -464,6 +490,8 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
         return result_df
 
     def collect(self, caller: JobManager, uid: str, client: Any = None):
+        storage = caller.jobs[uid].host.get_storage()
+
         # Retrieve the list of successful job IDs from the persisted details
         details = caller.jobs[uid].details or {}
         successful_job_ids = set(details.get("successful_job_ids", []))
@@ -554,6 +582,7 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
 
                 # --- Extract Experimental KREL Data ---
                 self.collect_experimental_krel_data(
+                    storage.local_dir("krel_dataset"),
                     file_name_stem=file_name_stem,
                     job_suffix=job_suffix,
                     ds_folder_item=ds_folder_item,
@@ -604,13 +633,18 @@ class PoreNetworkRemoteWorkflowHandler(SlurmJobStatusMixin):
             workflow_folder_item=workflow_folder_item,
         )
 
-    def collect_experimental_krel_data(self, file_name_stem: str, job_suffix: str, ds_folder_item: Any):
+        # --- Consolidated Workflow Report ---
+        try:
+            generate_remote_workflow_report(workflow_folder_item)
+        except Exception as e:
+            logging.error(f"Failed to generate remote workflow report: {e}")
+
+    def collect_experimental_krel_data(self, krel_dataset_obj: Path, file_name_stem: str, job_suffix: str, ds_folder_item: Any):
         """Extracts and parses experimental KREL data into Slicer."""
         shn = slicer.mrmlScene.GetSubjectHierarchyNode()
         stem_parts = file_name_stem.split("_")
         first_two_words = "_".join(stem_parts[:2])
         target_krel_filename = f"{first_two_words}_krel_ao.csv"
-        krel_path_obj = Path(self.EXPERIMENTAL_KREL_LOCAL_PATH)
         krel_file_path = krel_path_obj / target_krel_filename
 
         if krel_file_path.exists():

@@ -40,7 +40,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.defaults = {}
 
         self.nullValue = lambda: self.defaults.get("nullableValue", DEFAULT_NULL_VALUES)
-        self.transitions = list()
+        self.ranges = list()
+        self.linkEndpoints = True
         self._observerHandlers = list()
         self.segmentationNode = None
         self.svalues = None
@@ -58,7 +59,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.rederedInSideBySide = None
         self.rederedInConventional = None
         self.tableWidth = 0
-        self.stashedTransitions = None
+        self.stashedRanges = None
 
         self.applyFinishedCallback = lambda: None
         self.applyAllSupported = True
@@ -112,9 +113,16 @@ the number of clusters equal to the number of segments added to the segmentation
             transitions_list_str = segmentationNode.GetAttribute("MultipleThresholdTransitions")
             histogram_range_str = segmentationNode.GetAttribute("MultipleThresholdXAxisRange")
             number_of_bins_str = segmentationNode.GetAttribute("MultipleThresholdNumberOfBins")
-            if transitions_list_str and len(literal_eval(transitions_list_str)) == len(self.getColors()) + 1:
-                self.transitions = np.array(literal_eval(transitions_list_str), dtype="float")
+            link_endpoints_str = segmentationNode.GetAttribute("MultipleThresholdLinkEndpoints")
+            if transitions_list_str and len(literal_eval(transitions_list_str)) == len(self.getColors()):
+                self.ranges = [list(r) for r in literal_eval(transitions_list_str)]
                 should_redraw_histogram = True
+            if link_endpoints_str is not None:
+                self.linkEndpoints = link_endpoints_str == "True"
+                self.linkEndpointsButton.blockSignals(True)
+                self.linkEndpointsButton.setChecked(self.linkEndpoints)
+                self.updateLinkEndpointsButtonAppearance()
+                self.linkEndpointsButton.blockSignals(False)
             if histogram_range_str and len(literal_eval(histogram_range_str)):
                 histogram_range = literal_eval(histogram_range_str)
                 self.zoomSlider.setMinimumValue(histogram_range[0])
@@ -168,9 +176,6 @@ the number of clusters equal to the number of segments added to the segmentation
 
         self.parametersFormLayout = qt.QFormLayout()
         self.parametersCollapsibleButton.setLayout(self.parametersFormLayout)
-        self.enablePulsingCheckbox = qt.QCheckBox("Preview pulse")
-        self.enablePulsingCheckbox.setCheckState(qt.Qt.Checked)
-        self.parametersFormLayout.addRow(self.enablePulsingCheckbox)
 
         self.figureGroup = ps.QtWidgets.QWidget()
         self.figureGroup.setMinimumWidth(150)
@@ -188,6 +193,16 @@ the number of clusters equal to the number of segments added to the segmentation
         self.table = ps.QtWidgets.QTableWidget()
         self.table.setSizePolicy(ps.QtWidgets.QSizePolicy.Policy.Fixed, ps.QtWidgets.QSizePolicy.Policy.Expanding)
 
+        self.linkEndpointsButton = ps.QtWidgets.QToolButton()
+        self._linkOnIcon = ps.QtGui.QIcon(":/Icons/LinkOn.png")
+        self._linkOffIcon = ps.QtGui.QIcon(":/Icons/LinkOff.png")
+        self.linkEndpointsButton.setIconSize(ps.QtCore.QSize(16, 16))
+        self.linkEndpointsButton.setCheckable(True)
+        self.linkEndpointsButton.setChecked(self.linkEndpoints)
+        self.linkEndpointsButton.setFixedSize(24, 24)
+        self.linkEndpointsButton.toggled.connect(self.onLinkEndpointsChanged)
+        self.updateLinkEndpointsButtonAppearance()
+
         self.axisLayout.addWidget(self.graphicsLayoutWidget, 1)
         self.axisLayout.addWidget(self.table, 0)
 
@@ -201,6 +216,37 @@ the number of clusters equal to the number of segments added to the segmentation
         self.table.horizontalHeader().setSectionResizeMode(ps.QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.figureGroupPythonQt = getPythonQtWidget(self.figureGroup)
         self.parametersFormLayout.addRow(self.figureGroupPythonQt)
+
+        #
+        # Preview settings
+        #
+        self.enablePulsingCheckbox = qt.QCheckBox("Preview pulse")
+        self.enablePulsingCheckbox.setCheckState(qt.Qt.Checked)
+
+        self.pulseAndLinkRow = qt.QWidget()
+        pulseAndLinkRowLayout = qt.QHBoxLayout(self.pulseAndLinkRow)
+        pulseAndLinkRowLayout.setContentsMargins(0, 0, 0, 0)
+        pulseAndLinkRowLayout.addWidget(self.enablePulsingCheckbox)
+        pulseAndLinkRowLayout.addStretch(1)
+        pulseAndLinkRowLayout.addWidget(getPythonQtWidget(self.linkEndpointsButton))
+        self.parametersFormLayout.addRow(self.pulseAndLinkRow)
+
+        self.opacityRow = qt.QWidget()
+        opacityRowLayout = qt.QHBoxLayout(self.opacityRow)
+        opacityRowLayout.setContentsMargins(0, 0, 0, 0)
+        self.previewOpacitySlider = ctk.ctkSliderWidget()
+        self.previewOpacitySlider.minimum = 0.0
+        self.previewOpacitySlider.maximum = 1.0
+        self.previewOpacitySlider.singleStep = 0.05
+        self.previewOpacitySlider.value = 0.5
+        opacityRowLayout.addWidget(qt.QLabel("Opacity:"))
+        opacityRowLayout.addWidget(self.previewOpacitySlider)
+        self.opacityRow.setVisible(not self.enablePulsingCheckbox.isChecked())
+        self.parametersFormLayout.addRow(self.opacityRow)
+
+        self.enablePulsingCheckbox.stateChanged.connect(
+            lambda state: self.opacityRow.setVisible(state != qt.Qt.Checked)
+        )
 
         # Slide bar to zoom the histogram
         zoomGroup = qt.QWidget()
@@ -322,9 +368,10 @@ the number of clusters equal to the number of segments added to the segmentation
             self._percentile_high = np.percentile(self.svalues, self.HIGH_PERCENTILE)
             self.isInt = np.issubdtype(self.svalues.dtype, np.integer)
         if k > 0:
-            if len(self.transitions) < 1 or k != len(self.transitions) - 1:
-                self.transitions = np.linspace(self._min + (self._max - self._min) * 0.2, self._max, len(self.colors))
-                self.transitions = np.append(self._min, self.transitions)
+            if len(self.ranges) != k:
+                boundaries = np.linspace(self._min + (self._max - self._min) * 0.2, self._max, len(self.colors))
+                boundaries = np.append(self._min, boundaries)
+                self.ranges = [[boundaries[i], boundaries[i + 1]] for i in range(len(boundaries) - 1)]
 
         single_step = (self._max - self._min) / 100
         self.zoomSlider.setRange(self._min, self._max + single_step)
@@ -336,13 +383,13 @@ the number of clusters equal to the number of segments added to the segmentation
             self.zoomSlider.setMinimumValue(self._min)
             self.zoomSlider.setMaximumValue(self._max)
 
-        if self.stashedTransitions is None:
+        if self.stashedRanges is None:
             self.applyKmeans()
         else:
-            self.transitions = self.stashedTransitions
+            self.ranges = self.stashedRanges
             segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-            segmentationNode.SetAttribute("MultipleThresholdTransitions", str(self.transitions.tolist()))
-            self.stashedTransitions = None
+            segmentationNode.SetAttribute("MultipleThresholdTransitions", str(self.ranges))
+            self.stashedRanges = None
             self.redrawHistogram()
 
     def getColors(self):
@@ -395,19 +442,20 @@ the number of clusters equal to the number of segments added to the segmentation
         bin_edges = (self.bin_edges[1:] + self.bin_edges[0:-1]) / 2
         gray = (64, 64, 64)
         black = (0, 0, 0)
-        if len(self.transitions) > 0:
+        if len(self.ranges) > 0:
             if not onlyBars:
                 self.lrlist = list()
 
-            if self.transitions[0] > self._min:
-                x = bin_edges[bin_edges <= self.transitions[0]]
-                y = hist[bin_edges <= self.transitions[0]]
+            if self.ranges[0][0] > self._min:
+                x = bin_edges[bin_edges <= self.ranges[0][0]]
+                y = hist[bin_edges <= self.ranges[0][0]]
                 bg1 = pg.BarGraphItem(x=x, width=wid, height=y, brush=black, pen=gray)
                 self.hist_plot.addItem(bg1)
 
-            for i in range(len(self.transitions) - 1):
-                x = bin_edges[np.logical_and(bin_edges >= self.transitions[i], bin_edges <= self.transitions[i + 1])]
-                y = hist[np.logical_and(bin_edges >= self.transitions[i], bin_edges <= self.transitions[i + 1])]
+            for i in range(len(self.ranges)):
+                rmin, rmax = self.ranges[i]
+                x = bin_edges[np.logical_and(bin_edges >= rmin, bin_edges <= rmax)]
+                y = hist[np.logical_and(bin_edges >= rmin, bin_edges <= rmax)]
                 self._hist_bars = list()
                 bg1 = pg.BarGraphItem(
                     x=x, width=wid, height=y, brush=np.array(self.colors[i]) * 255, pen=np.array(self.colors[i]) * 255
@@ -415,13 +463,13 @@ the number of clusters equal to the number of segments added to the segmentation
                 self.hist_plot.addItem(bg1)
                 self._hist_bars.append(bg1)
                 if not onlyBars:
-                    lr = pg.LinearRegionItem([self.transitions[i], self.transitions[i + 1]], swapMode="push")
+                    lr = pg.LinearRegionItem([rmin, rmax], swapMode="push")
                     lr.setZValue(-100)
                     self.hist_plot.addItem(lr)
                     lr.sigRegionChanged.connect(partial(self.regionChanged, i, lr))
                     self.lrlist.append(lr)
-                hist = hist[bin_edges > self.transitions[i + 1]]
-                bin_edges = bin_edges[bin_edges > self.transitions[i + 1]]
+                hist = hist[bin_edges > rmax]
+                bin_edges = bin_edges[bin_edges > rmax]
 
         if len(bin_edges) > 0:
             bg1 = pg.BarGraphItem(x=bin_edges, width=wid, height=hist, brush=black, pen=gray)
@@ -470,40 +518,96 @@ the number of clusters equal to the number of segments added to the segmentation
             self.tableWidth = newTableWidth + 10
         self.table.setFixedWidth(self.tableWidth)
 
+    def _getCut(self, cutIdx):
+        if cutIdx < len(self.ranges):
+            return self.ranges[cutIdx][0]
+        return self.ranges[cutIdx - 1][1]
+
+    def _setCut(self, cutIdx, value):
+        if cutIdx - 1 >= 0:
+            self.ranges[cutIdx - 1][1] = value
+        if cutIdx < len(self.ranges):
+            self.ranges[cutIdx][0] = value
+
     def onCellChanged(self, rowIdx, colIdx):
         er = ps.QtCore.Qt.ItemDataRole.EditRole
         changedItem = self.table.item(rowIdx, colIdx)
         data = changedItem.data(er)
 
-        transitionIdx = rowIdx + (1 if colIdx == 1 else 0)
-        self.transitions[transitionIdx] = data
-        for i in range(len(self.transitions)):
-            if i < transitionIdx and self.transitions[i] > data:
-                self.transitions[i] = data
-            if i > transitionIdx and self.transitions[i] < data:
-                self.transitions[i] = data
+        self.ranges[rowIdx][colIdx] = data
+
+        if self.linkEndpoints:
+            cutIdx = rowIdx if colIdx == 0 else rowIdx + 1
+            self._setCut(cutIdx, data)
+
+            i = cutIdx
+            while i + 1 <= len(self.ranges) and self._getCut(i + 1) < data:
+                self._setCut(i + 1, data)
+                i += 1
+
+            i = cutIdx
+            while i - 1 >= 0 and self._getCut(i - 1) > data:
+                self._setCut(i - 1, data)
+                i -= 1
 
         self.redrawHistogram()
 
+    def updateLinkEndpointsButtonAppearance(self):
+        if self.linkEndpoints:
+            self.linkEndpointsButton.setIcon(self._linkOnIcon)
+            self.linkEndpointsButton.setToolTip(
+                "Endpoints are linked: the end of a threshold range is kept equal to the start "
+                "of the next one. Click to unlink."
+            )
+            self.linkEndpointsButton.setStyleSheet(
+                "QToolButton { background: rgba(140, 215, 140, 220); border: 1px solid rgba(0, 0, 0, 80); border-radius: 3px; }"
+            )
+        else:
+            self.linkEndpointsButton.setIcon(self._linkOffIcon)
+            self.linkEndpointsButton.setToolTip(
+                "Endpoints are unlinked: threshold ranges can be edited independently. Click to link."
+            )
+            self.linkEndpointsButton.setStyleSheet(
+                "QToolButton { background: rgba(255, 255, 255, 200); border: 1px solid rgba(0, 0, 0, 80); border-radius: 3px; }"
+            )
+
+    def onLinkEndpointsChanged(self, checked):
+        self.linkEndpoints = checked
+        self.updateLinkEndpointsButtonAppearance()
+
+        parameterSetNode = self.scriptedEffect.parameterSetNode()
+        segmentationNode = parameterSetNode.GetSegmentationNode() if parameterSetNode else None
+        if segmentationNode:
+            segmentationNode.SetAttribute("MultipleThresholdLinkEndpoints", str(self.linkEndpoints))
+
+        if self.linkEndpoints and len(self.ranges) > 1:
+            # Re-link neighboring endpoints using the current segment's max as the shared boundary
+            for i in range(len(self.ranges) - 1):
+                self.ranges[i + 1][0] = self.ranges[i][1]
+            self.redrawHistogram()
+
     def regionChanged(self, segment, lr, test):
         regCurrent = lr.getRegion()
-        self.transitions[segment] = regCurrent[0]
-        self.transitions[segment + 1] = regCurrent[1]
+        self.ranges[segment][0] = regCurrent[0]
+        self.ranges[segment][1] = regCurrent[1]
 
         self.lrlist[segment].blockSignals(True)
         self.lrlist[segment].setRegion(regCurrent)
         self.lrlist[segment].blockSignals(False)
 
-        if segment > 0:
-            regMinus = self.lrlist[segment - 1].getRegion()
-            self.lrlist[segment - 1].blockSignals(True)
-            self.lrlist[segment - 1].setRegion((regMinus[0], regCurrent[0]))
-            self.lrlist[segment - 1].blockSignals(False)
-        if segment < len(self.colors) - 1:
-            regPlus = self.lrlist[segment + 1].getRegion()
-            self.lrlist[segment + 1].blockSignals(True)
-            self.lrlist[segment + 1].setRegion((regCurrent[1], regPlus[1]))
-            self.lrlist[segment + 1].blockSignals(False)
+        if self.linkEndpoints:
+            if segment > 0:
+                self.ranges[segment - 1][1] = regCurrent[0]
+                regMinus = self.lrlist[segment - 1].getRegion()
+                self.lrlist[segment - 1].blockSignals(True)
+                self.lrlist[segment - 1].setRegion((regMinus[0], regCurrent[0]))
+                self.lrlist[segment - 1].blockSignals(False)
+            if segment < len(self.colors) - 1:
+                self.ranges[segment + 1][0] = regCurrent[1]
+                regPlus = self.lrlist[segment + 1].getRegion()
+                self.lrlist[segment + 1].blockSignals(True)
+                self.lrlist[segment + 1].setRegion((regCurrent[1], regPlus[1]))
+                self.lrlist[segment + 1].blockSignals(False)
 
         self.redrawHistogram(onlyBars=True)
 
@@ -536,8 +640,8 @@ the number of clusters equal to the number of segments added to the segmentation
                     originalImageToWorldMatrix = vtk.vtkMatrix4x4()
                     modifierLabelmap.GetImageToWorldMatrix(originalImageToWorldMatrix)
                     # Get parameters
-                    min = self.transitions[i]
-                    max = self.transitions[i + 1]
+                    min = self.ranges[i][0]
+                    max = self.ranges[i][1]
                     # Perform thresholding
                     thresh = vtk.vtkImageThreshold()
                     thresh.SetInputData(sourceImageData)
@@ -556,7 +660,7 @@ the number of clusters equal to the number of segments added to the segmentation
                     modifierLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet
                 )
 
-            segmentationNode.SetAttribute("MultipleThresholdTransitions", str(self.transitions.tolist()))
+            segmentationNode.SetAttribute("MultipleThresholdTransitions", str(self.ranges))
             histogram_range = [self.zoomSlider.minimumValue, self.zoomSlider.maximumValue]
             segmentationNode.SetAttribute("MultipleThresholdXAxisRange", str(histogram_range))
             segmentationNode.SetAttribute("MultipleThresholdNumberOfBins", str(self.binsNumber))
@@ -581,7 +685,8 @@ the number of clusters equal to the number of segments added to the segmentation
         for i in range(segmentIDs.GetNumberOfValues()):
             segmentNames.append(segmentation.GetSegment(segmentIDs.GetValue(i)).GetName())
 
-        virtualSegWidget.setParams(self.getParentLazyNode(), self.transitions.tolist(), self.colors, segmentNames)
+        flatThresholds = [self.ranges[0][0]] + [r[1] for r in self.ranges]
+        virtualSegWidget.setParams(self.getParentLazyNode(), flatThresholds, self.colors, segmentNames)
 
     def clearObservers(self):
         for obj, tag in self._observerHandlers:
@@ -675,9 +780,10 @@ the number of clusters equal to the number of segments added to the segmentation
             return
 
         centroids, labelmap = kmeans2(self.svalues.astype(float), int(nsegs), iter=100, minit="points")
-        self.transitions = self.getTransitions(centroids)
-        self.transitions = np.append(self._min, self.transitions)
-        self.transitions = np.append(self.transitions, self._max)
+        boundaries = self.getTransitions(centroids)
+        boundaries = np.append(self._min, boundaries)
+        boundaries = np.append(boundaries, self._max)
+        self.ranges = [[boundaries[i], boundaries[i + 1]] for i in range(len(boundaries) - 1)]
 
         self.redrawHistogram()
 
@@ -689,9 +795,10 @@ the number of clusters equal to the number of segments added to the segmentation
 
         self.colors = self.getColors()
 
-        if len(self.transitions) != len(self.colors) + 1:
-            self.transitions = np.linspace(self._min + (self._max - self._min) * 0.2, self._max, len(self.colors))
-            self.transitions = np.append(self._min, self.transitions)
+        if len(self.ranges) != len(self.colors):
+            boundaries = np.linspace(self._min + (self._max - self._min) * 0.2, self._max, len(self.colors))
+            boundaries = np.append(self._min, boundaries)
+            self.ranges = [[boundaries[i], boundaries[i + 1]] for i in range(len(boundaries) - 1)]
 
         self.setupPreviewDisplay()
         self.applyKmeans()
@@ -745,7 +852,7 @@ the number of clusters equal to the number of segments added to the segmentation
             # opacity = 0.5 + self.previewState / (2. * self.previewSteps)
             opacity = self.previewState / (self.previewSteps)
         else:
-            opacity = 1.0
+            opacity = self.previewOpacitySlider.value
         # Get color of edited segment
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if not segmentationNode:
@@ -760,8 +867,8 @@ the number of clusters equal to the number of segments added to the segmentation
 
             for i, key in enumerate(self.colorsBySegment.keys()):
                 r, g, b = self.colors[i]
-                min = self.transitions[i]
-                max = self.transitions[i + 1]
+                min = self.ranges[i][0]
+                max = self.ranges[i][1]
                 if i >= len(self.previewPipelines[sliceWidget]):
                     continue
                 segmentVisibility = segmentationNode.GetDisplayNode().GetSegmentVisibility(key)
@@ -785,7 +892,7 @@ the number of clusters equal to the number of segments added to the segmentation
             self.previewStep = 1
 
     def changeLayoutPreview(self, currentLayout):
-        self.stashedTransitions = self.transitions
+        self.stashedRanges = self.ranges
         self.deactivate()
 
         if not self.rederedInConventional or not self.rederedInSideBySide:

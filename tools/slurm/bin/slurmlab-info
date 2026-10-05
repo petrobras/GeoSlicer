@@ -1,0 +1,50 @@
+#!/bin/bash
+# Health check and first-stop diagnosis: `podman exec <container> slurmlab-info`
+# or `./run.sh info`.
+#
+# The two questions this answers are "is the node able to run anything" and
+# "if a job is pending, what is slurm waiting for".
+set -uo pipefail
+
+hr() { printf '\n== %s ==\n' "$1"; }
+
+hr "nodes"
+sinfo -N -l 2>&1 | head -20
+
+hr "node detail"
+scontrol show node 2>/dev/null | tr ' ' '\n' \
+    | grep -E '^(NodeName|State|CPUAlloc|CPUTot|RealMemory|FreeMem|Partitions|Reason)=' || echo "no node info"
+
+hr "partitions"
+scontrol show partition 2>/dev/null | tr ' ' '\n' \
+    | grep -E '^(PartitionName|Default|State|Nodes|TotalCPUs|MaxTime)=' || echo "no partitions"
+
+hr "queue"
+squeue -o "%.10i %.9P %.12j %.8T %.10M %.9l %R" 2>&1 | head -20
+
+pending="$(squeue -h -t PENDING -o %i 2>/dev/null)"
+if [ -n "$pending" ]; then
+    hr "why each pending job is waiting"
+    for job in $pending; do
+        scontrol show job "$job" 2>/dev/null | tr ' ' '\n' \
+            | grep -E '^(JobId|JobState|Reason|Partition|NumCPUs|NumNodes|MinMemory|TimeLimit)=' \
+            | tr '\n' ' '
+        echo
+    done
+fi
+
+hr "accounting (this is what the Job Monitor polls)"
+sacct -P -ojobid,state,elapsed,start,end 2>&1 | head -20
+
+hr "shared trees"
+for d in "${JOBS_DIR:-/nethome/drp/servicos/LTRACE/GEOSLICER/jobs}" \
+         "${MICROTOM_JOBS_DIR:-/nethome/drp/microtom/geoslicer/remote/jobs}" \
+         "${GEOSLICER_CONTAINERS_DIR:-/atena/users/dibi/containers/geoslicer}"; do
+    printf '%s -> ' "$d"
+    if [ -d "$d" ]; then echo "$(find "$d" -maxdepth 1 -mindepth 1 2>/dev/null | wc -l) entries"; else echo MISSING; fi
+done
+
+hr "simulators and solvers"
+ls -1 /usr/local/bin/microtom_* 2>/dev/null | xargs -n1 basename | tr '\n' ' '; echo
+printf 'flow (OPM): '; command -v flow || echo 'not installed'
+printf 'LBPM:       '; ls /opt/lbpm/bin 2>/dev/null | tr '\n' ' '; echo

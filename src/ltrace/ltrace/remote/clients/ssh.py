@@ -1,6 +1,8 @@
 import socket
 import paramiko
 import logging
+import threading
+import traceback
 
 from pathlib import Path
 
@@ -8,7 +10,6 @@ from .base import AbstractClient
 from ..errors import *
 
 _1s = 1
-
 
 class Client(AbstractClient):
     def __init__(self, host, key_filename=None, port=22) -> None:
@@ -36,6 +37,7 @@ class Client(AbstractClient):
         )  # TODO this enables MitM attacks, but currently it is only used inside private networks
 
     def connect(self, user, password=None):
+       
         if user is None:
             raise ValueError(f"SSH Client 'user' argument type is 'NoneType'")
 
@@ -51,12 +53,14 @@ class Client(AbstractClient):
             kwargs["allow_agent"] = False
 
         kwargs["timeout"] = 7 * _1s
-        kwargs["auth_timeout"] = 3 * _1s
+        kwargs["auth_timeout"] = 5 * _1s
+        kwargs["banner_timeout"] = 60 * _1s
 
         credentials = {**self.__credentials, "username": user_, "password": password}
 
         try:
             self.__ssh.connect(**credentials, **kwargs)
+            self.__ssh.get_transport().set_keepalive(30)
         except socket.timeout as e:
             raise TimeoutException(e, self.__credentials["hostname"])
         except socket.gaierror as e:
@@ -74,6 +78,20 @@ class Client(AbstractClient):
         except Exception as e:
             raise SSHException(e, self.__credentials["hostname"])
 
+    def is_alive(self):
+        """Cheap liveness check: inspect the transport without a round trip.
+
+        Meant for the hot path (every poll reuses a cached client), where the
+        round trip of is_active() would be paid per event. A transport that is
+        gone or already flagged inactive means the cached client is dead.
+        """
+        try:
+            transport = self.__ssh.get_transport()
+            return transport is not None and transport.is_active()
+        except Exception as e:
+            logging.warning(f"Failed to inspect SSH transport: {repr(e)}")
+            return False
+
     def is_active(self):
         """
         This will check if the connection is still availlable.
@@ -84,7 +102,7 @@ class Client(AbstractClient):
             self.__ssh.exec_command("cd .", timeout=5)
             return True
         except Exception as e:
-            print("Connection lost, cause: ", repr(e))
+            logging.warning(f"Connection lost, cause: {repr(e)}")
 
         return False
 
@@ -99,31 +117,42 @@ class Client(AbstractClient):
 
             return "unknown"
         except Exception as e:
-            print("Connection lost, cause: ", repr(e))
+            logging.warning(f"Connection lost, cause: {repr(e)}")
 
-    def run_command(self, cmd: str, wait_exit=True, verbose=False):
+    def run_command(self, cmd: str, wait_exit=True, verbose=False, timeout=60):
         try:
-            _, stdout_, stderr_ = self.__ssh.exec_command(cmd)
-        except paramiko.SSHException as e:
-            raise BadScriptPath(e, self.__credentials["hostname"])
-        except Exception as e:
-            raise SSHException(e, self.__credentials["hostname"])
-        finally:
+            _, stdout_, stderr_ = self.__ssh.exec_command(cmd, timeout=timeout)  # seconds
+
+            if not wait_exit:
+                return None            
+
+            stdout_.channel.settimeout(timeout)
+            
+            output = stdout_.read().decode("utf-8").strip()
+            errors = stderr_.read().decode("utf-8").strip()
+
+            exit_status = stdout_.channel.recv_exit_status()
+
             if verbose:
-                print(cmd)
+                logging.info(f"Command exited with status: {exit_status}")
 
-        if wait_exit:
-            stdout_.channel.recv_exit_status()
+            return {
+                'stdout': output,
+                'stderr': errors
+            }
+            
+        
+        except (paramiko.SSHException, socket.error, ConnectionResetError) as e:
+            logging.error(f"Failed to execute command: {cmd}")           
+            raise SSHException(e, self.__credentials["hostname"])
 
-            return dict(
-                stdout=stdout_.read().decode("utf-8").strip(),
-                stderr=stderr_.read().decode("utf-8").strip(),
-            )
-
-        return None
+        except Exception as e:
+            logging.error(f"Unexpected error while executing command. Error: {repr(e)}")
+            raise SSHException(e, self.__credentials["hostname"])
 
     def close(self):
         try:
             self.__ssh.close()
         except Exception as e:
             logging.exception(e)
+        

@@ -128,6 +128,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.sourceVolumeNodeComboBox.removeEnabled = False
         self.sourceVolumeNodeComboBox.renameEnabled = False
         self.sourceVolumeNodeComboBox.currentNodeChanged.connect(self.onSourceVolumeNodeChanged)
+        self.sourceVolumeNodeComboBox.nodeActivated.connect(self.onSourceVolumeNodeActivated)
 
         self.segmentationNodeComboBox = self.editor.findChild(slicer.qMRMLNodeComboBox, "SegmentationNodeComboBox")
         self.segmentationNodeComboBox.currentNodeChanged.connect(self.onSegmentationNodeChanged)
@@ -223,9 +224,17 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
             self._syncingSourceVolume = False
 
     def onSourceVolumeNodeChanged(self, node):
+        # NOTE: this slot fires for any change of the combo box's current node, including
+        # ones the widget makes on its own when the scene's node list is reindexed (e.g. a
+        # volume added/removed elsewhere in the scene), not just user-driven selections.
+        # Only cosmetic, idempotent updates should happen here. Reference-swapping logic
+        # (which can pop the "Change reference image" dialog) lives in
+        # onSourceVolumeNodeActivated, wired to the nodeActivated signal, which the combo box
+        # emits only when the user actually chooses an item.
         color_support = node and node.GetImageData() and node.GetImageData().GetNumberOfScalarComponents() == 3
         self.configureColorSupport(color_support=color_support)
 
+    def onSourceVolumeNodeActivated(self, node):
         if self._syncingSourceVolume or node is None:
             return
 

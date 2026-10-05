@@ -7,6 +7,8 @@ import traceback
 from pathlib import Path
 
 from ltrace.slicer import helpers
+from ltrace.slicer.virtual import virtual_node
+from ltrace.slicer.virtual.fourd import proxy as fourdProxy
 from ltrace.slicer_utils import *
 
 from CustomizedDataLib import *
@@ -162,6 +164,16 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.infoWidgetLayout.addWidget(self.textWidget)
         self.textWidget.setVisible(False)
 
+        # Deferred data: a 4D proxy node gets its player, a virtual node gets its sampling information.
+        # Both complement the per-type widgets above rather than replacing them.
+        self.fourDWidget = FourDWidget(self.infoWidgetContainer)
+        self.infoWidgetLayout.insertWidget(0, self.fourDWidget)
+        self.fourDWidget.setVisible(False)
+
+        self.virtualWidget = VirtualNodeWidget(self.infoWidgetContainer)
+        self.infoWidgetLayout.insertWidget(1, self.virtualWidget)
+        self.virtualWidget.setVisible(False)
+
         self.infoWidgetLayout.addStretch()
 
         self.attributesWidget = TextWidget()
@@ -194,6 +206,8 @@ class CustomizedDataWidget(LTracePluginWidget):
     def currentItemChanged(self, itemID_bogus):
         # hack to workaround currentItemChanged firing twice
         itemID = self.subjectHierarchyTreeView.currentItem()
+        self.fourDWidget.setVisible(False)
+        self.virtualWidget.setVisible(False)
         self.scalarVolumeWidget.setVisible(False)
         self.vectorVolumeWidget.setVisible(False)
         self.tableWidget.setVisible(False)
@@ -208,6 +222,17 @@ class CustomizedDataWidget(LTracePluginWidget):
             return
 
         self.tabWidget.setVisible(True)
+
+        # Handle deferred data cards
+        try:
+            if fourdProxy.is_proxy(node):
+                self.fourDWidget.setNode(node)
+                self.fourDWidget.setVisible(True)
+            elif virtual_node.is_virtual_node(node):
+                self.virtualWidget.setNode(node)
+                self.virtualWidget.setVisible(True)
+        except Exception as error:
+            logging.info(f"Unable to show the deferred data information: {error}\n{traceback.format_exc()}")
 
         # Handle attributes tab
         metadata_node_id = node.GetAttribute("MetadataNode")
@@ -257,3 +282,4 @@ class CustomizedDataWidget(LTracePluginWidget):
         if self.registerThisAction is not None:
             self.registerThisAction.triggered.disconnect()
         self.scalarVolumeWidget.cleanup()
+        self.fourDWidget.cleanup()

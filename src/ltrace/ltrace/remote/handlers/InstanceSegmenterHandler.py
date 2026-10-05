@@ -19,10 +19,12 @@ from ltrace.remote.constants import (
     JOB_EVENT_PROGRESS,
     JOB_STATE_COMPLETED,
     JOB_STATE_FAILED,
+    JOB_STATE_GHOST,
     JOB_STATE_RUNNING,
 )
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import argstring
+from ltrace.remote.paths import storage_for
+from ltrace.remote.utils import argstring, try_scancel
 from ltrace.slicer import helpers
 from ltrace.slicer.data_utils import dataFrameToTableNode
 from ltrace.slicer.helpers import (
@@ -38,8 +40,6 @@ Segmenter = LazyLoad2("Segmenter.Segmenter")
 
 
 class ThinSectionInstanceSegmenterExecutionHandler:
-    REMOTE_DIR = PurePosixPath("/nethome/drp")
-    NFS_DIR = Path(r"\\dfs.petrobras.biz\cientifico\cenpes\res\drp")
 
     job_id_pattern = re.compile("job_id = ([a-zA-Z0-9]+)")
 
@@ -66,13 +66,10 @@ class ThinSectionInstanceSegmenterExecutionHandler:
         self.output_name = output_name
         self.report_name = "instances_report"
 
-        self.jobs_remote_path = PurePosixPath(
-            (self.REMOTE_DIR / "servicos" / "LTRACE" / "GEOSLICER" / "jobs").as_posix()
-        )
-        self.jobs_local_path = self.NFS_DIR / "servicos" / "LTRACE" / "GEOSLICER" / "jobs"
+        self._storage = storage_for(None)
 
-        self.bin_path = PurePosixPath(self.REMOTE_DIR / bin_path)
-        self.script_path = PurePosixPath(self.REMOTE_DIR / script_path)
+        self._bin_path = bin_path
+        self._script_path = script_path
 
         self.model_path = PurePosixPath(
             self.REMOTE_DIR
@@ -103,7 +100,29 @@ class ThinSectionInstanceSegmenterExecutionHandler:
 
         self.results = []
 
+    @property
+    def jobs_remote_path(self) -> PurePosixPath:
+        return self._storage.remote_dir("geoslicer_jobs")
+
+    @property
+    def jobs_local_path(self) -> Path:
+        return self._storage.local_dir("geoslicer_jobs")
+
+    @property
+    def bin_path(self) -> PurePosixPath:
+        return self._storage.remote_dir("root") / self._bin_path
+
+    @property
+    def script_path(self) -> PurePosixPath:
+        return self._storage.remote_dir("root") / self._script_path
+
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
+        # Bind to the host's storage layout before doing anything: the handler
+        # is constructed before it knows which account it belongs to.
+        job = caller.jobs.get(uid)
+        if job is not None:
+            self._storage = storage_for(job.host)
+
         client = kwargs.get("client")
 
         if action == JOB_EVENT_DEPLOY:
@@ -261,20 +280,14 @@ class ThinSectionInstanceSegmenterExecutionHandler:
             pass
 
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):
-        ghosted = False
-        traceback = None
-        if self.jobid:
-            try:
-                r = client.run_command(f"scancel {self.jobid}")
+        # scancel reports "invalid job id" for a slurm job that already
+        # finished. That is not a cancellation failure, and marking the job
+        # GHOST for it leaves an entry the monitor refuses to cancel, i.e. one
+        # the user can never remove.
+        ghost_reason = try_scancel(client, [self.jobid])
 
-                if len(r["stderr"]) > 0:
-                    raise Exception(r["stderr"])
-            except Exception as e:
-                ghosted = True
-                traceback = repr(e)
-
-        if ghosted:
-            caller.set_state(uid, "GHOST", 0, message="Execution cannot be cancelled.", traceback=traceback)
+        if ghost_reason:
+            caller.set_state(uid, JOB_STATE_GHOST, 0, message="Execution cannot be cancelled.", traceback=ghost_reason)
             return
 
         try:
@@ -285,9 +298,7 @@ class ThinSectionInstanceSegmenterExecutionHandler:
 
             caller.remove(uid)
         except Exception:
-            local_job_dir = Path(
-                str(Path(job_dir)).replace("/nethome/drp", "\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp")
-            )
+            local_job_dir = to_local(job_dir)
             if local_job_dir.exists():
                 shutil.rmtree(local_job_dir, ignore_errors=True)
 

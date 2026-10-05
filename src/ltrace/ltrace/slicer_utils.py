@@ -5,6 +5,8 @@ import os
 import qt
 import slicer
 import logging
+import subprocess
+import sys
 import traceback
 
 from typing import Union
@@ -594,3 +596,86 @@ def tableWidgetToDataFrame(tableWidget: qt.QTableWidget) -> pd.DataFrame:
 
 def getResourcePath(rtype: str) -> Path:
     return Path(slicer.app.slicerHome) / "LTrace" / "Resources" / rtype
+
+
+def openInTextEditor(path: Union[str, Path]) -> bool:
+    """Open a text file in the system's default text editor, whatever its extension.
+
+    Opening the file through its own association is not enough for configuration files such as LBPM's
+    ``.db``: Windows chooses the program by extension, and that extension belongs to no program or to a
+    database browser. There the file is opened with the program registered for ``.txt`` instead. Linux
+    desktops fall back to the file's content when no pattern claims its extension, so ``xdg-open`` already
+    reaches the text editor.
+
+    The editor runs detached and nothing waits for it. Returns whether one was started.
+    """
+    path = str(Path(path))
+    if sys.platform.startswith("win"):
+        return _openWithTextAssociationOnWindows(path)
+
+    try:
+        # The launcher's library paths would make the editor load GeoSlicer's libraries instead of its own.
+        subprocess.Popen(
+            ["xdg-open", path],
+            env=slicer.util.startupEnvironment(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except OSError as error:
+        logging.debug(f"xdg-open could not open {path}: {error}")
+
+    return bool(qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(path)))
+
+
+def _openWithTextAssociationOnWindows(path: str) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    class SHELLEXECUTEINFOW(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("fMask", wintypes.ULONG),
+            ("hwnd", wintypes.HWND),
+            ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR),
+            ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR),
+            ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE),
+            ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wintypes.LPCWSTR),
+            ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD),
+            ("hIconOrMonitor", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    SEE_MASK_CLASSNAME = 0x00000001  # Open with the association of lpClass instead of the file's own
+    SEE_MASK_FLAG_NO_UI = 0x00000400  # Fail quietly, so the fallback below can run
+    SW_SHOWNORMAL = 1
+
+    info = SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = SEE_MASK_CLASSNAME | SEE_MASK_FLAG_NO_UI
+    info.lpVerb = "open"
+    info.lpFile = path
+    info.lpDirectory = str(Path(path).parent)
+    info.lpClass = ".txt"
+    info.nShow = SW_SHOWNORMAL
+
+    try:
+        if ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
+            return True
+        logging.debug(f"No program is associated with .txt files: {ctypes.GetLastError()}")
+    except (AttributeError, OSError) as error:
+        logging.debug(f"ShellExecuteExW could not open {path}: {error}")
+
+    try:
+        subprocess.Popen(["notepad.exe", path])
+        return True
+    except OSError as error:
+        logging.error(f"Could not open {path} in a text editor: {error}")
+        return False

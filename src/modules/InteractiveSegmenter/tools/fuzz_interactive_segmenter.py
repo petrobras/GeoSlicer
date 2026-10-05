@@ -7,8 +7,10 @@ nothing in the module itself: it only clicks the public widgets, writes
 annotation labelmaps (the same data path real painting feeds), nudges and
 reorients the slice views (XY/XZ/YZ via the module combo, via the slice node
 directly, and occasionally to an oblique plane the module is expected to
-ignore), switches the layout away and back through the Resume button, and
-watches several independent sinks for crashes.
+ignore), switches the layout away and back through the Resume button, leaves
+and re-enters the module, applies the trained model to the input and to queues
+of other images through the "Apply to Other Images" dialog, and watches several
+independent sinks for crashes.
 
 USAGE (via /gs-exec, exec this file's text in the running GeoSlicer):
 
@@ -46,8 +48,10 @@ wrapping sys.stdout/stderr, which would otherwise swallow the output of every
 later /gs-exec call in this session.
 
 Modal dialogs would otherwise block the whole scheduler, so every warning/error
-dialog and QMessageBox.exec_ is intercepted (recorded + auto-dismissed). Input
-volumes are kept small, which also avoids the large-3D crop prompt entirely.
+dialog, QMessageBox.exec_ and QDialog.exec_ is intercepted. Most are recorded and
+auto-dismissed; the "Apply to Other Images" dialog is instead driven (a random
+subset of the session's images is selected in its tree, then Apply or Cancel).
+Input volumes are kept small, which also avoids the large-3D crop prompt entirely.
 """
 
 import glob
@@ -62,8 +66,10 @@ import qt
 import slicer
 import vtk
 
+from ltrace.interactive.widget import ApplyToOtherImagesDialog, get_annotation_node
+
 ANNOTATION_SLICE = "SideBySideDumb1"
-VIEW_PLANES = ("XY", "XZ", "YZ")  # matches seg_widget.VIEW_PLANES
+VIEW_PLANES = ("XY", "XZ", "YZ")  # matches widget.VIEW_PLANES
 
 # Substrings in an intercepted dialog message that mean "the module is unhappy".
 # The fuzzer avoids the benign triggers (it only applies when trained, never
@@ -78,7 +84,15 @@ DIALOG_CRASH_PATTERNS = (
 
 # Messages that are expected/benign even though they reach a dialog, so they do
 # not count as findings.
-DIALOG_BENIGN_PATTERNS = ("features are not ready",)
+# The last two are `_inferenceNodeError`'s refusals. The fuzzer provokes the
+# dimensionality one on purpose by offering apply targets the current model cannot
+# be used on; the extra-channel one is a backstop, since the batch button is
+# disabled for every session that could reach it.
+DIALOG_BENIGN_PATTERNS = (
+    "features are not ready",
+    "must have the same dimensionality",
+    "not supported when extra input images are used",
+)
 
 
 class InteractiveSegmenterFuzzer:
@@ -102,6 +116,8 @@ class InteractiveSegmenterFuzzer:
         # --- per-session state ---
         self.config = None
         self.source = None
+        self.other_nodes = []  # apply targets offered in the batch dialog
+        self.extra_inputs = 0  # extra channels the live session was started with
         self.session_nodes = []  # node ids to delete when the session ends
         self.master = None  # spatial-shaped uint8 annotation, the source of truth
         self.classes = set()
@@ -179,6 +195,38 @@ class InteractiveSegmenterFuzzer:
             return 0
 
         qt.QMessageBox.exec_ = msgbox_exec
+
+        # Any other modal dialog would block the scheduler too. The batch dialog is
+        # the one the fuzzer has something to say to, so it gets driven; the rest are
+        # recorded and dismissed.
+        self._saved_dialogs["QDialog.exec_"] = qt.QDialog.exec_
+
+        def dialog_exec(dialog, *args, **kwargs):
+            if isinstance(dialog, ApplyToOtherImagesDialog):
+                return self._drive_batch_dialog(dialog)
+            self._on_dialog("QDialog", dialog.windowTitle)
+            return 0
+
+        qt.QDialog.exec_ = dialog_exec
+
+    def _drive_batch_dialog(self, dialog):
+        """Stand in for the user in the modal "Apply to Other Images" dialog: select a
+        random subset of this session's images in the tree, then Apply or Cancel."""
+        candidates = [self.source] + self.other_nodes
+        chosen = [n for n in candidates if self.rng.random() < 0.5] or [
+            candidates[int(self.rng.integers(0, len(candidates)))]
+        ]
+        sh = slicer.mrmlScene.GetSubjectHierarchyNode()
+        item_ids = vtk.vtkIdList()
+        for node in chosen:
+            item_id = sh.GetItemByDataNode(node)
+            if item_id:
+                item_ids.InsertNextId(item_id)
+        dialog._treeView.setCurrentItems(item_ids)
+        slicer.app.processEvents()
+        if self.rng.random() < 0.2:
+            return qt.QDialog.Rejected
+        return qt.QDialog.Accepted
 
     def _on_dialog(self, kind, text):
         low = text.lower()
@@ -295,7 +343,7 @@ class InteractiveSegmenterFuzzer:
     # ------------------------------------------------------------------
     # Input generation
     # ------------------------------------------------------------------
-    def _make_volume(self, name, dim, channels, spatial=None):
+    def _make_volume(self, name, dim, channels, spatial=None, spacing=1.0):
         """Create a synthetic volume with separable bands plus noise so the
         classifier sometimes trains cleanly and sometimes degenerates. Returns
         (node, spatial_shape)."""
@@ -328,6 +376,7 @@ class InteractiveSegmenterFuzzer:
         node_class = "vtkMRMLVectorVolumeNode" if channels == 3 else "vtkMRMLScalarVolumeNode"
         node = slicer.mrmlScene.AddNewNodeByClass(node_class, name)
         slicer.util.updateVolumeFromArray(node, arr)
+        node.SetSpacing(spacing, spacing, spacing)
         self.session_nodes.append(node.GetID())
         return node, spatial
 
@@ -336,8 +385,7 @@ class InteractiveSegmenterFuzzer:
         channels = int(self.rng.choice([1, 3], p=[0.5, 0.5]))
         n_inputs = int(self.rng.choice([1, 2, 3], p=[0.5, 0.3, 0.2]))
         scale = str(self.rng.choice(["Auto", "1x", "2x", "4x"]))
-        # A custom inference image is only valid without extra inputs.
-        use_inference = bool(self.rng.random() < 0.25) and n_inputs == 1
+        n_others = int(self.rng.integers(0, 4))
         preset = str(self.rng.choice(["Sharp", "Balanced", "Smooth", "Extra Smooth", "Complete"]))
         uncertainty = bool(self.rng.random() < 0.7)
         return {
@@ -345,7 +393,8 @@ class InteractiveSegmenterFuzzer:
             "channels": channels,
             "n_inputs": n_inputs,
             "feature_scale": scale,
-            "use_inference": use_inference,
+            "spacing": float(self.rng.choice([0.04, 1.0, 2.0])),
+            "n_others": n_others,
             "preset": preset,
             "uncertainty": uncertainty,
         }
@@ -354,20 +403,20 @@ class InteractiveSegmenterFuzzer:
     # Session lifecycle
     # ------------------------------------------------------------------
     def _cleanup_session_nodes(self):
-        if self.source is not None:
+        for image in [self.source] + self.other_nodes:
+            if image is None:
+                continue
             try:
-                seg_name = f"{self.source.GetName()}_Segmented"
-                node = slicer.mrmlScene.GetFirstNodeByName(seg_name)
+                node = slicer.mrmlScene.GetFirstNodeByName(f"{image.GetName()}_Segmented")
                 if node:
                     slicer.mrmlScene.RemoveNode(node)
             except Exception:
                 pass
+        if self.source is not None:
             try:
-                ann_id = self.source.GetAttribute("InteractiveSegmenterAnnotationNode")
-                if ann_id:
-                    ann = slicer.mrmlScene.GetNodeByID(ann_id)
-                    if ann:
-                        slicer.mrmlScene.RemoveNode(ann)
+                ann = get_annotation_node(self.source)
+                if ann:
+                    slicer.mrmlScene.RemoveNode(ann)
             except Exception:
                 pass
         for node_id in self.session_nodes:
@@ -379,6 +428,7 @@ class InteractiveSegmenterFuzzer:
                     pass
         self.session_nodes = []
         self.source = None
+        self.other_nodes = []
 
     def _close_scene(self):
         """Clear the entire MRML scene. Half the time we stop the session first;
@@ -394,6 +444,7 @@ class InteractiveSegmenterFuzzer:
         # Everything we created is gone; forget the stale references.
         self.session_nodes = []
         self.source = None
+        self.other_nodes = []
         self.master = None
         self.classes = set()
         self._scene_close_every = int(self.rng.integers(4, 9))
@@ -408,7 +459,7 @@ class InteractiveSegmenterFuzzer:
         self.config = cfg
         self.session_count += 1
 
-        self.source, spatial = self._make_volume("fuzz_src", cfg["dim"], cfg["channels"])
+        self.source, spatial = self._make_volume("fuzz_src", cfg["dim"], cfg["channels"], spacing=cfg["spacing"])
         self.master = np.zeros(spatial, dtype=np.uint8)
         self.classes = set()
         self.next_class = 1
@@ -420,15 +471,15 @@ class InteractiveSegmenterFuzzer:
             extra_node = None
             if idx + 2 <= cfg["n_inputs"]:
                 extra_node, _ = self._make_volume(
-                    f"fuzz_extra{idx}", cfg["dim"], int(self.rng.choice([1, 3])), spatial=spatial
+                    f"fuzz_extra{idx}",
+                    cfg["dim"],
+                    int(self.rng.choice([1, 3])),
+                    spatial=spatial,
+                    spacing=cfg["spacing"],
                 )
             frame._extraImageSelectors[idx].setCurrentNode(extra_node)
 
-        if cfg["use_inference"]:
-            inf_node, _ = self._make_volume("fuzz_inf", cfg["dim"], cfg["channels"], spatial=spatial)
-            frame._inferenceImageSelector.setCurrentNode(inf_node)
-        else:
-            frame._inferenceImageSelector.setCurrentNode(self.source)
+        self.other_nodes = [self._make_other_image(idx, cfg, spatial) for idx in range(cfg["n_others"])]
 
         frame._featureScaleComboBox.setCurrentText(cfg["feature_scale"])
         frame._featurePresetComboBox.setCurrentText(cfg["preset"])
@@ -447,18 +498,54 @@ class InteractiveSegmenterFuzzer:
             return
 
         self.intentional_stop = False
+        # What _startSegmentation is about to read. The batch-button rule is checked
+        # against this rather than against cfg["n_inputs"], since a selector can fail
+        # to register a node right after a scene clear.
+        self.extra_inputs = sum(1 for s in frame._extraImageSelectors if s.currentNode() is not None)
         frame._runButton.click()  # start
         self.actions_left = int(self.rng.integers(15, 45))
         # Note: the action is recorded by _tick (the caller), not here, to avoid
         # double-counting.
+
+    def _check_batch_button_rule(self):
+        """Batch apply is offered exactly when the session has no extra channels."""
+        enabled = self.frame._batchButton.enabled
+        if enabled != (self.extra_inputs == 0):
+            self._flag_crash(
+                "invariant",
+                f"batch button {'enabled' if enabled else 'disabled'} with "
+                f"{self.extra_inputs} extra channel input(s)",
+            )
+
+    def _make_other_image(self, idx, cfg, spatial):
+        """An image the trained model may be applied to. A different grid *and* spacing
+        is the interesting one: that is what made a leftover preview merge onto a huge
+        union extent. A mismatched dimensionality/channel count is the model's to refuse."""
+        kind = str(self.rng.choice(["same", "resized", "mismatched"], p=[0.3, 0.5, 0.2]))
+        name = f"fuzz_other{idx}"
+        if kind == "same":
+            node, _ = self._make_volume(name, cfg["dim"], cfg["channels"], spatial=spatial, spacing=cfg["spacing"])
+        elif kind == "resized":
+            spacing = float(self.rng.choice([0.04, 1.0, 2.0]))
+            node, _ = self._make_volume(name, cfg["dim"], cfg["channels"], spacing=spacing)
+        elif self.rng.random() < 0.5:
+            node, _ = self._make_volume(name, 2 if cfg["dim"] == 3 else 3, cfg["channels"])
+        else:
+            node, _ = self._make_volume(name, cfg["dim"], 3 if cfg["channels"] == 1 else 1, spatial=spatial)
+        return node
 
     def _end_session(self):
         """Cancel the current session (if any) so a fresh config can start."""
         frame = self.frame
         if frame._state is not None:
             self.intentional_stop = True
+            # Two buttons do the same thing: the Input section's Start/Cancel toggle and
+            # the Output section's Cancel, which only exists while a session runs.
+            button = frame._runButton
+            if frame.outputSection.visible and self.rng.random() < 0.5:
+                button = frame._cancelButton
             try:
-                frame._runButton.click()  # cancel toggles stop
+                button.click()
             except Exception:
                 pass
 
@@ -468,8 +555,7 @@ class InteractiveSegmenterFuzzer:
     def _annotation_node(self):
         if self.source is None:
             return None
-        ann_id = self.source.GetAttribute("InteractiveSegmenterAnnotationNode")
-        return slicer.mrmlScene.GetNodeByID(ann_id) if ann_id else None
+        return get_annotation_node(self.source)
 
     def _push_annotation(self):
         ann = self._annotation_node()
@@ -615,7 +701,13 @@ class InteractiveSegmenterFuzzer:
         if phase == "idle":
             return "start_session"
         if phase == "applying":
-            return "cancel" if self.rng.random() < 0.1 else "wait"
+            # Leaving the module mid-apply must not cancel it (`exit` has its own branch).
+            roll = self.rng.random()
+            if roll < 0.1:
+                return "cancel"
+            if roll < 0.2:
+                return "module_roundtrip"
+            return "wait"
 
         is_3d = bool(self.config and self.config["dim"] == 3)
         away = bool(self.frame._resumeSegFrame.visible)
@@ -634,6 +726,7 @@ class InteractiveSegmenterFuzzer:
             # through the Resume button so most of the run stays productive.
             "layout_away": 0 if away else 2,
             "layout_resume": 30 if away else 0,
+            "module_roundtrip": 2,
             "toggle_uncertainty": 6,
             "switch_preset": 6,
             "apply": 5 if phase == "trained" else 0,
@@ -665,8 +758,14 @@ class InteractiveSegmenterFuzzer:
             return
         if action == "apply":
             if frame._applyButton.enabled:
+                self._check_batch_button_rule()
                 self.intentional_stop = True  # apply ends the session on completion
-                frame._applyButton.click()
+                if self.other_nodes and frame._batchButton.enabled and self.rng.random() < 0.5:
+                    frame._batchButton.click()  # the dialog it opens is driven by our interceptor
+                else:
+                    frame._applyButton.click()
+                # A cancelled dialog or a refused target leaves the session annotating.
+                self.intentional_stop = bool(frame._state and frame._state.applying_full_image)
             return
         if action == "toggle_uncertainty":
             frame._showUncertaintyCheckBox.toggle()
@@ -707,6 +806,12 @@ class InteractiveSegmenterFuzzer:
         if action == "layout_resume":
             if frame._resumeSegFrame.visible:
                 frame._resumeSegButton.click()
+            return
+        if action == "module_roundtrip":
+            slicer.util.selectModule("Data")
+            slicer.app.processEvents()
+            slicer.util.selectModule("InteractiveSegmenter")
+            slicer.app.processEvents()
             return
         if action == "paint":
             if len(self.classes) < 2:
@@ -854,6 +959,8 @@ class InteractiveSegmenterFuzzer:
         for name, fn in self._saved_dialogs.items():
             if name == "QMessageBox.exec_":
                 qt.QMessageBox.exec_ = fn
+            elif name == "QDialog.exec_":
+                qt.QDialog.exec_ = fn
             else:
                 setattr(slicer.util, name, fn)
         if not self.crashed:

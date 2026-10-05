@@ -4,7 +4,7 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer.helpers import createTemporaryNode, removeTemporaryNodes
+from ltrace.slicer.helpers import createTemporaryNode
 
 
 class Markup(qt.QObject):
@@ -41,6 +41,7 @@ class Markup(qt.QObject):
         self.interaction_observer_tags = None
         self.pick_criterion_passed = None
         self.last_slice_view_name = None
+        self.is_picking = False
 
         self.markups_node = createTemporaryNode(
             cls=self.TYPE_TO_SLICER_TYPE[self.type], name="markups_node", environment="Markup"
@@ -59,13 +60,16 @@ class Markup(qt.QObject):
         self.start_callback = None
         self.cancel_callback = None
         self.after_finish_callback = None
-        selection_node = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
-        selection_node.SetReferenceActivePlaceNodeID(None)
+        if self.markups_node is not None:
+            selection_node = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
+            if selection_node is not None and selection_node.GetActivePlaceNodeID() == self.markups_node.GetID():
+                selection_node.SetReferenceActivePlaceNodeID(None)
         self.__removeInteractionObserverTags()
         self.__removeMarkupsObserverTags()
         self.markups_observer_tags.clear()
         self.interaction_observer_tags.clear()
-        removeTemporaryNodes(environment="Markup")
+        if self.markups_node is not None:
+            slicer.mrmlScene.RemoveNode(self.markups_node)
         self.markups_node = None
 
     def eventFilter(self, object, event):
@@ -104,6 +108,7 @@ class Markup(qt.QObject):
         self.__removeInteractionObserverTags()
         self.__removeMarkupsObserverTags()
 
+        self.is_picking = True
         self.markups_observer_tags = [
             self.markups_node.AddObserver(
                 slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent, set_pick_criterion_passed
@@ -118,8 +123,6 @@ class Markup(qt.QObject):
         self.interaction_observer_tags = [
             interactionNode.AddObserver(slicer.vtkMRMLInteractionNode.EndPlacementEvent, next_pick_or_finish)
         ]
-        interactionNode.SetCurrentInteractionMode(1)
-
         # allow picks from interaction node
         interactionNode.SetCurrentInteractionMode(1)
         if self.update_instruction is not None:
@@ -128,6 +131,10 @@ class Markup(qt.QObject):
             self.start_callback()
 
     def stop_picking(self):
+        if not self.is_picking:
+            return
+
+        self.is_picking = False
         self.__removeInteractionObserverTags()
         self.__removeMarkupsObserverTags()
         interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")

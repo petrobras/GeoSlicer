@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import slicer
@@ -9,7 +10,7 @@ from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKab
 
 
 def microtom_job_loader(job: JobExecutor):
-    details = job.details
+    details = job.details or {}
     simulator = details.get("simulator", "psd")
     outputPrefix = details.get("output_prefix", "output")
     direction = details.get("direction", "z")
@@ -24,8 +25,6 @@ def microtom_job_loader(job: JobExecutor):
     except Exception:
         referenceNodeId = None
 
-    shared_path = Path(r"geoslicer/remote/jobs")
-
     # TODO make this conditions shared with dispatch code
     if simulator == "krel":
         collector = KrelCompiler()
@@ -33,7 +32,6 @@ def microtom_job_loader(job: JobExecutor):
             simulator,
             collector,
             None,
-            shared_path,
             "",
             "cpu",
             {"direction": direction},
@@ -49,7 +47,6 @@ def microtom_job_loader(job: JobExecutor):
             simulator,
             collector,
             None,
-            shared_path,
             "",
             "cpu",
             {"direction": direction},
@@ -66,7 +63,6 @@ def microtom_job_loader(job: JobExecutor):
             simulator,
             collector,
             None,
-            shared_path,
             "",
             "cpu",
             {"direction": direction},
@@ -75,8 +71,18 @@ def microtom_job_loader(job: JobExecutor):
             tag,
             post_args=dict(vfrac=details.get("vfrac", None), direction=direction),
         )
-    task_handler.jobid = str(job.details["job_id"][0])
-    task_handler.slurm_job_ids = [str(j) for j in job.details["job_id"]]
+
+    # Persisted as a list, but a job written by an older version may carry a
+    # bare scalar. Either way the handler's own defaults (None / []) stand when
+    # the key never made it to disk.
+    job_ids = details.get("job_id") or []
+    if isinstance(job_ids, (str, int)):
+        job_ids = [job_ids]
+
+    if job_ids:
+        task_handler.jobid = str(job_ids[0])
+    task_handler.slurm_job_ids = [str(j) for j in job_ids]
+
     job.task_handler = task_handler
-    print(job, task_handler)
+    logging.debug(f"Mounted microtom job {job.uid} ({simulator}).")
     return job

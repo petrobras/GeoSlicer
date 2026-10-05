@@ -4,8 +4,9 @@ import qt
 import logging
 
 from ltrace.slicer.widget import PasswordEdit
-from ltrace.remote.connections import ConnectionManager
-from ltrace.remote.targets import Host
+from ltrace.slicer.widget.remote import connecting
+from ltrace.slicer.widget.remote.outdated import OutdatedHostsBanner
+from ltrace.remote.targets import Host, TargetManager
 
 from ltrace.remote.errors import *
 
@@ -18,6 +19,9 @@ class LoginDialog(qt.QDialog):
 
         self.host = host
         self.output = None
+        # A connection failure this dialog cannot fix, kept for the caller to
+        # report. None means either success or a plain cancel.
+        self.error = None
 
         self.msgtext = "Please, enter your password to login"
 
@@ -48,7 +52,11 @@ class LoginDialog(qt.QDialog):
         formLayout.addRow("Username: ", self.usernameField)
         formLayout.addRow("Password: ", self.passwordField)
 
+        self.outdatedBanner = OutdatedHostsBanner()
+        self.outdatedBanner.setHosts([self.host.name] if TargetManager.is_outdated(self.host) else [])
+
         layout = qt.QVBoxLayout(self)
+        layout.addWidget(self.outdatedBanner)
         layout.addWidget(self.message)
         layout.addLayout(formLayout)
         layout.addLayout(self._setupButons())
@@ -71,23 +79,58 @@ class LoginDialog(qt.QDialog):
         return layout
 
     def reset(self):
-        self.msgtext = "Wrong password, please try again or check your credentials."
         self.passwordField.text = ""
-        self.message.setText(self.msgtext)
+        self.__warn("Wrong password, please try again or check your credentials.")
+
+    def __warn(self, text: str) -> None:
+        self.msgtext = text
+        self.message.setText(text)
         self.message.setStyleSheet("QLabel { color: red; }")
 
     def _cancel(self):
         self.reject()
 
     def _enterPassword(self):
-        self.host.set_password(self.passwordField.text)
         try:
-            output = ConnectionManager.connect(self.host)
-            self.output = output
+            if not self.passwordField.text:
+                self.__warn("Please, enter your password to login.")
+                return
+
+            previous = self.host.get_password()
+            self.host.set_password(self.passwordField.text)
+
+            connected = connecting.connect(self.host, parent=self)
+            if connected is None:
+                # Cancelled while connecting: back to the password, with the
+                # credential as it was before this attempt.
+                self.__forgetPassword(previous)
+                return
+
+            self.output = connected
             self.accept()
+
         except AuthException:
-            self.mode = self.WRONG_PASSWORD
+            # dont close the dialog yet. let the user try a new password
             self.reset()
-        except Exception as e:
-            logging.warning(f"Could not handle this error {repr(e)}.")
-            raise
+        except Exception as error:
+            logging.warning(f"Could not connect to {self.host.server_name()}. Cause: {repr(error)}")
+            self.__forgetPassword(previous)
+            self.error = error
+            self.reject()
+
+    def __forgetPassword(self, previous) -> None:
+        """Undo the keyring write made for an attempt that never connected.
+
+        connect() reads the credential from the keyring, so a typed password
+        has to be stored before it can be tried. One the server never confirmed
+        must not be left behind as if it had been.
+        """
+        try:
+            # A non-string is the "no password needed, an identity file is
+            # configured" sentinel: nothing was stored to put back.
+            if isinstance(previous, str) and previous:
+                self.host.set_password(previous)
+            else:
+                self.host.delete_password()
+        except Exception as error:
+            logging.warning(f"Failed to restore the credential for {self.host.server_name()}. Cause: {repr(error)}")

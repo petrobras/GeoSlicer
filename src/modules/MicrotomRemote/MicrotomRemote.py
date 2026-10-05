@@ -1595,10 +1595,6 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             self.runLocal(simulator, inputVolumeNode, sequenceName, tag, output_path, params, sequenceIndex=image)
 
     def dispatch(self, simulator, labelmapVolumeNode, outputPrefix, tag: Tag = None, referenceNode=None, params=None):
-        shared_path = Path(
-            r"geoslicer/remote/jobs"
-        )  # Note: do not put a slash at the start of the path, unless it is the absolute path
-
         direction = params.get("direction", "z").upper()
         # collector = SimpleCollector(simulator, outputPrefix, referenceNode.GetID(), direction, tag, params) # TODO mover para dentro do OneResultSlurmHandler
 
@@ -1612,7 +1608,6 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 simulator,
                 collector,
                 labelmapVolumeNode,
-                shared_path,
                 opening_cmd,
                 "cpu",
                 params,
@@ -1630,7 +1625,6 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 simulator,
                 collector,
                 labelmapVolumeNode,
-                shared_path,
                 opening_cmd,
                 "cpu",
                 params,
@@ -1650,7 +1644,6 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 simulator,
                 collector,
                 labelmapVolumeNode,
-                shared_path,
                 opening_cmd,
                 "cpu",
                 params,

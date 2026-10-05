@@ -8,7 +8,12 @@ class ChannelError(Exception):
     """
 
     def __repr__(self):
-        return "Hostname: {0}, reason: {1}".format(self.hostname, self.reason)
+        cause = getattr(self, "e", None)
+        return "Hostname: {0}, reason: {1}{2}".format(
+            getattr(self, "hostname", "?"),
+            getattr(self, "reason", type(self).__name__),
+            "" if cause is None else ", cause: {0!r}".format(cause),
+        )
 
     def __str__(self):
         return self.__repr__()
@@ -128,6 +133,28 @@ class MissingCredentialsError(ChannelError):
     def __init__(self, e, hostname):
         super().__init__()
         self.reason = "No stored credentials (password or identity file)"
+        self.hostname = hostname
+        self.e = e
+
+
+class UserDisconnectedError(ChannelError):
+    """The user disconnected from the host and has not connected again since.
+
+    Raised instead of reconnecting on the user's behalf: the stored credential
+    is still good, so without this the next poll would silently undo the
+    Disconnect. Like MissingCredentialsError, nothing is wrong with the
+    credential, so it must not be deleted. The polling caller should flag the
+    job NOT CONNECTED and wait for the user to connect.
+
+    Contains:
+    reason(string)
+    e (underlying exception object)
+    hostname (string)
+    """
+
+    def __init__(self, e, hostname):
+        super().__init__()
+        self.reason = "Disconnected by the user"
         self.hostname = hostname
         self.e = e
 

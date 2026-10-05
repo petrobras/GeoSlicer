@@ -36,7 +36,7 @@ class SegmentationWidget(qt.QWidget):
         self.opacitySlider.minimum = 0
         self.opacitySlider.value = 0.5
         self.opacitySlider.singleStep = 0.05
-        self.opacitySlider.valueChanged.connect(lambda value: self.onOverallOpacityChanged(value))
+        self.opacitySlider.valueChanged.connect(self.onOverallOpacityChanged)
         self.opacitySlider.toolTip = """\
             This parameter controls the overall opacity in all views of that segmentation.\
         """
@@ -44,6 +44,9 @@ class SegmentationWidget(qt.QWidget):
 
     def onOverallOpacityChanged(self, value):
         segmentationNode = self.show3DButton.segmentationNode()
+        if segmentationNode is None:
+            return
+
         segmentationDisplayNode = segmentationNode.GetDisplayNode()
         segmentationDisplayNode.SetOpacity(value)
 

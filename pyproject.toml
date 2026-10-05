@@ -2,7 +2,7 @@
 requires = [
             "setuptools==80.10.1",
             "wheel",
-            "Cython",
+            "Cython==3.2.4",
             "vswhere",
             "patch",
             "packaging",
@@ -68,6 +68,7 @@ safe_licenses = [
     "BSD",
     "BSD License",
     "BSD-2-Clause",
+    "BSD 2-clause",
     "BSD-3-Clause, Apache-2.0, dependency licenses",
     "BSD-3-clause",
     "FreeBSD",
@@ -95,6 +96,7 @@ safe_licenses = [
     "LGPL",
     "LGPL-3.0",
     "CC-BY-4.0",
+    "LicenseRef-NVIDIA-SOFTWARE-LICENSE",
 ]
 
 unsafe_packages = [
@@ -109,4 +111,5 @@ unsafe_packages = [
     "ltrace",
     "modules",
     "mrml",
+    "cuda-toolkit"
 ]

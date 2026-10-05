@@ -490,7 +490,7 @@ class CropToolWidget(LTracePluginWidget):
             for i, volume in enumerate(volumes):
                 callback.on_update(f"Cropping {volume.GetName()}...", (i / len(volumes)) * 100)
                 cropped = self.logic.crop(volume, self.roiNode, ijkSize, deepCopy=deepCopy)
-                self.logic.joinScene(cropped)
+                self.logic.joinScene(volume, cropped)
 
             if keepROI:
                 helpers.makeTemporaryNodePermanent(self.roiNode, show=True)
@@ -669,7 +669,7 @@ class CropToolLogic(LTracePluginLogic):
             new_origin = ijkToRAS(volume, start)
 
             resultBufferNode = helpers.createTemporaryVolumeNode(
-                volume.__class__, volume.GetName() + " - Cropped", content=volume, uniqueName=True
+                volume.__class__, volume.GetName() + "_Cropped", content=volume, uniqueName=True
             )
 
             self.__sliceVolume(resultBufferNode, start, end, new_origin)
@@ -696,12 +696,12 @@ class CropToolLogic(LTracePluginLogic):
         slicer.util.updateVolumeFromArray(volume, croppedArray)
         volume.SetOrigin(new_origin)
 
-    def joinScene(self, volume):
-        subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        itemParent = subjectHierarchyNode.GetItemParent(subjectHierarchyNode.GetItemByDataNode(volume))
-        subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(volume), itemParent)
+    def joinScene(self, volume, croppedVolume):
+        folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        outputDir = folderTree.GetItemParent(folderTree.GetItemByDataNode(volume))
+        helpers.moveNodeTo(outputDir, croppedVolume, dirTree=folderTree)
 
-        slicer.util.setSliceViewerLayers(background=volume, fit=True)
+        slicer.util.setSliceViewerLayers(background=croppedVolume, fit=True)
 
     def getSelectionSize(self, volume, roiNode):
         if roiNode is None:

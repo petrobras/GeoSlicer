@@ -27,7 +27,6 @@ from SegmenterMethods.correlation_distance import CorrelationDistance
 from ltrace.algorithms.gabor import get_gabor_kernels
 from ltrace.assets_utils import get_metadata, get_pth
 from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.binary_node import createBinaryNode, getBinary
 from ltrace.slicer.helpers import (
     clearPattern,
     createLabelmapInput,
@@ -39,6 +38,7 @@ from ltrace.slicer.helpers import (
     getCurrentEnvironment,
 )
 from ltrace.slicer.node_attributes import NodeEnvironment
+from ltrace.slicer.nodes.binary_node import createBinaryNode, getBinary
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
 from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector

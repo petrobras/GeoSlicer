@@ -38,7 +38,7 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLo
 try:
     from Test.PolynomialShadingCorrectionTest import PolynomialShadingCorrectionTest
 except ImportError:
-    PolynomialShadingCorrectionTest = None  # tests not deployed to final version or closed source
+    PolynomialShadingCorrectionTest = None
 
 
 class PolynomialShadingCorrection(LTracePlugin):
@@ -64,11 +64,11 @@ class PolynomialShadingCorrection(LTracePlugin):
 
 
 class PolynomialShadingCorrectionWidget(LTracePluginWidget):
-    # Settings constants
     SLICE_GROUP_SIZE = "sliceGroupSize"
     FUNCTION_TYPE = "functionType"
     POLYNOMIAL_ORDER = "polynomialOrder"
     FITTING_POINTS_PERCENTAGE = "fittingPointsPercentage"
+    MAX_CORES = "maxCores"
     OUTPUT_SUFFIX = "_ShadingCorrection"
 
     ProcessParameters = namedtuple(
@@ -77,13 +77,15 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             "inputImage",
             "shadingMask",
             SLICE_GROUP_SIZE,
-            "fittingPointsPercentage",
+            FITTING_POINTS_PERCENTAGE,
             FUNCTION_TYPE,
             POLYNOMIAL_ORDER,
             "useCustomCenter",
             "centerX",
             "centerY",
             "outputImageName",
+            "postProcessing",
+            MAX_CORES,
         ],
     )
 
@@ -95,8 +97,22 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.centerFiducialNode = None
         self.pointAddedObserverTag = None
 
+    @staticmethod
+    def _get_cpu_count():
+        if hasattr(os, "sched_getaffinity"):
+            return len(os.sched_getaffinity(0))
+        return os.cpu_count() or 4
+
     def getSliceGroupSize(self):
-        return PolynomialShadingCorrection.get_setting(self.SLICE_GROUP_SIZE, default="1")
+        return PolynomialShadingCorrection.get_setting(self.SLICE_GROUP_SIZE, default="5")
+
+    def getFittingPointsPercentage(self):
+        return PolynomialShadingCorrection.get_setting(self.FITTING_POINTS_PERCENTAGE, default="10")
+
+    def getMaxCores(self):
+        cpu_count = self._get_cpu_count()
+        default_cores = str(max(1, cpu_count - 2))
+        return PolynomialShadingCorrection.get_setting(self.MAX_CORES, default=default_cores)
 
     def __updateApplyToAll(self):
         inputNode = self.inputImageComboBox.currentNode()
@@ -136,7 +152,6 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
     def setup(self):
         LTracePluginWidget.setup(self)
 
-        # Ensure CustomizedSegmentEditor is initialized
         slicer.util.getModuleWidget("CustomizedSegmentEditor")
 
         frame = qt.QFrame()
@@ -204,7 +219,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.initializeButton.clicked.connect(self.onInitializeButtonClicked)
         inputFormLayout.addRow("", self.initializeButton)
 
-        # --- Segment Editor (Threshold section) ---
+        # --- Segment Editor ---
         widget, _, self.sourceVolumeBox, self.segmentationBox = createSimplifiedSegmentEditor()
         widget.setObjectName("thresholdEditor")
         effects = ["Threshold"]
@@ -369,7 +384,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         self.fittingPointsPercentage.decimals = 0
         self.fittingPointsPercentage.minimum = 1
         self.fittingPointsPercentage.maximum = 100
-        self.fittingPointsPercentage.value = 60
+        self.fittingPointsPercentage.value = int(self.getFittingPointsPercentage())
         spin_box = self.fittingPointsPercentage.findChild(qt.QDoubleSpinBox)
         if spin_box:
             spin_box.setMinimumWidth(150)
@@ -391,6 +406,51 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         fittingPointsHBox.addWidget(self.fittingPointsPercentage)
         fittingPointsHBox.addWidget(fittingPointsHelp)
         self.parametersFormLayout.addRow("Fitting points (%):", fittingPointsHBox)
+
+        # Max Cores
+        self.maxCoresSpinBox = qt.QSpinBox()
+        self.maxCoresSpinBox.setObjectName("maxCoresSpinBox")
+        cpu_count = self._get_cpu_count()
+        max_allowed_cores = max(1, cpu_count - 2)
+        self.maxCoresSpinBox.setRange(1, max_allowed_cores)
+        self.maxCoresSpinBox.setValue(int(self.getMaxCores()))
+        self.maxCoresSpinBox.setToolTip("Maximum number of CPU cores/threads to use for execution.")
+
+        maxCoresHelp = HelpButton(
+            "Maximum number of CPU cores/threads to use for parallel computation.\n\n"
+            "By default, this is set to (CPU count - 2)."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        maxCoresHBox = qt.QHBoxLayout()
+        maxCoresHBox.setContentsMargins(0, 0, 0, 0)
+        maxCoresHBox.addWidget(self.maxCoresSpinBox)
+        maxCoresHBox.addWidget(maxCoresHelp)
+        self.parametersFormLayout.addRow("Max cores:", maxCoresHBox)
+
+        # Post-processing
+        self.postProcessingCheckBox = qt.QCheckBox("Post processing")
+        self.postProcessingCheckBox.setObjectName("postProcessingCheckBox")
+        self.postProcessingCheckBox.setChecked(False)
+        self.postProcessingCheckBox.setToolTip(
+            "Apply the final shading post-processing step after the slice-by-slice correction."
+        )
+
+        postProcessingHelp = HelpButton(
+            "Apply the final post-processing step to the calculated shading volume.\n\n"
+            "This smooths the shading volume along the Z-axis. "
+            "It can improve continuity between slice groups but adds processing time."
+            "\n\n-----\n[More]({path_to_manual})",
+            replacer=lambda x: x.format(path_to_manual=manualPath),
+        )
+
+        postProcessingHBox = qt.QHBoxLayout()
+        postProcessingHBox.setContentsMargins(0, 0, 0, 0)
+        postProcessingHBox.addWidget(self.postProcessingCheckBox)
+        postProcessingHBox.addWidget(postProcessingHelp)
+        postProcessingHBox.addStretch(1)
+        self.parametersFormLayout.addRow(postProcessingHBox)
 
         self.parametersFormLayout.addRow(" ", None)
 
@@ -609,6 +669,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             self.normalizedVolume.CopyOrientation(inputNode)
             copy_display(inputNode, self.normalizedVolume)
             slicer.util.updateVolumeFromArray(self.normalizedVolume, normalizedArray)
+
             if not self.keepNormalizedBox.isChecked():
                 self.normalizedVolume.SetHideFromEditors(True)
                 self.normalizedVolume.SaveWithSceneOff()
@@ -636,7 +697,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
             effect = self.segmentEditorWidget.effectByName("Threshold")
 
-            vMin, vMax = np.percentile(normalizedArray, [10, 99])
+            vMin, vMax = np.percentile(normalizedArray, [10, 99.9])
 
             effect.self().thresholdSlider.minimum = vMin
             effect.self().thresholdSlider.maximum = vMax
@@ -701,6 +762,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
             "fittingPointsPercentage": int(self.fittingPointsPercentage.value),
             "functionType": self.functionTypeComboBox.currentText,
             "polynomialOrder": int(self.polynomialOrderComboBox.currentText),
+            "maxCores": self.maxCoresSpinBox.value,
         }
 
         widget.setParameters(**params)
@@ -735,11 +797,13 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
 
             functionType = self.functionTypeComboBox.currentText
             polynomialOrder = int(self.polynomialOrderComboBox.currentText)
+            postProcessing = self.postProcessingCheckBox.isChecked()
 
             PolynomialShadingCorrection.set_setting(self.SLICE_GROUP_SIZE, self.sliceGroupSize.value)
             PolynomialShadingCorrection.set_setting(self.FUNCTION_TYPE, functionType)
             PolynomialShadingCorrection.set_setting(self.POLYNOMIAL_ORDER, str(polynomialOrder))
             PolynomialShadingCorrection.set_setting(self.FITTING_POINTS_PERCENTAGE, self.fittingPointsPercentage.value)
+            PolynomialShadingCorrection.set_setting(self.MAX_CORES, str(self.maxCoresSpinBox.value))
 
             self.resetInputWidgetsStyle()
             self.apply.setEnabled(False)
@@ -762,6 +826,8 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
                 self.centerXSpinBox.value,
                 self.centerYSpinBox.value,
                 self.outputImageNameLineEdit.text,
+                postProcessing,
+                self.maxCoresSpinBox.value,
             )
 
             if self.logic.process(processParameters):
@@ -810,6 +876,8 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
     def process(self, parameters: PolynomialShadingCorrectionWidget.ProcessParameters) -> bool:
         self.cancelProcess = False
 
+        total_start = datetime.datetime.now()
+
         self.inputImage = parameters.inputImage
         inputImageArray = slicer.util.arrayFromVolume(self.inputImage)
 
@@ -830,6 +898,8 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
                 centerX=parameters.centerX,
                 centerY=parameters.centerY,
                 input_null_value=nullValue,
+                postProcessing=parameters.postProcessing,
+                maxCores=parameters.maxCores,
             )
 
             if self.cancelProcess:
@@ -838,10 +908,18 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
             outputImage = slicer.modules.volumes.logic().CloneVolume(self.inputImage, parameters.outputImageName)
             slicer.util.updateVolumeFromArray(outputImage, outputImageArray)
             copy_metadata(self.inputImage, outputImage)
-            setVolumeNullValue(outputImage, nullValue)
+
+            if nullValue is not None:
+                setVolumeNullValue(outputImage, nullValue)
+
             copy_subject_hierarchy_item_parent(self.inputImage, outputImage)
 
             slicer.util.setSliceViewerLayers(background=outputImage, foreground=None, label=None, fit=True)
+
+            total_elapsed = (datetime.datetime.now() - total_start).total_seconds()
+
+            logging.info("Polynomial shading correction completed - Total time: %.2f s", total_elapsed)
+
         except Exception as e:
             traceback.print_exc()
             slicer.util.infoDisplay("An unexpected error has occurred during the shading correction process: " + str(e))
@@ -854,21 +932,41 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
         self,
         inputImageArray,
         inputShadingMaskArray,
-        sliceGroupSize=1,
-        fittingPointsPercentage=60,
+        sliceGroupSize=5,
+        fittingPointsPercentage=10,
         functionType="Polynomial Radial",
         polynomialOrder=4,
         useCustomCenter=False,
         centerX=0,
         centerY=0,
         input_null_value=None,
+        postProcessing=True,
+        maxCores=None,
     ):
         start = datetime.datetime.now()
 
+        self.last_processing_time = 0.0
+        self.last_post_processing_time = 0.0
+
         def on_progress(current_slice, total_slices):
             elapsed = datetime.datetime.now() - start
-            self.statusLabel.setText(f"Status: Running ({np.round(elapsed.total_seconds(), 1)})")
-            self.progressBar.setValue(round(100 * (current_slice / total_slices)))
+
+            if postProcessing:
+                progress = round(90 * (current_slice / total_slices))
+            else:
+                progress = round(100 * (current_slice / total_slices))
+
+            self.statusLabel.setText(f"Status: Running ({np.round(elapsed.total_seconds(), 1)} s)")
+            self.progressBar.setValue(progress)
+            slicer.app.processEvents()
+
+        def on_post_processing_progress(progress):
+            processing_elapsed = datetime.datetime.now() - start
+
+            total_progress = 90 + round(progress * 0.10)
+
+            self.statusLabel.setText(f"Status: Post processing ({np.round(processing_elapsed.total_seconds(), 1)} s)")
+            self.progressBar.setValue(min(100, total_progress))
             slicer.app.processEvents()
 
         def on_cancel():
@@ -886,12 +984,36 @@ class PolynomialShadingCorrectionLogic(LTracePluginLogic):
             centerY=centerY,
             inputNullValue=input_null_value,
             progressCallback=on_progress,
+            postProcessingProgressCallback=on_post_processing_progress,
             cancelCallback=on_cancel,
+            postProcessing=postProcessing,
+            maxCores=maxCores,
         )
 
+        processing_end = datetime.datetime.now()
+
+        self.last_processing_time = (processing_end - start).total_seconds()
+
+        if postProcessing:
+            self.last_post_processing_time = getattr(
+                compute_polynomial_shading_correction,
+                "_last_post_processing_time",
+                0.0,
+            )
+
+            self.last_processing_time -= self.last_post_processing_time
+
         logging.info(
-            "Polynomial shading correction elapsed time: " + str((datetime.datetime.now() - start).total_seconds())
+            "Polynomial shading processing elapsed time: %.2f s",
+            self.last_processing_time,
         )
+
+        if postProcessing:
+            logging.info(
+                "Polynomial shading post-processing elapsed time: %.2f s",
+                self.last_post_processing_time,
+            )
+
         return outputImageArray
 
 

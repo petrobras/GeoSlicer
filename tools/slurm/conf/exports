@@ -1,0 +1,4 @@
+# Only consulted when the container runs with NFS_SERVER=kernel (needs
+# --privileged). The default sharing mechanism is the bind mount; see README.
+/nethome *(rw,sync,no_subtree_check,no_root_squash,fsid=1)
+/atena   *(rw,sync,no_subtree_check,no_root_squash,fsid=2)

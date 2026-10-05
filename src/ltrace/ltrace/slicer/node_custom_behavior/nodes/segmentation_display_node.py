@@ -13,8 +13,8 @@ class SegmentationDisplayNodeCustomBehavior(NodeCustomBehaviorBase):
 
     REQUIREMENTS = CustomBehaviorRequirements(nodeTypes=[slicer.vtkMRMLSegmentationDisplayNode], attributes={})
 
-    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
-        super().__init__(node=node, event=event)
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
+        super().__init__(node=node, event=event, eventArgs=eventArgs)
 
     def _onNodeAdded(self, node: slicer.vtkMRMLNode) -> None:
         HierarchyVisibilityManager(node, lambda _node: _node.GetDisplayableNode())

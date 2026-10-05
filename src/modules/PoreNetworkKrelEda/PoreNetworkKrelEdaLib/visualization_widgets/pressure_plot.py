@@ -555,6 +555,7 @@ class RefCurveWidget(FilterBaseWidget):
             defaultText="Select reference curve",
         )
         self.refCurveInput.addNodeAttributeIncludeFilter("table_type", "krel_simulation_results")
+        self.refCurveInput.setSizePolicy(qt.QSizePolicy.Expanding, self.refCurveInput.sizePolicy.verticalPolicy())
 
         self.showHideButton = widgets.ShowHideButton()
         self.showHideButton.toggled.connect(self.__onVisibilityButtonToggled)

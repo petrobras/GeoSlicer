@@ -9,6 +9,7 @@ import signal
 import subprocess
 
 from ltrace.slicer import widgets
+from ltrace.remote.paths import to_local
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from slicer.ScriptedLoadableModule import *
 
@@ -68,7 +69,7 @@ class MonaiLabelServerWidget(LTracePluginWidget):
         self.statusIndicator = qt.QLabel()
 
         self.appLineEdit = qt.QLineEdit(
-            "//dfs.petrobras.biz/cientifico/cenpes/res/drp/smart-segmenter/laminas/ElementosConstrutores/app_test"
+            str(to_local("/nethome/drp/smart-segmenter/laminas/ElementosConstrutores/app_test"))
         )
         self.appLineEdit.setPlaceholderText("Selecione o app a ser usado pelo MONAI Label")
         self.appLineEdit.textChanged.connect(self.isFieldFilled)
@@ -76,7 +77,7 @@ class MonaiLabelServerWidget(LTracePluginWidget):
         self.appBrowseButton.clicked.connect(self.browseApp)
 
         self.datasetLineEdit = qt.QLineEdit(
-            "//dfs.petrobras.biz/cientifico/cenpes/res/drp/smart-segmenter/laminas/ElementosConstrutores/dataset_test"
+            str(to_local("/nethome/drp/smart-segmenter/laminas/ElementosConstrutores/dataset_test"))
         )
         self.datasetLineEdit.setPlaceholderText("Selecione o dataset a ser usado pelo MONAI Label")
         self.datasetLineEdit.textChanged.connect(self.isFieldFilled)
@@ -196,7 +197,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             except:
                 os.remove(Path(LOCK_FILE))
 
-        for job in JobManager.jobs:
+        for job in list(JobManager.jobs):
             if JobManager.jobs[job].job_type == "monai" and JobManager.jobs[job].status == "RUNNING":
                 self.UID = job
                 self.widget.statusIndicator.setText(
@@ -337,8 +338,12 @@ class MonaiLabelServerLogic(LTracePluginLogic):
 
         serverJob = JobManager.jobs[self.UID]
         if serverJob.status == "RUNNING":
-            JobManager.locked_send(self.UID, "CANCEL")
-            serverJob.process("CANCEL", JobManager, JobManager.connections)
+            # Cancelled on the job monitor's thread, where the connection
+            # lives. Nothing waits on it here: the handler removes the job.
+            try:
+                JobManager.request_cancel(self.UID)
+            except RuntimeError as e:
+                logging.error(f"Failed to stop the remote MONAI Label server. Cause: {repr(e)}")
             self.UID = None
 
     def onStopLocalServer(self):

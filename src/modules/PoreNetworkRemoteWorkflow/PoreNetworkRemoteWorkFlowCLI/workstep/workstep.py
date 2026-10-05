@@ -1,4 +1,5 @@
 import collections.abc
+import gc
 import json
 import logging
 import subprocess
@@ -297,14 +298,25 @@ class Workstep(ABC):
                         start_val = old_coord_array[0]
                         direction = 1 if old_coord_array[-1] >= old_coord_array[0] else -1
                         step = direction * self.context.spacing[i]
-                        new_coords[dim] = start_val + np.arange(new_len) * step
+                        new_coords[dim] = start_val + np.arange(new_len, dtype=np.float64) * step
+
+        # If array is boolean, use a zero-copy view as uint8 to avoid memory duplication
+        if array.dtype == bool:
+            array = array.view(np.uint8)
 
         new_dataarray = xr.DataArray(array, dims=dims, coords=new_coords if new_coords else None, attrs=var_attrs)
         new_dataset = xr.Dataset({var_name: new_dataarray}, attrs=global_attrs)
 
         output_path = self.context.working_dir / f"{file_name}.nc"
         encoding_dict = {var_name: {"zlib": True, "complevel": 4}}
-        new_dataset.to_netcdf(str(output_path), encoding=encoding_dict, engine="h5netcdf")
 
-        self.logger.info(f"Saved NetCDF to: {output_path}")
+        try:
+            new_dataset.to_netcdf(str(output_path), encoding=encoding_dict, engine="h5netcdf")
+            self.logger.info(f"Saved NetCDF to: {output_path}")
+        finally:
+            # Force immediate release of xarray wrappers and internal h5netcdf buffers
+            del new_dataarray
+            del new_dataset
+            gc.collect()
+
         return output_path

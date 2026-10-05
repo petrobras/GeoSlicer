@@ -58,21 +58,26 @@ LAS_DEPTH_TAGS = ["DEPT", "DEPTH"]
 
 
 class DLISLoader(object):
-    def __init__(self, filepath, nulls=set):
+    def __init__(self, filepath, nulls=None):
         self.filepath = filepath
         self.logical_files = dlisio.load(str(self.filepath))
 
         self._logMetadata()
 
         # Finally, the null values substitutions will be left to GeoSlicer's handle_null_values function
-        self.null_value = nulls
-        if self.logical_files[0].parameters:
-            if self.logical_files[0].find("PARAMETER", "ABSENT_VALUE"):
-                self.null_value.add(
-                    self.logical_files[0].find("PARAMETER", "ABSENT_VALUE")[0].values[0]
-                )  # Ensuring that the ABSENT_VALUE is in the substitution list
+        self.null_value = set(nulls or ()) | self._absent_values()
 
-        self.null_value = nulls
+    def _absent_values(self) -> set:
+        """Numeric ABSENT_VALUE parameters declared by any logical file."""
+        values = set()
+        for logical_file in self.logical_files:
+            for parameter in logical_file.find("PARAMETER", "ABSENT_VALUE"):
+                for value in np.ravel(parameter.values):
+                    if isinstance(value, (int, float, np.number)):
+                        values.add(float(value))
+                    else:
+                        logging.warning(f"Ignoring non-numeric ABSENT_VALUE parameter: {value}")
+        return values
 
     def load_volumes(self, curves, stepCallback, appFolder, nullValue, well_diameter_mm):
         return load_volumes(curves, stepCallback, appFolder, nullValue, well_diameter_mm)
@@ -225,7 +230,7 @@ class DLISLoader(object):
 
 
 class LASLoader(object):
-    def __init__(self, filepath, nulls=set):
+    def __init__(self, filepath, nulls=None):
         self.filepath = filepath
 
         #   Some invalid data will be susbtituted by nan (also other malformed data) by lasio
@@ -234,7 +239,7 @@ class LASLoader(object):
         self.logical_files = lasio.read(str(self.filepath), null_policy=invalid_values_handling_options)
 
         # Finally, the null values substitutions will be left to GeoSlicer's handle_null_values function
-        self.null_value = nulls
+        self.null_value = set(nulls or ())
         if self.logical_files.well.NULL.value:
             self.null_value.add(
                 self.logical_files.well.NULL.value
@@ -397,13 +402,13 @@ class LASLoader(object):
 
 
 class CSVLoader(object):
-    def __init__(self, filepath, nulls=set):
+    def __init__(self, filepath, nulls=None):
         self.filepath = filepath
         self.curve_depth = None
         self.curve_name = None
         self.filename = None
         self.db = {}
-        self.null_value = nulls
+        self.null_value = set(nulls or ())
         self.loaded_as_image = False
 
     @staticmethod
@@ -862,9 +867,9 @@ def add_volume_from_data(
 
     if is_labelmap:
         volume_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        for value in nullValue or ():
+            data[data == value] = 0
         data = helpers.numberArrayToLabelArray(data)
-        for value in nullValue:
-            data[np.where(data == int(value))] = 0
     else:
         if nullValue is not None:
             nullValue = handle_null_values(data, nullValue)
@@ -873,7 +878,9 @@ def add_volume_from_data(
     name = name.strip()  # remove trailing spaces
     volume_node.SetName(slicer.mrmlScene.GenerateUniqueName(name))
     volume_node.SetAttribute(SCALAR_VOLUME_TYPE, WELL_PROFILE_TAG)
-    volume_node.SetAttribute(NULL_VALUE_TAG, str(nullValue))  # default set at handle_null_values
+    if not is_labelmap:
+        # A labelmap's nulls are already 0, so there is no null value to record
+        volume_node.SetAttribute(NULL_VALUE_TAG, str(nullValue))  # default set at handle_null_values
     volume_node.SetAttribute(WELL_NAME_TAG, well_name)
     volume_node.SetAttribute(ORIGIN_TAG, str(origin) if origin else None)
     volume_node.SetAttribute(LOGICAL_FILE_TAG, folder or "")
@@ -921,7 +928,7 @@ def add_volume_from_data(
     return volume_node, volume_item_id
 
 
-def get_loader(file_path, null_values=""):
+def get_loader(file_path, null_values=None):
     ext = Path(file_path).suffix.lower()
     if ext == ".las":
         return LASLoader(file_path, null_values)

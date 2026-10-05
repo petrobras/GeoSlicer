@@ -8,6 +8,7 @@ from string import Template
 import openpnm
 
 import py_pore_flow as ppf
+from ltrace.pore_networks.pnflow_parameter_defs import DIAGNOSTICS_OFF, diagnostics_level
 from ..two_phase.two_phase_subprocess import TwoPhaseSubprocess
 
 
@@ -79,6 +80,14 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             "initial_ca_distribution": params["init_contact_distribution"],
             "initial_ca_separation": params["init_contact_angle_separation"],
             "initial_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(params["init_contact_angle_rctrl"]),
+            "initial_2nd_ca_center": params["second_contact_angle"],
+            "initial_2nd_ca_range": params["second_contact_angle_range"],
+            "initial_2nd_ca_gamma": params["second_contact_angle_eta"],
+            "initial_2nd_ca_delta": params["second_contact_angle_del"],
+            "initial_2nd_ca_sigma": params["second_contact_angle_sig"],
+            "initial_2nd_ca_fraction": params["second_contact_fraction"],
+            "initial_2nd_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(params["second_contact_angle_rctrl"]),
+            "initial_2nd_ca_distribution": params["second_contact_distribution"],
             "equilibrium_ca_center": params["equil_contact_angle"],
             "equilibrium_ca_range": params["equil_contact_angle_range"],
             "equilibrium_ca_gamma": params["equil_contact_angle_eta"],
@@ -88,11 +97,16 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
             "equilibrium_ca_distribution": params["equil_contact_distribution"],
             "equilibrium_ca_separation": params["equil_contact_angle_separation"],
             "equilibrium_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(params["equil_contact_angle_rctrl"]),
-            "second_ca_center": params["frac_contact_angle"],
-            "second_ca_range": params["frac_contact_angle_range"],
-            "second_ca_fraction": params["frac_contact_angle_fraction"],
-            "second_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(params["frac_contact_angle_rctrl"]),
-            "second_ca_distribution": params["frac_contact_distribution"],
+            "equilibrium_2nd_ca_center": params["frac_contact_angle"],
+            "equilibrium_2nd_ca_range": params["frac_contact_angle_range"],
+            "equilibrium_2nd_ca_gamma": params["frac_contact_angle_eta"],
+            "equilibrium_2nd_ca_delta": params["frac_contact_angle_del"],
+            "equilibrium_2nd_ca_sigma": params["frac_contact_angle_sig"],
+            "equilibrium_2nd_ca_fraction": params["frac_contact_angle_fraction"],
+            "equilibrium_2nd_ca_correlation": PoreFlowSubprocess.rctrl_to_correlation(
+                params["frac_contact_angle_rctrl"]
+            ),
+            "equilibrium_2nd_ca_distribution": params["frac_contact_distribution"],
             "pc_maximum": params["enforced_pc_1"],
             "pc_minimum": params["enforced_pc_2"],
             "drainage_sw_step": params["enforced_steps_1"],
@@ -112,6 +126,11 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
         }
 
         generate_vtu = params["create_sequence"] == "T"
+        level = diagnostics_level(params)
+        if level != DIAGNOSTICS_OFF:
+            diagnostics_output_path = "diagnostics"
+        else:
+            diagnostics_output_path = None
 
         if write_debug_files:
             ppf.log.configure(output=ppf.log.FILE, level=ppf.log.INFO)
@@ -128,6 +147,8 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
                 generate_cas=True,
                 setup_network=False,
                 config=config,
+                diagnostics_output_path=diagnostics_output_path,
+                diagnostics_level=level,
             )
         else:
             input_file = open("input.txt", "w")
@@ -173,6 +194,8 @@ class PoreFlowSubprocess(TwoPhaseSubprocess):
                 generate_vtu=generate_vtu,
                 drainage_snapshot_pc=drainage_snapshot_pc,
                 progress_callback=progress_callback,
+                diagnostics_output_path=diagnostics_output_path,
+                diagnostics_level=level,
             )
         result_string = json.dumps(
             {"cycle": cycle.tolist(), "Pc": Pc.tolist(), "Sw": Sw.tolist(), "Krw": Krw.tolist(), "Kro": Kro.tolist()}

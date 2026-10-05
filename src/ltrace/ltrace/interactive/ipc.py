@@ -28,6 +28,12 @@ FEATURES_COMPLETE_NAME = "features_complete.json"
 # Intermediate arrays dumped by the 2D preview path when a task carries
 # "debug": true, used to render a montage explaining how a preview was computed.
 DEBUG_CAPTURE_NAME = "debug_capture.npz"
+# Append-only JSON-lines log of what the full apply is doing, drained by the
+# widget into the apply log. It is a separate channel from progress.json because
+# that one is latest-wins -- two updates between two polls lose the first -- and
+# a log that silently drops lines is worse than useless for debugging. The widget
+# tails it by byte offset, so lines are never re-read nor lost.
+APPLY_LOG_NAME = "apply_log.jsonl"
 
 # Pixel budget for a single preview update. Visible regions larger than this are
 # downsampled by a power-of-2 factor so that feature extraction plus prediction
@@ -155,6 +161,10 @@ class InterprocessPaths:
     @property
     def debug_capture(self) -> Path:
         return self.base_dir / DEBUG_CAPTURE_NAME
+
+    @property
+    def apply_log(self) -> Path:
+        return self.base_dir / APPLY_LOG_NAME
 
 
 def safe_replace(src: Path, dst: Path):

@@ -1,4 +1,5 @@
 from typing import Any
+import logging
 
 from ltrace.remote.constants import (
     JOB_EVENT_CANCEL,
@@ -9,16 +10,17 @@ from ltrace.remote.constants import (
     JOB_STATE_CANCELLED,
 )
 from ltrace.remote.jobs import JobManager
+from ltrace.remote.paths import storage_for, to_remote
 
-NFS_MOUNTED_FOLDER = "//dfs.petrobras.biz/cientifico/cenpes/res/"
-NFS_REMOTE_FOLDER = "/nethome/"
-SCRIPT = "drp/smart-segmenter/laminas/run-notebook.sh"
-LOCKFILE = "drp/smart-segmenter/laminas/monailabel.lock"
+SCRIPT = "run-notebook.sh"
+LOCKFILE = "monailabel.lock"
 
 
 class MonaiLabelServerHandler:
     def __init__(self, **kwargs):
         self.node_ip = None
+        # Rebound from the host in __call__; the defaults stand in until then.
+        self._storage = storage_for(None)
         self.app_folder = kwargs.get("app_folder")
         self.dataset_folder = kwargs.get("dataset_folder")
 
@@ -30,6 +32,12 @@ class MonaiLabelServerHandler:
         }
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
+        # Bind to the host's storage layout before dispatching: the handler is
+        # constructed before it knows which account it belongs to.
+        job = caller.jobs.get(uid)
+        if job is not None:
+            self._storage = storage_for(job.host)
+
         try:
             client = kwargs.get("client")
             self.__action_map[action](caller, uid, client)
@@ -37,15 +45,11 @@ class MonaiLabelServerHandler:
             pass
 
     def deploy(self, caller: JobManager, uid: str, client: Any, **kwargs):
-        self.app_folder = str(self.app_folder)
-        self.app_folder = self.app_folder.replace("\\", "/")
-        self.app_folder = self.app_folder.replace(NFS_MOUNTED_FOLDER, NFS_REMOTE_FOLDER)
+        # Typed by hand, so either separator style and either prefix may arrive.
+        self.app_folder = str(to_remote(self.app_folder))
+        self.dataset_folder = str(to_remote(self.dataset_folder))
 
-        self.dataset_folder = str(self.dataset_folder)
-        self.dataset_folder = self.dataset_folder.replace("\\", "/")
-        self.dataset_folder = self.dataset_folder.replace(NFS_MOUNTED_FOLDER, NFS_REMOTE_FOLDER)
-
-        out = client.run_command(f"sbatch {NFS_REMOTE_FOLDER}{SCRIPT} {self.app_folder} {self.dataset_folder}")
+        out = client.run_command(f"sbatch {self._storage.remote_dir('monailabel') / SCRIPT} {self.app_folder} {self.dataset_folder}")
 
         caller.set_state(uid, JOB_STATE_RUNNING, 100.0, message="Monai server is running.")
         caller.persist(uid)
@@ -58,9 +62,9 @@ class MonaiLabelServerHandler:
             caller.persist(uid)
         else:
             if out["stdout"].replace("\n", "").split(" ")[26] == "R" and self.node_ip == None:
-                lock_file = client.run_command(f"cat {NFS_REMOTE_FOLDER}{LOCKFILE}")
+                lock_file = client.run_command(f"cat {self._storage.remote_dir('monailabel') / LOCKFILE}")
                 self.node_ip = lock_file["stdout"].replace("\n", "")
-                print(self.node_ip)
+                logging.debug(f"Monai server node IP: {self.node_ip}")
 
                 details = {
                     "nodeIP": self.node_ip,

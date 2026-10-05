@@ -4,14 +4,14 @@
   <description>LTrace pore network kabs rev CLI.</description>
   <contributor>Rômulo Cenci (LTrace)</contributor>
   <parameters>
-    <image type="any">
+    <string>
       <name>volume</name>
       <longflag>volume</longflag>
       <label>Input Volume</label>
       <description><![CDATA[Pick the input data to the algorithm.]]></description>
       <channel>input</channel>
       <default></default>
-    </image>
+    </string>
     <string>
       <longflag>cwd</longflag>
     </string>

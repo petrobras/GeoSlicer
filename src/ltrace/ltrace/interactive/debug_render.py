@@ -1,6 +1,6 @@
 """
 Render a multi-page PDF explaining how a segmentation preview was computed,
-from a debug capture written by ltrace.interactive.seg_consumer
+from a debug capture written by ltrace.interactive.consumer
 (`debug_capture.npz`).
 
 The capture records the REAL preview computation (the consumer runs its normal
@@ -29,7 +29,7 @@ rasters at full resolution, and opens anywhere. (A folder of PNGs or a
 self-contained HTML page would also work; PDF wins for a single shareable file.)
 
 Usable standalone for offline iteration:
-    python seg_debug_render.py debug_capture.npz [out.pdf] [images_per_page]
+    python debug_render.py debug_capture.npz [out.pdf] [images_per_page]
 """
 
 import json

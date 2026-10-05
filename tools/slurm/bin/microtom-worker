@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Writes the result files a microtom job is expected to leave behind.
+
+Runs inside the slurm job. The layout and variable names come from what the
+GeoSlicer side reads back in ltrace/readers/microtom/collector.py, so results
+loaded through 'Open' in the Job Monitor land as real nodes and tables rather
+than 'Invalid file format'.
+
+The numbers are synthetic, but they are derived from the actual input volume:
+porosity is measured, so a different input gives different results.
+"""
+
+import argparse
+import csv
+import re
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+
+# microtom encodes the geometry in the file name (see microtom/utils.py::
+# build_filename): <...>_<IMGTYPE>_<dimx>_<dimy>_<dimz>_<res>nm.raw, with the
+# leading name fields allowed to be empty. Parse from the right.
+NAME_RE = re.compile(
+    r"_(?P<imgtype>[A-Z]+)_(?P<dimx>\d{4,})_(?P<dimy>\d{4,})_(?P<dimz>\d{4,})_(?P<res>\d{5,})nm\.raw$"
+)
+
+DTYPE_FOR_IMGTYPE = {"BIN": np.uint8, "LABELS": np.uint8, "MANGO": np.uint8, "CT": np.uint8}
+
+POROSIMETRY = {
+    "psd",
+    "hpsd",
+    "micp",
+    "drainage_incompressible",
+    "imbibition_compressible",
+    "imbibition_incompressible",
+}
+KABS = {"stokes_kabs", "stokes_kabs_rev", "darcy_kabs_foam"}
+
+
+def parse_input(path_str):
+    """Return (volume, resolution_mm). Falls back to a small cube if unreadable."""
+    fallback = (np.zeros((20, 20, 20), dtype=np.uint8), 0.001)
+
+    if not path_str:
+        return fallback
+
+    path = Path(path_str)
+    match = NAME_RE.search(path.name)
+    if match is None or not path.exists():
+        print(f"cannot parse or find input '{path_str}'; using a placeholder volume")
+        return fallback
+
+    dimx = int(match.group("dimx"))
+    dimy = int(match.group("dimy"))
+    dimz = int(match.group("dimz"))
+    resolution = int(match.group("res")) / 1e6  # nm -> mm
+    dtype = DTYPE_FOR_IMGTYPE.get(match.group("imgtype"), np.float32)
+
+    expected = dimx * dimy * dimz
+    raw = np.fromfile(path, dtype=dtype)
+    if raw.size != expected:
+        print(f"input has {raw.size} values, name says {expected}; using a placeholder volume")
+        return fallback
+
+    return raw.reshape((dimz, dimy, dimx)), resolution
+
+
+def base_attrs(volume, resolution, simulator, job_id):
+    dimz, dimy, dimx = volume.shape
+    pore = float(np.count_nonzero(volume == 0)) / volume.size
+    return {
+        "well": "SLURMLAB",
+        "sample_name": "STUB",
+        "condition": "",
+        "sample_type": "",
+        "dimx": dimx,
+        "dimy": dimy,
+        "dimz": dimz,
+        "resolution": resolution,
+        "total_porosity": round(pore, 6),
+        "resolved_porosity": round(pore, 6),
+        "simulation_type": f"microtom_{simulator}",
+        "job_id": int(job_id),
+        "cut_info": "None",
+        "start_time": datetime.now().strftime("%Y_%m_%d_%H_%M_%S"),
+        "produced_by": "tools/slurm microtom-worker (synthetic results)",
+    }
+
+
+def write_porosimetry(out_path, volume, resolution, simulator, job_id):
+    """Dataset shaped for PorosimetryCompiler: it reads simulation[simulator],
+    radii_<sim> and the snw_<sim> coordinate."""
+    import xarray as xr
+
+    dimz, dimy, dimx = volume.shape
+    steps = 16
+    # Saturation rising towards 1, radii falling: the shape a real curve has.
+    snw = np.linspace(0.02, 0.98, steps).astype(np.float64)
+    radii = np.linspace(float(max(dimx, dimy, dimz)) / 4.0, 1.0, steps).astype(np.float64)
+
+    # simulation[simulator] must be a volume: distance-like field in voxels.
+    field = np.zeros_like(volume, dtype=np.float32)
+    if volume.size:
+        field[volume == 0] = float(radii.mean())
+
+    ds = xr.Dataset(
+        {
+            "bin": (("z", "y", "x"), volume.astype(np.uint8)),
+            simulator: (("z", "y", "x"), field),
+            f"radii_{simulator}": ((f"snw_{simulator}",), radii),
+        },
+        coords={
+            f"snw_{simulator}": snw,
+            "z": np.arange(dimz) * resolution,
+            "y": np.arange(dimy) * resolution,
+            "x": np.arange(dimx) * resolution,
+        },
+        attrs=base_attrs(volume, resolution, simulator, job_id),
+    )
+    ds.to_netcdf(out_path, "w", engine="h5netcdf")
+
+
+def write_kabs(out_path, volume, resolution, simulator, job_id):
+    """Dataset shaped for StokesKabsCompiler: it reads the attrs (permeability,
+    porosities, dims, cut_info) and optionally the bin/velocity/pressure volumes."""
+    import xarray as xr
+
+    dimz, dimy, dimx = volume.shape
+    attrs = base_attrs(volume, resolution, simulator, job_id)
+    # Kozeny-Carman-ish, only so the number moves with the input's porosity.
+    phi = max(attrs["total_porosity"], 1e-3)
+    attrs["permeability"] = round(1000.0 * phi**3 / (1.0 - phi) ** 2, 4)
+
+    pore = (volume == 0).astype(np.float32)
+    ds = xr.Dataset(
+        {
+            "bin": (("z", "y", "x"), volume.astype(np.uint8)),
+            "velocity": (("z", "y", "x"), pore * np.float32(1e-3)),
+            "pressure": (
+                ("z", "y", "x"),
+                np.broadcast_to(
+                    np.linspace(1.0, 0.0, dimz, dtype=np.float32)[:, None, None], volume.shape
+                ).copy(),
+            ),
+        },
+        coords={
+            "z": np.arange(dimz) * resolution,
+            "y": np.arange(dimy) * resolution,
+            "x": np.arange(dimx) * resolution,
+        },
+        attrs=attrs,
+    )
+    ds.to_netcdf(out_path, "w", engine="h5netcdf")
+
+
+def write_krel(job_dir, volume, resolution, simulator, cluster, job_id):
+    """One sim<N> directory per diameter, holding the permeability table and the
+    blue/red volumes that OneResultSlurmHandler.subprocess_results globs for."""
+    root = Path(job_dir) / simulator / f"{cluster}_{job_id}"
+    attrs = base_attrs(volume, resolution, simulator, job_id)
+
+    for index in (1, 2):
+        sim_dir = root.parent / f"sim{index}"
+        sim_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(sim_dir / "permeability.csv", "w", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["Sw", "Krw", "Krnw", "Pc"])
+            for sw in np.linspace(0.1, 0.9, 9):
+                writer.writerow([round(sw, 4), round(sw**3, 6), round((1 - sw) ** 3, 6), round(1 / sw, 4)])
+
+        for colour in ("blue", "red"):
+            write_legacy_vtk(sim_dir / f"{colour}_{index:04d}.vtk", volume, resolution, colour)
+
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "permeability.csv", "w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["permeability_mD", "total_porosity"])
+        writer.writerow([round(1000.0 * attrs["total_porosity"] ** 3, 4), attrs["total_porosity"]])
+
+
+def write_legacy_vtk(path, volume, resolution, colour):
+    dimz, dimy, dimx = volume.shape
+    values = (volume == 0).astype(np.uint8) * (1 if colour == "blue" else 2)
+    with open(path, "wb") as handle:
+        header = (
+            "# vtk DataFile Version 3.0\n"
+            f"{colour} saturation (synthetic)\n"
+            "BINARY\n"
+            "DATASET STRUCTURED_POINTS\n"
+            f"DIMENSIONS {dimx} {dimy} {dimz}\n"
+            "ORIGIN 0 0 0\n"
+            f"SPACING {resolution} {resolution} {resolution}\n"
+            f"POINT_DATA {values.size}\n"
+            "SCALARS saturation unsigned_char 1\n"
+            "LOOKUP_TABLE default\n"
+        )
+        handle.write(header.encode("ascii"))
+        handle.write(values.tobytes())
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--simulator", required=True)
+    parser.add_argument("--cluster", default="atena")
+    parser.add_argument("--job-dir", required=True)
+    parser.add_argument("--job-id", required=True)
+    parser.add_argument("--input", default="")
+    args = parser.parse_args()
+
+    job_dir = Path(args.job_dir)
+    volume, resolution = parse_input(args.input)
+    print(f"volume {volume.shape} at {resolution} mm/voxel")
+
+    simulator = args.simulator
+    stem = f"{args.cluster}_{args.job_id}"
+
+    if simulator == "krel":
+        write_krel(job_dir, volume, resolution, simulator, args.cluster, args.job_id)
+        print(f"wrote {job_dir / simulator}")
+        return
+
+    if simulator == "darcy_kabs_foam":
+        # The caller rebuilds this nested path itself instead of reading stdout.
+        out_dir = job_dir / stem
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{stem}.nc"
+    else:
+        out_path = job_dir / f"{stem}.nc"
+
+    if simulator in KABS:
+        write_kabs(out_path, volume, resolution, simulator, args.job_id)
+    elif simulator in POROSIMETRY:
+        write_porosimetry(out_path, volume, resolution, simulator, args.job_id)
+    else:
+        print(f"no result layout defined for '{simulator}'; writing a porosimetry-shaped file")
+        write_porosimetry(out_path, volume, resolution, simulator, args.job_id)
+
+    print(f"wrote {out_path}")
+
+
+if __name__ == "__main__":
+    main()

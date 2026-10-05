@@ -1,3 +1,309 @@
+# v2.9.2 - 2026-10-01
+
+## Highlights:
+- Improvements to performance and memory usage for large datasets and complex analyses.
+- Enhanced remote workflow capabilities, including file transfer and job execution.
+- Refinements to the user interface for smoother interaction and clearer progress reporting.
+
+## New features:
+- Added diagnostics widget for monitoring simulations and analysis processes.
+- Introduced custom behaviors for DirectoryNodes, allowing for more flexible node management.
+
+## Improvements:
+- Optimized pore network extraction and analysis for speed and memory efficiency.
+- Improved handling of null values in data processing.
+- Enhanced progress reporting for long-running operations, including per-image logs and a whole-queue bar.
+- Streamlined the application of trained models to multiple images.
+- Improved the interface for annotation controls and cancel operations.
+- Optimized memory usage for bounding box calculations and NetCDF exports.
+- Enhanced the display of segmentations to respect opacity changes.
+- Improved import functionality for SIRR format and Krel data.
+- Increased the range of maximum values for masks to accommodate a wider variety of data.
+- Adjusted the behavior of slice processing for better accuracy and speed.
+- Updated submodules for py_pore_flow and pyflowsolver.
+- Improved the ability to collect more data during the collect process.
+
+## Bug fixes:
+- Resolved issues with custom behaviors not being applied to nodes with non-unique names.
+- Fixed diagnostics widgets not being saved correctly when files are in use.
+- Addressed issues with DirectoryNode not being cloned correctly and losing track of directories when projects are moved or renamed.
+- Corrected the placement of cropped volumes in the hierarchy and resolved test renaming issues.
+- Fixed BIAEP fetching when a well has only a single image.
+- Resolved issues with stretching and size policies of KrelEDA filters combobox.
+- Fixed KrelEda to skip non-numeric parameters in error correlation.
+- Addressed issues with the pore network extractor handler.
+- Corrected mask selector for ExpandSegments.
+- Fixed Boundary Removal false reference changes.
+- Resolved issues with the Multiple Threshold interface, including table cascading and link icon position.
+- Fixed incorrect return type annotation in ExpandSegmentsEffect.
+- Resolved issues with PNM animation loading on remote execution.
+- Fixed spacial alignment and remote order of VTUs in PNM animations.
+- Fixed Customized Data Segmentation opacity slider issues.
+- Corrected issues with the Thin section loader and deploy process related to Cython updates.
+- Resolved problems with the deploy process regarding Cython version updates.
+- Fixed Network_VTK window not closing.
+- Corrected issues with diagnostics interfering with widget rendering and conflicts for simultaneous simulations.
+- Fixed diagnosticsWidget crash on Windows.
+- Addressed issues with cropped volume annotations.
+- Fixed loss of segmentation consumer unit-testability.
+- Resolved issues with the consumer unit tests against the current API.
+- Fixed issues with the use of `shared_memory` in companion progress bars.
+- Addressed debounced calls made after the debouncer is torn down.
+- Fixed the batch apply path, its dialog, and module re-entry.
+- Resolved issues with applying models when extra channels are in use.
+- Fixed `Null value bugfix`.
+- Fixed incorrect return type annotation in ExpandSegmentsEffect.
+- Fixed network_vtk window never closing.
+- Fixed NodeCustomBehaviorFactoryTest.
+- Fixed diagnostics interfering in the rendering of other widgets.
+- Fixed diagnostics conflict for simultaneous simulations.
+- Fixed cloning node not duplicating directory.
+- Fixed custom behaviors not being applied to nodes with not unique names.
+- Fixed diagnosticsNode not being saved when file is being used.
+- Fixed losing track of directory when project is moved/renamed.
+- Fixed destroying diagnosticsWidget causing a crash in windows.
+- Fixed pore network extractor handler.
+- Fixed KrelEda to skip non-numeric parameters in error correlation.
+- Fixed Boundary Removal false reference change.
+- Fixed Multiple Threshold table not cascading linked endpoints.
+- Fixed incorrect return type annotation in ExpandSegmentsEffect.
+- Fix PNM animation load on remote execution.
+- Fix spacial alignment of the animation.
+- Fix remote order of the vtu's.
+- Fix Customized Data Segmentation opacity slider issue.
+- Fix using wrong py_pore_flow`s PoreNetwork python module path.
+- Fix Thin section loader bad behaviors.
+- Fix deploy process problem regarding Cython recent version update.
+- Fix using wrong py_pore_flow`s PoreNetwork python module path.
+- Fix BIAEP fetching when the well has a single image.
+- Fix Cropped volume place on hierarchy.
+- Fix tests renaming the volume.
+- Fix mask selector for ExpandSegments.
+- Fix link endpoints option and improve interface of MultiThreshold.
+- Fix change link icon position.
+- Fix incorrect return type annotation in ExpandSegmentsEffect.
+- Fix remove unnecessary node cleanup in tests.
+- Fix Parse the null values list in one place.
+- Fix Merge every ABSENT_VALUE a DLIS declares.
+- Fix Remove null values before converting a labelmap.
+- Fix Stop writing a set repr as a labelmap's NullValue.
+- Fix duplicated Qt libs from pyside in linux.
+- Fix missing dlls from cuda-toolkit and Fix CUDA_PATH variables to avoid loading them from system vars.
+- Fix license check.
+- Fix Null value bugfix.
+- Fix Revert "PL-3269 Testing cupy".
+- Fix Further improvements on the slice processing.
+- Fix Post processing improvement.
+- Fix Increasing the range of the max value, to allow masks with more high intensity values.
+- Fix Version keep the 2.9.1 behavior (without the border spikes) and also very fast (not as fast as the previous commit, bug it corrects much better).
+- Fix Progress now takes into account the post processing.
+- Fix Adjusted Big Image and manual.
+- Fix Adjusting help.
+- Fix Post processing false by default.
+- Fix Keep a full-image apply running on module exit.
+- Fix Stop a long node name from squeezing out the input form label.
+- Fix Give a cropped volume its own annotation instead of the source's.
+- Fix Report apply progress as a per-image log and a whole-queue bar.
+- Fix Move the annotation controls into Input and add Cancel next to Apply.
+- Fix Drop the frame's scene and layout callbacks when it is destroyed.
+- Fix Ignore debounced calls made after the debouncer is torn down.
+- Fix Fuzz the batch apply path, its dialog and module re-entry.
+- Fix Disable Apply to Other Images when extra channels are in use.
+- Fix Adjust comments, docs, and strings.
+- Fix Remove shared_memory from companion progress bar.
+- Fix Make the segmentation consumer unit-testable and pin slab equivalence.
+- Fix Derive the worker count from CPU affinity, capped by physical cores.
+- Fix Size feature slabs from the available parallelism and real free memory.
+- Fix Predict the extent in slabs instead of one full-extent matrix.
+- Fix Fuse feature computation into the apply, out-of-core.
+- Fix Predict on every core during a full apply.
+- Fix Choose the fused apply's slab thickness and worker count together.
+- Fix Let the filter, not dask, decide the volume's outer faces.
+- Fix Keep the forest's discarded class probabilities small.
+- Fix Make the apply log append-only and say what it is doing.
+- Fix Sum the forest's leaf probabilities instead of calling predict.
+- Fix Time the single-pass apply too.
+- Fix Filter the next slab while the current one predicts.
+- Fix Split the consumer into focused modules.
+- Fix Trim the consumer's comments and docstrings.
+- Fix Remove the dead initial-features argument.
+- Fix Refresh the consumer unit tests against the current API.
+- Fix Share one hidden segment editor across sessions.
+- Fix PNM animation load on remote execution.
+- Fix BIAEP fetching when the well has a single image.
+- Fix Cropped volume place on hierarchy.
+- Fix tests renaming the volume.
+- Fix Mask selector for ExpandSegments.
+- Fix Boundary Removal false reference change.
+- Fix Enable opacity control of the preview in Multiple Threshold.
+- Fix Link endpoints option and improve interface of MultiThreshold.
+- Fix Multiple Threshold table not cascading linked endpoints.
+- Fix Change link icon position.
+- Fix Add integration tests for new functionalities.
+- Fix incorrect return type annotation in ExpandSegmentsEffect.
+- Fix Remove unnecessary node cleanup in tests.
+- Fix Parse the null values list in one place.
+- Fix Merge every ABSENT_VALUE a DLIS declares.
+- Fix Remove null values before converting a labelmap.
+- Fix Stop writing a set repr as a labelmap's NullValue.
+- Fix duplicated Qt libs from pyside in linux.
+- Fix missing dlls from cuda-toolkit and Fix CUDA_PATH variables to avoid loading them from system vars.
+- Fix license check.
+- Fix PL-3269 Changing group size to 5 and fitting points to 10%.
+- Fix PL-3269 Speed improvements.
+- Fix PL-3269 Greater speed improvements.
+- Fix PL-3269 Null value bugfix.
+- Fix PL-3269 Parallel version.
+- Fix PL-3269 Numba optimizations.
+- Fix PL-3269 Testing cupy.
+- Fix PL-3269 Revert "PL-3269 Testing cupy".
+- Fix PL-3269 Further improvements on the slice processing.
+- Fix PL-3269 Post processing improvement.
+- Fix PL-3269 Increasing the range of the max value, to allow masks with more high intensity values.
+- Fix PL-3269 Version keep the 2.9.1 behavior (without the border spikes) and also very fast (not as fast as the previous commit, bug it corrects much better).
+- Fix PL-3269 Progress now takes into account the post processing.
+- Fix PL-3269 Adjusted Big Image and manual.
+- Fix PL-3269 Adjusting help.
+- Fix PL-3269 Post processing false by default.
+- Fix PL-3261 Keep a full-image apply running on module exit.
+- Fix PL-3261 Stop a long node name from squeezing out the input form label.
+- Fix PL-3261 Give a cropped volume its own annotation instead of the source's.
+- Fix PL-3261 Apply one trained model to multiple images.
+- Fix PL-3261 Report apply progress as a per-image log and a whole-queue bar.
+- Fix PL-3261 Move the annotation controls into Input and add Cancel next to Apply.
+- Fix PL-3261 Drop the frame's scene and layout callbacks when it is destroyed.
+- Fix PL-3261 Ignore debounced calls made after the debouncer is torn down.
+- Fix PL-3261 Fuzz the batch apply path, its dialog and module re-entry.
+- Fix PL-3261 Disable Apply to Other Images when extra channels are in use.
+- Fix PL-3261 Adjust comments, docs, and strings.
+- Fix PL-3261 Remove shared_memory from companion progress bar.
+- Fix PL-3261 Make the segmentation consumer unit-testable and pin slab equivalence.
+- Fix PL-3261 Derive the worker count from CPU affinity, capped by physical cores.
+- Fix PL-3261 Size feature slabs from the available parallelism and real free memory.
+- Fix PL-3261 Predict the extent in slabs instead of one full-extent matrix.
+- Fix PL-3261 Fuse feature computation into the apply, out-of-core.
+- Fix PL-3261 Predict on every core during a full apply.
+- Fix PL-3261 Choose the fused apply's slab thickness and worker count together.
+- Fix PL-3261 Let the filter, not dask, decide the volume's outer faces.
+- Fix PL-3261 Keep the forest's discarded class probabilities small.
+- Fix PL-3261 Make the apply log append-only and say what it is doing.
+- Fix PL-3261 Sum the forest's leaf probabilities instead of calling predict.
+- Fix PL-3261 Time the single-pass apply too.
+- Fix PL-3261 Filter the next slab while the current one predicts.
+- Fix PL-3261 Split the consumer into focused modules.
+- Fix PL-3261 Trim the consumer's comments and docstrings.
+- Fix PL-3261 Remove the dead initial-features argument.
+- Fix PL-3261 Refresh the consumer unit tests against the current API.
+- Fix PL-3261 Share one hidden segment editor across sessions.
+- Fix PL-3099 Fix PNM animation load on remote execution.
+- Fix PL-3265 Update py_pore_flow vetorizing throats operation.
+- Fix PL-3265 Reduce tesselation of large networks to save memory and time.
+- Fix PL-3265 Quantization of conductances to reduce memory use.
+- Fix PL-3265 Vectorize pore/throat array construction in PNM animations.
+- Fix PL-3265 Fix spacial alignment of the animation.
+- Fix PL-3265 Fix remote order of the vtu's.
+- Fix PL-3265 Update py_pore_flow.
+- Fix PL-3262 Fix Customized Data Segmentation opacity slider issue.
+- Fix PL-3262 Make 3D display from segmentation to respect opacity changes.
+- Fix PL-3229 Improve Krel import in SIRR format.
+- Fix PL-3229 Add integration test for import krel from csv functionality.
+- Fix PL-3229 Avoid deprecated Series positional indexing by using .iloc.
+- Fix PL-3258 Make contiguous and divs=0 in KabsREV.
+- Fix PL-3258 Add pnmkabsrev_loader to instantiate handler.
+- Fix PL-3248 Now chfem results are available on collect.
+- Fix PL-3248 Increasing the extractor walltime.
+- Fix PL-3248 Proper conversion to mD.
+- Fix PL-3248 Fix for anisotropic divs. New slurm paremeters calculation.
+- Fix PL-3248 Setting job app limits, extractor relative wall time, simulation save tables always off.
+- Fix PL-3260 Fix unnecessarily creating shared memories on remote extract.
+- Fix PL-3260 Replace way we copy files to the cluster's NFS.
+- Fix PL-3260 Added NumpyArrayObjectTransfer, and updated PNM Remote Workflow.
+- Fix PL-3260 Update ObjectTransfer to be used with context manager.
+- Fix PL-3260 Add ObjectTransfer documentation.
+- Fix tag_not_available: PL3237 Refactoring.
+- Fix tag_not_available: Initial chfem workstep implementation.
+- Fix tag_not_available: First commit of v3.
+- Fix tag_not_available: Normalization speed improvements.
+- Fix tag_not_available: Update readme with latest papers.
+- Fix tag_not_available: Pl-3266 Update py_pore_flow commit.
+- Fix tag_not_available: Updates Pl-3126-V3.
+- Fix tag_not_available: Allowing the user to set the number of cores. Increasing the default from 8 to max -2. Capping at max -2 globally on the lib file.
+- Fix tag_not_available: Updated manuals.
+- Fix tag_not_available: ExecutionWidget isolated.
+- Fix tag_not_available: Isolating Execution widget.
+- Fix tag_not_available: Slurm and tests.
+- Fix tag_not_available: JobMonitor improvements.
+- Fix tag_not_available: Same before.
+- Fix tag_not_available: Improved event flow and ssh connections.
+- Fix tag_not_available: Applying the changes.
+- Fix tag_not_available: Onboarding improvements.
+- Fix tag_not_available: Exceptions and logs reduced and organized.
+- Fix tag_not_available: Moved connection and cancel commands to inside the worker thread.
+- Fix tag_not_available: Put CANCEL outside too.
+- Fix tag_not_available: log level, longer timeouts, banner timeout and enter/exit timer.
+- Fix tag_not_available: Add futures to control future events of connect and wait for cancel.
+- Fix tag_not_available: LBPM tracking and reports.
+- Fix tag_not_available: Added disconnect account option.
+- Fix tag_not_available: Check host targets, disconnect button and fix background task.
+- Fix tag_not_available: Staging path fixed.
+- Fix tag_not_available: fix dangling foldersCC.
+- Fix tag_not_available: Fix Cancel - now it cancels and control the folders.
+- Fix tag_not_available: Organizing the menu.
+- Fix tag_not_available: Cancel removes 4D and Collect works.
+- Fix tag_not_available: Improved collect to retrieve more data.
+- Fix tag_not_available: Fixed collect and some errors when deleting nodes.
+- Fix PL-3259 Fix Thin section loader bad behaviors.
+- Fix PL-3259 Fix deploy process problem regarding Cython recent version update.
+- Fix PL-3259 Set 'is_picking' flag at the beggining of start_picking method.
+- Fix PL-3259 Fix deploy process problem regarding Cython recent version update.
+- Fix PL-3259 Fix deploy process problem regarding Cython recent version update.
+- Fix PL-3259 Fix deploy process problem regarding Cython recent version update.
+- Fix PL-3259 Revert "PL-3259 Fix deploy process problem regarding Cython recent version update".
+- Fix PL-3259 Fix deploy process problem regarding Cython recent version update.
+- Fix PL-3237 Bounding box reduced RAM, nc export reduced RAM, testing more divs at extractor workstep.
+- Fix PL-3237 Wip.
+- Fix PL-3237 Updating handler.
+- Fix PL-3237 Properly setting the output dir of the Extractor dask workers for the Remote Workflow.
+- Fix PL-3237 Now fixing slurm parameters.
+- Fix PL-3237 Extractor files cleanup.
+- Fix PL-3237 Clean two-phase subprocess directories.
+- Fix PL-3237 Bugfix.
+- Fix PL-3237 Saving workstep image data off by default.
+- Fix PL-3237 Adding disk space usage warning.
+- Fix PL-3237 Wall time and gpu now can be accessed from the interface.
+- Fix PL-3237 Defined the chfem version.
+- Fix PL-3237 Increasing the number of divs, and jobs now are the number of divs.
+- Fix PL-3237 Removing chfem code. It is in another PR.
+- Fix PL-3237 Formatting.
+- Fix PL-3237 Removing unused constant.
+- Fix PL-3237 Removing unused function.
+- Fix PL-3237 Removing the 16 hardcoded cpu request.
+- Fix PL-3237 Remote Workflow Report.
+- Fix PL-3237 Take kabs in z and replace current report node over collects.
+- Fix PL-3237 Adapt to make CSV path platform agnostic.
+- Fix PL-3225 Add 2nd distribution to initial contact angle.
+- Fix PL-3225 Update py_pore_flow submodule.
+- Fix PL-3225 Update py_pore_flow submodule.
+- Fix PL-3225 Update py_pore_flow unit tests and missing keys in dict.
+
+## Removed:
+- Unused node cleanup in tests.
+
+# Unreleased
+
+## Highlights:
+- Added Pore Scale Modelling: configure, run and report LBPM two-phase flow simulations, locally or on a SLURM cluster.
+- Added Folder Monitor: import folders without loading them, keep the listing in sync while they are written, and play numbered entries as a 4D time sequence.
+
+## New features:
+- Added virtual nodes: tables, scalar volumes, label maps and vector volumes that hold a sample of data that stays on disk, with the source, the sampling factor and the original size recorded as node attributes.
+- Added deferred readers for TIFF/PNG/JPEG stacks, multi-page TIFFs, NetCDF-4/HDF5, LBPM per-rank HDF5 frames, RAW volumes and whitespace-separated logs.
+- Added a folder monitoring service shared by virtual folders and 4D sequences, combining filesystem notifications with polling so output written to network shares is still detected.
+- Added 4D playback through a proxy node: a scrubber with step, play/pause, loop and follow-latest, a downsampled preview cache on disk, and full-resolution loading bounded by an LRU of two frames.
+- Added an LBPM dispatch API that runs a simulation locally or on a cluster through the same managed-job machinery, including a local host and client so local runs are persisted, resumable and cancellable.
+- Added LBPM configuration handling that round-trips `waterflow.db` without losing comments or layout, and result parsing that derives relative permeability, saturation, capillary pressure, interfacial area and Euler characteristic curves.
+- The Explorer now shows what a virtual node samples and, for a 4D node, its player; both get their own icons and tooltips in the data tree.
+
 # v2.9.1 - 2026-08-18
 
 ## Highlights:

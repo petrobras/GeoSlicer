@@ -9,6 +9,7 @@ import slicer
 import logging
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
+from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
 from ltrace.slicer import ui
 from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
 from ltrace.slicer.widget.help_button import HelpButton
@@ -288,12 +289,15 @@ class PoreNetworkKabsREVLogic(LTracePluginLogic):
         params["is_multiscale"] = not node.IsA("vtkMRMLLabelMapVolumeNode")
 
         cliParams = {
-            "volume": node.GetID(),
+            "volume": str(self.cwd / node.GetID()),
             "cwd": str(self.cwd),
         }
 
-        with open(str(self.cwd / "params_dict.json"), "w") as file:
-            json.dump(params, file)
+        with JsonObjectTransfer(self.cwd, "params_dict.json", no_temp=True) as transfer:
+            transfer.save(params)
+
+        with VolumeNodeObjectTransfer(self.cwd, node.GetID(), no_temp=True) as transfer:
+            transfer.save(node)
 
         self.cliNode = slicer.cli.run(slicer.modules.porenetworkkabsrevcli, None, cliParams)
         self.progressBar.setCommandLineModuleNode(self.cliNode)

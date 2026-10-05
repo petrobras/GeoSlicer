@@ -39,6 +39,9 @@ class ADebounceCaller:
         self.__kwargs = {}
 
     def emitSignal(self, *args, **kwargs) -> None:
+        if self.timer is None:  # object has been torn down by __del__
+            return
+
         self.__args = args
         self.__kwargs = kwargs
 

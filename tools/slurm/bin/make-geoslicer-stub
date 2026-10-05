@@ -1,0 +1,42 @@
+#!/bin/bash
+# Creates the launcher layout that ltrace/remote/utils.py::get_python_cmd expects:
+#
+#   /atena/users/dibi/containers/geoslicer/<version>/scripts/rps.sh
+#   /atena/users/dibi/containers/geoslicer/<version>/images/geoslicer-cli.sif
+#
+# The handlers build 'bash "$RPS_DIR/scripts/rps.sh" --sif ... --cli ...' and
+# then scrape "job_id = N" out of stdout, so all rps.sh really has to do is
+# submit something to slurm and print that line.
+#
+# An existing rps.sh is never overwritten: mount a real GeoSlicer deployment
+# over this directory and it wins.
+set -euo pipefail
+
+VERSION="${1:?usage: make-geoslicer-stub <version>}"
+ROOT="${GEOSLICER_CONTAINERS_DIR:-/atena/users/dibi/containers/geoslicer}/${VERSION}"
+
+mkdir -p "${ROOT}/scripts" "${ROOT}/images"
+
+if [ -e "${ROOT}/scripts/rps.sh" ]; then
+    echo "[slurmlab] ${ROOT}/scripts/rps.sh already exists, leaving it alone"
+    exit 0
+fi
+
+# Resolve next to this script first so the tree can be exercised outside the
+# image, then fall back to the installed location.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for candidate in "${HERE}/rps-stub.sh" /usr/local/bin/rps-stub.sh; do
+    if [ -f "$candidate" ]; then RPS_SRC="$candidate"; break; fi
+done
+[ -n "${RPS_SRC:-}" ] || { echo "rps-stub.sh not found" >&2; exit 1; }
+
+install -m 0755 "$RPS_SRC" "${ROOT}/scripts/rps.sh"
+
+if [ ! -e "${ROOT}/images/geoslicer-cli.sif" ]; then
+    # A marker, not an image. rps-stub.sh checks whether this is a real SIF.
+    printf 'placeholder: no GeoSlicer CLI image in this test cluster\n' \
+        > "${ROOT}/images/geoslicer-cli.sif"
+fi
+
+chmod -R 777 "${ROOT}" 2>/dev/null || true
+echo "[slurmlab] stubbed GeoSlicer launcher at ${ROOT}"

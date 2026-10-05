@@ -277,7 +277,6 @@ class KrelCompiler(BaseResultCompiler):
                 self.missing_results.append((sim_output_filepath, "File not found"))
             except Exception as e:
                 self.missing_results.append((sim_output_filepath, repr(e)))
-                print("--------------------------------------------------------------------------------------------")
                 import traceback
 
                 traceback.print_exc()

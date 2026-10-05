@@ -25,10 +25,12 @@ from ltrace.pore_networks.functions_simulation import (
     single_phase_permeability,
 )
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
+from ltrace.pore_networks.pnflow_parameter_defs import DIAGNOSTICS_OFF, diagnostics_level
 from ltrace.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
 from ltrace.pore_networks.processing.vtk_utils import create_flow_model, create_permeability_sphere
 from ltrace.pore_networks.subres_models import get_subres_function
 from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
+from ltrace.remote.object_transfer import PickleObjectTransfer
 from ltrace.slicer.cli_utils import progressUpdate
 
 
@@ -55,8 +57,9 @@ def df_to_dict_numpy(df):
 
 
 def load_and_check_network(filepath):
-    with open(filepath, "rb") as f:
-        network = pickle.load(f)
+    path = Path(filepath)
+    with PickleObjectTransfer(path.parent, path.name) as transfer:
+        network = transfer.load()
     if type(network) is pd.DataFrame:
         network = df_to_dict_numpy(network)
     return network
@@ -403,6 +406,11 @@ def twoPhaseSensibilityTest(args, params):
                 "subres_params": {k: (None if isinstance(v, (list, np.ndarray)) else v) for k, v in subres.items()},
             }
         krel_result.add_single_result(input_params, result["table"])
+
+        if result["id"] == 0 and diagnostics_level(params) != DIAGNOSTICS_OFF:
+            diagnostics_path = Path(result["cwd"]) / "diagnostics"
+            if diagnostics_path.is_dir():
+                shutil.move(str(diagnostics_path), cwd)
 
         # Write results only every 10 new results
         krel_tables_len = len(krel_result.krel_tables)

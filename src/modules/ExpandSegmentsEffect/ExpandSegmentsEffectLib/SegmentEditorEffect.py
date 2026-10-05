@@ -1,3 +1,4 @@
+import logging
 import os
 
 import SimpleITK as sitk
@@ -8,8 +9,8 @@ import slicer
 import vtk
 from SegmentEditorEffects import *
 from ltrace.slicer.helpers import hide_masking_widget
-from typing import Union
-from ltrace.slicer import helpers
+from typing import Optional, Union
+from ltrace.slicer import ui
 from ltrace.slicer.lazy import lazy
 
 from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
@@ -75,6 +76,15 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         """
 
     def setupOptionsFrame(self):
+        self.maskSelector = ui.hierarchyVolumeInput(
+            hasNone=True,
+            nodeTypes=["vtkMRMLSegmentationNode"],
+            tooltip="Segment / Region of Interest (optional). Limits where segments are expanded to; "
+            "voxels outside the mask are left unchanged.",
+        )
+        self.maskSelector.objectName = "Expand Segments Mask ComboBox"
+        self.scriptedEffect.addLabeledOptionsWidget("Region (SOI):", self.maskSelector)
+
         self.applyButton = qt.QPushButton("Apply")
         self.applyButton.setFixedHeight(40)
         self.applyButton.connect("clicked()", self.onApply)
@@ -143,6 +153,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
                 if self.abort:
                     raise RuntimeError("AbortGenerateDataOn")
 
+                maskNode = self.maskSelector.currentNode()
+                maskArray = None
+                if maskNode is not None:
+                    maskArray = self.__getMaskArrayForVolume(maskNode, labelMapNode)
+
+                originalArray = slicer.util.arrayFromVolume(labelMapNode).copy()
+
                 self.filter = sitk.MorphologicalWatershedFromMarkersImageFilter()
                 self.applyButton.setEnabled(False)
                 self.applyFullButton.setEnabled(False)
@@ -174,6 +191,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         sitkUtils.PushVolumeToSlicer(result, targetNode=labelMapNode)
 
         array = slicer.util.arrayFromVolume(labelMapNode)
+
+        if maskArray is not None:
+            array[maskArray == 0] = originalArray[maskArray == 0]
+
         for segmentValue, indexes in invisibleSegmentsIndexes:
             array[indexes] = segmentValue
         slicer.util.updateVolumeFromArray(labelMapNode, array)
@@ -197,6 +218,23 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         slicer.mrmlScene.RemoveNode(labelMapNode)
 
         self.applyFinishedCallback()
+
+    def __getMaskArrayForVolume(self, maskNode, referenceVolumeNode) -> Optional[np.ndarray]:
+        tmpLabelMapNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        try:
+            slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                maskNode, tmpLabelMapNode, slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY
+            )
+            maskArray = slicer.util.arrayFromVolume(tmpLabelMapNode).copy()
+        finally:
+            slicer.mrmlScene.RemoveNode(tmpLabelMapNode)
+
+        referenceArray = slicer.util.arrayFromVolume(referenceVolumeNode)
+        if maskArray.shape != referenceArray.shape:
+            logging.warning("Mask (SOI) node geometry doesn't match the segmentation geometry. Ignoring mask.")
+            return None
+
+        return maskArray
 
     def onApplyFull(self):
         if self.scriptedEffect.parameterSetNode() is None:

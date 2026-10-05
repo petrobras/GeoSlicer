@@ -63,6 +63,7 @@ class MultiscaleEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 ["CropTool", "CustomResampleScalarVolume", "FilteringTools"],
             ),
             "MicrotomRemote",
+            "PoreScaleModelling",
             ("Image Generation", ["MultiScale", "RockSinGANModule"]),
             "MultiscalePostProcessing",
             ("Pore Network", ["PoreNetworkSimulation", "PoreNetworkExtractor"]),

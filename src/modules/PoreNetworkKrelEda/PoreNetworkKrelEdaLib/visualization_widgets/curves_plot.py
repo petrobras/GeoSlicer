@@ -777,7 +777,7 @@ class FilterBaseWidget(qt.QFrame):
         self.configLayout = qt.QHBoxLayout()
 
         layout = qt.QHBoxLayout(self)
-        layout.addLayout(self.configLayout)
+        layout.addLayout(self.configLayout, 1)
         layout.addStretch()
         layout.addWidget(self.removeFilterButton)
 
@@ -792,9 +792,14 @@ class FilterWidget(FilterBaseWidget):
         self.combobox = qt.QComboBox()
         if filterList:
             self.combobox.addItems(filterList)
+        self.combobox.setSizePolicy(qt.QSizePolicy.Expanding, self.combobox.sizePolicy.verticalPolicy())
+        self.combobox.setSizeAdjustPolicy(qt.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combobox.setMinimumContentsLength(0)
 
         self.minLineEdit = ui.floatParam()
         self.maxLineEdit = ui.floatParam()
+        for lineEdit in (self.minLineEdit, self.maxLineEdit):
+            lineEdit.setFixedWidth(70)
 
         self.configLayout.addWidget(self.combobox)
         self.configLayout.addWidget(qt.QLabel("Min:"))
@@ -829,6 +834,7 @@ class RefCurveWidget(FilterBaseWidget):
             defaultText="Select reference curve",
         )
         self.refCurveInput.addNodeAttributeIncludeFilter("table_type", "krel_simulation_results")
+        self.refCurveInput.setSizePolicy(qt.QSizePolicy.Expanding, self.refCurveInput.sizePolicy.verticalPolicy())
 
         self.showHideButton = widgets.ShowHideButton()
         self.showHideButton.toggled.connect(self.__onVisibilityButtonToggled)

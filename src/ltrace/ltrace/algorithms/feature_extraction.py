@@ -1,4 +1,3 @@
-from ltrace.algorithms.CorrelationDistance.CorrelationDistance import CorrelationDistance, interpolate_spline
 from scipy.ndimage import uniform_filter
 import cv2
 import numpy as np
@@ -21,6 +20,10 @@ def win_var_3d(img, wlen):
 
 
 def variogram(image, spacing, kernel_size, initial_progress_value=0, mid_progress_value=1):
+    # Imported here because CorrelationDistance pulls in slicer, and the rest of this
+    # module is plain numpy/scipy used by processes that run outside Slicer.
+    from ltrace.algorithms.CorrelationDistance.CorrelationDistance import CorrelationDistance, interpolate_spline
+
     unit_size = kernel_size // 2
     output_data, _ = CorrelationDistance.calculate_correlation(
         image,

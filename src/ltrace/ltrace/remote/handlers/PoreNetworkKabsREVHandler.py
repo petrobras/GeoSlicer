@@ -12,14 +12,16 @@ from typing import Any
 import pandas as pd
 import slicer
 
+from ltrace.remote import errors
+from ltrace.remote.constants import JOB_STATE_NOTCONNECTED
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.jobs import JobManager
+from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
 from ltrace.remote.utils import argstring
 from ltrace.slicer_utils import dataFrameToTableNode
 
 
 class PoreNetworkKabsREVHandler:
-    JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     PROGRESS_FILTER_PATTERN = re.compile(r"<filter-progress>(0(?:\.\d+)?|1(?:\.0+)?)</filter-progress>")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
@@ -51,26 +53,34 @@ class PoreNetworkKabsREVHandler:
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
             job_executor = caller.jobs[uid]
+            storage = job_executor.host.get_storage()
             job_dir_name = JobManager.dirname(job_executor)
-            self.job_remote_path = self.JOBS_REMOTE_PATH / job_dir_name
-            self.job_local_path = job_executor.host.get_mounted_path() / job_dir_name
+            self.job_remote_path = storage.remote_dir("geoslicer_jobs") / job_dir_name
+            self.job_local_path = storage.local_dir("geoslicer_jobs") / job_dir_name
 
             client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
 
-            with (self.job_local_path / "params_dict.json").open("w") as file:
-                json.dump(self.params, file)
+            with JsonObjectTransfer(self.job_local_path, "params_dict.json") as transfer:
+                transfer.save(self.params)
 
             input_node = slicer.mrmlScene.GetNodeByID(self.input_node_id)
-            input_node_path = self.job_local_path / f"{self.input_node_id}.nrrd"
-            slicer.util.exportNode(input_node, input_node_path, world=True)
+            with VolumeNodeObjectTransfer(self.job_local_path, self.input_node_id) as transfer:
+                transfer.save(input_node)
 
             self.cli_params = {
-                "volume": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
+                "volume": str(self.job_remote_path / self.input_node_id),
                 "cwd": str(self.job_remote_path),
             }
 
             caller.set_state(uid, "DEPLOYING", 10, message="Configuration done. Starting job deployment.")
             caller.schedule(uid, "START")
+        except errors.ChannelError as e:
+            # Unlike the other PNM handlers this one does not use
+            # SlurmJobStatusMixin, so there is no disconnected() to hand this
+            # to. Do its essential part: drop the dead client and flag NOT
+            # CONNECTED, which stays resumable, instead of a terminal FAILED
+            # that claims the processing went wrong when it never started.
+            self._flag_not_connected(caller, uid, client, e, "deploy")
         except Exception:
             traceback.print_exc()
             caller.set_state(
@@ -85,12 +95,15 @@ class PoreNetworkKabsREVHandler:
     def start(self, caller: JobManager, uid: str, client: Any = None):
         ts_start = datetime.now().timestamp()
         try:
-            script = " ".join(
-                ["PoreNetworkKabsREV.PoreNetworkKabsREVCLI.PoreNetworkKabsREVCLI", argstring(self.cli_params)]
-            )
+            storage = caller.jobs[uid].host.get_storage()
+            script = " ".join(["PoreNetworkKabsREVCLI.PoreNetworkKabsREVCLI", argstring(self.cli_params)])
             host = caller.jobs[uid].host
             remote_version = host.get_remote_version()
-            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
+            main_cmd = slurm_utils.get_python_cmd(
+                cli_cmd_list=[script],
+                remote_version=remote_version,
+                containers_root=storage.remote_path("geoslicer_containers"),
+            )
             full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
             output = client.run_command(full_cmd, verbose=True)
@@ -98,7 +111,11 @@ class PoreNetworkKabsREVHandler:
             match = self.JOB_ID_PATTERN.search(output["stdout"])
             if not match:
                 caller.set_state(uid, "FAILED", 100, message=f"Failed to match job id.")
-                caller.persist(uid)
+                # Not persisted: no slurm job was created, so there is nothing
+                # to follow across a restart. Writing it would bring the entry
+                # back as a terminal FAILED with no job ids, which is how these
+                # rows became unmanageable. The other handlers already return
+                # here without persisting.
                 return
             self.slurm_job_ids.append(match.group(1))
 
@@ -121,6 +138,13 @@ class PoreNetworkKabsREVHandler:
                 details=details,
             )
             caller.schedule(uid, "PROGRESS")
+        except errors.ChannelError as e:
+            # Unlike the other PNM handlers this one does not use
+            # SlurmJobStatusMixin, so there is no disconnected() to hand this
+            # to. Do its essential part: drop the dead client and flag NOT
+            # CONNECTED, which stays resumable, instead of a terminal FAILED
+            # that claims the processing went wrong when it never started.
+            self._flag_not_connected(caller, uid, client, e, "submission")
         except Exception:
             traceback.print_exc()
             caller.set_state(
@@ -132,6 +156,23 @@ class PoreNetworkKabsREVHandler:
                 message="Execution failed to start jobs on cluster.",
             )
             caller.persist(uid)
+
+    def _flag_not_connected(self, caller: JobManager, uid: str, client: Any, error: Exception, step: str):
+        """Mark the job NOT CONNECTED after losing the host during `step`."""
+        job = caller.jobs.get(uid)
+        if job is None:
+            return
+
+        caller.connections.drop_client(job.host, stale_client=client)
+
+        logging.warning(f"Connection to {job.host.name} lost for job {uid} during {step}. Error: {repr(error)}")
+        caller.set_state(
+            uid,
+            JOB_STATE_NOTCONNECTED,
+            message=f"Connection to {job.host.name} lost. Use 'Reconnect' to retry.",
+            traceback={"[WARNING] Connection lost": repr(error)},
+        )
+        caller.persist(uid)
 
     def progress(self, caller: JobManager, uid: str, client: Any = None):
         try:

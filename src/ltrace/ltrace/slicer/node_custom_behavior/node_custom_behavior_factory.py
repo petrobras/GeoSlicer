@@ -7,9 +7,11 @@ from ltrace.slicer.node_custom_behavior.nodes.volume_rendering_display_node impo
     VolumeRenderingDisplayNodeCustomBehavior,
 )
 from ltrace.slicer.node_custom_behavior.nodes.table_node import TableNodeCustomBehavior
+from ltrace.slicer.node_custom_behavior.nodes.directory_node_behavior import DirectoryNodeCustomBehavior
 from ltrace.slicer.node_custom_behavior.nodes.porosity_per_slicer_per_realization_table_node import (
     PorosityPerSlicePerRealizationTableNodeCustomBehavior,
 )
+from ltrace.slicer.virtual.behavior import VirtualNodeCustomBehavior
 from .node_custom_behavior_base import NodeCustomBehaviorBase
 from .defs import TriggerEvent
 
@@ -32,17 +34,19 @@ class NodeCustomBehaviorFactory:
         SegmentationDisplayNodeCustomBehavior,
         VolumeRenderingDisplayNodeCustomBehavior,
         TableNodeCustomBehavior,
+        DirectoryNodeCustomBehavior,
         PorosityPerSlicePerRealizationTableNodeCustomBehavior,
+        VirtualNodeCustomBehavior,
     ]
 
     @staticmethod
-    def factory(node: slicer.vtkMRMLNode, event: TriggerEvent) -> list[NodeCustomBehaviorBase]:
+    def factory(node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> list[NodeCustomBehaviorBase]:
         if node is None:
             raise ValueError("Invalid node to create custom behavior.")
 
         customBehaviorList = []
         for cls in NodeCustomBehaviorFactory.builders:
             if cls.REQUIREMENTS.match(node):
-                customBehaviorList.append(cls(node=node, event=event))
+                customBehaviorList.append(cls(node=node, event=event, eventArgs=eventArgs))
 
         return customBehaviorList

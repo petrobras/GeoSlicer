@@ -6,23 +6,31 @@ import os
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
+from typing import Dict, Tuple
 
 import qt
 import slicer
 
 from ltrace.remote.connections import ConnectionManager, JobExecutor
 from ltrace.remote.constants import (
+    JOB_DORMANT_STATES,
     JOB_EVENT_COLLECT,
+    JOB_INACTIVE_STATES,
     JOB_STATE_COMPLETED,
     JOB_STATE_IDLE,
     JOB_STATE_NOTCONNECTED,
     JOB_STATE_RUNNING,
+    JOB_TERMINAL_STATES,
 )
 from ltrace.remote.jobs import JobManager
 from ltrace.slicer import ui
 from ltrace.slicer.widget.elided_label import ElidedLabel
+from ltrace.slicer.widget.remote import waiting
 from ltrace.slicer.widget.search_filter_bar import SearchFilterBar
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from ltrace.utils.custom_event_filter import CustomEventFilter
+from ltrace.utils.log_once import LogOnce
 
 # Checks if closed source code is available
 try:
@@ -43,7 +51,18 @@ def prettydt(dtt: datetime):
 
 
 KNOWN_FLAGS = {"@host", "@name", "@status", "@address", "@protocol", "@uid", "@type"}
-CANCEL_DISABLED_STATES = {JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED, "GHOST"}
+# States where we no longer know what the remote side holds, so cancelling
+# would risk losing the reference to the job's folder on the cluster.
+CANCEL_DISABLED_STATES = JOB_DORMANT_STATES | {JOB_STATE_NOTCONNECTED}
+# States a job can be pulled out of by reconnecting to its host. Equal to the
+# set above today, but by coincidence rather than by definition: one is about
+# what we may still do remotely, the other about what the user can restart.
+RESUMABLE_STATES = JOB_DORMANT_STATES | {JOB_STATE_NOTCONNECTED}
+# States in which the job is not following anything: the monitor delivers it no
+# events (JOB_INACTIVE_STATES) or it is parked waiting to be reconnected. What
+# they have in common is that nothing will revalidate the host's cached client
+# on its own, so check_host's answer about such a job cannot be trusted.
+NOT_POLLING_STATES = JOB_INACTIVE_STATES | {JOB_STATE_NOTCONNECTED}
 
 
 @dataclass
@@ -125,7 +144,65 @@ class JobSearchQuery:
 
 
 def should_allow_cancel(status: str, host_connected: bool) -> bool:
+    """Whether the full Cancel/Delete (scancel + remote cleanup) may run.
+
+    Needs a live connection, since the whole point is to reach the cluster,
+    and a state that still mirrors a known remote job.
+    """
     return status not in CANCEL_DISABLED_STATES and host_connected
+
+
+def should_allow_forget(status: str, host_connected: bool) -> bool:
+    """Whether the local-only removal may run. Always.
+
+    Shown in the menu as "Unlink from cluster". It is the one action that needs
+    nothing from the cluster -- it only drops the local entry -- so there is no
+    state in which refusing it helps, and every state in which refusing it
+    traps the row.
+
+    It used to be offered exactly when Cancel/Delete was not, on the reasoning
+    that between them every row kept one working way out. That reasoning leaned
+    on `host_connected` being true only when the cluster is actually reachable,
+    and check_host does not promise that: it reports whether a client object is
+    cached, not whether its transport is alive. A FAILED job is terminal, so
+    the monitor delivers it no events, so nothing ever calls drop_client for
+    it; with a dead client still cached, the row offered a Cancel/Delete that
+    could not reach the host, and hid the Unlink that would have worked.
+
+    The arguments are kept for the call site's symmetry with the other two.
+    """
+    return True
+
+
+def partition_by_cancellable(jobs, host_connected) -> Tuple[list, list]:
+    """Split jobs into those Cancel/Delete can act on and those it cannot.
+
+    `host_connected` is a callable taking a host, so the caller decides how
+    connectivity is judged and this stays testable without a ConnectionManager.
+    """
+    deletable, blocked = [], []
+    for job in jobs:
+        target = deletable if should_allow_cancel(job.status, host_connected(job.host)) else blocked
+        target.append(job)
+    return deletable, blocked
+
+
+def should_allow_reconnect(status: str, host_connected: bool) -> bool:
+    """Whether reconnecting to the job's host is worth offering.
+
+    Also true for finished jobs: reconnecting is what makes their remote
+    cleanup available again.
+
+    Offered for every job that is not actively polling, whatever check_host
+    says about the host. That method reports whether a client object is cached,
+    not whether its transport is alive, and it is honest about it: the staleness
+    is meant to be corrected by the next poll, which goes through connect() and
+    swaps a dead client out. A job in one of these states never polls again, so
+    that correction never comes -- and a FAILED job whose host still had a dead
+    client cached had Reconnect greyed out precisely when it was the one thing
+    that would have helped.
+    """
+    return not host_connected or status in NOT_POLLING_STATES
 
 
 class ThreeWayQuestion(qt.QMessageBox):
@@ -158,8 +235,10 @@ class JobListWidget(qt.QListWidget):
 
 class JobListItemWidget(qt.QWidget):
     cancelled = qt.Signal(bool)
+    forgotten = qt.Signal(bool)
     inspected = qt.Signal(bool)
     loadResults = qt.Signal(bool)
+    reconnected = qt.Signal(bool)
     errorClick = qt.Signal(bool)
 
     def __init__(self, job, parent=None):
@@ -209,7 +288,10 @@ class JobListItemWidget(qt.QWidget):
         layout.addLayout(iconBlock)
         layout.addLayout(frontBlock)
         layout.addLayout(menuBlock)
+        self.allowLoadData = False
+        self.allowRestart = False
         self.allowCancel = True
+        self.allowForget = False
         self.update(job)
 
     # def getIcon(self):
@@ -257,6 +339,7 @@ class JobListItemWidget(qt.QWidget):
 
     def setContextMenu(self, location: qt.QPoint):
         menu = qt.QMenu(self)
+        menu.setToolTipsVisible(True)  # otherwise the actions' tooltips never show
         openAction = menu.addAction("Open")
         openAction.triggered.connect(self.loadResults)
         openAction.enabled = self.allowLoadData
@@ -264,12 +347,25 @@ class JobListItemWidget(qt.QWidget):
         detailsAction.triggered.connect(self.inspected)
         menu.addSeparator()
         reconnAction = menu.addAction("Reconnect")
-        reconnAction.triggered.connect(self.loadResults)
+        reconnAction.triggered.connect(self.reconnected)
         reconnAction.enabled = self.allowRestart
+        reconnAction.setToolTip("Connect to this job's host again, which also re-enables Cancel/Delete.")
         menu.addSeparator()
         cancelAction = menu.addAction("Cancel/Delete")
         cancelAction.triggered.connect(self.onDeleteResults)
         cancelAction.enabled = self.allowCancel
+        cancelAction.setToolTip("Cancel the job and delete its data from the cluster.")
+        menu.addSeparator()
+        forgetAction = menu.addAction("Unlink from cluster")
+        forgetAction.triggered.connect(self.onForgetJob)
+        forgetAction.enabled = self.allowForget
+        # Named for what it costs, not for what it tidies: "Remove from list"
+        # read as the neat option and invited people to pick it over
+        # Cancel/Delete, which is the one that actually frees the cluster.
+        forgetAction.setToolTip(
+            "Last resort: stop tracking this job. Its folder stays on the cluster and GeoSlicer "
+            "can no longer reach it."
+        )
         menu.exec_(location)
 
     def showMessageAboutJobAging(self):
@@ -288,25 +384,25 @@ class JobListItemWidget(qt.QWidget):
         self.setContextMenu(location=self.mapToGlobal(event.pos()))
 
     def update(self, job: JobExecutor):
+        # Kept so the unlink dialog can name the job the user is abandoning.
+        self._job = job
         self.jobNameLabel.setText(f"{job.name} (Host: {job.host.name})")
         self.statusLabel.setText(job.status)  # TGODO use human readable status
         self.progressBar.setValue(job.progress)
         self.elapsedTimeValueLabel.setText(str(JobExecutor.elapsed_time(job)))
 
-        if job.status == "COMPLETED":
+        hostConnected = ConnectionManager.check_host(job.host)
+
+        if job.status == JOB_STATE_COMPLETED:
             self.allowLoadData = True
-            self.allowRestart = not self.allowLoadData
-        elif job.status == "RUNNING" and job.polling_enabled:
+        elif job.status == JOB_STATE_RUNNING and job.polling_enabled:
             self.allowLoadData = True
-            self.allowRestart = not self.allowLoadData
-        elif job.status == "IDLE" or job.status == "NOT CONNECTED" or job.status == "GHOST":
-            self.allowLoadData = False
-            self.allowRestart = not self.allowLoadData
         else:
             self.allowLoadData = False
-            self.allowRestart = False
 
-        self.allowCancel = should_allow_cancel(job.status, ConnectionManager.check_host(job.host))
+        self.allowRestart = should_allow_reconnect(job.status, hostConnected)
+        self.allowCancel = should_allow_cancel(job.status, hostConnected)
+        self.allowForget = should_allow_forget(job.status, hostConnected)
 
         if JobMonitorLogic.mustIndicateAging(job):
             self.iconBtn.visible = True
@@ -323,6 +419,36 @@ class JobListItemWidget(qt.QWidget):
         msg.setDefaultButton(qt.QMessageBox.No)
         if msg.exec_() == qt.QMessageBox.Yes:
             self.cancelled.emit(True)
+
+    def onForgetJob(self, clicked):
+        """Confirm breaking the link between this entry and the cluster.
+
+        Worth a blunt dialog: this is the only action that leaves data behind,
+        and it is irreversible from inside GeoSlicer -- there is no way to
+        re-attach an entry to a folder once the reference is gone.
+        """
+        job = getattr(self, "_job", None)
+        where = f"{job.name} on {job.host.name}" if job is not None else "this job"
+
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText(f"Unlink {where} from the cluster?")
+        msg.setInformativeText(
+            "This breaks the synchronization between GeoSlicer and the cluster. It does not cancel "
+            "anything: if the job is still running it keeps running, and its folder stays on the "
+            "cluster taking up space.\n\n"
+            "GeoSlicer will no longer know where that folder is, and there is no way to link the job "
+            "again afterwards; it would have to be found and deleted by hand.\n\n"
+            "If you can reach the host, use 'Reconnect' and then 'Cancel/Delete' instead: that frees "
+            "the space properly."
+        )
+        if job is not None:
+            msg.setDetailedText(f"Job UID: {job.uid}\nHost: {job.host.name}\nStatus: {job.status}")
+        msg.setWindowTitle("Unlink from cluster")
+        msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+        msg.setDefaultButton(qt.QMessageBox.No)
+        if msg.exec_() == qt.QMessageBox.Yes:
+            self.forgotten.emit(True)
 
 
 class JobMonitor(LTracePlugin):
@@ -447,11 +573,15 @@ class JobMonitorWidget(LTracePluginWidget):
         self.hostSelector = None
         self.jobListWidget = None
         self.listedJobs = {}
+        self.visibilityFilter = None
 
         self.logic = JobMonitorLogic(self)
 
     def cleanup(self):
         super().cleanup()
+        if self.visibilityFilter is not None:
+            self.visibilityFilter.remove()
+            self.visibilityFilter = None
         if self.logic is not None:
             self.logic.stop()
             self.logic.deleteLater()
@@ -474,7 +604,8 @@ class JobMonitorWidget(LTracePluginWidget):
         self.update()
 
     def update(self):
-        for uid, job in JobManager.jobs.items():
+        # A snapshot: the monitor thread removes jobs it has cancelled.
+        for uid, job in list(JobManager.jobs.items()):
             if uid not in self.listedJobs:
                 self.addJob(job)
             else:
@@ -494,8 +625,23 @@ class JobMonitorWidget(LTracePluginWidget):
         self.searchFilterBar.searchChanged.connect(self.applyFilter)
         self.searchFilterBar.sortChanged.connect(self.applySorting)
         self.searchFilterBar.resumeRequested.connect(self.resumeVisibleJobs)
+        self.searchFilterBar.deleteRequested.connect(self.deleteVisibleJobs)
+
+        # Followed only while on screen, wherever that is. Not on enter() and
+        # exit(): this widget also lives in the "Remote Jobs" tab of the right
+        # drawer, where Slicer calls neither.
+        self.visibilityFilter = CustomEventFilter(self._onVisibilityEvent, self.parent)
+        self.visibilityFilter.install()
+        if self.parent.isVisible():
+            self.logic.start()
 
         self.update()
+
+    def _onVisibilityEvent(self, obj, event):
+        if event.type() == qt.QEvent.Show:
+            self.logic.start()
+        elif event.type() == qt.QEvent.Hide:
+            self.logic.pause()
 
     def addJob(self, job: JobExecutor):
         item = qt.QListWidgetItem(self.jobListWidget)
@@ -507,7 +653,9 @@ class JobMonitorWidget(LTracePluginWidget):
 
         itemWidget.inspected.connect(lambda _, job_=job: self.showJobDetails(job_))
         itemWidget.cancelled.connect(lambda _, item_=item, job_=job: self.removeJob(item_, job_))
+        itemWidget.forgotten.connect(lambda _, job_=job: self.forceDelete(job_.uid))
         itemWidget.loadResults.connect(lambda _, item_=item, job_=job: self.loadResults(item_, job_))
+        itemWidget.reconnected.connect(lambda _, job_=job: self.reconnectJob(job_))
         itemWidget.errorClick.connect(lambda _, job_=job: self.errorOnClick(job_))
 
         self.listedJobs[job.uid] = (item, job)
@@ -533,13 +681,23 @@ class JobMonitorWidget(LTracePluginWidget):
             logging.error(repr(e))
 
     def forceDelete(self, uid: str):
+        """Drop a job locally, without touching the cluster.
+
+        The escape hatch for entries the normal Cancel/Delete cannot reach:
+        the remote cleanup needs a live connection, so without this a job on an
+        unreachable host (or one already flagged NOT CONNECTED / GHOST) had no
+        way out of the list at all.
+        """
         try:
-            item, _ = self.listedJobs[uid]
+            item, _ = self.listedJobs.pop(uid)
             self.jobListWidget.takeItem(self.jobListWidget.row(item))
-            del self.listedJobs[uid]
-            JobManager.remove(uid)
         except KeyError:
-            logging.error(f"Job {uid} does not exist")
+            logging.warning(f"Job {uid} is not listed. Removing it from the manager anyway.")
+
+        try:
+            JobManager.remove(uid)
+        except Exception as e:
+            logging.error(f"Failed to remove job {uid}. Cause: {repr(e)}")
 
     def _currentQuery(self):
         return JobSearchQuery.parse(self.searchFilterBar.text())
@@ -575,17 +733,100 @@ class JobMonitorWidget(LTracePluginWidget):
             self.addJob(job)
 
     def resumeVisibleJobs(self):
-        for uid, (item, job) in self.listedJobs.items():
-            if not item.isHidden() and job.status in (JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED):
+        # visibleJobs() is a snapshot: each reconnect waits behind a dialog,
+        # and rows can come and go while it does.
+        for job in self.visibleJobs():
+            if job.status in (JOB_STATE_IDLE, JOB_STATE_NOTCONNECTED):
                 self.logic.loadResults(job)
+
+    def visibleJobs(self):
+        """What the filter is currently showing.
+
+        A snapshot rather than a live view: cancelling a job takes its row out
+        of listedJobs, and iterating the dict while that happens would skip
+        entries or raise.
+        """
+        return [job for _, (item, job) in list(self.listedJobs.items()) if not item.isHidden()]
+
+    def deleteVisibleJobs(self):
+        """Cancel/Delete every visible job, after one confirmation for the lot.
+
+        Only the remote cancel: jobs it cannot reach are left listed rather
+        than quietly unlinked, because unlinking leaves their data on the
+        cluster forever and has to stay a deliberate, per-job decision.
+        """
+        jobs = self.visibleJobs()
+        if not jobs:
+            slicer.util.infoDisplay("No jobs are currently visible.")
+            return
+
+        deletable, blocked = partition_by_cancellable(jobs, ConnectionManager.check_host)
+
+        if not deletable:
+            slicer.util.warningDisplay(
+                f"None of the {len(jobs)} visible job(s) can be cancelled right now.\n\n"
+                "Cancel/Delete needs a live connection to the job's host. Use 'Reconnect' first, "
+                "or 'Unlink from cluster' on a job you are willing to stop tracking."
+            )
+            return
+
+        if not self.confirmDeleteVisible(deletable, blocked):
+            return
+
+        self.cancelJobs(deletable)
+
+    def cancelJobs(self, jobs):
+        """Cancel/Delete, then report the jobs it could not cancel. Returns at once."""
+
+        def report(failed):
+            if failed:
+                names = "\n".join(f"- {job.name} ({job.host.name})" for job, _ in failed)
+                slicer.util.errorDisplay(f"{len(failed)} of {len(jobs)} job(s) could not be cancelled:\n\n{names}")
+
+        try:
+            self.logic.cancelJobs(jobs, onFinished=report)
+        except RuntimeError as e:
+            # The job monitor is not running: nothing was sent.
+            logging.error(f"Failed to cancel {len(jobs)} job(s). Cause: {repr(e)}")
+            slicer.util.errorDisplay(f"Nothing was cancelled: {e}")
+
+    @staticmethod
+    def confirmDeleteVisible(deletable, blocked) -> bool:
+        msg = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setWindowTitle("Cancel/Delete visible jobs")
+        msg.setText(f"Cancel and delete {len(deletable)} visible job(s)?")
+
+        informative = (
+            "Each one is cancelled on the cluster and every result it produced is deleted from the "
+            "cluster filesystem. This cannot be undone."
+        )
+        if blocked:
+            informative += (
+                f"\n\n{len(blocked)} other visible job(s) will be left alone: Cancel/Delete needs a "
+                "live connection to their host."
+            )
+        msg.setInformativeText(informative)
+        msg.setDetailedText("\n".join(f"{job.name} ({job.status}) on {job.host.name}" for job in deletable))
+        msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No)
+        msg.setDefaultButton(qt.QMessageBox.No)
+        return msg.exec_() == qt.QMessageBox.Yes
 
     def loadResults(self, item: qt.QListWidgetItem, job: JobExecutor):
         self.logic.loadResults(job)
         # TODO move isso para o handler slicer.util.selectModule("Data")
 
     def removeJob(self, item: qt.QListWidgetItem, job: JobExecutor):
-        # self.jobListWidget.takeItem(self.jobListWidget.row(item))
-        self.logic.cancelJob(job)
+        # The row leaves the list when the handler removes the job.
+        self.cancelJobs([job])
+
+    def reconnectJob(self, job: JobExecutor):
+        self.logic.reconnect(job)
+        # Refresh every row, not just this one: the connection is per host, so
+        # a successful reconnect re-enables Cancel/Delete for its siblings too.
+        # Jobs that no longer poll (FAILED, CANCELLED) emit no event of their
+        # own, so without this their menu would stay stale.
+        self.update()
 
     def showJobDetails(self, job: JobExecutor):
         d = DetailsDialog(job, parent=slicer.modules.AppContextInstance.mainWindow)
@@ -618,9 +859,29 @@ class JobMonitorWidget(LTracePluginWidget):
         # dialog.exec_()
 
 
+# Filled by the JobManager monitor thread, drained by a QTimer on the main
+# thread. Deliberately a plain module-level buffer: the observer used to reach
+# the logic through slicer.modules.jobmonitor.widgetRepresentation(), which
+# calls into Slicer's module manager -- and therefore into Qt -- from the
+# monitor thread. Racing that against the main thread (switching modules, say)
+# corrupted X state and took the application down with a BadWindow abort and
+# no Python traceback.
+_pendingUpdates: Dict[str, Tuple[JobExecutor, str]] = {}
+_pendingUpdatesLock = Lock()
+
+
 def _listener(job, event):
-    logic = slicer.modules.jobmonitor.widgetRepresentation().self().logic
-    logic._updates[job.uid] = (job, event)
+    """Record a job change. Runs on the monitor thread: no Slicer, no Qt."""
+    with _pendingUpdatesLock:
+        _pendingUpdates[job.uid] = (job, event)
+
+
+def _drainPendingUpdates():
+    """Take everything buffered so far. Main thread only."""
+    with _pendingUpdatesLock:
+        updates = list(_pendingUpdates.values())
+        _pendingUpdates.clear()
+    return updates
 
 
 class JobMonitorLogic(LTracePluginLogic):
@@ -630,35 +891,51 @@ class JobMonitorLogic(LTracePluginLogic):
 
         self.currentDetail = None
 
-        self._updates = {}
-
         JobManager.add_observer(_listener)
 
+        # Runs while the monitor is on screen -- see start() and pause().
         self.timer = qt.QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self.updater)
-        self.timer.start()
+        self.following = False
+
+        # updater() runs every second, so an error that keeps happening would
+        # keep being logged, idle computer or not.
+        self.logError = LogOnce(logging.error)
+
+    def start(self):
+        """Follow job changes: catch up on what changed meanwhile, then every second."""
+        if self.widget is None:
+            return
+
+        self.following = True
+        self.updater()  # starts the timer on its way out
+
+    def pause(self):
+        """Stop following. Changes keep buffering until the next start()."""
+        self.following = False
+        self.timer.stop()
 
     def stop(self):
-        if self.timer is not None:
-            self.timer.stop()
+        self.pause()
         self.widget = None
 
     def updater(self):
         self.timer.stop()
         try:
-            for key in list(self._updates.keys()):
-                job, event = self._updates.pop(key)
+            for job, event in _drainPendingUpdates():
                 self.eventHandler(job, event)
 
                 if self.currentDetail and self.currentDetail[0] == job.uid:
                     self.currentDetail[1](job)
 
         except Exception as e:
-            logging.error(repr(e))
+            self.logError(repr(e))
             # but keep running
-
-        self.timer.start()
+        finally:
+            # Not restarted if the monitor went off screen meanwhile.
+            if self.following:
+                self.timer.start()
 
     def eventHandler(self, job, event):
         if event == "JOB_DELETED":
@@ -666,8 +943,54 @@ class JobMonitorLogic(LTracePluginLogic):
         else:
             self.widget.updateJob(job)
 
-    def cancelJob(self, job):
-        job.process("CANCEL", JobManager, JobManager.connections)
+    def cancelJobs(self, jobs, onFinished):
+        """Cancel/Delete jobs on the job monitor's thread, showing it happening.
+
+        Returns at once. The remote cancel runs where the connection lives,
+        and the waiting must not happen in a nested event loop here: the row
+        that asked is removed by the very cancel it asked for, while its menu
+        is still on the stack. The button stops the waiting, not the
+        cancelling; a failure that comes after that is only logged, by the
+        monitor.
+
+        onFinished gets (job, error) for each job whose cancel raised. Most
+        handlers never raise -- one that cannot reach the cluster flags the
+        job instead, and the row shows it.
+        """
+        requests = [(job, JobManager.request_cancel(job.uid)) for job in jobs]
+
+        def finished(_allDone):
+            onFinished([(job, future.exception()) for job, future in requests if future.done() and future.exception()])
+
+        text = f"Cancelling {jobs[0].name}..." if len(jobs) == 1 else f"Cancelling {len(jobs)} jobs..."
+        waiting.whenDone(
+            [future for _, future in requests],
+            finished,
+            title="Cancel/Delete",
+            text=text,
+            buttonText="Continue in background",
+            parent=slicer.modules.AppContextInstance.mainWindow,
+        )
+
+    def reconnect(self, job):
+        """Open the connection to the job's host again.
+
+        For a job that still has work to follow this also restarts its polling.
+        For a finished one there is nothing left to poll, so it only restores
+        the connection -- which is what re-enables the remote Cancel/Delete.
+        """
+        service = getattr(slicer.modules, "RemoteServiceInstance", None)
+        if service is None:
+            logging.error("Remote service is not available. Cannot reconnect.")
+            return
+
+        try:
+            if job.status in JOB_TERMINAL_STATES:
+                service.cli.initiateConnectionDialog(job.host)
+            else:
+                service.cli.resume(job)
+        except Exception as e:
+            logging.error(f"Failed to reconnect job {job.uid}. Cause: {repr(e)}")
 
     def loadResults(self, job):
         if job.status == JOB_STATE_COMPLETED:

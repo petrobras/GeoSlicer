@@ -1,5 +1,7 @@
-import gc
 import logging
+import os
+import struct
+import tempfile
 
 import vtk
 import qt
@@ -238,63 +240,69 @@ class LocalProgressBar(qt.QWidget):
         self.changeAction()
 
 
-import multiprocessing.shared_memory as shm
-import struct
-
-
 class CompanionProgressBar(LocalProgressBar):
+    STOP = -1.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.shared_mem = None
-        self.buffer_size = struct.calcsize("d")
+        self.progress_file = None
+        self._file = None
 
     def isRunning(self):
-        if self.shared_mem:
-            try:
-                shm.SharedMemory(name=self.shared_mem.name)
-                return True
-            except FileNotFoundError:
-                return False
-        return False
+        return self.progress_file is not None and os.path.exists(self.progress_file)
 
-    def start(self, namespace, timeout=300):
+    def start(self, name, timeout=300):
 
-        if self.shared_mem:
-            raise RuntimeError("Shared memory already exists")
+        if self.progress_file:
+            raise RuntimeError("Progress file already exists")
 
-        self.shared_mem = shm.SharedMemory(name=namespace, create=True, size=self.buffer_size)
+        label = "".join(character for character in name if character.isalnum() or character in "-_")
+        descriptor, self.progress_file = tempfile.mkstemp(prefix=f"geoslicer-progress-{label}-", suffix=".bin")
+        os.close(descriptor)
+        self._file = open(self.progress_file, "r+b")
+        self._write(self._file, 0.0)
 
         cliArgs = {
-            "namespace": namespace,
+            "progressFile": self.progress_file,
             "timeout": timeout,
         }
 
-        cliNode = slicer.cli.run(slicer.modules.companionprogressbarcli, None, cliArgs, wait_for_completion=False)
+        try:
+            cliNode = slicer.cli.run(slicer.modules.companionprogressbarcli, None, cliArgs, wait_for_completion=False)
+        except Exception:
+            self.processStopped()
+            raise
+
         self.setCommandLineModuleNode(cliNode)
 
     def update(self, progress: float):
-        # Write the float value to the shared memory block
+        # Write the float value to the progress file
         logging.debug(f"Updating progress: {progress}")
-        self.shared_mem.buf[:8] = struct.pack("d", progress)
+        if self._file is None:
+            return
+        self._write(self._file, progress)
         slicer.app.processEvents()
 
+    @staticmethod
+    def _write(file, value: float):
+        file.seek(0)
+        file.write(struct.pack("d", value))
+        file.flush()
+
     def processStopped(self):
-        if not self.shared_mem:
+        if not self.progress_file:
             return
 
-        old_shared_mem = self.shared_mem
-        self.shared_mem = None
+        path, file = self.progress_file, self._file
+        self.progress_file = self._file = None
 
         try:
-            old_shared_mem.close()
-            old_shared_mem.unlink()
-        except FileNotFoundError:
-            logging.info("Shared memory already unlinked or closed.")
-        except Exception as e:
-            logging.error(f"Error closing shared memory: {e}")
-
-        gc.collect()
+            self._write(file, self.STOP)
+            file.close()
+            os.unlink(path)
+        except OSError as error:
+            logging.info(f"Error cleaning up the progress file: {error}")
 
     def _onCLIModified(self, caller, event):
         super()._onCLIModified(caller, event)

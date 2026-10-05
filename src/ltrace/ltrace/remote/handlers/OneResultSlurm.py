@@ -6,10 +6,11 @@ from typing import Any, Callable
 import re
 import time
 import traceback
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import vtk
 
+from ltrace.remote import errors
 from ltrace.remote.utils import argstring, sacct, SlurmJobStatusMixin
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.constants import (
@@ -27,6 +28,7 @@ from ltrace.remote.constants import (
     JOB_STATE_RUNNING,
 )
 from ltrace.remote.jobs import JobManager
+from ltrace.remote.paths import storage_for
 
 import microtom
 
@@ -51,7 +53,6 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
         simulator: str,
         collector: Callable,
         input_volume_node,
-        shared_path: Path,
         opening_command: str,
         partition: str,
         params: dict,
@@ -88,12 +89,10 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
 
         self.closed_jobs = set([])
 
-        self.remote_dir = PurePosixPath(r"/nethome/drp/microtom") / shared_path.as_posix()
-
-        if os.getenv("GEOSLICER_MODE") == "Remote":
-            self.local_dir = self.remote_dir
-        else:
-            self.local_dir = Path("\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res\\drp\\microtom") / shared_path
+        # Resolved against the host's configured layout once the job is bound
+        # to one; the defaults stand in until then, which is what a handler
+        # rebuilt from disk starts with.
+        self._storage = storage_for(None)
 
         self.is_strict = True
 
@@ -107,6 +106,14 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             JOB_EVENT_CANCEL: self.cancel,
             JOB_EVENT_COLLECT: self.collect,
         }
+
+    @property
+    def remote_dir(self) -> Path:
+        return self._storage.remote_dir("microtom_jobs")
+
+    @property
+    def local_dir(self) -> Path:
+        return self._storage.local_dir("microtom_jobs")
 
     def defineInputImageType(self, node, simulator: str):
         if simulator == "darcy_kabs_foam":
@@ -136,6 +143,12 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
         return output
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
+        # Bind to the host's storage layout before doing anything: the handler
+        # is constructed before it knows which account it belongs to.
+        job = caller.jobs.get(uid)
+        if job is not None:
+            self._storage = storage_for(job.host)
+
         try:
             client = kwargs.get("client")
             self.__action_map[action](caller, uid, client)
@@ -223,7 +236,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                 )
                 return
 
-            print(sim_info)
+            logging.debug(f"Parsed simulation info: {sim_info}")
             self.jobid = sim_info["job_id"][0]
 
             details = {
@@ -248,6 +261,11 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
 
             caller.schedule(uid, JOB_EVENT_PROGRESS)
 
+        except errors.ChannelError as e:
+            # The host dropped us mid-submission: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception as e:
             import traceback
 
@@ -298,9 +316,9 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
                     sim_info = job.details
                     results = []
                     for result_location in sim_info["final_results"]:
-                        remote_path = PurePosixPath(result_location)
+                        remote_path = Path(result_location)
                         target = truncate_relative_path_on(uid, remote_path)
-                        local_file: Path = self.local_dir / uid / target
+                        local_file = self.local_dir / uid / target
                         results.append(local_file)
 
                 self.results = []
@@ -343,27 +361,20 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             pass
 
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):
-        ghosted = False
-        traceback = None
-        if self.slurm_job_ids:
-            stringified_job_list = ",".join(self.slurm_job_ids)
-            try:
-                r = client.run_command(f"scancel {stringified_job_list}")
+        # scancel reports "invalid job id" for slurm jobs that already
+        # finished. Those are not cancellation failures, and treating them as
+        # such used to move the job to NOT CONNECTED -- a state the monitor
+        # refuses to cancel, so the entry could never be removed afterwards.
+        ghost_reason = slurm_utils.try_scancel(client, self.slurm_job_ids)
 
-                if len(r["stderr"]) > 0:
-                    raise Exception(r["stderr"])
-            except Exception as e:
-                ghosted = True
-                traceback = repr(e)
-
-        if ghosted:
+        if ghost_reason:
             slurm_out = self.get_slurm_log(uid)
             caller.set_state(
                 uid,
                 JOB_STATE_NOTCONNECTED,
                 0,
                 message="Execution cannot be cancelled.",
-                traceback={"traceback": traceback, **slurm_out},
+                traceback={"traceback": ghost_reason, **slurm_out},
             )
             return
 
@@ -389,7 +400,7 @@ class OneResultSlurmHandler(SlurmJobStatusMixin):
             "results": self.results,
             **self.post_args,
         }
-        print(sim_info)
+        logging.debug(f"Collecting results with: {sim_info}")
         self.collector(sim_info)
 
     def confirm_results(self, strict=True):

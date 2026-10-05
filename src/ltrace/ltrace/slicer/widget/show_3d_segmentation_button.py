@@ -107,13 +107,14 @@ class Show3DSegmentationModel(qt.QObject):
         if displayNode is None or colorNode is None:
             return
 
+        overallOpacity = displayNode.GetOpacity()
         segmentation = segmentationNode.GetSegmentation()
         state = colorNode.StartModify()
         for index in range(segmentation.GetNumberOfSegments()):
             segmentId = segmentation.GetNthSegmentID(index)
             label = colorNode.GetColorIndexByName(segmentation.GetSegment(segmentId).GetName())
             if label > 0:
-                colorNode.SetOpacity(label, 1.0 if displayNode.GetSegmentVisibility(segmentId) else 0.0)
+                colorNode.SetOpacity(label, overallOpacity if displayNode.GetSegmentVisibility(segmentId) else 0.0)
         colorNode.EndModify(state)
 
     def _setCurrentNode(self, node: slicer.vtkMRMLSegmentationNode) -> None:
@@ -167,6 +168,9 @@ class Show3DSegmentationModel(qt.QObject):
         self._cleanUp()
 
     def _onDisplayNodeModified(self, observer: NodeObserver, displayNode: Optional[slicer.vtkMRMLDisplayNode]) -> None:
+        if not self.show:
+            return
+
         if displayNode is None:
             logging.info("Display node modified event with invalid display node reference.")
             return
@@ -235,6 +239,12 @@ class Show3DSegmentationModel(qt.QObject):
             return
 
         helpers.setVolumeVisibilityIn3D(volumeNode=volumeNode, visible=mode)
+
+        if mode:
+            currentNode = helpers.tryGetNode(self._nodeId)
+            currentLabelMapVolumeNode = helpers.tryGetNode(self._clonedLabelMapVolumeNodeId)
+            if currentNode and currentLabelMapVolumeNode:
+                self._syncSegmentOpacities(currentNode, currentLabelMapVolumeNode)
 
     def _cleanUp(self):
         self._nodeId = None

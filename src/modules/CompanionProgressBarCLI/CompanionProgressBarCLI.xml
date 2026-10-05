@@ -2,8 +2,8 @@
 <executable>
   <category>LTrace Tools</category>
   <index>1</index>
-  <title>PMS Model Build CLI</title>
-  <description><![CDATA[LTrace Porosity Mapping from Saturation]]></description>
+  <title>Progress Bar Companion CLI</title>
+  <description><![CDATA[Reports the progress of an in-process computation on the CLI progress bars]]></description>
   <version>0.2.0.</version>
   <documentation-url></documentation-url>
   <license/>
@@ -11,12 +11,12 @@
   <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
 
  <parameters>
-    <label>Shared Memory UUID</label>
+    <label>Progress</label>
      <string>
-      <name>namespace</name>
-      <label>Namesapce</label>
-      <longflag>namespace</longflag>
-      <description><![CDATA[Shared memory namespace.]]></description>
+      <name>progressFile</name>
+      <label>Progress File</label>
+      <longflag>progressFile</longflag>
+      <description><![CDATA[Path of the file the widget writes its progress to.]]></description>
       <default></default>
      </string>
 

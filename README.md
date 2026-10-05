@@ -122,7 +122,11 @@ GeoSlicer is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) f
 
 ## Citations
 
-If you use GeoSlicer in your work, please cite this repository using the right-hand side link **Cite this repository**. Below you can find recent papers that cite GeoSlicer:
+### How to cite:
+
+If you use GeoSlicer in your work, please cite this repository using the right-hand side link **Cite this repository**.
+
+### Recent papers that cite GeoSlicer:
 
 *   Carneiro, I., Zanellato, D., Figueiredo, L., & Bordignon, F. (2023). Comparison of geostatistical and machine learning methods for reconstructing 3D images of carbonate rocks. 6th Brazil Interpore Chapter Conference on Porous Media.
 *   Carneiro, I., Sapucaia, V., Bordignon, F., Figueiredo, L., Honório, B., & Matias, J. (2024). Application of MPS to Image Log and CoreCT Images Inpainting. 85th EAGE Annual Conference & Exhibition, (1), 1-5.
@@ -132,3 +136,5 @@ If you use GeoSlicer in your work, please cite this repository using the right-h
 *   Carneiro, I. B., Bordignon, F., Moreira, A. C., Figueiredo, L. P., Mantovani, I. F., Fernandes, C. P., & Volpatto, D. T. (2026). Influence of REV Selection on Multiscale Porosity and Permeability Assessment Using Digital Rock Imaging. 18th Annual Meeting InterPore, MS09 Pore-Scale Physics and Modeling, Poster Presentation.
 *   Bordignon, F., Figueiredo, L., Carneiro, I., Arenhart, R., Honório, B., & Surmas, R. (2026). GeoSlicer a Platform for Digital Rock Physics: Integrated Machine Learning, Data Preparation, and Generative AI with SinGAN. 18th Annual Meeting InterPore, MS15 Machine Learning in Porous Media, Oral Presentation.
 *   Arenhart, R., Bordignon, F., Figueiredo, L. P., Formighieri, G., Pacheco, R., Cenci, R., Melo, R., & Surmas, R. (2026). Multiscale Pore-Network Model of Carbonate Reservoirs: Experimental Validation and Wettability Analysis. 18th Annual Meeting InterPore, MS09 Pore-Scale Physics and Modeling, Oral Presentation.
+*   Carneiro, I., Bordignon, F., Figueiredo, L., Arenhart, R., Pereira, M., Honório, B., & Surmas, R. (2026). Multiscale Image Analysis using the open-source software GeoSlicer. 9th Brazil InterPore Chapter Conference on Porous Media, Poster Presentation.
+*   Azambuja, R., Figueiredo, L., Carneiro, I., Bordignon, F., & Honório, B. (2026). Comparative evaluation of absolute permeability curve estimation using borehole image logs, NMR curves, and core plug data. 9th Brazil InterPore Chapter Conference on Porous Media, Poster Presentation.

@@ -9,6 +9,7 @@ class SearchFilterBar(qt.QWidget):
     searchChanged = qt.Signal(str)
     sortChanged = qt.Signal()
     resumeRequested = qt.Signal()
+    deleteRequested = qt.Signal()
 
     SORT_NAME_ASC = "name_asc"
     SORT_NAME_DESC = "name_desc"
@@ -118,6 +119,21 @@ class SearchFilterBar(qt.QWidget):
 
     def _showActionsMenu(self):
         menu = qt.QMenu(self)
+        menu.setToolTipsVisible(True)  # otherwise the actions' tooltips never show
         resumeAction = menu.addAction("Reconnect Visible")
-        resumeAction.triggered.connect(lambda *args: self.resumeRequested.emit())
+        resumeAction.triggered.connect(self._requestResume)
+        menu.addSeparator()
+        deleteAction = menu.addAction("Cancel/Delete Visible")
+        deleteAction.triggered.connect(self._requestDelete)
+        deleteAction.setToolTip(
+            "Cancel every job the filter is showing and delete its data from the cluster. Asks first."
+        )
         menu.exec_(self.actionsBtn.mapToGlobal(self.actionsBtn.rect.bottomLeft()))
+
+    # Not the signals themselves: connected straight to triggered(bool checked),
+    # PythonQt calls these argument-less signals with `checked` and refuses.
+    def _requestResume(self, *args):
+        self.resumeRequested.emit()
+
+    def _requestDelete(self, *args):
+        self.deleteRequested.emit()

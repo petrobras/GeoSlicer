@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 
@@ -78,6 +79,7 @@ class TwoPhaseSimulationWorkstep(Workstep):
             "subres_model_name": params.get("subres_model_name", "Fixed Radius"),
             "subres_params": params.get("subres_params", {}) or {},
             "extraction_algorithm": "porespy",
+            "save_tables": False,
         }
         new_params = estimate_and_update_subscale_params(new_params, spacing)
         deep_update(params, new_params)
@@ -92,11 +94,22 @@ class TwoPhaseSimulationWorkstep(Workstep):
 
     def execute(self):
         """Public entry point for Two-Phase simulation."""
-        params = self.context.workflow_params["two_phase_simulation_params"]
-        self._update_simulation_params(params)
+        try:
+            params = self.context.workflow_params["two_phase_simulation_params"]
+            self._update_simulation_params(params)
 
-        with open(self.context.working_dir / "two_phase_simulation_params_dict.json", "w") as f:
-            json.dump(params, f, indent=4)
+            with open(self.context.working_dir / "two_phase_simulation_params_dict.json", "w") as f:
+                json.dump(params, f, indent=4)
 
-        self.logger.info(f"Running two-phase simulation for {self.context.working_dir.name}")
-        self._run_simulation_cli("TwoPhaseSensibilityTest")
+            self.logger.info(f"Running two-phase simulation for {self.context.working_dir.name}")
+            self._run_simulation_cli("TwoPhaseSensibilityTest")
+        finally:
+            if self.context.working_dir.exists():
+                removed_dirs = []
+                for item in self.context.working_dir.iterdir():
+                    if item.is_dir() and item.name.startswith("two_phase_sim_"):
+                        shutil.rmtree(item)
+                        removed_dirs.append(item.name)
+
+                if removed_dirs:
+                    self.logger.info(f"Cleaned up subprocess directories.")

@@ -1,4 +1,5 @@
 import os
+import platform
 from pathlib import Path
 
 import ctk
@@ -63,9 +64,11 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         csvLayout = qt.QHBoxLayout()
         self.csvComboBox = qt.QComboBox()
         self.csvComboBox.addItem("")
-        self.csvComboBox.addItem(
-            "All", r"\\dfs\cientifico\cenpes\res\drp\servicos\LTRACE\database\all_microtom_dados_brutos.csv"
-        )
+        if platform.system() == "Windows":
+            all_csv_path = r"\\dfs\cientifico\cenpes\res\drp\servicos\LTRACE\database\all_microtom_dados_brutos.csv"
+        else:
+            all_csv_path = "/nethome/drp/servicos/LTRACE/database/all_microtom_dados_brutos.csv"
+        self.csvComboBox.addItem("All", all_csv_path)
         self.csvComboBox.currentIndexChanged.connect(self.onComboSelectionChanged)
         self.csvComboBox.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Fixed)
         csvLayout.addWidget(qt.QLabel("Select CSV File:"))
@@ -250,8 +253,22 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         workersHBox.addWidget(workersHelp)
         workflowLayout.addRow("Workers:", workersHBox)
 
+        # Wall time
+        self.walltimeLineEdit = qt.QLineEdit()
+        self.walltimeLineEdit.setText("72:00:00")
+        self.walltimeLineEdit.setPlaceholderText("e.g., 72:00:00 or 12-00:00:00")
+
+        walltimeHelp = HelpButton(
+            "Defines the maximum execution walltime for the master SLURM job and Dask workers "
+            "(e.g., '72:00:00' or '12-00:00:00'). Maximum partition limit is 12 days."
+        )
+        walltimeHBox = qt.QHBoxLayout()
+        walltimeHBox.addWidget(self.walltimeLineEdit)
+        walltimeHBox.addWidget(walltimeHelp)
+        workflowLayout.addRow("Wall time:", walltimeHBox)
+
         self.saveWorkstepImageDataCheckbox = qt.QCheckBox("Save workstep image")
-        self.saveWorkstepImageDataCheckbox.setChecked(True)
+        self.saveWorkstepImageDataCheckbox.setChecked(False)
         workflowLayout.addRow(self.saveWorkstepImageDataCheckbox)
 
         # --- Crop Sample Options ---
@@ -699,18 +716,20 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         crop_sample_active = (
             self.cropSampleCheckbox.isChecked()
             if save_state
-            else (self.cropSampleCheckbox.checked if not visualize else False)
+            else (self.cropSampleCheckbox.isChecked() if not visualize else False)
         )
         shading_correction_active = (
             self.shadingCorrectionCheckbox.isChecked()
             if save_state
-            else (self.shadingCorrectionCheckbox.checked if not visualize else False)
+            else (self.shadingCorrectionCheckbox.isChecked() if not visualize else False)
         )
         save_workstep_active = (
             self.saveWorkstepImageDataCheckbox.isChecked()
             if save_state
-            else (self.saveWorkstepImageDataCheckbox.checked if not visualize else True)
+            else (self.saveWorkstepImageDataCheckbox.isChecked() if not visualize else True)
         )
+
+        use_gpu_active = False
 
         extractor_active = (True if extractor_params_node else False) if (save_state or not visualize) else False
         one_phase_active = (
@@ -724,6 +743,8 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
             "selected_names": self.selectedNamesText.toPlainText(),
             "output_folder_prefix": self.outputFolderPrefixLine.text.strip(),
             "downsampling_factors": ds_factors,
+            "walltime": self.walltimeLineEdit.text.strip() or "72:00:00",
+            "use_gpu": use_gpu_active,
             "crop_sample": crop_sample_active,
             "shading_correction": shading_correction_active,
             "save_workstep_image_data": save_workstep_active,
@@ -781,7 +802,7 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         gad_active = (
             self.applyGradientCheckbox.isChecked()
             if save_state
-            else (self.applyGradientCheckbox.checked if not visualize else False)
+            else (self.applyGradientCheckbox.isChecked() if not visualize else False)
         )
 
         workflow_params["porosity_map_params"] = {
@@ -819,6 +840,9 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
 
         if "workers" in params:
             self.workersSpinBox.setValue(int(params["workers"]))
+
+        if "walltime" in params:
+            self.walltimeLineEdit.setText(str(params["walltime"]))
 
         if "save_workstep_image_data" in params:
             self.saveWorkstepImageDataCheckbox.setChecked(
@@ -913,6 +937,15 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         if msg.exec_() == qt.QMessageBox.Yes:
             slicer.modules.AppContextInstance.rightDrawer.show(1)
 
+    def _confirmDiskSpaceUsage(self, selected_names, ds_factors):
+        if len(selected_names) > 1 and 1 in ds_factors and self.saveWorkstepImageDataCheckbox.isChecked():
+            msg = (
+                "Saving workstep image data with a downsampling factor of 1 across multiple samples "
+                "will consume a large amount of disk space.\n\nAre you sure you want to proceed?"
+            )
+            return slicer.util.confirmYesNoDisplay(msg, windowTitle="Disk Space Warning")
+        return True
+
     def runWorkflow(self, visualize=False):
         if self.df is None:
             slicer.util.warningDisplay("Please load a CSV file first before proceeding.")
@@ -931,6 +964,9 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
 
         if not selected_names:
             slicer.util.warningDisplay("Please select or paste at least one sample name.")
+            return
+
+        if not self._confirmDiskSpaceUsage(selected_names, ds_factors):
             return
 
         files_data = []
@@ -961,12 +997,7 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
 
         workflow_params = self.getParams(visualize=visualize, save_state=False)
 
-        success = self.logic.process(
-            self,
-            files_data,
-            prefix,
-            workflow_params,
-        )
+        success = self.logic.process(self, files_data, prefix, workflow_params)
 
         if success:
             self.showJobs()

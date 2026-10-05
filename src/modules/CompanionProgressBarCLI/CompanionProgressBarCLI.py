@@ -1,45 +1,55 @@
 #!/usr/bin/env python-real
 # -*- coding: utf-8 -*-
-import multiprocessing.shared_memory as shm
 import struct
 import time
 
-import numpy as np
-
 from ltrace.slicer.cli_utils import progressUpdate
+
+POLL_INTERVAL_SECONDS = 3
+MAX_READ_FAILURES = 3
+
+
+def readProgress(path):
+    with open(path, "rb") as file:
+        data = file.read(8)
+
+    return struct.unpack("d", data)[0] if len(data) == 8 else None
+
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="LTrace Image Compute Wrapper for Slicer.")
-    parser.add_argument("--namespace", type=str, default="")
+    parser.add_argument("--progressFile", type=str, default="")
     parser.add_argument("--timeout", type=int, default=300)
 
     args = parser.parse_args()
 
-    print("Namespace:", args.namespace)
+    print("Progress file:", args.progressFile)
 
-    shared_mem = shm.SharedMemory(name=args.namespace)
-
-    timeout = args.timeout
-
-    # keep checking shared memory for a float value until timeout
     start = time.time()
-    while (time.time() - start) < timeout:
+    failures = 0
+    while (time.time() - start) < args.timeout:
         try:
-            data = shared_mem.buf[:8]  # Read first 8 bytes (size of a float64)
-            value = struct.unpack("d", data)[0]
-            if 0 <= value < 1:
-                progressUpdate(value=value)
-            elif value == 1:
-                progressUpdate(value=1.0)
+            value = readProgress(args.progressFile)
+        except FileNotFoundError:
+            break
+        except OSError as error:
+            print("Error:", error)
+            value = None
+
+        if value is None:
+            failures += 1
+            if failures > MAX_READ_FAILURES:
                 break
-            else:
+        else:
+            failures = 0
+            if not 0 <= value <= 1:
+                break
+            progressUpdate(value=value)
+            if value == 1:
                 break
 
-            time.sleep(3)
-        except Exception as e:
-            print("Error:", e)
-            break
+        time.sleep(POLL_INTERVAL_SECONDS)
 
     print("Done")

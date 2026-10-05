@@ -6,23 +6,10 @@ import qt, ctk, slicer
 
 from ltrace.remote.hosts import PROTOCOL_HANDLERS
 from ltrace.remote.hosts.base import Host
+# Was duplicated here, carrying the setToolTip-during-paintEvent crash with it.
+from ltrace.slicer.widget.elided_label import ElidedLabel
 
 INDEX = {name: i for i, name in enumerate(PROTOCOL_HANDLERS)}
-
-
-class ElidedLabel(qt.QLabel):
-    def paintEvent(self, event):
-        self.setToolTip(self.text)
-        painter = qt.QPainter(self)
-
-        metrics = qt.QFontMetrics(self.font)
-        newWidth = self.width if self.parent() is None else self.parent().width
-        elided = metrics.elidedText(self.text, qt.Qt.ElideRight, newWidth - 8)
-
-        rect = self.rect
-        rect.setWidth(newWidth)
-
-        painter.drawText(rect, self.alignment, elided)
 
 
 @dataclass

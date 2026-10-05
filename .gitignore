@@ -167,3 +167,7 @@ src/modules/MicrotomRemote/PNM_Report/static/
 
 # MacOS Finder
 .DS_Store
+
+# tools/slurm test cluster: local build marker and shared data tree
+tools/slurm/.build-stamp
+tools/slurm/.data/

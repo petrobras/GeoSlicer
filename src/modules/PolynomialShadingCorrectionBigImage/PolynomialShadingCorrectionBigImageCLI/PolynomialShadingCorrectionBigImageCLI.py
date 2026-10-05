@@ -58,6 +58,7 @@ def polynomialShadingCorrection(
         centerX=params.get("centerX", 0),
         centerY=params.get("centerY", 0),
         inputNullValue=params.get("nullValue", 0),
+        postProcessing=params.get("postProcessing", True),
     )
 
 

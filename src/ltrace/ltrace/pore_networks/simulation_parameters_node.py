@@ -57,7 +57,7 @@ def dataframe_to_parameter_node(
     parameter_dict = {}
     for row_item in input_values_df.iterrows():
         _, row_data = row_item
-        parameter_dict[row_data[0]] = {
+        parameter_dict[row_data.iloc[0]] = {
             "start": __to_serializable_type(row_data.iloc[1]),
             "stop": __to_serializable_type(row_data.iloc[2]),
             "steps": __to_serializable_type(row_data.iloc[3]),

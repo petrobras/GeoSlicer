@@ -5,6 +5,7 @@
 
 from __future__ import print_function
 
+from pathlib import Path
 import vtk
 import sys
 from time import sleep
@@ -20,15 +21,15 @@ import slicer
 import mrml
 from ltrace.slicer.cli_utils import progressUpdate
 from ltrace.pore_networks.functions_extract import general_pn_extract
+from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
 from ltrace.utils.mmap_shared_memory import MmapSharedMemory
 
 
-def readFrom(volumeFile, builder):
-    sn = slicer.vtkMRMLNRRDStorageNode()
-    sn.SetFileName(volumeFile)
-    nodeIn = builder()
-    sn.ReadData(nodeIn)
-    return nodeIn
+def parse_divs(value):
+    try:
+        return json.loads(value)
+    except Exception:
+        return int(value)
 
 
 def writeDataFrame(df, path):
@@ -58,33 +59,38 @@ def cli_extract(args, params):
 
     if args.slurm:
         geoslicer_base_path = os.getenv("GEOSLICER_BASE_PATH")
+        log_dir = args.cwd if args.cwd else os.getcwd()  # Fallback to CWD if args.cwd isn't passed
         cluster = SLURMCluster(
             cores=args.slurm_cores,
             memory=args.slurm_memory,
             scheduler_options={"interface": "bond0"},
             python=f"{geoslicer_base_path}/scripts/run_apptainer.sh",
             account="tcr_ext",
-            log_directory=os.getcwd(),
+            log_directory=log_dir,
             processes=1,
             death_timeout=3600,
-            walltime="10:00:00",
+            walltime=args.slurm_walltime,
         )
         cluster.scale(jobs=args.slurm_jobs)
         client = Client(cluster)
 
     if params["is_multiscale"]:
-        volumeNode = readFrom(args.scalar, mrml.vtkMRMLScalarVolumeNode)
-        scale = volumeNode.GetSpacing()[::-1]
-        scalar_array = slicer.util.arrayFromVolume(volumeNode)
-        labelNode = readFrom(args.label, mrml.vtkMRMLLabelMapVolumeNode) if args.label else None
-        if labelNode is not None:
-            label_array = slicer.util.arrayFromVolume(labelNode)
-        else:
-            label_array = None
+        volume_node_path = Path(args.scalar)
+        with VolumeNodeObjectTransfer(volume_node_path.parent, volume_node_path.name) as transfer:
+            scalar_array, volume_node_header = transfer.load()
+        scale = volume_node_header["spacing"][::-1]
+
+        label_array = None
+        if args.label is not None:
+            label_node_path = Path(args.label)
+            with VolumeNodeObjectTransfer(label_node_path.parent, label_node_path.name) as transfer:
+                if transfer.exists():
+                    label_array, _ = transfer.load()
     else:
-        labelNode = readFrom(args.scalar, mrml.vtkMRMLLabelMapVolumeNode)
-        label_array = slicer.util.arrayFromVolume(labelNode)
-        scale = labelNode.GetSpacing()[::-1]
+        label_node_path = Path(args.scalar)
+        with VolumeNodeObjectTransfer(label_node_path.parent, label_node_path.name) as transfer:
+            label_array, label_node_header = transfer.load()
+        scale = label_node_header["spacing"][::-1]
         scalar_array = None
 
     extract_result = general_pn_extract(
@@ -190,13 +196,14 @@ if __name__ == "__main__":
     parser.add_argument("--cwd", type=str, required=False)
     parser.add_argument("--slurm", action="store_true")
     parser.add_argument("--no_save_watershed", action="store_true")
-    parser.add_argument("--divs", type=int, default=2, required=False)
+    parser.add_argument("--divs", type=parse_divs, default=2, required=False)
     parser.add_argument("--slurm_jobs", type=int, default=4, required=False)
     parser.add_argument("--slurm_cores", type=int, default=1, required=False)
     parser.add_argument("--slurm_memory", type=str, default="2GB", required=False)
+    parser.add_argument("--slurm_walltime", type=str, default="10:00:00", required=False)
     args = parser.parse_args()
 
-    with open(f"{args.cwd}/extractor_params_dict.json", "r") as file:
-        params = json.load(file)
+    with JsonObjectTransfer(args.cwd, "extractor_params_dict.json") as transfer:
+        params = transfer.load()
 
     extractPNM(args, params)

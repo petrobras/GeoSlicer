@@ -1,6 +1,6 @@
 import os
 from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.interactive.seg_widget import InteractiveSegmenterFrame
+from ltrace.interactive.widget import InteractiveSegmenterFrame
 from pathlib import Path
 
 try:
@@ -20,11 +20,11 @@ class InteractiveSegmenterWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def exit(self):
-        self.interactive_segmenter_frame.cleanup()
+        self.interactive_segmenter_frame.exit()
 
     def cleanup(self):
         super().cleanup()
-        self.exit()
+        self.interactive_segmenter_frame.cleanup()
 
 
 class InteractiveSegmenter(LTracePlugin):

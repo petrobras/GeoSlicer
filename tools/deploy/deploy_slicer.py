@@ -121,16 +121,22 @@ def generic_deploy(
     slicer_dir: Path = extract_archive(slicer_archive, output_dir)
 
     # Update submodules
-    logger.info("Updating submodules...")
-    repo = git.Repo(slicerltrace_repo_folder)
-    repo.git.submodule("update", "--init", "--recursive")
+    if args.no_git:
+        logger.info("Skipping submodule update (--no-git).")
+    else:
+        logger.info("Updating submodules...")
+        repo = git.Repo(slicerltrace_repo_folder)
+        repo.git.submodule("update", "--init", "--recursive")
 
     # getting the 3D Slicer version
     slicer_version = get_slicer_version(slicer_dir)
     logger.info("Slicer version " + str(slicer_version))
     apply_pre_patches(slicer_dir, slicer_version)
 
-    if not fast_and_dirty:
+    if args.no_pip and not fast_and_dirty:
+        logger.info("Skipping pip dependency installation (--no-pip).")
+
+    if not fast_and_dirty and not args.no_pip:
         logger.info("Uninstalling local packages")
         uninstall_packages(slicer_dir=slicer_dir, package="ltrace")
 
@@ -160,6 +166,10 @@ def generic_deploy(
             logger.info(f"Installing submodule '{submodule_name}'")
             install_module_from_folder(slicer_dir, path, development)
 
+        # Last, deliberately: anything installed after this can pull the GUI
+        # OpenCV back in as a dependency and reintroduce the second Qt.
+        enforce_headless_opencv(slicer_dir)
+
     logger.info("Copying extensions")
     if development:
         modules_to_add = list(find_plugins_source(modules_package_folder))
@@ -183,7 +193,14 @@ def generic_deploy(
     build_manual()
 
     logger.info("Installing customizer")
-    install_customizer(slicer_dir, modules_to_add, find_extensions(slicer_dir), version_string, development)
+    install_customizer(
+        slicer_dir,
+        modules_to_add,
+        find_extensions(slicer_dir),
+        version_string,
+        development,
+        use_git=not args.no_git,
+    )
 
     logger.info("Copying assets")
     copy_extra_files(slicer_dir, slicer_version, slicerltrace_repo_folder, fast_and_dirty, development)
@@ -298,7 +315,9 @@ def remove_unwanted_files(slicer_dir, slicer_version):
     with open(DEPLOY_CONFIG) as f:
         config = json.JSONDecoder().decode(f.read())
 
-    for target in config["FilesToRemove"]:
+    platform = "linux" if sys.platform.startswith("linux") else "win32"
+    files_to_remove = config["FilesToRemove"].get(platform, [])
+    for target in files_to_remove:
         target = Template(target).substitute(slicer_dir=f"{APP_NAME}-{slicer_version}")
         target = slicer_dir / target
         if target.exists():
@@ -382,6 +401,92 @@ def install_pip_dependencies(slicer_dir, lib_folder, development=False):
     runResult.check_returncode()
 
 
+OPENCV_GUI_PACKAGES = ("opencv-python", "opencv-contrib-python")
+OPENCV_HEADLESS_PACKAGE = "opencv-python-headless"
+
+
+def _site_packages(slicer_python: Path) -> Union[Path, None]:
+    try:
+        result = subprocess.run(
+            [str(slicer_python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return Path(result.stdout.strip())
+    except (subprocess.CalledProcessError, OSError) as error:
+        logger.warning(f"Could not locate site-packages. Cause: {repr(error)}")
+        return None
+
+
+def _headless_opencv_requirement() -> str:
+    """The opencv-python-headless pin as ltrace's requirements declare it."""
+    requirements = LTRACE_PACKAGE_FOLDER / "requirements.txt"
+    try:
+        for line in requirements.read_text().splitlines():
+            entry = line.split("#", 1)[0].strip()
+            if entry.replace("_", "-").lower().startswith(OPENCV_HEADLESS_PACKAGE):
+                return entry
+    except OSError as error:
+        logger.warning(f"Could not read {requirements}. Cause: {repr(error)}")
+
+    return OPENCV_HEADLESS_PACKAGE
+
+
+def enforce_headless_opencv(slicer_dir: Path) -> None:
+    """Leave exactly one OpenCV installed, the headless one.
+
+    mmcv, mmengine and sahi all declare a dependency on the GUI `opencv-python`,
+    so pip installs it regardless of what ltrace's requirements pin. Both wheels
+    own `cv2/`, and whichever lands last wins. When it is the GUI build, its
+    cv2 extension links its own bundled Qt 5:
+
+        cv2.abi3.so -> libQt5Core / libQt5Gui / libQt5Widgets / libQt5Test
+
+    so the first `import cv2` loads a SECOND complete Qt into the process,
+    beside Slicer's own. Qt's font database, font cache and platform plugin
+    registry are process-global singletons; two copies of them corrupt each
+    other, and the application dies inside
+    QTextEngine::shapeTextWithHarfbuzzNG while painting a QTextEdit -- a
+    segfault whose stack says nothing about its cause.
+
+    Must run LAST, after every other pip install, and with --no-deps: without
+    it pip re-resolves mmcv/mmengine/sahi and puts the GUI build straight back.
+    """
+    slicer_python = slicer_dir / "bin" / "PythonSlicer"
+    requirement = _headless_opencv_requirement()
+
+    logger.info("Enforcing a single, headless OpenCV")
+    # check=False: having nothing to uninstall is not a failure.
+    subprocess.run(
+        [str(slicer_python), "-m", "pip", "uninstall", "-y", *OPENCV_GUI_PACKAGES, OPENCV_HEADLESS_PACKAGE],
+        check=False,
+    )
+    subprocess.run([str(slicer_python), "-m", "pip", "install", "--no-deps", requirement]).check_returncode()
+
+    site_packages = _site_packages(slicer_python)
+    if site_packages is None:
+        logger.warning("Skipping the OpenCV Qt check: site-packages was not found.")
+        return
+
+    # Uninstalling leaves the bundled-library folder behind, and the Qt inside
+    # it is still reachable through a stale RPATH.
+    for stale in ("opencv_python.libs", "opencv_contrib_python.libs"):
+        folder = site_packages / stale
+        if folder.exists():
+            logger.info(f"Removing leftover {folder}")
+            shutil.rmtree(folder, ignore_errors=True)
+
+    leftovers = sorted(str(path) for path in site_packages.glob("opencv*/**/*Qt5*"))
+    if leftovers:
+        raise RuntimeError(
+            "OpenCV still ships Qt libraries after the headless reinstall, which will crash "
+            "GeoSlicer in Qt text rendering: " + ", ".join(leftovers)
+        )
+
+    logger.info(f"OpenCV pinned to {requirement}, with no Qt of its own")
+
+
 def install_module_from_folder(slicer_dir, folder, development=False):
     slicer_python = slicer_dir / "bin" / "PythonSlicer"
     pip_call = [str(slicer_python), "-m", "pip", "install"]
@@ -408,13 +513,35 @@ def find_extensions(slicer_dir):
     return paths
 
 
-def install_customizer(slicer_dir, modules, extensions, version, dev_environment):
+UNKNOWN_COMMIT_HASH = "unknown"
+
+
+def get_repo_metadata(use_git=True):
+    """Return the ``(hash, dirty)`` pair stamped into GeoSlicer.json.
+
+    GitPython resolves the repository from the working tree, so it fails
+    outright when that tree is a git worktree whose gitdir link points somewhere
+    the current environment cannot see (a container mounting only the worktree,
+    for instance). The pair is build metadata shown in the window title, not
+    something the application needs to run, so ``--no-git`` trades it for
+    placeholders instead of blocking the deploy.
+
+    The hash is always a string: parseApplicationVersion slices it.
+    """
+    if not use_git:
+        return UNKNOWN_COMMIT_HASH, False
+
+    repo = git.Repo(path=SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
+    return repo.head.object.hexsha, repo.is_dirty()
+
+
+def install_customizer(slicer_dir, modules, extensions, version, dev_environment, use_git=True):
     src_path = THIS_FOLDER / "slicerrc.py"
     dest_path = slicer_dir / ".slicerrc.py"
 
     shutil.copy(src_path, dest_path)
 
-    repo = git.Repo(path=SLICERLTRACE_REPO_FOLDER, search_parent_directories=True)
+    commit_hash, is_dirty = get_repo_metadata(use_git)
 
     if dev_environment:
         module_dir = modules[0].parent
@@ -425,8 +552,8 @@ def install_customizer(slicer_dir, modules, extensions, version, dev_environment
         "name": "GeoSlicer",
         "itk_module": None,
         "GEOSLICER_VERSION": version,
-        "GEOSLICER_HASH": repr(repo.head.object.hexsha),
-        "GEOSLICER_HASH_DIRTY": repr(repo.is_dirty()),
+        "GEOSLICER_HASH": repr(commit_hash),
+        "GEOSLICER_HASH_DIRTY": repr(is_dirty),
         "GEOSLICER_BUILD_TIME": str(datetime.datetime.now()),
         "GEOSLICER_DEV_ENVIRONMENT": repr(dev_environment),
         "GEOSLICER_MODULES": str(module_dir),
@@ -545,23 +672,6 @@ def rename_executable(slicer_dir):
 
 def copy_windows_dlls(slicer_dir):
     files_to_copy = []
-    cuda_path_environment = os.environ.get("CUDA_PATH_V12_1")
-    if cuda_path_environment is None:
-        raise RuntimeError("CUDA_PATH_V12_1 environment variable not defined")
-
-    cuda_bin = Path(cuda_path_environment) / "bin"
-    if not cuda_bin.is_dir():
-        raise RuntimeError("CUDA_PATH_V12_1 points to an invalid directory")
-
-    for dll in cuda_bin.glob("*.dll"):
-        if dll.name in ["cudart32_110.dll"]:
-            continue
-
-        files_to_copy.append(dll)
-
-    if len(re.findall(r"cudnn64_\d+.dll", ",".join(dll.name for dll in files_to_copy))) == 0:
-        raise RuntimeError("cudnn64_*.dll not found")
-
     vs_path_candidates = [i["installationPath"] for i in vswhere.find(products="*")]
     version_paths = []
     for vs_path in vs_path_candidates:
@@ -968,6 +1078,11 @@ def run(args):
     if args.geoslicer_version and args.dev:
         raise RuntimeError("Can't deploy the development version together with production version")
 
+    if args.no_git and (args.generate_public_version or args.public_commit_only):
+        # Both are driven entirely by git (branching, committing and pushing to
+        # the public repository), so there is nothing left of them without it.
+        raise RuntimeError("Can't use --no-git with --generate-public-version or --public-commit-only")
+
     geoslicer_version = get_version_string(args.geoslicer_version)
     if args.no_public_commit and args.public_commit_only:
         raise RuntimeError("Can't avoid public commit if you want only to make the public commit.")
@@ -1092,6 +1207,22 @@ if __name__ == "__main__":
         "--fast-and-dirty",
         action="store_true",
         help="Don't install extensions, pip packages, don't copy msvc redist and cuda dlls to slicer folder, don't archive.",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--no-git",
+        action="store_true",
+        help="Don't call git at all: skip the submodule update and stamp placeholder commit metadata. "
+        "Use it when the repository folder is not resolvable by git (e.g. a worktree whose gitdir link "
+        "points outside this environment). Submodules must already be checked out.",
+        default=False,
+    )
+    parser.add_argument(
+        "--no-pip",
+        action="store_true",
+        help="Skip installing/uninstalling the pip dependencies (ltrace, microtom and the submodules), "
+        "keeping whatever is already installed in the target application.",
         default=False,
     )
 

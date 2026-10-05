@@ -22,3 +22,8 @@ The fitted function is then used to perform the correction on the slice, followi
 
 $$ s'(x,y) = \frac{s(x,y)}{f(x,y)}M $$
 Where, $s'(x,y)$ is the corrected slice, $s(x,y)$ is the original slice, and $M$ is the average of all data in the shading mask (constant value).
+
+### Parameters
+
+* **Max cores**: Sets the maximum number of CPU cores (threads) dedicated to parallel execution. By default, it is set to the total CPU count minus 2, optimizing computation speed while ensuring system responsiveness during processing.
+* **Post processing**: Enables the final post-processing step after the polynomial shading correction. It smooths the correction along the slice axis to reduce residual slice-to-slice variations.

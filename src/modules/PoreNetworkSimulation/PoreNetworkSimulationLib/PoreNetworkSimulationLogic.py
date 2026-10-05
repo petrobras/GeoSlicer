@@ -16,15 +16,17 @@ import slicer
 import vtk
 from numba import njit
 
-from ltrace.pore_networks.functions_extract import _get_paired_throats_table
+from ltrace.pore_networks.functions_extract import _get_paired_throats_table, calculateTransformNodeFromVolume
 from ltrace.pore_networks.simulation_parameters_node import (
     dict_to_parameter_node,
     TWO_PHASE_SIMULATION_TYPE,
     ONE_PHASE_SIMULATION_TYPE,
 )
+from ltrace.remote.object_transfer import JsonObjectTransfer, PickleObjectTransfer
 from ltrace.slicer import helpers
-from ltrace.slicer.binary_node import createBinaryNode, getBinary
 from ltrace.slicer.data_utils import dataFrameToTableNode
+from ltrace.slicer.nodes.binary_node import createBinaryNode, getBinary
+from ltrace.slicer.nodes.directory_node import DirectoryNode
 from ltrace.slicer_utils import LTracePluginLogic, hide_nodes_of_type, tableNodeToDict
 from .constants import ONE_ANGLE, MULTI_ANGLE
 
@@ -73,43 +75,6 @@ def readPolydata(filename):
     reader.Update()
     polydata = reader.GetOutput()
     return polydata
-
-
-def calculateTransformNodeFromVolume(tableNode):
-    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
-
-    refNode = tableNode.GetNodeReference("PoresLabelMap")
-    if refNode:
-        vtkTransformationMatrix = vtk.vtkMatrix4x4()
-        refNode.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
-        origin = refNode.GetOrigin()
-        for i in range(3):
-            vtkTransformationMatrix.SetElement(i, 3, origin[i])
-        transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
-        return transformNode
-
-    ijktoras_attr = tableNode.GetAttribute("ijktoras")
-    origin_attr = tableNode.GetAttribute("origin")
-    if ijktoras_attr and origin_attr:
-        values = [float(v) for v in ijktoras_attr.split(";")]
-        transformMatrix = vtk.vtkMatrix4x4()
-        for row in range(3):
-            for col in range(4):
-                transformMatrix.SetElement(row, col, values[row * 4 + col])
-        origin = [float(v) for v in origin_attr.split(";")]
-        for i in range(3):
-            transformMatrix.SetElement(i, 3, origin[i])
-        transformNode.SetMatrixTransformToParent(transformMatrix)
-    elif origin_attr:
-        origin = [float(v) for v in origin_attr.split(";")]
-        transformMatrix = vtk.vtkMatrix4x4()
-        for i in range(3):
-            transformMatrix.SetElement(i, 3, origin[i])
-        transformNode.SetMatrixTransformToParent(transformMatrix)
-    else:
-        logging.warning(f"No spatial reference found for {tableNode.GetName()}. Using identity transform.")
-
-    return transformNode
 
 
 class OnePhaseSimulationLogic(LTracePluginLogic):
@@ -735,14 +700,12 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
             pore_node.AddNodeReferenceID("throat_table", throat_table.GetID())
         throat_network = tableNodeToDict(throat_table)
 
-        with open(self.cwd / "pore_network.pkl", "wb") as f:
-            pickle.dump(pore_network, f)
-
-        with open(self.cwd / "throat_network.pkl", "wb") as f:
-            pickle.dump(throat_network, f)
-
-        with open(str(self.cwd / "two_phase_simulation_params_dict.json"), "w") as file:
-            json.dump(self.params, file)
+        with PickleObjectTransfer(self.cwd, "pore_network.pkl", no_temp=True) as transfer:
+            transfer.save(pore_network)
+        with PickleObjectTransfer(self.cwd, "throat_network.pkl", no_temp=True) as transfer:
+            transfer.save(throat_network)
+        with JsonObjectTransfer(self.cwd, "two_phase_simulation_params_dict.json", no_temp=True) as transfer:
+            transfer.save(self.params)
 
         if snapshot_node is not None:
             with open(str(self.cwd / "snapshot.bin"), "wb") as file:
@@ -805,6 +768,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     self.updateOutputTables()
                     self.createCaDistributionTables()
                     self.__createSnapshotBinNode()
+                    self.__createDiagnosticNode()
                     if "saturation_steps" in self.params:
                         self.loadAnimationNodes(self.params["saturation_steps"])
                 except:
@@ -848,6 +812,17 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
 
                 folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
                 folderTree.CreateItem(self.rootDir, binaryNode)
+
+    def __createDiagnosticNode(self):
+        diagnostics_path = Path(self.cwd) / "diagnostics"
+        if diagnostics_path.is_dir():
+            destination_path = Path(slicer.util.tempDirectory()) / "diagnostics"
+            shutil.move(str(diagnostics_path), str(destination_path))
+            diagnosticsNode = DirectoryNode(destination_path, "diagnostics")
+            slicer.mrmlScene.AddNode(diagnosticsNode.getNode())
+
+            folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            folderTree.CreateItem(self.rootDir, diagnosticsNode.getNode())
 
     def __createCaDistributionNode(self, ca_distribution_file):
         folderTree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -915,20 +890,11 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
         pores_model_node.GetDisplayNode().SetActiveScalarName("saturation_0")
 
         # Set the correct orientation and origin
-        poresLabelMap = self.pore_node.GetNodeReference("PoresLabelMap")
-        if poresLabelMap:
-            vtkTransformationMatrix = vtk.vtkMatrix4x4()
-            poresLabelMap.GetIJKToRASDirectionMatrix(vtkTransformationMatrix)
-            poresLabelMapOrigin = poresLabelMap.GetOrigin()
-            vtkTransformationMatrix.SetElement(0, 3, poresLabelMapOrigin[0])
-            vtkTransformationMatrix.SetElement(1, 3, poresLabelMapOrigin[1])
-            vtkTransformationMatrix.SetElement(2, 3, poresLabelMapOrigin[2])
-            transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
-            transformNode.SetMatrixTransformToParent(vtkTransformationMatrix)
-            pores_model_node.SetAndObserveTransformNodeID(transformNode.GetID())
-            pores_model_node.HardenTransform()
-            slicer.mrmlScene.RemoveNode(transformNode)
-            del transformNode
+        transformNode = calculateTransformNodeFromVolume(self.pore_node)
+        pores_model_node.SetAndObserveTransformNodeID(transformNode.GetID())
+        pores_model_node.HardenTransform()
+        slicer.mrmlScene.RemoveNode(transformNode)
+        del transformNode
 
         return pores_model_node
 

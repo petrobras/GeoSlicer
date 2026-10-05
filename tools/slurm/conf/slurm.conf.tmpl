@@ -1,0 +1,71 @@
+# Template. entrypoint.sh renders it with envsubst, filling in the cluster name,
+# hostname, core count and memory: a container only learns those at run time.
+ClusterName=${CLUSTER_NAME}
+SlurmctldHost=${NODE_NAME}
+
+SlurmUser=slurm
+SlurmdUser=root
+AuthType=auth/munge
+
+StateSaveLocation=/var/lib/slurm/slurmctld
+SlurmdSpoolDir=/var/lib/slurm/slurmd
+SlurmctldPidFile=/run/slurmctld.pid
+SlurmdPidFile=/run/slurmd.pid
+
+# No cgroup plugins: they need controllers a rootless container does not get,
+# and this cluster is not here to enforce limits.
+ProctrackType=proctrack/linuxproc
+TaskPlugin=task/none
+
+# No mail command in the image, and slurmctld logs "Configured MailProg is
+# invalid" without one.
+MailProg=/bin/true
+# Avoid loading mpi/pmix_v4: the plugin is present but the PMIx library is not,
+# so slurmctld logs a load failure for it on every start.
+MpiDefault=none
+
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+# CR_CPU_Memory rather than CR_Core_Memory: the core variant wants a coherent
+# socket/core/thread topology, and the node line below only declares a CPU
+# count, which is all a container can honestly report.
+SelectTypeParameters=CR_CPU_Memory
+
+# The node's real hardware is the host's, which rarely matches what is declared
+# below (cpuset limits, memory headroom). Without this, slurmd treats the
+# mismatch as fatal and refuses to start. Slurm documents it as "generally only
+# useful for testing purposes", which is exactly what this is.
+SlurmdParameters=config_overrides
+
+# The node is the container itself; bring it back into service on its own so a
+# restart never leaves the partition down.
+ReturnToService=2
+SlurmctldTimeout=30
+SlurmdTimeout=60
+InactiveLimit=0
+KillWait=10
+Waittime=0
+MinJobAge=60
+MaxJobCount=10000
+
+# sacct reads from slurmdbd, and JobMonitor polls almost exclusively through
+# sacct, so accounting is not optional here.
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost=localhost
+AccountingStoragePort=6819
+JobAcctGatherType=jobacct_gather/linux
+JobAcctGatherFrequency=10
+
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
+SlurmctldDebug=info
+SlurmdDebug=info
+
+${NODE_LINE}
+# There is deliberately no partition called "default": PartitionName=DEFAULT is
+# a reserved keyword (matched case-insensitively) that sets defaults for the
+# partition lines that follow, so such a line silently creates no partition and
+# leaks its settings onto the next one. 'cpu' is the default partition instead,
+# which is also what the microtom handler asks for.
+PartitionName=cpu Nodes=ALL Default=YES MaxTime=INFINITE State=UP
+PartitionName=gpu Nodes=ALL MaxTime=INFINITE State=UP

@@ -1,12 +1,12 @@
-import ctk
 import os
-import qt
-import slicer
-import pyqtgraph as pg
+from pathlib import Path
 
-
+import ctk
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
+import qt
+import slicer
 
 from ltrace.pore_networks.krel_result import KrelResult, KrelTables
 from ltrace.slicer import ui
@@ -21,7 +21,7 @@ from ltrace.slicer_utils import (
     getResourcePath,
 )
 from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from pathlib import Path
+from PoreNetworkKrelEdaLib.diagnostics_container import DiagnosticsContainerWidget
 from PoreNetworkKrelEdaLib.export.PoreNetworkKrelEdaExport import PoreNetworkKrelEdaExportWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.crossed_plots import CrossedError, CrossedParameters
 from PoreNetworkKrelEdaLib.visualization_widgets.curves_plot import CurvesPlot
@@ -80,6 +80,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
         self.setup_eda()
         self.setup_import()
+        self.setup_diagnostics()
         if slicer_is_in_developer_mode():
             self.mainTab.addTab(PoreNetworkKrelEdaExportWidget(), "Export")
 
@@ -143,12 +144,13 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
         importLayout = qt.QFormLayout()
 
-        instructions_labels = qt.QLabel(
-            "To import a Krel curve, first add it to" " the scene in File -> Advanced Add Data"
-        )
-        importLayout.addRow(instructions_labels)
+        import_csv_button = qt.QPushButton("Import from csv")
+        import_csv_button.objectName = "Import from csv button"
+        import_csv_button.connect("clicked(bool)", self.__import_from_csv)
+        importLayout.addRow(import_csv_button)
 
         self.inputSelector = slicer.qMRMLNodeComboBox()
+        self.inputSelector.objectName = "Krel table node selector"
         self.inputSelector.setMRMLScene(slicer.mrmlScene)
         self.inputSelector.selectNodeUponCreation = False
         self.inputSelector.addEnabled = False
@@ -169,6 +171,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             CYCLE_COLUMN_STR,
         ):
             self.cboxes[cbox] = qt.QComboBox()
+            self.cboxes[cbox].objectName = cbox
             importLayout.addRow(cbox, self.cboxes[cbox])
             self.cboxes[cbox].connect("currentIndexChanged(int)", self.__change_import_column)
 
@@ -190,8 +193,10 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         importLayout.addWidget(pyqtGraphicsLayoutWidget)
 
         self.outputPrefix = qt.QLineEdit()
+        self.outputPrefix.objectName = "Krel import output name"
         importLayout.addRow("Table name: ", self.outputPrefix)
         save_button = qt.QPushButton("Save table")
+        save_button.objectName = "Save Krel table button"
         save_button.connect("clicked(bool)", self.__click_import)
         importLayout.addWidget(save_button)
 
@@ -200,6 +205,10 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         import_container = qt.QWidget()
         import_container.setLayout(importLayout)
         self.mainTab.addTab(import_container, "Import")
+
+    def setup_diagnostics(self):
+        self.diagnosticsContainer = DiagnosticsContainerWidget()
+        self.mainTab.addTab(self.diagnosticsContainer, "Diagnostics")
 
     def __on_input_node_changed(self, vtkid=None):
         self.__clear_plots()
@@ -230,6 +239,23 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             self.__visualizationTypeSelector.widget(i).setVisible(False)
             self.__visualizationTypeSelector.widget(i).clear_saved_plots()
 
+    def __import_from_csv(self):
+        file_path = qt.QFileDialog.getOpenFileName(None, "Select Krel CSV file", "", "CSV Files (*.csv);;All Files (*)")
+        if not file_path:
+            return
+
+        from ltrace.file_utils import load_and_parse_data
+
+        df = load_and_parse_data(Path(file_path), filter_empty_columns=True)
+        if df is None:
+            slicer.util.errorDisplay(f"Failed to read csv file: {file_path}")
+            return
+
+        tableNode = dataFrameToTableNode(df)
+        tableNode.SetName(slicer.mrmlScene.GenerateUniqueName(Path(file_path).stem))
+
+        self.inputSelector.setCurrentNode(tableNode)
+
     def __change_import_table(self, node):
         input_node = node
 
@@ -250,6 +276,17 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
                 cbox.addItem(column)
         self.outputPrefix.text = input_node.GetName() + "_Krel_Import"
 
+        column_guesses = {
+            SW_COLUMN_STR: ("sw", "saturation"),
+            KRW_COLUMN_STR: ("krw",),
+            KRO_COLUMN_STR: ("kro",),
+        }
+        for cbox_key, keywords in column_guesses.items():
+            for column in reversed(columns):
+                if any(keyword in column.lower() for keyword in keywords):
+                    self.cboxes[cbox_key].currentText = column
+                    break
+
     def __change_import_column(self):
         self.plotItem.clear()
 
@@ -258,7 +295,6 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
 
         krel_df = dataframeFromTable(self.inputSelector.currentNode())
         krel_df = krel_df.replace("", np.nan)
-        krel_df = krel_df.astype(np.float32)
         sw_string = self.cboxes[SW_COLUMN_STR].currentText
         kro_string = self.cboxes[KRO_COLUMN_STR].currentText
         krw_string = self.cboxes[KRW_COLUMN_STR].currentText
@@ -266,8 +302,18 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         if not sw_string or not kro_string or not krw_string or not cycle_string:
             return
 
+        columns_to_convert = [sw_string, kro_string, krw_string]
+        if cycle_string != AUTO_DETECT_STR:
+            columns_to_convert.append(cycle_string)
+        for column_string in dict.fromkeys(columns_to_convert):
+            krel_df[column_string] = krel_df[column_string].astype(np.float32)
+
+        for column_string in (sw_string, kro_string, krw_string):
+            if krel_df[column_string].max() > 1.5:
+                krel_df[column_string] = krel_df[column_string] / 100.0
+
         if cycle_string == AUTO_DETECT_STR:
-            cycle_list = self.__detect_cycles(krel_df)
+            cycle_list = self.__detect_cycles(krel_df, sw_string)
             cycle_string = "cycle"
             krel_df[cycle_string] = cycle_list
 
@@ -309,11 +355,11 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
             cycle_column_name if cycle_column_name != AUTO_DETECT_STR else "cycle",
         )
 
-    def __detect_cycles(self, krel_df):
+    def __detect_cycles(self, krel_df, sw_string):
         previous_sw = None
-        cycle = 1 if krel_df["Sw"][1] <= krel_df["Sw"][0] else 2
+        cycle = 1 if krel_df[sw_string].iloc[1] <= krel_df[sw_string].iloc[0] else 2
         cycle_list = []
-        for i, sw in enumerate(krel_df["Sw"]):
+        for i, sw in enumerate(krel_df[sw_string]):
             if previous_sw:
                 if cycle == 1 and sw >= previous_sw:
                     cycle += 1
@@ -339,6 +385,7 @@ class PoreNetworkKrelEdaLogic(LTracePluginLogic):
         df = df.rename(
             columns={swColumnName: "Sw", krwColumnName: "Krw", kroColumnName: "Kro", cycleColumnName: "cycle"}
         )
+        df = df[["Sw", "Krw", "Kro", "cycle"]]
         df["Sw"] = df["Sw"].astype(float)
         df["Krw"] = df["Krw"].astype(float)
         df["Kro"] = df["Kro"].astype(float)

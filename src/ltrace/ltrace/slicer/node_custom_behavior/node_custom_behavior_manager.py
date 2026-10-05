@@ -12,25 +12,20 @@ class NodeCustomBehaviorManager:
 
     def __init__(self) -> None:
         self.__triggerEvent: TriggerEvent = TriggerEvent.NONE
+        self.__triggerEventArgs: dict = {}
         self.__customBehaviorNodeObservers = []
         self.__installNodeCustomBehaviorObservers()
 
     def __del__(self) -> None:
         self.__uninstallNodeCustomBehaviorObservers()
 
-    @property
-    def triggerEvent(self) -> TriggerEvent:
-        return self.__triggerEvent
-
-    @triggerEvent.setter
-    def triggerEvent(self, triggerEvent: TriggerEvent):
-        if self.__triggerEvent == triggerEvent:
-            return
-
+    def triggerEvent(self, triggerEvent: TriggerEvent, **kwargs):
         self.__triggerEvent = triggerEvent
+        self.__triggerEventArgs = kwargs
 
     def reset(self) -> None:
         self.__triggerEvent = TriggerEvent.NONE
+        self.__triggerEventArgs = {}
 
     def __installNodeCustomBehaviorObservers(self) -> None:
         if len(self.__customBehaviorNodeObservers) > 0:
@@ -74,7 +69,7 @@ class NodeCustomBehaviorManager:
 
     def __getAllNodeCustomBehaviors(self) -> list[NodeCustomBehaviorBase]:
         customBehaviorNodes = []
-        for node in slicer.util.getNodes().values():
+        for node in slicer.mrmlScene.GetNodes():
             for customBehavior in self.__getNodeCustomBehaviorsByNode(node):
                 customBehaviorNodes.append(customBehavior)
 
@@ -83,7 +78,9 @@ class NodeCustomBehaviorManager:
     def __getNodeCustomBehaviorsByNode(self, node: slicer.vtkMRMLNode) -> list[NodeCustomBehaviorBase]:
         customBehaviors: list[NodeCustomBehaviorBase] = []
         try:
-            customBehaviors = NodeCustomBehaviorFactory.factory(node, event=self.__triggerEvent)
+            customBehaviors = NodeCustomBehaviorFactory.factory(
+                node, event=self.__triggerEvent, eventArgs=self.__triggerEventArgs
+            )
         except ValueError as error:
             logging.error(error)
 

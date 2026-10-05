@@ -335,7 +335,7 @@ def setDialogToolBar():
 
     dialogToolBar.addAction(
         qt.QIcon((ICON_DIR / "svg" / "Apps.svg").as_posix()),
-        "Data Sources",
+        "Getting Started",
         lambda: showOnboardView(APP_TOOLBARS["ModuleToolBar"]),
     )
 
@@ -1097,7 +1097,7 @@ def extraChangesOnMenu():
     sn = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
     sn.RemovePlaceNodeClassNameFromList("vtkMRMLAnnotationRulerNode")
     cname = "vtkMRMLMarkupsLineNode"
-    resource = ":/Icons/png/AnnotationDistanceWithArrow.png"
+    resource = ":/Icons/png/AnnotationDistance.png"
     iconName = "Ruler"
     sn.AddNewPlaceNodeClassNameToList(cname, resource, iconName)
 
@@ -1334,6 +1334,22 @@ def applyWindowGeometry(mainWindow):
     mainWindow.showMaximized()
 
 
+def disableSharedMemory():
+    import types
+    import sys
+
+    class BlockedModule(types.ModuleType):
+        def __getattr__(self, name):
+            raise ImportError(
+                "On Linux, shared_memory runs resource_tracker in a separate process using spawn._python_exe, "
+                "which points to GeoSlicerApp-real. This creates a bug which can't be reproduced on Windows, "
+                "which is why shared_memory is currently disabled."
+            )
+
+    blocked_sm = BlockedModule("multiprocessing.shared_memory")
+    sys.modules["multiprocessing.shared_memory"] = blocked_sm
+
+
 def configure(rebuild_index=False):
     mainWindow = getAppContext().mainWindow if getAppContext() else slicer.util.mainWindow()
     applyWindowGeometry(mainWindow)
@@ -1341,6 +1357,7 @@ def configure(rebuild_index=False):
     updateLogConfiguration()
     setModulePanelVisible(False)
     slicer.app.setRenderPaused(True)
+    disableSharedMemory()
 
     if rebuild_index:
         modules = createIndex()

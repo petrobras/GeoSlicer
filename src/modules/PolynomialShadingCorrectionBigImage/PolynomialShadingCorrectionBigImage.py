@@ -49,6 +49,7 @@ class PolynomialShadingCorrectionParameters:
     useCustomCenter: bool = None
     centerX: int = None
     centerY: int = None
+    postProcessing: bool = None
 
 
 class PolynomialShadingCorrectionBigImage(LTracePlugin):
@@ -77,10 +78,10 @@ class PolynomialShadingCorrectionBigImageWidget(LTracePluginWidget):
         self.pointAddedObserverTag = None
 
     def getSliceGroupSize(self) -> int:
-        return int(PolynomialShadingCorrection.get_setting(SLICE_GROUP_SIZE, default="1"))
+        return int(PolynomialShadingCorrection.get_setting(SLICE_GROUP_SIZE, default="5"))
 
     def getFittingPointsPercentage(self) -> int:
-        return int(PolynomialShadingCorrection.get_setting(FITTING_POINTS_PERCENTAGE, default="60"))
+        return int(PolynomialShadingCorrection.get_setting(FITTING_POINTS_PERCENTAGE, default="10"))
 
     def setup(self) -> None:
         LTracePluginWidget.setup(self)
@@ -167,12 +168,18 @@ class PolynomialShadingCorrectionBigImageWidget(LTracePluginWidget):
         self.__fittingPointsPercentage.setObjectName("Fitting Points Percentage")
         self.__fittingPointsPercentage.setToolTip("Percentage of points used in the function fitting process.")
 
+        self.__postProcessingCheckBox = qt.QCheckBox("Post processing")
+        self.__postProcessingCheckBox.setObjectName("Post Processing")
+        self.__postProcessingCheckBox.setChecked(False)
+        self.__postProcessingCheckBox.setToolTip("Apply the final post-processing step after the shading correction.")
+
         self.parametersLayout = qt.QFormLayout(parametersSection)
         self.parametersLayout.addRow("Function:", self.__functionTypeComboBox)
         self.parametersLayout.addRow("Center:", centerLayout)
         self.parametersLayout.addRow("Order:", self.__polynomialOrderComboBox)
         self.parametersLayout.addRow("Group size:", self.__sliceGroupSize)
         self.parametersLayout.addRow("Fitting points (%):", self.__fittingPointsPercentage)
+        self.parametersLayout.addRow("Post processing:", self.__postProcessingCheckBox)
 
         # Output section
         outputSection = ctk.ctkCollapsibleButton()
@@ -323,6 +330,9 @@ class PolynomialShadingCorrectionBigImageWidget(LTracePluginWidget):
         if params.centerY is not None:
             self.__centerYSpinBox.setValue(params.centerY)
 
+        if params.postProcessing is not None:
+            self.__postProcessingCheckBox.setChecked(params.postProcessing)
+
         if params.exportPath:
             self.__exportPathEdit.setCurrentPath(params.exportPath)
 
@@ -349,6 +359,7 @@ class PolynomialShadingCorrectionBigImageWidget(LTracePluginWidget):
             "useCustomCenter": self.__useCustomCenterCheckBox.isChecked(),
             "centerX": self.__centerXSpinBox.value,
             "centerY": self.__centerYSpinBox.value,
+            "postProcessing": self.__postProcessingCheckBox.isChecked(),
             "exportPath": self.__exportPathEdit.currentPath,
             "geoslicerVersion": getApplicationVersion(),
             "nullValue": 0,

@@ -12,9 +12,6 @@ def parse_command_stdout(sim_info_output_list: List[str]):
         if "work_dir = " in item:
             sim_info["work_dir"].append(str(parse(item)[2]))
         if "job_id = " in item:
-            print(item)
-            print(parse(item))
-            print("done ----------------")
             sim_info["job_id"].append(int(parse(item)[2]))
         if "start_time = " in item:
             sim_info["start_time"].append(" ".join(parse(item)[2:]))

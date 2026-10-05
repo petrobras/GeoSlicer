@@ -1,3 +1,27 @@
+# Diagnostics detail levels, in the order the combo box offers them.
+DIAGNOSTICS_OFF = "off"
+DIAGNOSTICS_BASIC = "basic"
+DIAGNOSTICS_COMPLETE = "complete"
+
+
+def diagnostics_level(params: dict) -> str:
+    """Detail level of a params dict, defaulting to off when the key is absent."""
+    return params.get("diagnostics_level", DIAGNOSTICS_OFF)
+
+
+def without_diagnostics(params: dict) -> dict:
+    """The same params with diagnostics turned off.
+
+    Only the first simulation of a sensitivity run keeps its diagnostics directory, so the
+    other subprocesses would otherwise write GBs that are immediately deleted.
+    """
+    if diagnostics_level(params) == DIAGNOSTICS_OFF:
+        return params
+    params = params.copy()
+    params["diagnostics_level"] = DIAGNOSTICS_OFF
+    return params
+
+
 PARAMETERS = {
     "enforced_swi_1": {
         "display_name": "Min SWi",
@@ -189,6 +213,17 @@ PARAMETERS = {
         "true_value": "T",
         "false_value": "F",
         "default_value": False,
+    },
+    "diagnostics_level": {
+        "display_name": "Diagnostics",
+        "layout": "options",
+        "dtype": "combobox",
+        "display_names": {
+            "Off": "off",
+            "Basic": "basic",
+            "Complete": "complete",
+        },
+        "default_value": 0,
     },
     "create_ca_distributions": {
         "display_name": "Create CA distribution nodes",

@@ -11,6 +11,7 @@ This module adapts the polynomial shading correction algorithm for images that e
 1.  **Block Processing (Out-of-Core):** The image is divided and processed in blocks (chunks), ensuring that only a portion of the volume is loaded into memory at any given time.
 2.  **Point Sampling:** To fit the polynomial in each slice, instead of using all pixels from the shading mask, the module randomly selects a defined number of points (`Number of fitting points`). This drastically speeds up the fitting calculation without significantly compromising the accuracy of the shading correction.
 3.  **Slice Grouping:** To further optimize the process, the polynomial fit is calculated on the central slice of a group of slices (`Slice group size`). The resulting correction function is then applied to all slices within that group.
+4.  **Post Processing:** An optional post-processing step is applied after the shading correction to smooth the resulting correction along the slice axis and reduce residual slice-to-slice variations. This step can be disabled when the raw polynomial correction is preferred.
 
 For a detailed description of the base shading correction algorithm, please refer to the [Polynomial Shading Correction](/Volumes/Filter/Filter.md#polynomial-shading-correction) filter manual.
 
@@ -21,6 +22,8 @@ For a detailed description of the base shading correction algorithm, please refe
 -   **Input shading mask:** The mask indicating background areas (or areas with uniform intensity) to be used for point sampling and polynomial fitting.
 -   **Slice group size:** Defines the number of slices in a group. The correction is calculated on the central slice and applied to the entire group. A larger value speeds up the process but may not capture rapid shading variations along the slice axis.
 -   **Number of fitting points:** The number of points to be randomly sampled from the `Input shading mask` to perform the polynomial fitting.
+-   **Max cores:** Sets the maximum number of CPU cores (threads) dedicated to parallel execution. By default, it is set to the total CPU count minus 2, optimizing computation speed while ensuring system responsiveness during processing.
+-   **Post processing:** Enables the final post-processing step after the polynomial shading correction. It smooths the correction along the slice axis to reduce residual slice-to-slice variations. This option is enabled by default.
 -   **Output Path:** The path to the output file in NetCDF (`.nc`) format where the corrected image will be saved.
 
 ### Use Cases

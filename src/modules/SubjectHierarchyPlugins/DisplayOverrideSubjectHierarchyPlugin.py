@@ -3,6 +3,8 @@ import slicer
 
 from pathlib import Path
 from ltrace.slicer.lazy import lazy as lazy_module
+from ltrace.slicer.virtual import attributes as virtual_attributes
+from ltrace.slicer.virtual import virtual_node
 
 
 class DisplayOverrideSubjectHierarchyPlugin:
@@ -41,6 +43,12 @@ class DisplayOverrideSubjectHierarchyPlugin:
         node = shNode.GetItemDataNode(itemID)
 
         if node is not None:
+            # Deferred data first: what a virtual node holds is not what it represents, and the tooltip is
+            # where that difference has to be visible.
+            deferred = _deferredTooltip(itemName, node)
+            if deferred:
+                return deferred
+
             if node.IsA("vtkMRMLScalarVolumeNode"):  # covers LabelMapVolumeNode too
                 img = node.GetImageData()
                 if img is not None:
@@ -57,6 +65,14 @@ class DisplayOverrideSubjectHierarchyPlugin:
         if shNode is None:
             return qt.QIcon()
         node = shNode.GetItemDataNode(itemID)
+
+        # Deferred nodes are ordinary volumes/tables with an attribute, so they must be checked before the
+        # type branches below, which would otherwise claim them.
+        if virtual_attributes.is_true(node, virtual_attributes.FOURD_PROXY):
+            return self._icon("FourD")
+
+        if virtual_attributes.is_true(node, virtual_attributes.VIRTUAL_NODE):
+            return self._icon("Virtual")
 
         # Lazy nodes are TextNodes with a specific attribute; check before the TextNode branch below.
         if lazy_module.is_lazy_node(node):
@@ -102,3 +118,34 @@ class DisplayOverrideSubjectHierarchyPlugin:
 
     def displayedNameOverride(self, itemID, defaultName):
         return ""
+
+
+def _deferredTooltip(itemName, node):
+    """Tooltip for virtual nodes and 4D proxies, or an empty string for anything else."""
+    if virtual_attributes.is_true(node, virtual_attributes.FOURD_PROXY):
+        frames = node.GetAttribute(virtual_attributes.FOURD_FRAME_COUNT) or "?"
+        label = node.GetAttribute("FourDFrameLabel") or ""
+        shape = node.GetAttribute(virtual_attributes.FULL_SHAPE) or ""
+        lines = [f"{itemName}", f"4D sequence: {frames} frames"]
+        if label:
+            lines.append(f"showing frame {label}")
+        if shape:
+            lines.append(f"frame size (ZYX): {shape}")
+        return "\n".join(lines)
+
+    if virtual_attributes.is_true(node, virtual_attributes.VIRTUAL_NODE):
+        spec = virtual_node.spec(node)
+        lines = [itemName]
+        if spec is not None:
+            if spec.is_volume and spec.full_shape:
+                shape = "x".join(str(size) for size in reversed(spec.full_shape))
+                lines.append(f"sample of {shape} (1:{spec.factor} of each axis)")
+            elif not spec.is_volume:
+                total = spec.full_rows if spec.full_rows is not None else "?"
+                lines.append(f"first {spec.rows} of {total} rows")
+            lines.append(spec.uri)
+        if virtual_node.is_stale(node):
+            lines.append("source unavailable")
+        return "\n".join(lines)
+
+    return ""

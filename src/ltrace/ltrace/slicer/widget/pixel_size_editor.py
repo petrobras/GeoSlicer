@@ -78,11 +78,17 @@ class PixelSizeEditor(qt.QWidget):
             self.__on_size_field_edited(self.FIELD_SCALE_SIZE_PX)
             if self.markup:
                 self.markup.finish_callback = None
-                self.marku.finish_criterion = None
+                self.markup.finish_criterion = None
+                self.markup.stop_picking()
                 self.markup.deleteLater()
+                self.markup = None
 
         def finish_criterion(caller_markup, point_index=None):
             return caller_markup.get_number_of_selected_points() >= 2
+
+        if self.markup:
+            self.markup.cancel_picking()
+            self.markup.deleteLater()
 
         self.markup = MarkupLine(finish_callback=finish_callback, finish_criterion=finish_criterion, parent=self)
         self.markup.start_picking()

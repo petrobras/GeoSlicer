@@ -8,5 +8,24 @@
     "opening_command": "source /etc/bashrc && source /nethome/drp/microtom/init.sh",
     "remote_mount": "/nethome",
     "cpu_partition": "cpu",
-    "gpu_partition": "default"
+    "gpu_partition": "default",
+    "storage": {
+        "cluster_root": "/nethome",
+        "local_root": {
+            "windows": "\\\\dfs.petrobras.biz\\cientifico\\cenpes\\res",
+            "linux": "/nethome",
+            "darwin": "/nethome"
+        },
+        "dirs": {
+            "root": "drp",
+            "geoslicer_jobs": "drp/servicos/LTRACE/GEOSLICER/jobs",
+            "microtom_jobs": "drp/microtom/geoslicer/remote/jobs",
+            "monailabel": "drp/smart-segmenter/laminas",
+            "krel_dataset": "drp/servicos/LTRACE/ROMULO/Giovanni/krel/filtrados"
+        }
+    },
+    "remote_paths": {
+        "geoslicer_containers": "/atena/users/dibi/containers/geoslicer",
+        "workflow_files": "/atena/tcr/ia-drp/banco_de_dados"
+    }
 }

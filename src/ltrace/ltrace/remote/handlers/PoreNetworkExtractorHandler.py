@@ -8,8 +8,10 @@ from typing import Any, List
 
 import numpy as np
 import slicer
+import time
 
 from ltrace.pore_networks.functions_extract import ExtractionNodesCreator
+from ltrace.remote import errors
 from ltrace.remote import utils as slurm_utils
 from ltrace.remote.constants import (
     JOB_EVENT_CANCEL,
@@ -25,31 +27,13 @@ from ltrace.remote.constants import (
     JOB_STATE_RUNNING,
 )
 from ltrace.remote.jobs import JobManager
-from ltrace.remote.utils import SlurmJobStatusMixin, argstring, dump_via_slicer_temp
+from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
+from ltrace.remote.utils import argstring, SlurmJobStatusMixin
 
 _1hour = 3600  # seconds
 
 
-def fast_copy(src: Path, dst: Path, buffer_size: int = 64 * 1024 * 1024) -> None:
-    """Copies a file using a large buffer optimized for high network mount throughput."""
-    with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
-        shutil.copyfileobj(fsrc, fdst, length=buffer_size)
-
-
-def export_volume_node(node_id: str, export_dir: Path):
-    """Exports a single MRML volume node to a NRRD file inside export_dir.
-    Returns the Path to the exported file, or None if node is not found.
-    """
-    node = slicer.mrmlScene.GetNodeByID(node_id)
-    if not node:
-        return None
-    file_path = export_dir / f"{node_id}.nrrd"
-    slicer.util.exportNode(node, str(file_path), world=True)
-    return file_path
-
-
 class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
-    JOBS_REMOTE_PATH = PurePosixPath(r"/nethome/drp/servicos/LTRACE/GEOSLICER/jobs")
     JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
 
     def __init__(self, input_node_id, label_node_id, visualization, params, parallel_params) -> None:
@@ -67,15 +51,6 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
 
         self.last_slurm_out_size = 0
 
-        # Pre-export MRML volume nodes to a local temp directory on the Main Thread
-
-        self.temp_export_dir = Path(slicer.util.tempDirectory())
-        self.temp_input_path = export_volume_node(self.input_node_id, self.temp_export_dir)
-
-        self.temp_label_path = None
-        if self.label_node_id:
-            self.temp_label_path = export_volume_node(self.label_node_id, self.temp_export_dir)
-
         self.__action_map = {
             JOB_EVENT_DEPLOY: self.deploy,
             JOB_EVENT_DISCONNECTED: self.disconnected,
@@ -84,10 +59,6 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             JOB_EVENT_CANCEL: self.cancel,
             JOB_EVENT_COLLECT: self.collect,
         }
-
-    def _cleanup_temp_export_dir(self):
-        if self.temp_export_dir and self.temp_export_dir.exists():
-            shutil.rmtree(self.temp_export_dir, ignore_errors=True)
 
     def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
         try:
@@ -99,38 +70,36 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
     def deploy(self, caller: JobManager, uid: str, client: Any = None):
         try:
             job_executor = caller.jobs[uid]
+            storage = job_executor.host.get_storage()
             job_dir_name = JobManager.dirname(job_executor)
-            self.job_remote_path = self.JOBS_REMOTE_PATH / job_dir_name
-            self.job_local_path = job_executor.host.get_mounted_path() / job_dir_name
-            self.temp_path = self.JOBS_REMOTE_PATH / job_dir_name / "temp"
+            self.job_remote_path = storage.remote_dir("geoslicer_jobs") / job_dir_name
+            self.job_local_path = storage.local_dir("geoslicer_jobs") / job_dir_name
+            self.temp_path = storage.remote_dir("geoslicer_jobs") / job_dir_name / "temp"
 
-            client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path}")
-            client.run_command(f"mkdir {self.job_remote_path}/temp")
+            client.run_command(f"mkdir --parents {self.job_remote_path} && chmod -R 777 {self.job_remote_path} && mkdir {self.job_remote_path}/temp")
 
-            dump_via_slicer_temp(self.params, "extractor_params_dict.json", self.job_local_path)
-
+            time.sleep(1.0)
             caller.set_state(uid, JOB_STATE_DEPLOYING, 5, message="Copying volume files to job path...")
 
-            files_to_copy = []
-            if self.temp_input_path and self.temp_input_path.exists():
-                files_to_copy.append((self.temp_input_path, self.job_local_path / f"{self.input_node_id}.nrrd"))
+            with JsonObjectTransfer(self.job_local_path, "extractor_params_dict.json") as transfer:
+                transfer.save(self.params)
 
-            if self.temp_label_path and self.temp_label_path.exists():
-                files_to_copy.append((self.temp_label_path, self.job_local_path / f"{self.label_node_id}.nrrd"))
+            input_node = slicer.mrmlScene.GetNodeByID(self.input_node_id)
+            with VolumeNodeObjectTransfer(self.job_local_path, self.input_node_id) as transfer:
+                transfer.save(input_node)
 
-            try:
-                for src, dst in files_to_copy:
-                    fast_copy(src, dst)
-            finally:
-                self._cleanup_temp_export_dir()
+            if self.label_node_id:
+                label_node = slicer.mrmlScene.GetNodeByID(self.label_node_id)
+                with VolumeNodeObjectTransfer(self.job_local_path, self.label_node_id) as transfer:
+                    transfer.save(label_node)
 
             self.cli_params = {
-                "scalar": str(self.job_remote_path / f"{self.input_node_id}.nrrd"),
+                "scalar": str(self.job_remote_path / f"{self.input_node_id}"),
                 "cwd": str(self.job_remote_path),
                 "divs": self.parallel_params["divs"],
             }
             if self.label_node_id:
-                self.cli_params["label"] = str(self.job_remote_path / f"{self.label_node_id}.nrrd")
+                self.cli_params["label"] = str(self.job_remote_path / f"{self.label_node_id}")
 
             if self.parallel_params["slurm_jobs"] > 1:
                 self.cli_params["slurm"] = ""
@@ -152,18 +121,34 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
                 uid, JOB_STATE_DEPLOYING, 10, message="Configuration done. Starting job deployment.", details=details
             )
             caller.schedule(uid, JOB_EVENT_START)
+        except errors.ChannelError as e:
+            # The host dropped us mid-deploy: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            #
+            # Clean up all the same. The export only survives a failure of the
+            # copy stage below, which has its own finally; reaching here means
+            # one of the mkdirs above lost the connection, and nothing re-enters
+            # deploy afterwards -- disconnected() and resume() both schedule
+            # PROGRESS -- so keeping the files would strand them until exit.
+            self._cleanup_temp_export_dir()
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
-            self._cleanup_temp_export_dir()
             caller.set_state(uid, "FAILED", 100, message=f"Failed to deploy job.")
 
     def start(self, caller: JobManager, uid: str, client: Any = None):
         ts_start = datetime.now().timestamp()
         try:
+            storage = caller.jobs[uid].host.get_storage()
             script = " ".join(["PoreNetworkExtractorCLI.PoreNetworkExtractorCLI", argstring(self.cli_params)])
             host = caller.jobs[uid].host
             remote_version = host.get_remote_version()
-            main_cmd = slurm_utils.get_python_cmd(cli_cmd_list=[script], remote_version=remote_version)
+            main_cmd = slurm_utils.get_python_cmd(
+                cli_cmd_list=[script],
+                remote_version=remote_version,
+                containers_root=storage.remote_path("geoslicer_containers"),
+            )
             full_cmd = slurm_utils.get_job_cmd(caller, uid, main_cmd, self.job_remote_path)
 
             output = client.run_command(full_cmd, verbose=True)
@@ -171,7 +156,11 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             match = self.JOB_ID_PATTERN.search(output["stdout"])
             if not match:
                 caller.set_state(uid, JOB_STATE_FAILED, 100, message=f"Failed to match job id.")
-                caller.persist(uid)
+                # Not persisted: no slurm job was created, so there is nothing
+                # to follow across a restart. Writing it would bring the entry
+                # back as a terminal FAILED with no job ids, which is how these
+                # rows became unmanageable. The other handlers already return
+                # here without persisting.
                 return
             self.slurm_job_ids.append(match.group(1))
 
@@ -189,6 +178,11 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             )
             caller.persist(uid)
             caller.schedule(uid, JOB_EVENT_PROGRESS)
+        except errors.ChannelError as e:
+            # The host dropped us mid-submission: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
         except Exception:
             traceback.print_exc()
             caller.set_state(
@@ -265,8 +259,6 @@ class PoreNetworkExtractorHandler(SlurmJobStatusMixin):
             traceback.print_exc()
 
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):
-        self._cleanup_temp_export_dir()
-
         if self.slurm_job_ids:
             job_list = ",".join(self.slurm_job_ids)
             try:

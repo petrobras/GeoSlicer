@@ -7,10 +7,10 @@ import time
 
 import numpy as np
 
+from ltrace.pore_networks.pnflow_parameter_defs import without_diagnostics
 from ltrace.slicer.cli_utils import progressUpdate
 from ..pnflow.pnflow_subprocess import PnflowSubprocess
 from ..pore_flow.pore_flow_subprocess import PoreFlowSubprocess
-
 
 PNFLOW = 0
 PORE_FLOW = 1
@@ -286,6 +286,9 @@ class SimulationSubprocessManager:
             time.sleep(LOOP_REFRESH_RATE_S)
 
     def __run_subprocess(self, params, snapshot_file):
+        if self.subprocess_id_count != 0:
+            params = without_diagnostics(params)
+
         directory_name = self.__generate_directory_name(22)
         directory_path = self.cwd / directory_name
         directory_path.mkdir(parents=True, exist_ok=True)
@@ -313,7 +316,7 @@ class SimulationSubprocessManager:
     def __generate_directory_name(length):
         characters = string.ascii_letters
         directory_name = "".join(random.choices(characters, k=length))
-        return directory_name
+        return f"two_phase_sim_{directory_name}"
 
     def _progress_callback(self, subprocess_id, cycle_number, cycle_progress):
         progress = (cycle_number - 1 + cycle_progress) / 3

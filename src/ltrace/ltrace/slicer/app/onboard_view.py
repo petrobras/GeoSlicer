@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -51,11 +52,28 @@ YOUTUBE_CHANNEL_URL = "https://www.youtube.com/@ltracegeo/featured"
 # QSettings key holding a JSON dict of {absolute path: env display name}.
 PATH_ENV_SETTINGS_KEY = "GeoSlicer/RecentFileEnvironment"
 
+# QSettings key holding a JSON dict of {project root: size record}. Written
+# when a project is saved, so onboarding can show a project's size without
+# walking its folder. See _recentItemSize.
+PROJECT_SIZE_SETTINGS_KEY = "GeoSlicer/ProjectSizes"
+
 # Grace period before an environment preview falls back to Walkthroughs on
 # hover-out. Sliding between adjacent launchers fires leave-then-enter with a
 # gap in between; deferring the revert lets the next enter cancel it so the
 # preview swaps directly instead of flashing Walkthroughs.
 _PREVIEW_REVERT_DELAY_MS = 180
+
+# Narrowest a column stays readable at. Both columns previously demanded 560,
+# which meant the centre block asked for ~1150px: squeeze the viewport below
+# that (by opening Slicer's side panels) and Qt could not honour the request,
+# so the first column's content -- its separator and RECENT rows -- spilled
+# across the second.
+# Driven by the widest thing a column has to hold: a RECENT row is an
+# ellipsized path (60 chars at 11px, ~330px) plus the size label and margins.
+# Narrower than this the rows start colliding, so rather than squeeze both
+# columns the second one is dropped and START gets the whole width.
+_COLUMN_MIN_WIDTH = 440
+_COLUMN_SPACING = 32
 
 
 # ---------------------------------------------------------------------------
@@ -346,22 +364,185 @@ def _formatBytes(numBytes: float) -> str:
     return f"{size:.1f} {units[-1]}"
 
 
-def _pathSize(path: Path) -> Optional[int]:
+# A project folder can sit on a network share, and the recent list is rebuilt
+# every time onboarding is shown. Bounding the scan keeps a stat storm over a
+# slow mount from stalling the whole screen; a scan that runs out of budget
+# reports what it counted as a lower bound rather than a wrong total.
+_SIZE_SCAN_BUDGET_SECONDS = 0.35
+_SIZE_SCAN_DEADLINE_CHECK_EVERY = 64
+
+# Measuring at save time can afford to be patient: the write that just
+# happened moved far more data than this walk will read.
+_SIZE_RECORD_BUDGET_SECONDS = 10.0
+
+# Same bound as the path/environment map, for the same reason.
+_MAX_REMEMBERED_SIZES = 64
+
+# {project root: (signature, size, truncated)}. The signature is the recent
+# entry's (mtime, size), so re-saving a project measures it again.
+_sizeCache: Dict[str, tuple] = {}
+
+
+def _projectRoot(path: Path) -> Path:
+    """The folder that makes up a project, given an entry from the recent list.
+
+    A GeoSlicer project is a directory, not a file: ProjectManager.saveAs()
+    creates one and writes the .mrml together with every node's data into it
+    (it refuses a path that is already a file). The recent list stores the
+    .mrml, so measuring that alone reports the size of the scene description --
+    a few hundred KB -- instead of the project it describes.
+
+    Falls back to the path itself when the parent holds more than one .mrml:
+    that is a folder someone keeps scenes in, not a single project, and its
+    total would belong to no one entry.
+    """
+    if path.suffix.lower() != ".mrml":
+        return path
+
+    parent = path.parent
+    try:
+        scenes = [entry for entry in parent.iterdir() if entry.suffix.lower() == ".mrml"]
+    except OSError:
+        return path
+
+    return parent if len(scenes) <= 1 else path
+
+
+def _pathSize(path: Path, budgetSeconds: Optional[float] = _SIZE_SCAN_BUDGET_SECONDS):
+    """Total bytes under ``path`` as ``(size, truncated)``.
+
+    ``truncated`` is True when the walk ran out of its time budget, in which
+    case ``size`` is a lower bound. ``size`` is None when the path cannot be
+    read at all.
+    """
+    deadline = None if budgetSeconds is None else time.monotonic() + budgetSeconds
+
     try:
         if path.is_dir():
             total = 0
+            seen = 0
             for root, _dirs, files in os.walk(path):
-                for f in files:
+                for name in files:
                     try:
-                        total += os.path.getsize(os.path.join(root, f))
+                        total += os.path.getsize(os.path.join(root, name))
                     except OSError:
                         continue
-            return total
+                    seen += 1
+                    # Checked on a stride rather than per file: the budget is
+                    # there to bound a slow mount, and monotonic() per file
+                    # would itself show up on a fast one.
+                    if deadline is not None and seen % _SIZE_SCAN_DEADLINE_CHECK_EVERY == 0:
+                        if time.monotonic() > deadline:
+                            return total, True
+                if deadline is not None and time.monotonic() > deadline:
+                    return total, True
+            return total, False
         if path.exists():
-            return path.stat().st_size
+            return path.stat().st_size, False
+    except OSError:
+        return None, False
+    return None, False
+
+
+def _entrySignature(path: Path) -> Optional[List[float]]:
+    """A cheap fingerprint of a recent entry, used to spot a re-saved project.
+
+    One stat, rather than a walk. It changes whenever the scene is written
+    again, which is when a project's contents change through GeoSlicer.
+    """
+    try:
+        stat = path.stat()
     except OSError:
         return None
-    return None
+    return [stat.st_mtime, stat.st_size]
+
+
+def _loadProjectSizes() -> Dict[str, dict]:
+    raw = slicer.app.userSettings().value(PROJECT_SIZE_SETTINGS_KEY, "")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _saveProjectSizes(mapping: Dict[str, dict]) -> None:
+    slicer.app.userSettings().setValue(PROJECT_SIZE_SETTINGS_KEY, json.dumps(mapping))
+
+
+def recordProjectSize(scenePath, size: Optional[int] = None) -> None:
+    """Remember how big a project is, so onboarding never has to measure it.
+
+    Called after a successful save, where the cost is invisible next to the
+    write that just happened -- as opposed to onboarding, which would pay it
+    while the user is waiting to see the screen.
+
+    ``size`` may be supplied by a caller that already knows it; otherwise the
+    project is measured here. A measurement that could not complete is not
+    recorded, so a partial total never gets persisted as the truth.
+    """
+    try:
+        path = Path(scenePath)
+        root = _projectRoot(path)
+
+        if size is None:
+            size, truncated = _pathSize(root, budgetSeconds=_SIZE_RECORD_BUDGET_SECONDS)
+            if truncated or size is None:
+                return
+
+        mapping = _loadProjectSizes()
+        key = str(root)
+        mapping.pop(key, None)
+        mapping[key] = {"size": int(size), "signature": _entrySignature(path)}
+
+        if len(mapping) > _MAX_REMEMBERED_SIZES:
+            for stale in list(mapping.keys())[:-_MAX_REMEMBERED_SIZES]:
+                mapping.pop(stale, None)
+
+        _saveProjectSizes(mapping)
+        _sizeCache[key] = (_entrySignature(path), int(size), False)
+    except Exception as error:  # pragma: no cover - never block a save
+        logging.debug(f"Could not record the size of {scenePath}: {error}")
+
+
+def _recentItemSize(path: Path):
+    """Size to show for a recent entry, as ``(size, truncated)``.
+
+    Three sources, cheapest first:
+
+      1. the in-memory cache, for a list redrawn during this session;
+      2. what was recorded when the project was last saved -- costs one stat
+         to confirm the scene has not changed since;
+      3. a bounded walk, for a project this installation has never saved
+         (copied from a colleague, restored from a backup, or saved before
+         sizes were recorded). Its result is remembered so it happens once.
+    """
+    root = _projectRoot(path)
+    key = str(root)
+    signature = _entrySignature(path)
+
+    cached = _sizeCache.get(key)
+    if cached is not None and cached[0] == signature:
+        return cached[1], cached[2]
+
+    remembered = _loadProjectSizes().get(key)
+    if remembered is not None and signature is not None and remembered.get("signature") == signature:
+        size = remembered.get("size")
+        if isinstance(size, int):
+            _sizeCache[key] = (signature, size, False)
+            return size, False
+
+    size, truncated = _pathSize(root)
+    _sizeCache[key] = (signature, size, truncated)
+
+    # Remember a complete measurement so the next launch skips the walk, even
+    # for a project that was never saved from this installation.
+    if size is not None and not truncated:
+        recordProjectSize(path, size=size)
+
+    return size, truncated
 
 
 def _ellipsizeMiddle(text: str, maxLen: int = 64) -> str:
@@ -564,8 +745,24 @@ class _RecentItemWidget(qt.QFrame):
 
         path = Path(action.text)
         envLabel = getEnvironmentForPath(action.text) or _environmentForFile(path)
-        size = _pathSize(path)
-        sizeText = _formatBytes(size) if size is not None else "—"
+
+        projectRoot = _projectRoot(path)
+        size, truncated = _recentItemSize(path)
+        if size is None:
+            sizeText = "—"
+            sizeTip = "Size unavailable."
+        elif truncated:
+            # The scan was cut short, so say so rather than showing a total
+            # that is quietly too small.
+            sizeText = f"≥ {_formatBytes(size)}"
+            sizeTip = f"At least {_formatBytes(size)} in {projectRoot.as_posix()} (still counting)."
+        else:
+            sizeText = _formatBytes(size)
+            sizeTip = (
+                f"Total size of {projectRoot.as_posix()}"
+                if projectRoot != path
+                else f"Size of {path.as_posix()}"
+            )
 
         self.setObjectName("RecentItem")
         self.setCursor(qt.Qt.PointingHandCursor)
@@ -603,6 +800,7 @@ class _RecentItemWidget(qt.QFrame):
         pathLabel.setStyleSheet("color: #999; font-size: 11px;")
 
         sizeLabel = qt.QLabel(sizeText)
+        sizeLabel.setToolTip(sizeTip)
         sizeLabel.setStyleSheet("color: #999; font-size: 11px;")
         sizeLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
 
@@ -640,6 +838,10 @@ class OnboardWidget(qt.QWidget):
         self.__pickerMode = False
         self.__pendingNetcdfPath: Optional[Path] = None
         self.__envButtons: Dict[str, _EnvironmentButton] = {}
+        # None until the first resize: whether the view is too narrow for the
+        # second column. Kept in Python so the check is one comparison, not a
+        # round trip through Qt.
+        self.__compact: Optional[bool] = None
 
         # Single-shot debounce so quickly moving between environment launchers
         # swaps their previews directly instead of flashing Walkthroughs.
@@ -660,6 +862,10 @@ class OnboardWidget(qt.QWidget):
         return self.__toolbar
 
     def refresh(self):
+        # Also applied here, not just on resize: re-showing the overlay at a
+        # geometry it already had fires no resize event, and the decision has
+        # to be right from the first paint.
+        self.__applyResponsiveLayout()
         self.__refreshRecentList()
         if not self.__pickerMode:
             self.__showWalkthroughs()
@@ -702,6 +908,7 @@ class OnboardWidget(qt.QWidget):
         rootLayout.setContentsMargins(28, 12, 28, 14)
         rootLayout.setSpacing(12)
 
+        self.__rootLayout = rootLayout
         rootLayout.addWidget(self.__buildHeader())
 
         # Body: a horizontally-centered, max-width block holding the two
@@ -720,12 +927,12 @@ class OnboardWidget(qt.QWidget):
         centerFrame.setMinimumHeight(680)
         centerLayout = qt.QHBoxLayout(centerFrame)
         centerLayout.setContentsMargins(0, 0, 0, 0)
-        centerLayout.setSpacing(32)
+        centerLayout.setSpacing(_COLUMN_SPACING)
 
         self.__startColumn = self.__buildStartColumn()
         self.__secondColumn = self.__buildSecondColumn()
         for col in (self.__startColumn, self.__secondColumn):
-            col.setMinimumWidth(560)
+            col.setMinimumWidth(_COLUMN_MIN_WIDTH)
 
         centerLayout.addWidget(self.__startColumn, 1)
         centerLayout.addWidget(self.__secondColumn, 1)
@@ -741,6 +948,32 @@ class OnboardWidget(qt.QWidget):
         footer.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)
         footer.setStyleSheet("color: #888; font-size: 11px;")
         rootLayout.addWidget(footer)
+
+    # -- responsive layout -------------------------------------------------
+
+    def resizeEvent(self, event):
+        # Note: PythonQt does not expose super() for Qt event handlers; QWidget's
+        # default does nothing we need here.
+        self.__applyResponsiveLayout()
+
+    def __applyResponsiveLayout(self) -> None:
+        """Drop the second column when the two no longer fit side by side.
+
+        Opening Slicer's side panels shrinks the central widget. Past a point
+        the columns cannot both be drawn at a readable width, and forcing them
+        to try is what made START spill over WALKTHROUGHS. Hiding the second
+        one gives START the whole width; a hidden widget is skipped by the
+        layout, so nothing else has to change.
+        """
+        margins = self.__rootLayout.contentsMargins()
+        available = self.width - margins.left() - margins.right()
+        compact = available < (2 * _COLUMN_MIN_WIDTH + _COLUMN_SPACING)
+
+        if compact == self.__compact:
+            return
+        self.__compact = compact
+
+        self.__secondColumn.setVisible(not compact)
 
     def __buildHeader(self) -> qt.QWidget:
         header = qt.QFrame()
@@ -781,7 +1014,7 @@ class OnboardWidget(qt.QWidget):
         closeBtn.setIcon(_svgIcon("Close.svg"))
         closeBtn.setIconSize(qt.QSize(18, 18))
         closeBtn.setCursor(qt.Qt.PointingHandCursor)
-        closeBtn.setToolTip("Close onboarding (Esc)")
+        closeBtn.setToolTip("Close")
         closeBtn.setStyleSheet(headerButtonStyle)
         closeBtn.clicked.connect(self.closeRequest)
         layout.addWidget(closeBtn)
@@ -915,8 +1148,6 @@ class OnboardWidget(qt.QWidget):
         youtubeBtn.objectName = "Open Youtube Button"
         youtubeBtn.clicked.connect(lambda: qt.QDesktopServices.openUrl(qt.QUrl(YOUTUBE_CHANNEL_URL)))
         layout.addWidget(youtubeBtn)
-
-        layout.addWidget(LineSeparator())
 
         # ---- What's New ----
         whatsNewLabel = qt.QLabel("What's New")
@@ -1082,7 +1313,10 @@ class OnboardWidget(qt.QWidget):
         events = slicer.modules.AppContextInstance.projectEventsLogic
         if not events.loadScene(path):
             return
-        self.__refreshRecentList()
+
+        # loadScene closes this overlay -- opening a project is the one thing
+        # onboarding exists to get out of the way of. Either branch below
+        # settles what happens next, and the picker branch re-shows it.
 
         from ltrace.slicer.app import tryDetectProjectDataType
 
@@ -1091,6 +1325,7 @@ class OnboardWidget(qt.QWidget):
             recordEnvironmentForPath(str(path), category)
             self.__loadEnvironmentByName(category)
             return
+
         OnboardLayout.showOnlyDataTypes(self.__toolbar)
 
     def __openNetcdfProject(self, path: Path) -> None:

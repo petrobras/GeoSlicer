@@ -65,7 +65,7 @@ class ErrorToReference:
         return error_ratio_array
 
     def __getErrorFromRow(self, column_name: str, row: int) -> np.ndarray:
-        ref_simulation_result = float(self.ref_simulation_result_df[column_name][row])
+        ref_simulation_result = float(self.ref_simulation_result_df[column_name].iloc[row])
         filtered_simulations_results = np.array(list(self.filtered_simulations_df[column_name]))
         if False:  # Error method
             return self.__getSimulationError(ref_simulation_result, filtered_simulations_results)

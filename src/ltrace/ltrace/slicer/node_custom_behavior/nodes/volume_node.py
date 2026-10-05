@@ -62,8 +62,8 @@ class VolumeNodeCustomBehavior(NodeCustomBehaviorBase):
 
     REQUIREMENTS = CustomBehaviorRequirements(nodeTypes=[slicer.vtkMRMLVolumeNode], attributes={})
 
-    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent) -> None:
-        super().__init__(node=node, event=event)
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
+        super().__init__(node=node, event=event, eventArgs=eventArgs)
 
     def _onNodeAdded(self, node: slicer.vtkMRMLNode) -> None:
         node.AddObserver("ModifiedEvent", self.__onNodeModified)

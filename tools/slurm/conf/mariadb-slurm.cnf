@@ -1,0 +1,9 @@
+# slurmdbd checks these on connect and logs
+#   "Database settings not recommended values: innodb_buffer_pool_size
+#    innodb_lock_wait_timeout"
+# Harmless, but it is noise in a log people will be reading to debug real
+# problems. These are Slurm's own recommended values.
+[mysqld]
+innodb_buffer_pool_size = 4096M
+innodb_log_file_size = 64M
+innodb_lock_wait_timeout = 900

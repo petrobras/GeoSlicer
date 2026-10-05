@@ -66,6 +66,12 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             self.setupSegmentation,
             "MicrotomRemote",
             (
+                "Voxel Simulation",
+                [
+                    "PoreScaleModelling"
+                ]
+            ),
+            (
                 "Microporosity",
                 [
                     "SegmentationModelling",

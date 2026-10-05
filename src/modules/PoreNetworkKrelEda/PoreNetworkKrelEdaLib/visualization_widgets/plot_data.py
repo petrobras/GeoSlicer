@@ -1,6 +1,7 @@
 import re
 
 import numpy as np
+import pandas as pd
 import slicer
 
 from ltrace.pore_networks.krel_result import ERROR_PREFIX, INPUT_PREFIX, RESULT_PREFIX
@@ -60,6 +61,8 @@ class PlotData:
                     / (np.log10(input_enforced_pc_1) + np.log10(-input_enforced_pc_2))
                 ) * 2 - 1
             elif "input" not in column:
+                continue
+            elif not pd.api.types.is_numeric_dtype(self.parameters_df[column]):
                 continue
             elif self.parameters_df[column].nunique() > 1:
                 self.parameters_list[i] = column
