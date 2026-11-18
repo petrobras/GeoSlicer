@@ -2,7 +2,12 @@ from dask_image.imread import imread
 from PIL import Image
 import xarray as xr
 import numpy as np
-import os, sys, re, tempfile, tarfile, shutil
+import os
+import sys
+import re
+import tempfile
+import tarfile
+import shutil
 from .utils import build_filename
 
 
@@ -441,18 +446,14 @@ def write_vtk_file(ds, save_vtk_to, data_array="field"):
             Name of the data array to be converted in a raw file.
             The default is microtom.
     """
-    if type(ds) == xr.Dataset:
+    if isinstance(ds, xr.Dataset):
         if data_array == "microtom":
-            image_type = "CT"
             data_type = "int"
         elif data_array == "bin":
-            image_type = "BIN"
             data_type = "unsigned_char"
         elif data_array == "mango":
-            image_type = "MANGO"
             data_type = "unsigned_char"
         elif data_array == "field":
-            image_type = "FIELD"
             data_type = "float"
 
         npoints = np.int64(ds.attrs["dimx"]) * np.int64(ds.attrs["dimy"]) * np.int64(ds.attrs["dimz"])
@@ -473,7 +474,7 @@ def write_vtk_file(ds, save_vtk_to, data_array="field"):
         with open(save_vtk_to, "ba+") as file:
             ds[data_array].data.tofile(file)
 
-    if type(ds) == np.ndarray:
+    if isinstance(ds, np.ndarray):
         npoints = np.int64(ds.shape[0]) * np.int64(ds.shape[1]) * np.int64(ds.shape[2])
         if (ds.dtype) == np.float32:
             data_type = "float"

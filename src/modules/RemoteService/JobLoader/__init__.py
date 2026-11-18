@@ -1,7 +1,7 @@
 import logging
 from importlib import import_module
 
-from ltrace.remote.jobs import JobManager
+from commons.remote.jobs import JobManager
 
 # (job_type, module, attribute) for every loader the service can mount. Kept as
 # data so that importing one is independent of importing the others.
@@ -13,7 +13,6 @@ from ltrace.remote.jobs import JobManager
 # is repaired. "pucnet" is likewise unregistered: pucnet.py is entirely
 # commented out.
 JOB_LOADERS = (
-
     ("lbpm", ".lbpm", "lbpm_job_loader"),
     ("microtom", ".microtom", "microtom_job_loader"),
     ("monai", ".monai", "monai_job_loader"),

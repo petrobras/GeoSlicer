@@ -6,10 +6,10 @@ import qt
 from pathlib import Path
 
 from ImageToolsLib import *
-from ltrace.slicer import ui, helpers
-from ltrace.slicer.node_observer import NodeObserver
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
+from commons.slicer import ui, helpers
+from commons.slicer.node_observer import NodeObserver
+from commons.slicer_utils import *
+from commons.slicer_utils import getResourcePath
 from typing import Union
 
 try:

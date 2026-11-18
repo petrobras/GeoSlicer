@@ -1,14 +1,14 @@
 """Form for the parameters of an LBPM input database that are usually tuned.
 
 The form is declarative (see :data:`FIELDS`): every field reads from and writes to one
-:class:`~ltrace.lbpm.config.WaterflowConfig`, and that object preserves the file verbatim apart from the
+:class:`~commons.lbpm.config.WaterflowConfig`, and that object preserves the file verbatim apart from the
 values that were edited. Anything the form does not cover is edited in the file itself, with a text
 editor, and read back from it — the file is the only other view, so there is nothing else to keep in step.
 """
 
 import qt
 
-from ltrace.lbpm.config import WaterflowConfig
+from commons.lbpm.config import WaterflowConfig
 
 BOUNDARY_CONDITIONS = (
     (0, "0 — Periodic"),

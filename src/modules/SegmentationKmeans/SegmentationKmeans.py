@@ -6,19 +6,16 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import (
-    createLabelmapInput,
+from commons.slicer import ui
+from commons.slicer.helpers import (
     createTemporaryNode,
     makeTemporaryNodePermanent,
     removeTemporaryNodes,
     tryGetNode,
 )
-from ltrace.slicer.node_attributes import Tag
-from ltrace.slicer.widget.global_progress_bar import GlobalProgressBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
-
-import random
+from commons.slicer.node_attributes import Tag
+from commons.slicer.widget.global_progress_bar import GlobalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 
 
 class SegmentationKmeans(LTracePlugin):
@@ -201,7 +198,7 @@ class SegmentationKmeansLogic(LTracePluginLogic):
             segmentation = seg.GetSegmentation()
             for i in range(0, info["classes"]):
                 segment = segmentation.GetNthSegment(i)
-                segment.SetName(f"Segment_{i+1}")
+                segment.SetName(f"Segment_{i + 1}")
 
             slicer.mrmlScene.RemoveNode(output_volume_node)
 

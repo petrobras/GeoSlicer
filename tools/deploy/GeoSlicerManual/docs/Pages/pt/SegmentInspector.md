@@ -115,6 +115,14 @@ A Análise de Transições se concentra em examinar as mudanças entre regiões 
 
 Digite um nome para ser usado como prefixo para o objeto de resultados (mapa de rótulos onde cada partição (elemento de poro) está em uma cor diferente, uma tabela com parâmetros globais e uma tabela com as diferentes métricas para cada partição).
 
+Marque _Include segment centroids in the report_ para adicionar as colunas __centroid_z__, __centroid_y__ e __centroid_x__ à tabela de métricas.
+
+Para imagens 3D, marque _Include principal axis orientations in the report_ e _Include ellipsoid axis lengths in the report_ para adicionar as colunas dos eixos principais descritas abaixo.
+
+Clicar em uma linha da tabela de métricas, na visualização de tabela ou no painel Explorer, centraliza e aproxima as visualizações de fatias e a visualização 3D nessa partição.
+
+Para o caminho inverso, ative _Pick segment_ na barra de modos do mouse e clique em uma partição em uma visualização de fatias: uma dica mostra suas principais métricas da tabela. Ctrl+clique mostra a tabela, no painel Explorer (ou na visualização de tabela, para tabelas com mais de 3000 linhas), com a linha da partição selecionada. Escolher outro modo do mouse o desativa.
+
 #### Propriedades / Métricas:
 
 1. __Label__: identificação do rótulo da partição.
@@ -129,7 +137,7 @@ Digite um nome para ser usado como prefixo para o objeto de resultados (mapa de 
 10. __mean_feret__: Média dos eixos mínimo e máximo.
 11. __aspect_ratio__: 	min_feret / max_feret.
 12. __elongation__:	max_feret / min_feret.
-13. __eccentricity__:	quadrado(1 - min_feret / max_feret), relacionado à elipse equivalente (0 ≤ e < 1), igual a 0 para círculos.
+13. __eccentricity__:	√(1 - (min_feret / max_feret)²), relacionado à elipse equivalente (0 ≤ e < 1), igual a 0 para círculos.
 14. __ellipse_perimeter__: Perímetro da elipse equivalente (elipse equivalente com eixos dados pelos eixos mínimo e máximo de Feret). Unidade: mm.
 15. __ellipse_area__: Área da elipse equivalente (elipse equivalente com eixos dados pelos eixos mínimo e máximo de Feret). Unidade: mm².
 16. __ellipse_perimeter_over_ellipse_area__: Perímetro da elipse equivalente dividido por sua área.
@@ -138,6 +146,18 @@ Digite um nome para ser usado como prefixo para o objeto de resultados (mapa de 
 19. __gamma__: Arredondamento de uma área calculado como 'gamma = perímetro / (2 * quadrado(PI * área))'.
 20. __pore_size_class__:  Símbolo/código/id da classe do poro.
 21. __pore_size_class_label__: Rótulo da classe do poro.
+22. __centroid_z__, __centroid_y__, __centroid_x__ (opcional): Centroide da partição, a posição média dos seus pixels/vóxels em coordenadas de mundo (z = S, y = A, x = R). Unidade: mm.
+
+##### Propriedades de forma 3D
+
+Para imagens 3D, as propriedades de forma vêm da análise de componentes principais (PCA) dos vóxels da partição. Os desvios padrão ao longo dos seus eixos maior, intermediário e menor são σ1 ≥ σ2 ≥ σ3, e o elipsoide equivalente tem semieixos √5·σ (o elipsoide com os mesmos momentos de segunda ordem).
+
+* __aspect_ratio__: σ3 / σ1.
+* __elongation__: 1 - σ2 / σ1 (Kong & Fonseca). 0 quando os dois maiores eixos são iguais, tendendo a 1 para partições alongadas.
+* __flatness__: 1 - σ3 / σ2 (Kong & Fonseca). 0 quando os dois menores eixos são iguais, tendendo a 1 para partições achatadas.
+* __ellipsoid_area__, __ellipsoid_volume__: Área de superfície e volume do elipsoide equivalente. Unidades: mm², mm³.
+* __major_axis_z__, __major_axis_y__, __major_axis_x__, e o mesmo para __intermediate_axis__ e __minor_axis__ (opcional): Direção de cada eixo principal, como vetor unitário em coordenadas de mundo (z = S, y = A, x = R). Um eixo não tem sentido próprio, então cada vetor é o que aponta para +S (z ≥ 0); eixos horizontais apontam para +A, e eixos ao longo de x para +R. Quando dois eixos têm quase o mesmo comprimento, suas direções são mal definidas.
+* __major_axis_length__, __intermediate_axis_length__, __minor_axis_length__ (opcional): Comprimento total de cada eixo do elipsoide equivalente, 2·√5·σ. Unidade: mm.
 
 ##### Definição das classes de poros:
 

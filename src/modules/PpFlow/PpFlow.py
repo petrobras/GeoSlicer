@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from ltrace.flow.thin_section import ppFlowWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
+from commons.flow.thin_section import ppFlowWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 
 
 try:

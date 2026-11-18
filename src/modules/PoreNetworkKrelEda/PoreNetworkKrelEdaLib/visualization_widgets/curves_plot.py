@@ -24,15 +24,15 @@ from PoreNetworkKrelEdaLib.input_estimation import (
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import KrelResultCurves
 
-from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.krel_result import KrelParameterParser
+from commons.pore_networks.simulation_parameters_node import (
     dataframe_to_parameter_node,
     parameters_dict_to_dataframe,
     TWO_PHASE_SIMULATION_TYPE,
 )
-from ltrace.slicer import ui, widgets
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer_utils import dataframeFromTable, getResourcePath
+from commons.slicer import ui, widgets
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer_utils import dataframeFromTable, getResourcePath
 
 
 class CurvesPlot(PlotBase):

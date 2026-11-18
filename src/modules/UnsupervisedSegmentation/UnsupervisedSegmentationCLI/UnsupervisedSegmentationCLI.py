@@ -7,19 +7,15 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
-import json
-import logging
+import slicer
+import slicer.util
+import mrml
 import numpy as np
-import os
-import sys
 import time
-import cv2
 
-from pathlib import Path
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
+from commons.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
 
-from ltrace.algorithms.unsupervised_segmentation import segment_image
+from commons.algorithms.unsupervised_segmentation import segment_image
 
 if __name__ == "__main__":
     import argparse

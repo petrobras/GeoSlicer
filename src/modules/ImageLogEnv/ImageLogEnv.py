@@ -1,13 +1,12 @@
 import os
 from pathlib import Path
 
-import qt
 import slicer
 
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer.widget.custom_toolbar_buttons import addAction, addMenu
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, getResourcePath, LTraceEnvironmentMixin
-from ltrace.constants import ImageLogConst
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer.widget.custom_toolbar_buttons import addAction, addMenu
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, getResourcePath, LTraceEnvironmentMixin
+from commons.constants import ImageLogConst
 
 
 class ImageLogEnv(LTracePlugin):
@@ -135,14 +134,14 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
         )
         try:
             slicer.util.getModuleLogic("Eccentricity").process_finished.connect(self._on_external_process_finished)
-        except:
+        except Exception:
             pass
 
     def onImageLogViewClosed(self):
         slicer.util.getModuleLogic("SegmentInspector").inspector_process_finished.disconnect(self.refreshViews)
         try:
             slicer.util.getModuleLogic("Eccentricity").process_finished.disconnect(self.refreshViews)
-        except:
+        except Exception:
             pass
 
     def refreshViews(self):
@@ -150,9 +149,9 @@ class ImageLogEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
 
     def setupSliceViewAnnotations(self):
         sliceAnnotations = slicer.modules.DataProbeInstance.infoWidget.sliceAnnotations
-        self.previousSliceAnnotationsProperties[
-            "sliceViewAnnotationsEnabled"
-        ] = sliceAnnotations.sliceViewAnnotationsEnabled
+        self.previousSliceAnnotationsProperties["sliceViewAnnotationsEnabled"] = (
+            sliceAnnotations.sliceViewAnnotationsEnabled
+        )
         sliceAnnotations.sliceViewAnnotationsEnabled = False
         sliceAnnotations.updateSliceViewFromGUI()
 

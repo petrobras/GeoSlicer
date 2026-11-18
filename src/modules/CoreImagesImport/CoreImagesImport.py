@@ -1,5 +1,3 @@
-import cv2
-import numpy as np
 import pickle
 import qt
 import slicer
@@ -7,14 +5,13 @@ import vtk
 import shutil
 from pathlib import Path
 
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.units import convert_to_global_registry, global_unit_registry as ureg
-from ltrace.cli_progress import RunCLIWithProgressBar
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.units import convert_to_global_registry, global_unit_registry as ureg
+from commons.cli_progress import RunCLIWithProgressBar
 
 
 class CoreImagesImport(LTracePlugin):
-
     SETTING_KEY = "CoreImagesImport"
 
     def __init__(self, parent):
@@ -165,7 +162,6 @@ class CoreImagesImportWidget(LTracePluginWidget):
 
             for file, plugs in result:
                 filename = file.stem
-                core_start = 0 * ureg.centimeter
 
                 for i, ((start, end), holes) in enumerate(plugs):
                     start = convert_to_global_registry(start)
@@ -362,7 +358,6 @@ class CoreImagesImportWidget(LTracePluginWidget):
 
 
 class CoreImagesImportLogic(LTracePluginLogic):
-
     pass
 
 

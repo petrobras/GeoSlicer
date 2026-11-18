@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modules"
+version = "1.0.0"
+description = "Geoslicer modules"
+authors = [
+    { name = "LTrace Team (LTrace Geophysics)" }
+]
+dynamic = ["dependencies"]
+
+[tool.uv.sources]
+commons = { path = "../commons", editable = true }
+
+[tool.setuptools]
+packages = []
+include-package-data = true
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["MicrotomRemote/Libs/microtom/requirements.txt"] } 

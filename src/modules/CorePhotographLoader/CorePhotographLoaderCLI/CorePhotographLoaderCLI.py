@@ -3,7 +3,6 @@
 
 from __future__ import print_function
 
-import vtk
 
 import pandas as pd
 import mrml
@@ -12,8 +11,8 @@ import pytesseract
 import sys
 import traceback
 
-from ltrace.image.core_box.core_image import CoreImage
-from ltrace.slicer.cli_utils import writeDataInto, writeToTable
+from commons.image.core_box.core_image import CoreImage
+from commons.slicer.cli_utils import writeDataInto, writeToTable
 
 
 def update_volume_node(node_id, array):

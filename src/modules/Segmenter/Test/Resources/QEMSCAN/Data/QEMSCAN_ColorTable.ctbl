@@ -1,0 +1,27 @@
+# Color table file /home/anthony/dev/smartseg/slicerltrace/src/modules/Segmenter/Test/Resources/QEMSCAN/Data/QEMSCAN_ColorTable.ctbl
+# 25 values
+0 Background 0 0 0 0
+1 Al-Micas+Ilita+Al-Esmectitas 0 192 0 255
+2 Ankerita 255 192 128 255
+3 Apatita 255 128 128 255
+4 Albita 244 164 96 255
+5 Barita 196 189 151 255
+6 Calcita_(0%_a_1%MgO) 0 255 255 255
+7 Caulinita 192 64 0 255
+8 Clorita+Clorita-Esmectita 0 255 0 255
+9 Dolomita 0 112 192 255
+10 Ilmenita 64 64 64 255
+11 Jarosita 210 180 140 255
+12 K-Feldspato 206 107 10 255
+13 Material_Rico_em_Carbono_(MC) 255 0 255 255
+14 Mg-Micas+Mg-Esmectitas 128 0 0 255
+15 Noseana 192 192 0 255
+16 Outros 255 255 255 255
+17 �xido_de_Alum�nio 192 192 192 255
+18 �xido_de_Ferro_e_Tit�nio 105 105 105 255
+19 �xido_de_Tit�nio 192 255 255 255
+20 Paragonita 240 230 140 255
+21 Pirita 151 71 6 255
+22 Poros 0 0 0 255
+23 Quartzo 255 255 0 255
+24 Zirc�o 255 0 153 255

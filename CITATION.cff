@@ -87,6 +87,6 @@ authors:
   affiliation: "LTrace Geosciences"
   orcid: ""
 title: "GeoSlicer - Integrated Open-Source Digital Rocks Platform"
-version: 2.9.2
-date-released: "2026-10-01"
+version: 2.10.0
+date-released: "2026-11-11"
 url: "https://github.com/petrobras/GeoSlicer"

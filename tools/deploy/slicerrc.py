@@ -1,3 +1,39 @@
+import argparse
+import logging
+import os
+import shutil
+from string import Template
+from functools import partial
+from pathlib import Path
+from types import MethodType
+
+import ctk
+import qt
+import slicer
+import slicer.util
+import traceback
+
+from commons.slicer.about.about_dialog import AboutDialog
+from commons.slicer.ai_models.widget import AIModelsPathDialog, AIModelsPathModel
+from commons.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData, MANUAL_BASE_URL
+from commons.slicer.app.custom_3dview import customize_3d_view as customize3DView
+from commons.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
+from commons.slicer.app.onboard import LOADERS, loadEnvironment
+from commons.slicer.app.onboard_view import showOnboardView
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer.bug_report import BugReportDialog
+from commons.slicer.custom_export_to_file import customizeExportToFile
+from commons.slicer.custom_modules.logic import customModules, recoverFromCrash
+from commons.slicer.custom_modules.menu import showCrashRecoveryMessage
+from commons.slicer.module_info import ModuleInfo
+from commons.slicer.widget.custom_toolbar_buttons import setToolbarNamesVisible, toolbarNamesVisible
+from commons.slicer.widget.global_progress_bar import GlobalProgressBar
+from commons.slicer.widget.memory_usage import MemoryUsageWidget
+from commons.slicer.widget.module_header import ModuleHeader
+from commons.slicer_utils import slicer_is_in_developer_mode, getResourcePath
+from commons.slicer import helpers
+from commons.utils.custom_event_filter import CustomEventFilter
+
 DEBUG = False
 
 if DEBUG:
@@ -11,44 +47,8 @@ if DEBUG:
 
     gc.set_debug(gc.DEBUG_STATS | gc.DEBUG_COLLECTABLE)
 
-import argparse
-import ctypes
-import logging
-import os
-import pickle
-import shutil
-from string import Template
-from functools import partial
-from pathlib import Path
-from types import MethodType
-
-import ctk
-import qt
-import slicer
-import slicer.util
-import traceback
-
-from ltrace.slicer.about.about_dialog import AboutDialog
-from ltrace.slicer.ai_models.widget import AIModelsPathDialog, AIModelsPathModel
-from ltrace.slicer.app import getApplicationVersion, updateWindowTitle, getJsonData, MANUAL_BASE_URL
-from ltrace.slicer.app.custom_3dview import customize_3d_view as customize3DView
-from ltrace.slicer.app.custom_colormaps import customize_color_maps as customizeColorMaps
-from ltrace.slicer.app.onboard import LOADERS, loadEnvironment
-from ltrace.slicer.app.onboard_view import showOnboardView
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.bug_report import BugReportDialog
-from ltrace.slicer.custom_export_to_file import customizeExportToFile
-from ltrace.slicer.module_utils import loadModules, fetchModulesFrom
-from ltrace.slicer.widget.global_progress_bar import GlobalProgressBar
-from ltrace.slicer.widget.memory_usage import MemoryUsageWidget
-from ltrace.slicer.widget.module_header import ModuleHeader
-from ltrace.slicer_utils import slicer_is_in_developer_mode, getResourcePath, externalModulesPath
-from ltrace.slicer import helpers
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.utils.custom_event_filter import CustomEventFilter
 
 # This import is necessary to make the custom keyring available in the keyring module
-from ltrace.utils import custom_keyring
 
 # This line solve some problems with Geoslicer Restart when mmengine in installed
 # because of a dependence on opencv, instead of opencv-headless, currently used in
@@ -60,11 +60,11 @@ os.environ["PYQTGRAPH_QT_LIB"] = "PySide2"
 
 RUN_MODE = os.environ.get("GEOSLICER_RUN_MODE", "development")
 APP_NAME = slicer.app.applicationName
-APP_HOME = Path(slicer.app.slicerHome)
+# slicerHome ends in "bin/..", which would otherwise carry into module paths and break comparisons with resolved paths
+APP_HOME = Path(os.path.normpath(slicer.app.slicerHome))
 RESOURCES_PATH = APP_HOME / "LTrace" / "Resources"
 ICON_DIR = RESOURCES_PATH / "Icons"
 APP_TOOLBARS = {toolbar.name: toolbar for toolbar in slicer.util.mainWindow().findChildren("QToolBar")}
-GEOSLICER_MODULES_DIR = Path(getJsonData()["GEOSLICER_MODULES"])
 
 toBool = slicer.util.toBool
 
@@ -126,21 +126,16 @@ class ExpandToolbarActionNames:
 
     def __call__(self, *args, **kwargs):
         modulebar = APP_TOOLBARS["ModuleToolBar"]
-        actions = modulebar.actions()
-        widget = None
-        for action in actions:
-            widget = modulebar.widgetForAction(action)
-            item = widget if isinstance(widget, qt.QToolButton) else action
-            if hasattr(item, "toggleName"):
-                item.toggleName()
-
-        if not widget:
+        if not modulebar.actions():
             logging.warning("No action found")
-            showOnboardView(APP_TOOLBARS["ModuleToolBar"])
+            showOnboardView(modulebar)
             return
 
+        visible = not toolbarNamesVisible(modulebar)
+        setToolbarNamesVisible(modulebar, visible)
+
         expander = APP_TOOLBARS["MainToolBar"].actions()[0]
-        if widget.toolButtonStyle == qt.Qt.ToolButtonTextBesideIcon:
+        if visible:
             expander.setIcon(self.__closeIcon)
             expander.setToolTip("Collapse Menu")
             slicer.app.userSettings().setValue(f"{slicer.app.applicationName}/LeftDrawerVisible", True)
@@ -148,14 +143,6 @@ class ExpandToolbarActionNames:
             expander.setIcon(self.__openIcon)
             expander.setToolTip("Expand Menu")
             slicer.app.userSettings().setValue(f"{slicer.app.applicationName}/LeftDrawerVisible", False)
-
-
-def ui_InformUserAboutRestart(text):
-    msg = qt.QMessageBox(slicer.util.mainWindow())
-    msg.setText(f"{text} Geoslicer will restart itself in 10 seconds.")
-    msg.setWindowTitle("Configuration finished")
-    qt.QTimer.singleShot(10000, msg.accept)
-    msg.exec_()
 
 
 def ui_Spacer(layoutType):
@@ -249,7 +236,7 @@ def setModuleSelectorToolBar():
             expandRightFunc.hide()
 
         toolbar.setVisible(True)
-    except:
+    except Exception:
         traceback.print_exc()
 
     addEnvSelectorMenu()
@@ -341,8 +328,8 @@ def setDialogToolBar():
 
     dialogToolBar.addAction(
         qt.QIcon((ICON_DIR / "svg" / "Extensions.svg").as_posix()),
-        "Module Installer",
-        lambda: slicer.util.mainWindow().moduleSelector().selectModule("ModuleInstaller"),
+        "Module Manager",
+        lambda: slicer.util.mainWindow().moduleSelector().selectModule("ModuleManager"),
     )
 
     dialogToolBar.addAction(
@@ -424,7 +411,7 @@ def setToolbars(toolbars, area, orientation, iconSize: qt.QSize = None):
 
 
 def setCustomCaptureToolBar():
-    from ltrace.screenshot.Screenshot import ScreenshotWidget
+    from commons.screenshot.Screenshot import ScreenshotWidget
 
     # Add customized screenshot dialog
     captureToolBar = APP_TOOLBARS["CaptureToolBar"]
@@ -490,7 +477,7 @@ def setModulePanel():
                     url = url.toString()
                 title = module.title() if hasattr(module, "title") else moduleName
 
-            moduleHeader.update(title, url)
+            moduleHeader.update(title, url, moduleName)
         except Exception as e:
             logging.error(f"Failed to update module header: {e}.\n{traceback.format_exc()}")
 
@@ -503,7 +490,9 @@ def setModulePanel():
 def updateFileMenu():
     fileMenu = slicer.util.mainWindow().findChild("QMenu", "FileMenu")
     actions = {action.text: action for action in fileMenu.actions()}
-    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
+
+    def createIcon(fileName):
+        return helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     loadSceneAction = qt.QAction(createIcon("Load.svg"), "Load Scene", fileMenu)
     loadSceneAction.setToolTip("Load project/scene .mrml file")
@@ -556,7 +545,9 @@ def updateFileMenu():
 def updateEditMenu():
     editMenu = slicer.util.mainWindow().findChild("QMenu", "EditMenu")
     actions = {action.text: action for action in editMenu.actions()}
-    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
+
+    def createIcon(fileName):
+        return helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     actions["Cut"].setIcon(createIcon("Cut.svg"))
     actions["Copy"].setIcon(createIcon("Copy.svg"))
@@ -567,7 +558,9 @@ def updateEditMenu():
 def updateViewMenu():
     viewMenu = slicer.util.mainWindow().findChild("QMenu", "ViewMenu")
     actions = {action.text: action for action in viewMenu.actions()}
-    createIcon = lambda fileName: helpers.svgToQIcon(getResourcePath("Icons") / "svg" / fileName)
+
+    def createIcon(fileName):
+        return helpers.svgToQIcon(getResourcePath("Icons") / "svg" / fileName)
 
     fuzzySearchAction = qt.QAction(createIcon("SearchCode.svg"), "Module Search", viewMenu)
     fuzzySearchAction.triggered.connect(showSearchPopup)
@@ -602,8 +595,9 @@ def updateViewMenu():
 
 def updateHelpMenu():
     helpMenu = slicer.util.mainWindow().findChild("QMenu", "HelpMenu")
-    actions = {action.text: action for action in helpMenu.actions()}
-    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
+
+    def createIcon(fileName):
+        return helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
 
     # Bug report
     bugReportAction = qt.QAction(createIcon("Bug.svg"), "Bug Report", helpMenu)
@@ -649,29 +643,7 @@ def setMenu():
     updateHelpMenu()
 
 
-def setDefaultSegmentationTerminology(userSettings):
-    """
-    author: Rafael Arenhart
-    modified by: Gabriel Muller
-    commit 6bed3b0767556af4087da48d8935f550b72e4cf2
-    * PL-1385 Fix selecting "Pores" terminology
-    """
-    terminology = [
-        ("Segmentation category and type - DICOM master list",),
-        ("SCT", "85756011", "Other"),
-        ("SCT", "5000", "Default Terminology"),
-        ("", "", ""),
-        ("Anatomic codes - DICOM master list",),
-        ("", "", ""),
-        ("", "", ""),
-    ]
-
-    terminology_string = "~".join(["^".join(i) for i in terminology]) + "|"
-    userSettings.setValue("Segmentations/DefaultTerminologyEntry", terminology_string)
-
-
 def setExtentionManagerOff():
-    slicer.app.revisionUserSettings().setValue("Extensions/ManagerEnabled", False)
     window = slicer.util.mainWindow()
     window.findChild(qt.QMenu, "ViewMenu").actions()[5].visible = False
     # window.findChild(qt.QToolBar, "DialogToolBar").actions()[1].visible = False
@@ -764,7 +736,7 @@ def linkAllVolumesRenderingDisplayProperties(volume_rendering_module):
 
 
 def onPresetComboBoxClicked(object, event):
-    if type(event) == qt.QMouseEvent:
+    if isinstance(event, qt.QMouseEvent):
         if event.type() == qt.QEvent.MouseButtonPress:
             if event.button() == qt.Qt.LeftButton:
                 volumeRenderingModule = slicer.modules.volumerendering.widgetRepresentation()
@@ -904,25 +876,6 @@ def setHelpModule():
     help_label.anchorClicked.connect(on_html_link_clicked)
 
 
-def loadEffects(modules):
-    effects = [
-        "BoundaryRemovalEffect",
-        "ColorThresholdEffect",
-        "ConnectivityEffect",
-        "CustomizedSmoothingEffect",
-        "PeriodicLevelTracingEffect",
-        "DepthRangeSegmenterEffect",
-        "ExpandSegmentsEffect",
-        "MaskVolumeEffect",
-        "MultiThresholdEffect",
-        "SampleSegmentationEffect",
-        "SmartForegroundEffect",
-        "QEMSCANMaskEffect",
-    ]
-
-    loadModules([modules[effect] for effect in effects if effect in modules], permanent=True, favorite=False)
-
-
 def registerDisplayOverridePlugin():
     """Install the global display-override provider for the SH Data tree.
 
@@ -956,38 +909,6 @@ def registerEffects():
     slicer.modules.SampleSegmentationEffectInstance.registerEditorEffect()
     slicer.modules.SmartForegroundEffectInstance.registerEditorEffect()
     slicer.modules.QEMSCANMaskEffectInstance.registerEditorEffect()
-
-
-def loadFoundations(modules):
-
-    corePlugins = [
-        "AppContext",
-        "SideBySideLayoutView",
-        "CustomizedData",
-        "Export",
-        "JobMonitor",
-        "RemoteService",
-        # "BIAEPBrowser",
-        # "OpenRockData",
-        "NetCDFLoader",
-        "NetCDFExport",
-        "NetCDF",
-        "VolumeCalculator",
-        "CustomizedTables",
-        "TableFilter",
-        "Charts",
-        "CustomizedSegmentEditor",
-        "SegmentationEnv",
-        "ModuleInstaller",
-    ]
-
-    coreModules = [modules[m] for m in corePlugins]
-
-    loadModules(coreModules, permanent=True, favorite=False)
-
-    cliModules = [modules[m] for m in modules if m.endswith("CLI")]
-
-    loadModules(cliModules, permanent=True, favorite=False)
 
 
 def setGPUStatus():
@@ -1191,16 +1112,6 @@ def setLayoutViews():
     # layoutMenu.triggered.connect(lambda action: self.__layout_menu.setActiveAction(action))
 
 
-def setPaths():
-    revision_settings = slicer.app.revisionUserSettings()
-
-    revision_settings.endArray()
-    Path(slicer.app.toSlicerHomeAbsolutePath("LTrace/saved_scenes")).mkdir(parents=True, exist_ok=True)
-    slicer.app.defaultScenePath = slicer.app.toSlicerHomeAbsolutePath("LTrace/saved_scenes")
-    Path(slicer.app.toSlicerHomeAbsolutePath("LTrace/temp")).mkdir(parents=True, exist_ok=True)
-    slicer.app.temporaryPath = slicer.app.toSlicerHomeAbsolutePath("LTrace/temp")
-
-
 def expandSceneFolder():
     folder_tree = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     scene_id = folder_tree.GetSceneItemID()
@@ -1264,7 +1175,9 @@ def setupShortcuts():
 
 
 def updateModuleSelectorIcons() -> None:
-    createIcon = lambda fileName: helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
+    def createIcon(fileName):
+        return helpers.svgToQIcon((getResourcePath("Icons") / "svg" / fileName).as_posix())
+
     icon_map = {"Next": "ArrowRight.svg", "Previous": "ArrowLeft.svg"}
     for child in slicer.util.mainWindow().moduleSelector().findChildren(qt.QToolButton):
         file_name = icon_map.get(child.text)
@@ -1287,6 +1200,11 @@ def disableThemeSelectorInSettings():
 def updateLogConfiguration():
     qt.QSettings().setValue("LogFiles/NumberOfFilesToKeep", 20)
     qt.QSettings().sync()
+
+
+def disableResetFieldOfViewOnShowVolume():
+    qt.QSettings().setValue("SubjectHierarchy/ResetFieldOfViewOnShowVolume", False)
+    qt.QSettings().setValue("SubjectHierarchy/ResetViewOrientationOnShowVolume", False)
 
 
 def _autoStartWebServer():
@@ -1334,46 +1252,27 @@ def applyWindowGeometry(mainWindow):
     mainWindow.showMaximized()
 
 
-def disableSharedMemory():
-    import types
-    import sys
-
-    class BlockedModule(types.ModuleType):
-        def __getattr__(self, name):
-            raise ImportError(
-                "On Linux, shared_memory runs resource_tracker in a separate process using spawn._python_exe, "
-                "which points to GeoSlicerApp-real. This creates a bug which can't be reproduced on Windows, "
-                "which is why shared_memory is currently disabled."
-            )
-
-    blocked_sm = BlockedModule("multiprocessing.shared_memory")
-    sys.modules["multiprocessing.shared_memory"] = blocked_sm
-
-
-def configure(rebuild_index=False):
+def configure():
     mainWindow = getAppContext().mainWindow if getAppContext() else slicer.util.mainWindow()
     applyWindowGeometry(mainWindow)
 
     updateLogConfiguration()
+    disableResetFieldOfViewOnShowVolume()
     setModulePanelVisible(False)
     slicer.app.setRenderPaused(True)
-    disableSharedMemory()
 
-    if rebuild_index:
-        modules = createIndex()
-    else:
-        strData = slicer.app.revisionUserSettings().value(f"{APP_NAME}/LTraceModules", "")
-        modules = pickle.loads(strData.encode()) if strData else {}
+    modules = loadModuleIndex()
 
     registerEffects()
     registerDisplayOverridePlugin()
 
-    # Keep this ALWAYS after the loadModules call above
     appContext = getAppContext()
     if appContext:
         appContext.modules.initCache(modules)
     else:
         logging.error("AppContext is not initialized yet!")
+
+    loadCustomModules()
 
     # Hide Data Store module
     removeDataStore()
@@ -1487,6 +1386,21 @@ def configure(rebuild_index=False):
     expandSceneFolder()
 
 
+def loadCustomModules():
+    """Load modules from the user's module folders and from GEOSLICER_MODULE_PATHS, after disabling those that
+    crashed GeoSlicer while loading in an earlier session."""
+    recovery = recoverFromCrash()
+    customModules().refresh()
+
+    if recovery is not None:
+
+        def _notify():
+            ApplicationObservables().applicationLoadFinished.disconnect(_notify)
+            showCrashRecoveryMessage(recovery)
+
+        ApplicationObservables().applicationLoadFinished.connect(_notify)
+
+
 def getCustomArguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GeoSlicer application custom arguments.")
 
@@ -1497,43 +1411,12 @@ def getCustomArguments() -> argparse.Namespace:
     return args
 
 
-def createIndex():
-    with ProgressBarProc() as pb:
-        pb.setMessage("Indexing installed modules...")
-        pb.setProgress(0)
-
-        allPlugins = fetchModulesFrom(path=GEOSLICER_MODULES_DIR, name="GeoSlicer")
-
-        pb.setProgress(10)
-        pb.setMessage("Indexing installed commands...")
-
-        cliDir = GEOSLICER_MODULES_DIR.parent / "cli-modules"
-        if not cliDir.exists():
-            cliDir = GEOSLICER_MODULES_DIR
-
-        allPlugins.update(fetchModulesFrom(path=cliDir, depth=2, name="GeoSlicer CLI"))
-
-        externalModules = fetchModulesFrom(externalModulesPath(), depth=2, name="External")
-        allPlugins.update(externalModules)
-
-        pb.setProgress(20)
-        pb.setMessage("Saving indexing...")
-
-        slicer.app.revisionUserSettings().setValue(f"{APP_NAME}/LTraceModules", pickle.dumps(allPlugins, 0).decode())
-
-        pb.setProgress(30)
-        pb.setMessage("Registering indexed effects...")
-
-        loadEffects(allPlugins)
-
-        pb.setProgress(70)
-        pb.setMessage("Registering indexed base modules...")
-
-        loadFoundations(allPlugins)
-
-        pb.setProgress(100)
-
-    return allPlugins
+def loadModuleIndex():
+    """The modules deployed with GeoSlicer, as indexed by the deploy script."""
+    return {
+        entry["key"]: ModuleInfo(str(APP_HOME / entry["path"]), entry["key"], entry["categories"], entry["hidden"])
+        for entry in getJsonData()["GEOSLICER_MODULES"]
+    }
 
 
 def updateDICOMDatabasePath():
@@ -1595,77 +1478,48 @@ def updateDICOMDatabasePath():
         logging.info("DICOM Database Migration completed.")
 
 
-def bootstrapped(userSettings):
-    revision = slicer.app.revisionUserSettings()
-    booted = toBool(revision.value(f"{APP_NAME}/Booted", False))
-    populated = len(revision.value(f"{APP_NAME}/LTraceModules", "")) > 0
-    favorited = userSettings.value("Modules/FavoriteModules", None)
-    themeIsDark = userSettings.value("Styles/Style", "") == "Dark Slicer"
-
-    return not favorited and booted and populated and themeIsDark
-
-
-def bootstrap(userSettings):
-    try:
-        slicer.app.userSettings().setValue("Styles/Style", "Dark Slicer")
-
-        setModulePanelVisible(False)
-        slicer.app.setRenderPaused(True)
-
-        favoriteModules = userSettings.value("Modules/FavoriteModules", None)
-        if favoriteModules:
-            msg = (
-                "This GeoSlicer version is not compatible with the previous one. We already fixed the configuration for you"
-                " but we need to restart GeoSlicer for the changes to take effect."
-            )
-        else:
-            msg = "Congratulations! GeoSlicer has been configured. We just need to restart GeoSlicer to complete the installation."
-        setPaths()
-
-        # userSettings.setValue("Developer/DeveloperMode", "true")
-        userSettings.setValue("Modules/HomeModule", "Data")
-        userSettings.setValue("Python/ConsoleLogLevel", "None")
-        userSettings.setValue(
-            "VolumeRendering/RenderingMethod",
-            "vtkMRMLGPURayCastVolumeRenderingDisplayNode",
-        )
-
-        userSettings.setValue("Modules/FavoriteModules", [])
-        setDefaultSegmentationTerminology(userSettings)
-
-        createIndex()
-
-        slicer.app.revisionUserSettings().setValue(f"{APP_NAME}/Booted", True)
-
-        userSettings.setValue("AppVersion", getApplicationVersion())
-
-        ui_InformUserAboutRestart(msg)  # blocking dialog
-        slicer.util.restart()
-
-    except Exception as e:
-        import traceback
-
-        logging.error(f"Failed to bootstrap GeoSlicer:\n{traceback.format_exc()}")
-
-
 def init():
     os.chdir(slicer.app.slicerHome)
+
+    # Slicer applies the style before this runs, so a changed style only comes back on the next start
     userSettings = slicer.app.userSettings()
+    userSettings.setValue("Styles/Style", "Dark Slicer")
+    userSettings.setValue("Modules/FavoriteModules", [])
+    setUserPaths()
 
-    if not bootstrapped(userSettings):
-        bootstrap(userSettings)
-    else:
-        previousAppVersion = userSettings.value(f"{APP_NAME}/Version", "")
-        mustRebuildIndex = slicer_is_in_developer_mode() or (previousAppVersion != getApplicationVersion())
-        configure(rebuild_index=mustRebuildIndex)
-
-        if previousAppVersion != getApplicationVersion():
-            userSettings.setValue(f"{APP_NAME}/Version", getApplicationVersion())
+    configure()
 
     if getAppContext():
         getAppContext().appInitialized = True
     else:
         logging.error("AppContext is not initialized yet!")
+
+
+def setUserPaths():
+    """Keep temporary files, logs and saved scenes out of the installation, which may be read-only. Replace paths
+    relative to an installation, which earlier versions saved to the settings that all installations share, and
+    Slicer's fallback for when those weren't writable. Paths the user chose are kept."""
+    # os must be imported locally, qSlicerCorePythonManager::appendPythonPath runs `del os, sys`
+    import os
+
+    userSettings = slicer.app.userSettings()
+
+    # qSlicerCoreApplication::defaultTemporaryPath, which isn't available in Python
+    slicerTemporaryPath = Path(qt.QDir.tempPath()) / (
+        slicer.app.applicationName if os.name == "nt" else f"{slicer.app.applicationName}-{os.environ.get('USER', '')}"
+    )
+    temporaryPath = userSettings.value("TemporaryPath")
+    if temporaryPath is None or not Path(temporaryPath).is_absolute() or Path(temporaryPath) == slicerTemporaryPath:
+        appData = Path(qt.QStandardPaths.writableLocation(qt.QStandardPaths.AppLocalDataLocation))
+        slicer.app.temporaryPath = (appData / "temp").as_posix()
+
+    # Replace Slicer's default, Documents, which its settings panel saves at startup. Documents is often synced by
+    # OneDrive, which can lock or restore the files a project deletes, and some Linux installations don't have it.
+    # The home folder is a starting point to navigate from rather than a place to save in
+    documents = Path(qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation))
+    scenePath = userSettings.value("DefaultScenePath")
+    if scenePath is None or not Path(scenePath).is_absolute() or Path(scenePath) == documents:
+        slicer.app.defaultScenePath = Path.home().as_posix()
 
 
 def wasAppInitialized():

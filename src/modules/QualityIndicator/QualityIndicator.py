@@ -10,13 +10,13 @@ import slicer
 import vtk
 from scipy.ndimage import zoom
 
-from ltrace.slicer.helpers import triggerNodeModified, copy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer_utils import *
-from ltrace.transforms import transformPoints
-from ltrace.units import global_unit_registry as ureg
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.helpers import triggerNodeModified, copy_attributes
+from commons.slicer.metadata import copy_metadata
+from commons.slicer_utils import *
+from commons.transforms import transformPoints
+from commons.units import global_unit_registry as ureg
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 
 try:
     from Test.QualityIndicatorTest import QualityIndicatorTest
@@ -354,7 +354,7 @@ class QualityIndicatorLogic(LTracePluginLogic):
                         indexes = np.where(qualities == nullValue)
                         qualities = np.delete(qualities, indexes)
                         ijkDepths = np.delete(ijkDepths, indexes, axis=0)
-                    except:
+                    except Exception:
                         pass  # if there is not such attribute, or it could not be converted to float
 
                     matrix = vtk.vtkMatrix4x4()

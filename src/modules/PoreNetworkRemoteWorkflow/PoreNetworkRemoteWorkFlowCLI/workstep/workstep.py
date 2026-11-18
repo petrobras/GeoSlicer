@@ -65,8 +65,6 @@ class DaskMemoryLoggerFilter(logging.Filter):
 
                 # Check if we are executing within an active Dask worker process
                 try:
-                    from dask.distributed import get_worker
-
                     prefix = f"[Disk: {disk_str}] [Mem: {mem_str}]"
                 except (ValueError, ImportError):
                     # Fallback if executing outside an active Dask distributed worker
@@ -167,7 +165,7 @@ class Workstep(ABC):
         class_name = self.__class__.__name__
         self.context.workflow_params[f"{class_name}_done"] = True
         self.context.save_params()
-        self.logger.info(f"Successfully auto-saved workflow parameters configuration.")
+        self.logger.info("Successfully auto-saved workflow parameters configuration.")
 
     def sample_fills_volume(self) -> bool:
         """

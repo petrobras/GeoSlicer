@@ -3,7 +3,7 @@ import qt
 from pathlib import Path
 
 import GeologLib
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
     from Test.GeologEnvTest import GeologEnvTest
@@ -28,7 +28,6 @@ class GeologEnv(LTracePlugin):
 
 
 class GeologEnvWidget(LTracePluginWidget):
-
     GEOLOG_DIRECTORY = "geologDirectory"
     PYTHON_DIRECTORY = "pythonDirectory"
     PROJECTS_DIRECTORY = "projectsDirectory"

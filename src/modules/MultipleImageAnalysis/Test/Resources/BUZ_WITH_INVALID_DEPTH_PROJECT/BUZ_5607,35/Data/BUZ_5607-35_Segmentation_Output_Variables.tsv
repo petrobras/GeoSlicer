@@ -1,0 +1,8 @@
+Properties	Values
+Pixel Area (mm^2)	0.010695178809815128
+ROI Voxel Count (#px)	5467166
+Segment Voxel Count (#px)	51984
+Segment_1 [1] (#px) 	51984
+Method:	'islands'
+parameter.size_min_threshold	0.0
+parameter.direction	None

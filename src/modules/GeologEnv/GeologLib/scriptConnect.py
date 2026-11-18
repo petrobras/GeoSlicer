@@ -98,7 +98,7 @@ def main(project, temporary_folder):
     try:
         with open(f"{temporary_folder}/output.json", "w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, indent=4)
-    except:
+    except Exception:
         sys.exit(5)
 
     return return_code

@@ -1,0 +1,22 @@
+columnName	type	componentNames
+throat.inscribed_diameter	double	
+throat.total_length	double	
+throat.direct_length	double	
+throat.perimeter	double	
+throat.cross_sectional_area	double	
+throat.equivalent_diameter	double	
+throat.all	int	
+throat.global_peak_0	double	
+throat.global_peak_1	double	
+throat.global_peak_2	double	
+throat.conns_0	int	
+throat.conns_1	int	
+throat.phases_0	int	
+throat.phases_1	int	
+throat.shape_factor	double	
+throat.conns_0_length	double	
+throat.conns_1_length	double	
+throat.mid_length	double	
+throat.volume	double	
+throat.subresolution_porosity	double	
+throat.area_full	double	

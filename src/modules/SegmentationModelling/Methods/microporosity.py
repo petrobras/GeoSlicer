@@ -6,13 +6,13 @@ import slicer
 
 import numpy as np
 
-from ltrace.algorithms.measurements import GetMicroporosityUpperAndLowerLimits
-from ltrace.algorithms.partition import ResultInfo
-from ltrace.slicer import helpers, ui, widgets
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.histogram_frame import MicroPorosityHistogramFrame
+from commons.algorithms.measurements import GetMicroporosityUpperAndLowerLimits
+from commons.algorithms.partition import ResultInfo
+from commons.slicer import helpers, ui, widgets
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.histogram_frame import MicroPorosityHistogramFrame
 from Methods.output_info import OutputInfo
-from Methods.common import LitePorosityOutputWidget, processSegmentation, processVolume
+from Methods.common import processSegmentation, processVolume
 
 
 class MicroPorosity(widgets.BaseSettingsWidget):
@@ -222,7 +222,6 @@ class MicroPorosity(widgets.BaseSettingsWidget):
         self.signal_quality_control_changed.emit()
         labelsDictionary = self.getLabelsDict()
         if self._checkPorosityTypesSelected(labelsDictionary):
-
             segmentationNode = self.inputWidget.mainInput.currentNode()
             referenceNode = self.inputWidget.referenceInput.currentNode()
             soiNode = self.inputWidget.soiInput.currentNode()
@@ -482,7 +481,6 @@ class MicroPorosityLogic(qt.QObject):
             return
 
         if caller.GetStatusString() == "Completed":
-
             doReturnVolume = self.__params.get("returnVolume", True)
 
             outputVolumeNode = helpers.tryGetNode(info.outputVolume)

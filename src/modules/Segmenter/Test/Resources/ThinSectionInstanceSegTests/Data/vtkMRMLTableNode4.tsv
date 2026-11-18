@@ -1,0 +1,2 @@
+label	width (mm)	height (mm)	confidence (%)	area (mm^2)	max_feret (mm)	min_feret (mm)	aspect_ratio	elongation	eccentricity	perimeter (mm)
+1	0.726375	0.518915	98.1416	0.30521	0.7448	0.58618	0.78703	1.12721	0.46149	2.04553

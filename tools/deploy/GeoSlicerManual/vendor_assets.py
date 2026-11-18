@@ -103,9 +103,7 @@ def _verify_integrity(payload: bytes, integrity: str, spec: dict) -> None:
         raise IntegrityError(f"unsupported hash '{algorithm}' for '{spec['name']}'") from error
     actual = base64.b64encode(digest).decode("ascii")
     if actual != expected:
-        raise IntegrityError(
-            f"integrity mismatch for '{spec['name']}': expected {integrity}, " f"got {algorithm}-{actual}"
-        )
+        raise IntegrityError(f"integrity mismatch for '{spec['name']}': expected {integrity}, got {algorithm}-{actual}")
 
 
 def _download_and_extract(spec: dict, target: Path) -> None:

@@ -3,15 +3,13 @@ import qt
 import slicer
 import numpy as np
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer import widgets
-from ltrace.slicer.helpers import (
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer import widgets
+from commons.slicer.helpers import (
     createTemporaryVolumeNode,
     highlight_error,
-    copy_hierarchy_attributes,
-    copy_subject_hierarchy_item_parent,
 )
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.node_attributes import NodeEnvironment
 from pathlib import Path
 from Libs.patchmatch import PatchMatch
 
@@ -169,7 +167,7 @@ class CoreInpaintLogic(LTracePluginLogic):
         changed = sum(old != new for old, new in zip(original_shape, image.shape))
         if changed > 1:
             raise ValueError(
-                f"Image of size {shape_to_str(original_shape)} is too small to inpaint. Each dimension must have at least {(patchmatch.patch_size+1) * factor} voxels."
+                f"Image of size {shape_to_str(original_shape)} is too small to inpaint. Each dimension must have at least {(patchmatch.patch_size + 1) * factor} voxels."
             )
 
         if changed == 1:

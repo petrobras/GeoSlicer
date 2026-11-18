@@ -1,6 +1,6 @@
 import os
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.interactive.widget import InteractiveSegmenterFrame
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.interactive.widget import InteractiveSegmenterFrame
 from pathlib import Path
 
 try:

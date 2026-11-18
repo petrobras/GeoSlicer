@@ -4,9 +4,8 @@ import slicer
 
 from humanize import naturalsize
 
-from ltrace.slicer.virtual import attributes as virtualAttributes
-from ltrace.slicer.virtual import virtual_node
-from ltrace.slicer.widget.elided_label import ElidedLabel
+from commons.slicer.virtual import virtual_node
+from commons.slicer.widget.elided_label import ElidedLabel
 
 
 class VirtualNodeWidget(qt.QWidget):
@@ -140,8 +139,7 @@ class VirtualNodeWidget(qt.QWidget):
         if spec is not None and spec.is_volume:
             size = self._fullBytes(spec)
             if size > 512 * 1024**2 and not slicer.util.confirmYesNoDisplay(
-                f"Reading {self.node.GetName()} at full resolution needs about {naturalsize(size)} of memory. "
-                "Continue?"
+                f"Reading {self.node.GetName()} at full resolution needs about {naturalsize(size)} of memory. Continue?"
             ):
                 return
 

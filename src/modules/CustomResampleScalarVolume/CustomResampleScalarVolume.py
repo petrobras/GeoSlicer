@@ -1,18 +1,20 @@
 import os
-import qt, ctk, slicer, vtk
-from ltrace.slicer_utils import *
+import qt
+import ctk
+import slicer
+import vtk
+from commons.slicer_utils import *
 import logging
 from collections import namedtuple
 from pathlib import Path
 from dataclasses import dataclass
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.units import SLICER_LENGTH_UNIT
-from ltrace.slicer import helpers as lsh
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.constants import DLISImportConst
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.units import SLICER_LENGTH_UNIT
+from commons.slicer import helpers as lsh
+from commons.slicer.metadata import copy_metadata
+from commons.constants import DLISImportConst
 from functools import partial
-import json
 
 
 try:
@@ -148,18 +150,6 @@ class CustomResampleScalarVolumeWidget(LTracePluginWidget):
         parametersFormLayout.setLabelAlignment(qt.Qt.AlignRight)
 
         # Inteporlation Type combo box
-        if False:
-            interpolations = [
-                "Linear",
-                "Nearest Neighbor",
-                "Bspline",
-                "Haing",
-                "Cosine",
-                "Welch",
-                "Lanczos",
-                "Blackman",
-            ]
-
         self.__interpolationTypeComboBox = qt.QComboBox()
         self.__interpolationTypeComboBox.setObjectName("interpolationTypeComboBox")
         self.__interpolationTypeComboBox.setCurrentIndex(0)
@@ -648,7 +638,7 @@ class CustomResampleScalarVolumeLogic(LTracePluginLogic):
             self.cliNode.AddObserver("ModifiedEvent", partial(self.eventHandler, outputVolumeID=outputVolume.GetID()))
 
         except Exception as e:
-            slicer.util.errorDisplay(f"Failed to run the resampling")
+            slicer.util.errorDisplay("Failed to run the resampling")
             logging.error(repr(e))
             lsh.removeTemporaryNodes(nodes=[outputVolume])
 

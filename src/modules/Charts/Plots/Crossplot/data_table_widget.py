@@ -2,9 +2,9 @@ import os
 
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-from ltrace.slicer.graph_data import TEXT_SYMBOLS, LINE_STYLES, SYMBOL_TEXT, LINE_STYLES_TEXT
-from ltrace.slicer.widget.custom_color_button import CustomColorButton
-from ltrace.slicer.widget.style_editor_widget import StyleEditorWidget
+from commons.slicer.graph_data import TEXT_SYMBOLS, LINE_STYLES, SYMBOL_TEXT, LINE_STYLES_TEXT
+from commons.slicer.widget.custom_color_button import CustomColorButton
+from commons.slicer.widget.style_editor_widget import StyleEditorWidget
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Resources")
 ICONS_DIR_PATH = os.path.join(RESOURCES_PATH, "Icons")

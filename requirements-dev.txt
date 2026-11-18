@@ -1,0 +1,8 @@
+-e src/commons/ --config-settings editable_mode=compat
+-e src/third-parties/pnflow/python
+-e src/third-parties/porespy
+-e src/third-parties/py_pore_flow
+-e src/third-parties/pyflowsolver
+-e src/modules
+-e src/modules/MicrotomRemote/Libs/microtom
+-e tools

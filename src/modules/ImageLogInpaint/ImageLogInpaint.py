@@ -9,9 +9,8 @@ import json
 import importlib
 import sys
 
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.helpers import (
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.helpers import (
     createTemporaryVolumeNode,
     getCurrentEnvironment,
     moveNodeTo,
@@ -19,8 +18,8 @@ from ltrace.slicer.helpers import (
     NodeEnvironment,
     removeTemporaryNodes,
 )
-from ltrace.slicer.widget.clone_and_rename import CloneAndRenameWidget
-from ltrace.constants import ImageLogInpaintConst
+from commons.slicer.widget.clone_and_rename import CloneAndRenameWidget
+from commons.constants import ImageLogInpaintConst
 from pathlib import Path
 from typing import Dict
 from slicer.parameterNodeWrapper import parameterNodeWrapper
@@ -452,7 +451,7 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             obj.RemoveObserver(tag)
 
         for obj in self._observerTags:
-            if type(self._observerTags[obj]) == list:
+            if isinstance(self._observerTags[obj], list):
                 for tag in self._observerTags[obj]:
                     _removeObserver(obj, tag)
             else:
@@ -534,7 +533,7 @@ class ImageLogInpaintWidget(LTracePluginWidget):
             self.logic = None
 
     def onReload(self):
-        importlib.reload(sys.modules["ltrace.slicer.widget.clone_and_rename"])
+        importlib.reload(sys.modules["commons.slicer.widget.clone_and_rename"])
         super().onReload()
 
 

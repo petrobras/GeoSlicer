@@ -8,20 +8,19 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.helpers import (
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.helpers import (
     copy_display,
     tryGetNode,
     copy_attributes,
     copy_hierarchy_attributes,
     copy_subject_hierarchy_item_parent,
 )
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.constants import DLISImportConst
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.units import global_unit_registry as ureg
+from commons.slicer.metadata import copy_metadata
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.units import global_unit_registry as ureg
 
 # Checks if closed source code is available
 try:
@@ -296,7 +295,7 @@ class SpiralFilterWidget(LTracePluginWidget):
         except ValueError:
             return
 
-        self.filteredDifferenceValueLabel.text = f"{valueFloat*100:.2f}%"
+        self.filteredDifferenceValueLabel.text = f"{valueFloat * 100:.2f}%"
         self.indicatorsWidget.visible = True
 
 
@@ -355,7 +354,7 @@ class SpiralFilterLogic(LTracePluginLogic):
                 slicer.mrmlScene.RemoveNode(outputVolumeNode)
                 slicer.util.errorDisplay("Filtering failed.")
             else:  # Completed
-                filteredDiff = self.cliNode.GetParameterAsString(f"filtered_diff")
+                filteredDiff = self.cliNode.GetParameterAsString("filtered_diff")
 
         outputVolumeNode.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
 

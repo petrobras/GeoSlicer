@@ -6,7 +6,6 @@ from workflow.commons import run_subprocess, write
 
 
 class PoreCleaner:
-
     ## PoreCleaner: Remoção de poros espúrios e artefatos na resina
 
     # Este módulo é responsável por aplicar duas operações de "limpeza" na segmentação de poros

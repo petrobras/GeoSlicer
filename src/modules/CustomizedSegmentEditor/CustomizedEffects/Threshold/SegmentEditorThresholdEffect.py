@@ -10,7 +10,7 @@ import slicer
 
 import numpy as np
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
 
@@ -731,7 +731,6 @@ class SegmentEditorThresholdEffect(AbstractScriptedSegmentEditorEffect, LTraceSe
     displayNode = segmentationNode.GetDisplayNode()
     if displayNode is None:
       logging.error("preview: Invalid segmentation display node!")
-      color = [0.5,0.5,0.5]
     segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
 
     if not segmentID:

@@ -4,7 +4,7 @@ import slicer
 import numpy as np
 import pandas as pd
 
-from ltrace.slicer.helpers import getCountForLabels
+from commons.slicer.helpers import getCountForLabels
 
 
 class SegmentInspectorVariablesOutput:

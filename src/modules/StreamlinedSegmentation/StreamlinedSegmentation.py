@@ -9,14 +9,14 @@ import qSlicerSegmentationsEditorEffectsPythonQt
 import qSlicerSegmentationsModuleWidgetsPythonQt
 
 from distinctipy import distinctipy
-from ltrace.slicer import helpers
-from ltrace.slicer.app import getApplicationVersion
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import helpers
+from commons.slicer.app import getApplicationVersion
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer.lazy import lazy
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.utils.ProgressBarProc import ProgressBarProc
 from pathlib import Path
 from slicer.util import VTKObservationMixin
 
@@ -30,8 +30,6 @@ except ImportError:
 MULTIPLE_THRESHOLD_LABEL = "Multiple Threshold"
 BOUNDARY_REMOVAL_LABEL = "Boundary removal"
 EXPAND_SEGMENTS_LABEL = "Expand segments"
-
-from dataclasses import dataclass
 
 
 class StreamlinedSegmentation(LTracePlugin):
@@ -282,7 +280,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         display.SetSegmentVisibility("High Attenuation", others)
 
     def onExpandSegmentsFinished(self):
-        with ProgressBarProc() as pb:
+        with ProgressBarProc():
             self.editor.setActiveEffectByName("")
             self.addBackgroundCheckBox.visible = False
             self.__updateSegmentsVisibility(microporosity=True, others=True)
@@ -438,7 +436,7 @@ class StreamlinedSegmentationWidget(LTracePluginWidget, VTKObservationMixin):
         super().enter()
         if self.editor.turnOffLightboxes():
             slicer.util.warningDisplay(
-                "Segment Editor is not compatible with slice viewers in light box mode." "Views are being reset.",
+                "Segment Editor is not compatible with slice viewers in light box mode.Views are being reset.",
                 windowTitle="Segment Editor",
             )
 

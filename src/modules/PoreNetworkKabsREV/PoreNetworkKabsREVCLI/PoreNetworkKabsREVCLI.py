@@ -5,10 +5,8 @@
 
 from __future__ import print_function
 
-import slicer
 
 import os
-import json
 import logging
 import re
 from pathlib import Path
@@ -19,11 +17,11 @@ import pandas as pd
 
 from dask.distributed import Client, LocalCluster, as_completed
 
-from ltrace.pore_networks.functions_extract import general_pn_extract
-from ltrace.pore_networks.functions_simulation import get_flow_rate, single_phase_permeability
-from ltrace.pore_networks.subres_models import get_subres_function
-from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.pore_networks.functions_extract import general_pn_extract
+from commons.pore_networks.functions_simulation import get_flow_rate, single_phase_permeability
+from commons.pore_networks.subres_models import get_subres_function
+from commons.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
+from commons.slicer.cli_utils import progressUpdate
 
 
 logger = logging.getLogger("numba")

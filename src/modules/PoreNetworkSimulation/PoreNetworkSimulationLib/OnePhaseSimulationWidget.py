@@ -1,21 +1,18 @@
-import ctk
 import numpy as np
 import qt
 import slicer
 
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.simulation_parameters_node import (
     parameter_node_to_dict,
     save_dict_to_parameter_node,
     ONE_PHASE_SIMULATION_TYPE,
-    PNM_PARAMETER_TYPE_ATTR,
 )
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from ltrace.slicer import ui
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import getResourcePath
+from commons.pore_networks.subres_models import get_pore_network_volume_data
+from commons.slicer import ui
+from commons.slicer.widget.help_button import HelpButton
 from .constants import *
-from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
+from commons.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
 
 
 class OnePhaseSimulationWidget(qt.QFrame):

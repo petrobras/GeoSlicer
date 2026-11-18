@@ -1,5 +1,5 @@
-""" This module implements the PatchMatch algorithm for single channel, 3D images.
-    https://gfx.cs.princeton.edu/pubs/Barnes_2009_PAR/patchmatch.pdf
+"""This module implements the PatchMatch algorithm for single channel, 3D images.
+https://gfx.cs.princeton.edu/pubs/Barnes_2009_PAR/patchmatch.pdf
 """
 
 import numpy as np

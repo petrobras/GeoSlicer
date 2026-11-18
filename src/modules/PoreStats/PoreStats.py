@@ -3,8 +3,8 @@ import json
 import os
 from pathlib import Path
 import re
-from ltrace.slicer.helpers import save_path
-from ltrace.slicer.ui import numberParam
+from commons.slicer.helpers import save_path
+from commons.slicer.ui import numberParam
 import markdown
 import logging
 
@@ -12,13 +12,13 @@ import ctk
 from SegmentInspector import IslandsSettingsWidget, OSWatershedSettingsWidget
 import qt
 import slicer
-from ltrace.assets_utils import get_pth
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.assets_utils import get_pth
+from commons.slicer import ui, helpers, widgets
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from slicer.ScriptedLoadableModule import *
-from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
+from commons.slicer.widget.trained_model_selector import TrainedModelSelector
 
 # Checks if closed source code is available
 try:
@@ -180,9 +180,11 @@ class PoreStatsWidget(LTracePluginWidget):
         self.exportImagesCheckbox.objectName = "Export images CheckBox"
 
         self.exportSheetsCheckbox = qt.QCheckBox("Export sheets")
-        self.exportSheetsCheckbox.toolTip = "Save sheets containing the geological properties of the predicted instances and their statistics for each thin section. \
+        self.exportSheetsCheckbox.toolTip = (
+            "Save sheets containing the geological properties of the predicted instances and their statistics for each thin section. \
             The 'AllStats' sheets store the properties of each instance individually, while the 'GroupsStats' sheets group them by size similarity and store \
             different descriptive statistics in different pages."
+        )
         self.exportSheetsCheckbox.checked = True
         self.exportSheetsCheckbox.objectName = "Export sheets CheckBox"
 
@@ -309,7 +311,7 @@ class PoreStatsWidget(LTracePluginWidget):
         space = 2 * " "
 
         if "description" in metadata:
-            model_description = "\n".join([f"**Description:**", "\n", metadata["description"], "\n"])
+            model_description = "\n".join(["**Description:**", "\n", metadata["description"], "\n"])
         else:
             model_description = ""
 
@@ -318,11 +320,11 @@ class PoreStatsWidget(LTracePluginWidget):
             model_inputs_description += [f"{space}- {name}:"]
             spatial_dims = description.get("spatial_dims")
             if spatial_dims is not None:
-                model_inputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+                model_inputs_description += [f"{2 * space}- Dimensions: {spatial_dims}"]
 
             n_channels = description.get("n_channels", 1)
             if n_channels is not None:
-                model_inputs_description += [f"{2*space}- Channels: {n_channels}"]
+                model_inputs_description += [f"{2 * space}- Channels: {n_channels}"]
         model_inputs_description = "\n".join(model_inputs_description)
 
         model_outputs_description = [f"**Outputs ({len(model_outputs)}):**", "\n"]
@@ -335,18 +337,18 @@ class PoreStatsWidget(LTracePluginWidget):
             ]
             spatial_dims = description.get("spatial_dims")
             if spatial_dims is not None:
-                model_outputs_description += [f"{2*space}- Dimensions: {spatial_dims}"]
+                model_outputs_description += [f"{2 * space}- Dimensions: {spatial_dims}"]
 
             if is_segmentation:
                 models_classes = description.get("model_classes", 1)
                 if models_classes is not None:
-                    model_outputs_description += [f"{2*space}- Classes:"]
+                    model_outputs_description += [f"{2 * space}- Classes:"]
                     for model_class in model_classes:
-                        model_outputs_description += [f"{4*space}- {model_class}"]
+                        model_outputs_description += [f"{4 * space}- {model_class}"]
             else:
                 n_channels = description.get("n_channels", 1)
                 if n_channels is not None:
-                    model_outputs_description += [f"{2*space}- Channels: {n_channels}"]
+                    model_outputs_description += [f"{2 * space}- Channels: {n_channels}"]
         model_outputs_description = "\n".join(model_outputs_description)
 
         msg = "\n\n".join(
@@ -360,7 +362,7 @@ class PoreStatsWidget(LTracePluginWidget):
         html = markdown.markdown(msg)
         self.classifierInfo.setText(html)
         self.classifierInfo.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
-        summary = f"Model info:"
+        summary = "Model info:"
         self.classifierInfoGroupBox.setTitle(summary)
 
     def _savePath(self):
@@ -368,7 +370,7 @@ class PoreStatsWidget(LTracePluginWidget):
         save_path(self.outputDirectoryLineEdit)
 
     def _checkRequirementsForApply(self):
-        if self.methodSelector.currentWidget() == None:
+        if self.methodSelector.currentWidget() is None:
             return
 
         inputDirectoryProvided = len(self.inputDirectoryLineEdit.currentPath) > 0

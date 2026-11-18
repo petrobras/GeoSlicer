@@ -6,7 +6,6 @@ from workflow.commons import get_check_cli_path, run_subprocess, write, dict_to_
 
 
 class InspectorInstanceSegmenter:
-
     ## InspectorInstanceSegmenter: Separação de instâncias e cálculo de propriedades geológicas
 
     # Este módulo aproveita uma aplicação CLI do GeoSlicer para separar as instâncias da segmentação de

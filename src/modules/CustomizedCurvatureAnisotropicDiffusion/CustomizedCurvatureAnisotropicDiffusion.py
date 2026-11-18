@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from collections import namedtuple
@@ -7,10 +6,9 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
-from ltrace.slicer.helpers import copy_display, copy_attributes, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import *
+from commons.slicer.helpers import copy_display
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import *
 
 
 class CustomizedCurvatureAnisotropicDiffusion(LTracePlugin):
@@ -188,7 +186,7 @@ class CustomizedCurvatureAnisotropicDiffusionWidget(LTracePluginWidget):
         self.logic.cancel()
 
     def onInputChanged(self, inputNode):
-        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode != None else ""
+        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode is not None else ""
         self.outputVolumeNameLineEdit.setText(newOutputName)
 
 

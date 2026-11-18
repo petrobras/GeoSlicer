@@ -3,10 +3,10 @@ from AnalysisTypes.analysis_base import AnalysisReport, AnalysisBase, FILE_NOT_F
 from AnalysisTypes.basic_petrophysics_analysis import BasicPetrophysicsAnalysis
 from AnalysisTypes.histogram_in_depth_analysis import HistogramInDepthAnalysis
 from AnalysisTypes.mean_in_depth_analysis import MeanInDepthAnalysis
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer import helpers
-from ltrace.slicer.node_attributes import TableDataOrientation
-from ltrace.slicer_utils import (
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.slicer import helpers
+from commons.slicer.node_attributes import TableDataOrientation
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
@@ -14,7 +14,10 @@ from ltrace.slicer_utils import (
 from typing import List, Union, Dict
 
 import os
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 import logging
 import numpy as np
 import pandas as pd
@@ -466,7 +469,7 @@ class MultipleImageAnalysisLogic(LTracePluginLogic):
                 self.__imageLogDataLogic.addView(node)
             except Exception as error:
                 slicer.util.warningDisplay(
-                    f"The maximum number of views has been reached, preventing the current preview from being displayed.\nTo view the current analysis, please select the analysis node in an already open view."
+                    "The maximum number of views has been reached, preventing the current preview from being displayed.\nTo view the current analysis, please select the analysis node in an already open view."
                 )
                 logging.debug(error)
 

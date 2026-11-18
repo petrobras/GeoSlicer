@@ -162,7 +162,7 @@ torch.save(saved_composed_model, 'composed_model_name.pth')
 
 After generated the `.pth` file in the above format, it's necessary to put it in one of the following folders: 
 
-`src/ltrace/ltrace/assets/trained_models/*Env`
+`src/commons/assets/trained_models/*Env`
 
 The module will load the trained models only in the correct Geoslicer environment.
 

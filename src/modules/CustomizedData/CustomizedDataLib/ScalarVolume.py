@@ -4,17 +4,16 @@ import slicer
 import traceback
 import typing
 
-from ltrace.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
-from ltrace.slicer.widget.labels_table_widget import LabelsTableWidget
-from ltrace.slicer.helpers import (
+from commons.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
+from commons.slicer.widget.labels_table_widget import LabelsTableWidget
+from commons.slicer.helpers import (
     setVolumeVisibilityIn3D,
-    getVolumeVisibilityIn3D,
     getScalarTypesAsString,
     BlockSignals,
 )
-from ltrace.slicer.node_attributes import ColorMapSelectable
-from ltrace.slicer.helpers import tryGetNode
-from ltrace.slicer.widget.proportions import ProportionsSection
+from commons.slicer.node_attributes import ColorMapSelectable
+from commons.slicer.helpers import tryGetNode
+from commons.slicer.widget.proportions import ProportionsSection
 
 
 def setSlicesVisibilityIn3D(volume, visible):
@@ -72,9 +71,9 @@ class ScalarVolumeWidget(qt.QWidget):
         self.activeVolumeNodeSelector = self.volumesWidget.findChild(
             slicer.qMRMLSubjectHierarchyTreeView, "ActiveVolumeNodeSelector"
         )
-        assert (
-            self.activeVolumeNodeSelector is not None
-        ), "Could not find ActiveVolumeNodeSelector in the volume display widget"
+        assert self.activeVolumeNodeSelector is not None, (
+            "Could not find ActiveVolumeNodeSelector in the volume display widget"
+        )
 
         imageDimensionsHBoxLayout = qt.QHBoxLayout()
         self.imageDimensions1LineEdit = qt.QLineEdit()

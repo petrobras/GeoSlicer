@@ -12,8 +12,8 @@ from typing import Dict, Tuple
 import qt
 import slicer
 
-from ltrace.remote.connections import ConnectionManager, JobExecutor
-from ltrace.remote.constants import (
+from commons.remote.connections import ConnectionManager, JobExecutor
+from commons.remote.constants import (
     JOB_DORMANT_STATES,
     JOB_EVENT_COLLECT,
     JOB_INACTIVE_STATES,
@@ -23,14 +23,14 @@ from ltrace.remote.constants import (
     JOB_STATE_RUNNING,
     JOB_TERMINAL_STATES,
 )
-from ltrace.remote.jobs import JobManager
-from ltrace.slicer import ui
-from ltrace.slicer.widget.elided_label import ElidedLabel
-from ltrace.slicer.widget.remote import waiting
-from ltrace.slicer.widget.search_filter_bar import SearchFilterBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.utils.custom_event_filter import CustomEventFilter
-from ltrace.utils.log_once import LogOnce
+from commons.remote.jobs import JobManager
+from commons.slicer import ui
+from commons.slicer.widget.elided_label import ElidedLabel
+from commons.slicer.widget.remote import waiting
+from commons.slicer.widget.search_filter_bar import SearchFilterBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.utils.custom_event_filter import CustomEventFilter
+from commons.utils.log_once import LogOnce
 
 # Checks if closed source code is available
 try:
@@ -363,8 +363,7 @@ class JobListItemWidget(qt.QWidget):
         # read as the neat option and invited people to pick it over
         # Cancel/Delete, which is the one that actually frees the cluster.
         forgetAction.setToolTip(
-            "Last resort: stop tracking this job. Its folder stays on the cluster and GeoSlicer "
-            "can no longer reach it."
+            "Last resort: stop tracking this job. Its folder stays on the cluster and GeoSlicer can no longer reach it."
         )
         menu.exec_(location)
 

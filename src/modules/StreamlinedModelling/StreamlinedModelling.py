@@ -1,4 +1,4 @@
-from ltrace.flow.util import (
+from commons.flow.util import (
     createSimplifiedSegmentEditor,
     onSegmentEditorEnter,
     onSegmentEditorExit,
@@ -11,17 +11,15 @@ import qt
 import slicer
 import ctk
 from slicer.util import VTKObservationMixin
-import qSlicerSegmentationsEditorEffectsPythonQt
-import qSlicerSegmentationsModuleWidgetsPythonQt
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.utils.ProgressBarProc import ProgressBarProc
 from collections import OrderedDict
 from dataclasses import dataclass
 
 from distinctipy import distinctipy
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer import helpers
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.slicer import helpers
 
 SIDE_BY_SIDE_SEG_LAYOUT = 201
 
@@ -615,12 +613,12 @@ class StreamlinedModellingWidget(LTracePluginWidget, VTKObservationMixin):
             QListWidget::item:selected {{
                 padding-left: 10px;
                 font-weight: bold;
-                background-color: {'#37403A' if isDark else '#d9ebff'};
+                background-color: {"#37403A" if isDark else "#d9ebff"};
                 border-left: 6px solid #26C252;
-                color: {'#ffffff' if isDark else '#000000'};
+                color: {"#ffffff" if isDark else "#000000"};
             }}
             QListWidget::item:hover {{
-                background-color: {'#37403A' if isDark else '#d9ebff'};
+                background-color: {"#37403A" if isDark else "#d9ebff"};
             }}
         """
         )

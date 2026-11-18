@@ -5,19 +5,19 @@ import numpy as np
 import qt
 import slicer
 
-import ltrace.slicer.widget.simulation as simulation_widgets
+import commons.slicer.widget.simulation as simulation_widgets
 from MercurySimulationLib.MercurySimulationWidget import MercurySimulationWidget
-from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.pnflow_parameter_defs import PARAMETERS
+from commons.pore_networks.simulation_parameters_node import (
     parameter_node_to_dict,
     save_dict_to_parameter_node,
     TWO_PHASE_SIMULATION_TYPE,
 )
-from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from ltrace.slicer.app import MANUAL_BASE_URL
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import dataframeFromTable, slicer_is_in_developer_mode
+from commons.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
+from commons.pore_networks.subres_models import get_pore_network_volume_data
+from commons.slicer.app import MANUAL_BASE_URL
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer_utils import dataframeFromTable, slicer_is_in_developer_mode
 
 
 class TwoPhaseParametersEditDialog:

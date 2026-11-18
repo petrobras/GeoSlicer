@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import slicer
 
-from ltrace.pore_networks.krel_result import ERROR_PREFIX, INPUT_PREFIX, RESULT_PREFIX
-from ltrace.slicer_utils import dataframeFromTable
+from commons.pore_networks.krel_result import ERROR_PREFIX, INPUT_PREFIX, RESULT_PREFIX
+from commons.slicer_utils import dataframeFromTable
 
 
 class PlotData:
@@ -185,7 +185,7 @@ class KrelCycleCurves:
         self.krw_data = {}
         self.kro_data = {}
         self.pressure_data = {}
-        self.sw_data = list(self.cycle_df[f"Sw"])
+        self.sw_data = list(self.cycle_df["Sw"])
         for id in range(self.number_of_simulations):
             if f"Krw_{id}" in self.cycle_df.columns:
                 self.krw_data[id] = list(self.cycle_df[f"Krw_{id}"])
@@ -194,9 +194,9 @@ class KrelCycleCurves:
             if f"Pc_{id}" in self.cycle_df.columns:
                 self.pressure_data[id] = list(self.cycle_df[f"Pc_{id}"])
         if "Kro_middle" in self.cycle_df.columns:
-            self.krw_data["middle"] = list(self.cycle_df[f"Krw_middle"])
-            self.kro_data["middle"] = list(self.cycle_df[f"Kro_middle"])
-            self.pressure_data["middle"] = list(self.cycle_df[f"Pc_middle"])
+            self.krw_data["middle"] = list(self.cycle_df["Krw_middle"])
+            self.kro_data["middle"] = list(self.cycle_df["Kro_middle"])
+            self.pressure_data["middle"] = list(self.cycle_df["Pc_middle"])
 
     def get_number_of_simulations(self):
         return self.number_of_simulations

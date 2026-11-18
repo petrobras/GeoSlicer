@@ -3,7 +3,7 @@
 O GeoSlicer é uma aplicação modular, ou seja, cada função específica adicionada ao _software_ é feita através de um novo
 módulo. 
 Isso permite que o GeoSlicer seja facilmente expandido e personalizado para atender a diferentes necessidades de
-projeto. Inclusive o usuário pode desenvolver seus próprios módulos e integrá-los ao GeoSlicer.
+projeto. Inclusive o usuário pode desenvolver seus próprios módulos e carregá-los no GeoSlicer com o [Gerenciador de Módulos](../ModuleManager.md).
 
 ### Design
 

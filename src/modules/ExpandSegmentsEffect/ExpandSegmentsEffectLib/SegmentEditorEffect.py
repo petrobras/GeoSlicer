@@ -8,12 +8,11 @@ import sitkUtils
 import slicer
 import vtk
 from SegmentEditorEffects import *
-from ltrace.slicer.helpers import hide_masking_widget
+from commons.slicer.helpers import hide_masking_widget
+from commons.slicer import ui
+from commons.slicer.lazy import lazy
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 from typing import Optional, Union
-from ltrace.slicer import ui
-from ltrace.slicer.lazy import lazy
-
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):

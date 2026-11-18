@@ -3,8 +3,8 @@ import numpy as np
 import slicer
 
 from pathlib import Path
-from typing import Iterator, Union
-from ltrace.slicer import export
+from typing import Iterator
+from commons.slicer import export
 
 
 def _units(node: slicer.vtkMRMLNode) -> str:

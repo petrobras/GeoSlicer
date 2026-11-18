@@ -1,8 +1,9 @@
 import os
-import vtk, qt, ctk, slicer
+import qt
+import slicer
 from pathlib import Path
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, LTracePluginTest
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 
 from PoreNetworkExtractor import PoreNetworkExtractor
 from PoreNetworkSimulation import PoreNetworkSimulation

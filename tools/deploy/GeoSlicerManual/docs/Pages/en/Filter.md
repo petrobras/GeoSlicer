@@ -42,6 +42,28 @@ Applies a median filter to the volume; the _Neighborhood size_ parameter defines
 
 ---
 
+## Non-Local Means Filter
+
+Removes noise while preserving edges and fine textures. For each voxel, the filter searches its surroundings for patches with a similar appearance and averages the voxels at the center of these patches, giving more weight to the most similar ones. Unlike Gaussian and median filters, which average only immediate neighbors, it averages regions that look alike even if they are a few voxels apart, so grain boundaries and small pores are better preserved. The implementation is the one from [scikit-image](https://scikit-image.org/docs/stable/api/skimage.restoration.html#skimage.restoration.denoise_nl_means).
+
+The module parameters are:
+
+- **Mode**: _3D_ compares patches across the whole volume, using the information of neighboring slices. _2D (slice by slice)_ filters each axial slice independently, which is faster and suited to images with strong differences between slices.
+
+- **Strength (× noise std)**: Filter strength _h_, as a multiple of the noise standard deviation. Higher values smooth more, at the cost of fine details. Recommended values are about 0.45 to 0.6 in 3D and 0.6 to 0.8 in 2D. When the mode changes, the strength is set to the default of the new mode (0.5 for 3D, 0.7 for 2D) unless it was edited.
+
+- **Noise std**: Standard deviation of the image noise, in intensity units. With _Estimate_ checked, it is estimated from the image itself, ignoring null regions around the sample. Uncheck it to type a known value. The values used are shown below the _Apply_ button once the filter finishes.
+
+- **Patch size (voxels)**: Side of the patches compared to find similar regions. Larger patches are more robust to noise but slower, and may blur features smaller than the patch.
+
+- **Search distance (voxels)**: Maximal distance to search for similar patches. Processing time grows quickly with this value, especially in 3D.
+
+- **Fast mode**: Uses a faster patch comparison with uniform weights. When unchecked, patch comparisons are weighted by a Gaussian, which is slightly more accurate but much slower. Only available in 2D, since 3D always uses the fast comparison.
+
+Voxels with the image's null value are kept unchanged. RGB images, usually greyscale images exported with three channels, are converted to single-channel greyscale before filtering, and a warning is shown above the _Apply_ button when this will happen.
+
+---
+
 ## Euclidean Distance Transform
 
 Calculates the Euclidean distance transform of a binary image. The output image contains, for each voxel, the distance to the nearest non-zero voxel in the input image.
@@ -122,3 +144,20 @@ The _Shading Correction_ module workflow is divided into three steps: initializa
 
 1.  **Apply:** Click to start the correction process on the input image.
 2.  **Apply to full volume:** If your input image is a virtual image (_lazy node_), this button will be visible. Clicking it will open the **Polynomial Shading Correction Big Image** module, which is optimized for processing large images. The parameters defined in this module will be automatically transferred to the big image module.
+
+---
+
+## Ring Artifact Removal
+
+Removes ring artifacts from already reconstructed CT/micro-CT volumes. The correction is done slice by slice, around one or more centers marked by the user: the systematic bias that is constant at a given radius (equal at every angle) is isolated and subtracted, without resampling the image, so the real texture is not blurred. A second mode, _Radial fan_, removes streaks that emanate from a fixed point (e.g. a dense inclusion or metal grain).
+
+### Usage
+1. Select the **Input volume**.
+2. Choose the **Artifact type**: _Ring (circular)_ or _Radial fan (streaks emanating from a point)_.
+3. In **Correction**, click _Add point_ to place a marker at an estimated center, then drag it onto the center of each visible ring. In _Ring_ mode the estimate is the rotation center stored with the volume (when the file has it) or, otherwise, the image center. Without any marker, the correction uses that same estimate. For the _Radial fan_ mode, mark exactly one point; the marker is placed on the dense grain the streaks emanate from, found automatically.
+4. Adjust the parameters: _Ring width_ (Ring mode), or _Streak width_ and _Radial coherence_ (Radial fan mode). Optionally set a **Radius range** (in pixels from each point) to correct only that band; the correction fades in and out at its ends, and _No limit_ leaves the outer end open.
+5. Click **Preview on current slice** to see the slice before, after and the difference (before - after) side by side. Use **Exit preview** to go back to the previous layout.
+6. Set the **Output name** and click **Apply to entire volume**.
+
+!!!note
+	Not every radial pattern is a classic ring artifact. If the correction is negligible even with a well-adjusted center, the pattern is probably a "zinger"-type artifact, which can only be properly fixed in the sinogram, before the reconstruction.

@@ -1,0 +1,7 @@
+columnName	type	componentNames	nullValue
+Fitting equation	string		
+m	float		
+b	float		
+x_min	float		
+x_max	float		
+<default>	double		

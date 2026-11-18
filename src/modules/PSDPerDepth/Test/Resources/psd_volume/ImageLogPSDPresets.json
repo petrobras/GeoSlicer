@@ -1,0 +1,10 @@
+{
+  "PSDPerDepth": {
+    "ac72ef38-9896-4f7d-b213-7477ef994a44": {
+      "name": "t2",
+      "depthInterval": "1.0",
+      "nbins": "16",
+      "logXAxis": "True"
+    }
+  }
+}

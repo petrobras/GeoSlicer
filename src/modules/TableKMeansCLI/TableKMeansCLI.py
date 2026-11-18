@@ -5,19 +5,17 @@
 
 from __future__ import print_function
 
-import vtk, slicer, slicer.util, mrml
+import vtk
+import slicer
+import slicer.util
+import mrml
 
-import logging
-import os, sys
-import traceback
+import sys
 
-from ltrace.algorithms.common import ArrayProcessor, parseWindowFormat
 
-import json
-
-from pathlib import Path
 import numpy as np
-import sklearn, sklearn.cluster
+import sklearn
+import sklearn.cluster
 
 
 def progressUpdate(value):

@@ -12,29 +12,27 @@ import slicer
 import slicer.util
 import vtk
 
-from ltrace.pore_networks.functions_extract import ExtractionNodesCreator, visualize_network
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.functions_extract import ExtractionNodesCreator, visualize_network
+from commons.pore_networks.simulation_parameters_node import (
     parameter_node_to_dict,
     save_dict_to_parameter_node,
     EXTRACTOR_TYPE,
-    PNM_PARAMETER_TYPE_ATTR,
 )
-from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
-from ltrace.remote.slurm import calculate_slurm_parameters
-from ltrace.slicer import ui
-from ltrace.slicer.app import MANUAL_BASE_URL
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import (
+from commons.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
+from commons.remote.slurm import calculate_slurm_parameters
+from commons.slicer import ui
+from commons.slicer.app import MANUAL_BASE_URL
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
     slicer_is_in_developer_mode,
-    getResourcePath,
 )
-from ltrace.utils.mmap_shared_memory import MmapSharedMemory
-from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
+from commons.utils.mmap_shared_memory import MmapSharedMemory
+from commons.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
 
 try:
     from Test.PoreNetworkExtractorTest import PoreNetworkExtractorTest
@@ -678,7 +676,6 @@ class PoreNetworkExtractorLogic(LTracePluginLogic):
             logging.warning("Not a valid input.")
             return
 
-        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         ijkToRasMatrix = vtk.vtkMatrix4x4()
         inputVolumeNode.GetIJKToRASDirectionMatrix(ijkToRasMatrix)
 

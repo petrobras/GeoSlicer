@@ -5,8 +5,6 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 
-from ltrace.slicer.helpers import getCountForLabels
-
 
 non_pores_pattern = re.compile(r"^(?:(?:Non[- ]?Pores?)|(?:Not[- ]?Pores?)|(?:Não[- ]Poros?))$", flags=re.IGNORECASE)
 pores_pattern = re.compile(r"^(?:(?:Pores?)|(?:Poros?))$", flags=re.IGNORECASE)
@@ -152,7 +150,8 @@ def get_modulus_and_density(phase_volume, data: dict):
     bulk_lower, shear_lower = average_moduli(phase_vol_fraction_mineral_mix, reuss_average_function)
     bulk_upper, shear_upper = average_moduli(phase_vol_fraction_mineral_mix, voigt_average_function)
 
-    r_ = lambda v: np.round(v, decimals=5)
+    def r_(v):
+        return np.round(v, decimals=5)
 
     data["Density (g/cm^3)"] = r_(density)
     data["Bulk modulus (Gpa) - Mineral mix (lower)"] = r_(bulk_lower)

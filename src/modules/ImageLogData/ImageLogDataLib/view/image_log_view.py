@@ -9,11 +9,10 @@ from ImageLogDataLib.viewwidgets.porosity_per_realization_widget import Porosity
 from ImageLogDataLib.viewdata.ViewData import EmptyViewData
 from ImageLogDataLib.viewdata.ViewData import GraphicViewData
 from ImageLogDataLib.viewdata.ViewData import SliceViewData
-from ltrace.slicer.node_attributes import TableType, HistogramGraphType
-from ltrace.slicer_utils import tableNodeToDict
-from ltrace.utils.CorrelatedLabelMapVolume import ProportionLabelMapVolume
-from ltrace.slicer.helpers import triggerNodeModified
-import vtk
+from commons.slicer.node_attributes import TableType, HistogramGraphType
+from commons.slicer_utils import tableNodeToDict
+from commons.utils.CorrelatedLabelMapVolume import ProportionLabelMapVolume
+from commons.slicer.helpers import triggerNodeModified
 
 
 class ProportionNodesLoader:

@@ -3,8 +3,8 @@ import PySide2 as pyside
 import qt
 import shiboken2
 
-from ltrace.slicer.graph_data import DataFrameGraphData
-from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
+from commons.slicer.graph_data import DataFrameGraphData
+from commons.slicer.widget.data_plot_widget import DataPlotWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 
 
@@ -41,7 +41,6 @@ class WettabilityIndexPlot(PlotBase):
         self.zAxisComboBox.clear()
 
         # Define the interactive widgets
-        error_columns = self.data_manager.get_errors_list()
         parameters = self.data_manager.get_variable_parameters_list()
         self.zAxisComboBox.addItems(parameters)
         self.zAxisComboBox.setCurrentText(current_z)

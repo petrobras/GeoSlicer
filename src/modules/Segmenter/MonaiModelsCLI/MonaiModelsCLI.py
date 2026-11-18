@@ -5,10 +5,7 @@ from __future__ import print_function
 
 import json
 import logging
-import math
-import os
 import sys
-from pathlib import Path
 
 import vtk
 import vtk.util.numpy_support
@@ -16,25 +13,14 @@ import slicer
 import slicer.util
 import mrml
 
-import monai
 from monai.networks.nets import UNet
-from monai.networks.layers import Norm
 from monai.inferers import sliding_window_inference
 from monai.utils import set_determinism
 import numpy as np
-from numpy.random import RandomState
-import pickle
-from PIL import Image
-import sympy  # import it before torch to avoid crash
 import torch
 from monai.transforms import MapLabelValued
 
-from ltrace import transforms
-
-DEFAULT_SETTINGS = "settings.json"
-
-
-from copy import deepcopy
+from commons import transforms
 
 from MonaiModelsLib.models.unet import UNetAct, UNetActWithBoundarySupervision
 
@@ -58,10 +44,10 @@ from MonaiModelsLib.transforms import (
     ArgmaxTransform,
     MinMaxTransform,
     AddConstantTransform,
-    get_torch_dtype,
-    load_from_str,
     TakeChannelsTransform,
 )
+
+DEFAULT_SETTINGS = "settings.json"
 
 
 def make_get_object_by_name(*objects):
@@ -194,7 +180,6 @@ def adjustbounds(volume, bounds):
 def run_inference(saved_model: dict):
     """run inferece for a model"""
 
-    title = saved_model["title"]
     config = saved_model["config"]
     meta = config["meta"]
 
@@ -221,7 +206,6 @@ def run_inference(saved_model: dict):
         [get_transform(t["name"])(**t["params"]) for t in post_processing_transforms]
     )
 
-    is_segmentation_model = meta["is_segmentation_model"]
     model_spatial_dims = meta["spatial_dims"]
     input_roi_shape = meta["input_roi_shape"]
 

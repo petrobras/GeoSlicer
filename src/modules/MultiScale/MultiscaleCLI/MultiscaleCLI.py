@@ -7,7 +7,7 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
+import mrml
 import os
 import json
 import mpslib as mps

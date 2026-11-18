@@ -1,0 +1,11 @@
+columnName	type	nullValue	componentNames
+<default>	double		
+depth (m)	double		
+n depth (m)	double		
+desc	int		
+cond	string		
+diam (cm)	double		
+circularity	double		
+solidity	double		
+azimuth (°)	int		
+label	int		

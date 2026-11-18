@@ -7,8 +7,8 @@ import slicer
 import importlib
 import sys
 
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.ImageLogSegmentEditorTest import ImageLogSegmentEditorTest
@@ -156,7 +156,7 @@ class ImageLogSegmentEditorWidget(LTracePluginWidget):
         del self.logic
 
     def onReload(self):
-        importlib.reload(sys.modules["ltrace.slicer.widget.clone_and_rename"])
+        importlib.reload(sys.modules["commons.slicer.widget.clone_and_rename"])
         super().onReload()
 
 

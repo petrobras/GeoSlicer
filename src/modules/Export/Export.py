@@ -12,8 +12,8 @@ import qt
 import slicer.util
 import vtk
 
-from ltrace.slicer import export
-from ltrace.slicer.helpers import (
+from commons.slicer import export
+from commons.slicer.helpers import (
     extent2size,
     getSourceVolume,
     export_las_from_histogram_in_depth_data,
@@ -21,15 +21,14 @@ from ltrace.slicer.helpers import (
     createTemporaryNode,
     removeTemporaryNodes,
     safe_convert_array,
-    getCurrentEnvironment,
     checkUniqueNames,
     saveNode,
 )
-from ltrace.slicer.node_attributes import TableDataOrientation, NodeEnvironment
-from ltrace.slicer_utils import *
-from ltrace.transforms import getRoundedInteger
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from ltrace.utils.callback import Callback
+from commons.slicer.node_attributes import TableDataOrientation
+from commons.slicer_utils import *
+from commons.transforms import getRoundedInteger
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.utils.callback import Callback
 
 
 class Export(LTracePlugin):
@@ -200,7 +199,7 @@ class ExportWidget(LTracePluginWidget):
         environmentsCollapsibleButton.setText("Environments")
         environmentsCollapsibleButton.collapsed = True
         self.formLayout_standard.addRow(environmentsCollapsibleButton)
-        environmentsLayout = qt.QGridLayout(environmentsCollapsibleButton)
+        qt.QGridLayout(environmentsCollapsibleButton)
         environmentsCollapsibleButton.enabled = False
 
         # Data types
@@ -447,7 +446,7 @@ class ExportLogic(LTracePluginLogic):
     @staticmethod
     def rawPath(node, name=None, imageType=None):
         """Creates path for node according to standard nomenclature.
-        See https://ltrace.atlassian.net/browse/PL-532
+        See https://commons.atlassian.net/browse/PL-532
         """
         inferredName = node.GetName()
         if isinstance(node, slicer.vtkMRMLSegmentationNode):
@@ -623,7 +622,6 @@ class ExportLogic(LTracePluginLogic):
         csvRows.append(",".join(str(s) for s in csvRow))
 
         # Values
-        environment = getCurrentEnvironment()
         for i in range(node.GetNumberOfRows()):
             csvRow = []
             for j in range(node.GetNumberOfColumns()):

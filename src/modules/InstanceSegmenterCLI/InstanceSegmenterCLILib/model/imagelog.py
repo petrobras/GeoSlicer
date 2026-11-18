@@ -8,10 +8,10 @@ import vtk
 from scipy.ndimage import binary_fill_holes
 from skimage.segmentation import expand_labels
 
-import ltrace.algorithms.supervised.mrcnn.model as modellib
-from ltrace.algorithms.measurements import instances_depths, sidewall_sample_instance_properties
-from ltrace.algorithms.supervised.mrcnn.config import Config
-from ltrace.slicer.cli_utils import progressUpdate
+import commons.algorithms.supervised.mrcnn.model as modellib
+from commons.algorithms.measurements import instances_depths, sidewall_sample_instance_properties
+from commons.algorithms.supervised.mrcnn.config import Config
+from commons.slicer.cli_utils import progressUpdate
 from .model import processImageArray, combineImageArrays, updateLabelMapArray
 
 ImageLogSidewallSampleModelParameters = namedtuple(
@@ -96,7 +96,7 @@ class ImageLogSidewallSampleModel:
                 mask = self.improveSidewallSampleMask(ampImageSection, mask, i)
                 if 1 not in mask:
                     continue
-                markMaskIndexes = np.where(mask == True)
+                markMaskIndexes = np.where(mask)
                 # if there isn't a label in the same location, proceed to add a label
                 if not np.any(labelMapArray[start:end, 0, :][markMaskIndexes]):
                     properties = sidewall_sample_instance_properties(mask, p.ampImageNode.GetSpacing())
@@ -241,6 +241,6 @@ class ImageLogSidewallSampleModel:
             new_mask = binary_fill_holes(new_mask)
             # # sometimes the threshold will get some other background and will exclude them
             new_mask = keepLargestComponent(new_mask)
-        except:
+        except Exception:
             print("Sidewall sample mark improvement failed on " + str(index))
         return new_mask

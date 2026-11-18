@@ -1,0 +1,241 @@
+{
+    "water_viscosity": {
+        "start": 1.0,
+        "stop": 2.0,
+        "steps": 1
+    },
+    "water_density": {
+        "start": 1000.0,
+        "stop": 2000.0,
+        "steps": 1
+    },
+    "oil_viscosity": {
+        "start": 10.0,
+        "stop": 20.0,
+        "steps": 1
+    },
+    "oil_density": {
+        "start": 900.0,
+        "stop": 1800.0,
+        "steps": 1
+    },
+    "interfacial_tension": {
+        "start": 30.0,
+        "stop": 60.0,
+        "steps": 1,
+        "step_spacing": "logarithmic"
+    },
+    "init_contact_model": "3",
+    "init_contact_distribution": "gaussian",
+    "init_contact_angle": {
+        "start": 20.0,
+        "stop": 40.0,
+        "steps": 5
+    },
+    "init_contact_angle_range": {
+        "start": 10.0,
+        "stop": 20.0,
+        "steps": 5
+    },
+    "init_contact_angle_sig": {
+        "start": 5.0,
+        "stop": 10.0,
+        "steps": 1
+    },
+    "init_contact_angle_del": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "init_contact_angle_eta": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "init_contact_angle_rctrl": "rand",
+    "init_contact_angle_separation": {
+        "start": 25.2,
+        "stop": 50.4,
+        "steps": 1
+    },
+    "second_contact_fraction": {
+        "start": 0.0,
+        "stop": 0.0,
+        "steps": 1
+    },
+    "second_contact_distribution": "gaussian",
+    "second_contact_angle": {
+        "start": 20.0,
+        "stop": 40.0,
+        "steps": 1
+    },
+    "second_contact_angle_range": {
+        "start": 10.0,
+        "stop": 20.0,
+        "steps": 1
+    },
+    "second_contact_angle_sig": {
+        "start": 5.0,
+        "stop": 10.0,
+        "steps": 1
+    },
+    "second_contact_angle_del": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "second_contact_angle_eta": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "second_contact_angle_rctrl": "rand",
+    "equil_contact_model": "3",
+    "equil_contact_distribution": "gaussian",
+    "equil_contact_angle": {
+        "start": 120.0,
+        "stop": 240.0,
+        "steps": 1
+    },
+    "equil_contact_angle_range": {
+        "start": 10.0,
+        "stop": 20.0,
+        "steps": 1
+    },
+    "equil_contact_angle_sig": {
+        "start": 5.0,
+        "stop": 10.0,
+        "steps": 1
+    },
+    "equil_contact_angle_del": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "equil_contact_angle_eta": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "equil_contact_angle_rctrl": "rand",
+    "equil_contact_angle_separation": {
+        "start": 25.2,
+        "stop": 50.4,
+        "steps": 1
+    },
+    "frac_contact_angle_fraction": {
+        "start": 0.0,
+        "stop": 0.0,
+        "steps": 1
+    },
+    "frac_contact_angle_volbased": "T",
+    "frac_contact_angle_corrdiam": {
+        "start": 7.0,
+        "stop": 14.0,
+        "steps": 1
+    },
+    "frac_contact_method": "rand",
+    "oilInWCluster": "T",
+    "frac_cluster_count": 20,
+    "frac_cluster_count_range": 10,
+    "frac_cluster_count_del": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "frac_cluster_count_eta": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "frac_cluster_count_rctrl": "rand",
+    "frac_contact_model": "3",
+    "frac_contact_distribution": "gaussian",
+    "frac_contact_angle": {
+        "start": 20.0,
+        "stop": 40.0,
+        "steps": 1
+    },
+    "frac_contact_angle_range": {
+        "start": 10.0,
+        "stop": 20.0,
+        "steps": 1
+    },
+    "frac_contact_angle_sig": {
+        "start": 5.0,
+        "stop": 10.0,
+        "steps": 1
+    },
+    "frac_contact_angle_del": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "frac_contact_angle_eta": {
+        "start": -1.0,
+        "stop": -2.0,
+        "steps": 1
+    },
+    "frac_contact_angle_rctrl": "rand",
+    "enforced_swi_1": {
+        "start": 0.0,
+        "stop": 0.0,
+        "steps": 1
+    },
+    "enforced_pc_1": {
+        "start": 200000.0,
+        "stop": 400000.0,
+        "steps": 1
+    },
+    "enforced_steps_1": {
+        "start": 0.005,
+        "stop": 0.01,
+        "steps": 1
+    },
+    "inject_1": "10",
+    "produce_1": "01",
+    "enforced_swi_2": {
+        "start": 1.0,
+        "stop": 2.0,
+        "steps": 1
+    },
+    "enforced_pc_2": {
+        "start": -200000.0,
+        "stop": -400000.0,
+        "steps": 1
+    },
+    "enforced_steps_2": {
+        "start": 0.005,
+        "stop": 0.01,
+        "steps": 1
+    },
+    "inject_2": "10",
+    "produce_2": "01",
+    "pore_fill_algorithm": "oren2",
+    "pore_fill_weight_a1": 0.0,
+    "pore_fill_weight_a2": 0.5,
+    "pore_fill_weight_a3": 1.0,
+    "pore_fill_weight_a4": 2.0,
+    "pore_fill_weight_a5": 5.0,
+    "pore_fill_weight_a6": 10.0,
+    "seed": 0,
+    "calc_box_lower_boundary": 0.1,
+    "calc_box_upper_boundary": 0.9,
+    "subresolution_volume": 0.0,
+    "run_third_cycle": "1",
+    "create_sequence": "F",
+    "create_ca_distributions": "F",
+    "create_drainage_snapshot": "F",
+    "keep_temporary": "F",
+    "max_subprocesses": 8,
+    "n_jobs": 2,
+    "timeout_enabled": "T",
+    "simulator": "py_pore_flow",
+    "direction": "x",
+    "subres_model_name": "Fixed Radius",
+    "subres_params": {
+        "radius": 0.1
+    },
+    "subres_shape_factor": 0.04,
+    "subres_porositymodifier": 1.0
+}

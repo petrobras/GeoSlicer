@@ -1,14 +1,14 @@
 """Rehydrate an LBPM job after the application restarts.
 
-A job persisted by :class:`~ltrace.remote.jobs.JobManager` keeps only its details dictionary, so the handler
+A job persisted by :class:`~commons..remote.jobs.JobManager` keeps only its details dictionary, so the handler
 — scheduler, spec, expected frame count, the folders it is opened from — is rebuilt from it here.
 """
 
-from ltrace.lbpm.binary import LBPMBinary
-from ltrace.lbpm.scheduler import LBPMJobSpec, LocalScheduler, SlurmScheduler
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.handlers.LBPMSimulationHandler import LBPMSimulationHandler
-from ltrace.slicer.lbpm import open_run
+from commons.lbpm.binary import LBPMBinary
+from commons.lbpm.scheduler import LBPMJobSpec, LocalScheduler, SlurmScheduler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers.LBPMSimulationHandler import LBPMSimulationHandler
+from commons.slicer.lbpm import open_run
 
 
 def lbpm_job_loader(job: JobExecutor) -> JobExecutor:

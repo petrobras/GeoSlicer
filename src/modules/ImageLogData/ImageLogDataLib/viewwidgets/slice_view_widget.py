@@ -1,5 +1,4 @@
 import numpy as np
-import qt
 import re
 import slicer
 
@@ -32,7 +31,7 @@ class SliceViewWidget(BaseViewWidget):
         segmentationNode = self.__get_node_by_id(viewData.segmentationNodeId)
         if (
             segmentationNode is not None
-            and viewData.segmentationNodeHidden == False
+            and not viewData.segmentationNodeHidden
             and type(segmentationNode) is slicer.vtkMRMLLabelMapVolumeNode
         ):
             sliceCompositeNode.SetLabelVolumeID(viewData.segmentationNodeId)

@@ -1,0 +1,5 @@
+# Color table file /home/git/slicerltrace/src/modules/ImageLogData/Test/Resources/SegmentedVolume/Data/Segmentation_BIN_0346_0342_0306_01000nm_ColorTable.ctbl
+# 3 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255

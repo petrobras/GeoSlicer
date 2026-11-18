@@ -2,9 +2,9 @@ import qt
 import ctk
 import slicer
 
-from ltrace.slicer import ui, helpers
+from commons.slicer import helpers
 
-# from ltrace.slicer.widget.help_button import HelpButton
+# from commons.slicer.widget.help_button import HelpButton
 from typing import Callable
 from pathlib import Path
 
@@ -176,7 +176,7 @@ class PSDPerDepthPresetParameters(BaseForm):
         constraintDepthInterval=None,
         porousAreaMM2=None,
     ) -> None:
-        super().__init__(f"PSDPerDepth Parameters", warningLabel, parent)
+        super().__init__("PSDPerDepth Parameters", warningLabel, parent)
 
         self.setDefaultDepthIntervalM = setDefaultDepthIntervalM
         self.constraintDepthInterval = constraintDepthInterval
@@ -325,7 +325,7 @@ class PSDPerDepthPresetParameters(BaseForm):
                 required=False,
             )
         )
-        advancedLayout = qt.QFormLayout(self.advancedCollapsibleButton)
+        qt.QFormLayout(self.advancedCollapsibleButton)
         self.advancedCollapsibleButton.layout().addRow(self.internalBinningLogLabel, self.internalBinningLogCheckBox)
         self.advancedCollapsibleButton.layout().addRow(self.nbinsLabel, self.nbinsSpinBox)
 

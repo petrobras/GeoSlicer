@@ -7,7 +7,6 @@ from __future__ import print_function
 
 from pathlib import Path
 import vtk
-import sys
 from time import sleep
 
 from dask_jobqueue import SLURMCluster
@@ -15,14 +14,11 @@ from dask.distributed import Client
 import json
 import numpy as np
 import os
-import pickle
 
-import slicer
-import mrml
-from ltrace.slicer.cli_utils import progressUpdate
-from ltrace.pore_networks.functions_extract import general_pn_extract
-from ltrace.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
-from ltrace.utils.mmap_shared_memory import MmapSharedMemory
+from commons.slicer.cli_utils import progressUpdate
+from commons.pore_networks.functions_extract import general_pn_extract
+from commons.remote.object_transfer import JsonObjectTransfer, VolumeNodeObjectTransfer
+from commons.utils.mmap_shared_memory import MmapSharedMemory
 
 
 def parse_divs(value):

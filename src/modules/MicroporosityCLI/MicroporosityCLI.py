@@ -6,10 +6,12 @@ from __future__ import print_function
 import json
 import pandas as pd
 
-import slicer, mrml, slicer.util
+import slicer
+import mrml
+import slicer.util
 
-from ltrace.slicer.cli_utils import readFrom, writeDataInto, writeToTable, progressUpdate
-from ltrace.algorithms import measurements as measure
+from commons.slicer.cli_utils import readFrom, writeDataInto, writeToTable, progressUpdate
+from commons.algorithms import measurements as measure
 
 
 def main(args):

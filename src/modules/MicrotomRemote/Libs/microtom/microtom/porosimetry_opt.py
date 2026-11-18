@@ -8,7 +8,10 @@
 # Funções do tipo run_psd estão importando apenas os .raw para análise, quando deveriam importar também .nc.
 # Fazer transformação entre radii X Sw e Pc X Sw de maneira simples.
 
-import sys, time, os, datetime
+import sys
+import time
+import os
+import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -49,9 +52,9 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
 
     """
 
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -62,7 +65,6 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
         os.makedirs(output_path)
 
     with open(output_file_path, "a") as output_psd_file:
-
         edt = BufferedPyEDT(bin_data.shape, dtype=np.uint32, sqrt_result=True, device=device)
 
         start = time.time()
@@ -108,7 +110,7 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
 
     print("Time spent in psd: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["psd"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_psd": nw_saturation})
@@ -142,9 +144,9 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True, device="cpu"):
                 Full map of regions with their characteristic lengths.
 
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_image = bin_data.copy() if (verbose) else None
@@ -157,7 +159,6 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True, device="cpu"):
         os.makedirs(output_path)
 
     with open(output_file_path, "a") as output_hpsd_file:
-
         nw_saturation = []
         list_radii = []
         cur_bin = bin_data.copy()
@@ -167,7 +168,6 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True, device="cpu"):
         bin_edt = edt(cur_bin, copy=True)
 
         while cur_bin.max() > 0:
-
             cur_radius = bin_edt.max()
             nw_image = bin_data & (edt(bin_edt < cur_radius) < cur_radius)
             if verbose:
@@ -188,7 +188,7 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True, device="cpu"):
 
     print("Time spent in hpsd: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["hpsd"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_hpsd": np.array(accumulated)})
@@ -237,9 +237,9 @@ def micp(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -250,7 +250,6 @@ def micp(
         os.makedirs(output_path)
 
     with open(output_file_path, "a") as output_micp_file:
-
         edt = BufferedPyEDT(bin_data.shape, dtype=np.uint32, sqrt_result=True, device=device)
         mask = ConnectedMask(connectivity=1, direction=direction)
 
@@ -302,7 +301,7 @@ def micp(
 
     print("Time spent in micp: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["micp"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_micp": nw_saturation})
@@ -354,9 +353,9 @@ def drainage_incompressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_path = os.path.dirname(os.path.abspath(output_file_path))
@@ -419,7 +418,7 @@ def drainage_incompressible(
 
     print("Time spent in drainage: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["drainage_incompressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_drainage_incompressible": nw_saturation})
@@ -472,9 +471,9 @@ def imbibition_compressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -484,7 +483,6 @@ def imbibition_compressible(
     if not isdir(output_path):
         os.makedirs(output_path)
     with open(output_file_path, "a") as output_imb_file:
-
         edt = BufferedPyEDT(bin_data.shape, dtype=np.uint32, sqrt_result=True, device=device)
         mask = ConnectedMask(connectivity=1, direction=direction)
 
@@ -537,7 +535,7 @@ def imbibition_compressible(
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["imbibition_compressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_imbibition_compressible": (1.0 - w_saturation)})
@@ -590,9 +588,9 @@ def imbibition_incompressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_path = os.path.dirname(os.path.abspath(output_file_path))
@@ -600,7 +598,6 @@ def imbibition_incompressible(
         os.makedirs(output_path)
     # output_imb_file = open(output_file_path, 'a')
     with open(output_file_path, "a") as output_imb_file:
-
         edt = BufferedPyEDT(bin_data.shape, dtype=np.uint32, sqrt_result=True, device=device)
         mask = ConnectedMask(connectivity=1, direction=direction)
         zplus_mask = ConnectedMask(connectivity=1, direction="z+")
@@ -658,7 +655,7 @@ def imbibition_incompressible(
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["imbibition_incompressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_imbibition_incompressible": (1.0 - w_saturation)})
@@ -685,9 +682,9 @@ def psd_nw_image(input_data, radius):
         nw_image : numpy.ndarray
             Image of the same size of the entry, where one are places where there is a sphere with the informed radius.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
     return np.multiply(
         bin_data,
@@ -828,9 +825,9 @@ def micp_nw_image(input_data, radius, direction="z"):
         nw_image : numpy.ndarray
             Image of the same size of the entry, where one are places where there is a sphere with the informed radius.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     return ConnectedMask(connectivity=1, direction=direction).connected(psd_nw_image(bin_data, radius))
@@ -990,7 +987,7 @@ def run_generic_psd(
                 + str(cut_info[3])
                 + "]\n"
             )
-        except:
+        except Exception:
             print("There were problems with the cut_info variable.")
             sys.exit()
     else:
@@ -1095,7 +1092,7 @@ def run_generic_psd(
             script_file.write("x=nc_data['x'][" + str(cut_info[0]) + ":" + str(cut_info[3]) + "]\n")
             script_file.write("y=nc_data['y'][" + str(cut_info[1]) + ":" + str(cut_info[4]) + "]\n")
             script_file.write("z=nc_data['z'][" + str(cut_info[2]) + ":" + str(cut_info[5]) + "]\n")
-        except:
+        except Exception:
             print("There were problems with the cut_info variable.")
             sys.exit()
     else:

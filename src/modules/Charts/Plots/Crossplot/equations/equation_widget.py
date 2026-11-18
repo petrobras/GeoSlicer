@@ -2,7 +2,7 @@ import decimal
 
 import qt
 
-from ltrace.slicer import ui
+from commons.slicer import ui
 
 
 class ParametersFrame(qt.QFrame):

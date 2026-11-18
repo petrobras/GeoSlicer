@@ -1,11 +1,10 @@
 import os
 from __main__ import vtk, qt, ctk, slicer
-from ltrace.slicer import helpers
-from ltrace.slicer_utils import LTracePluginWidget, LTracePlugin
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer import helpers
+from commons.slicer_utils import LTracePluginWidget, LTracePlugin
+from commons.slicer_utils import LTracePluginLogic
+from commons.slicer.node_attributes import NodeEnvironment
 
-from pathlib import Path
 
 #
 # SurfaceLoader3D
@@ -273,9 +272,9 @@ class SurfaceLoader3DLogic(LTracePluginLogic):
         pointData = polyData.GetPointData()
         tcoords = pointData.GetTCoords()
         numOfPoints = pointData.GetNumberOfTuples()
-        assert (
-            numOfPoints == tcoords.GetNumberOfTuples()
-        ), "Number of texture coordinates does not equal number of points"
+        assert numOfPoints == tcoords.GetNumberOfTuples(), (
+            "Number of texture coordinates does not equal number of points"
+        )
         textureSamplingPointsUv = vtk.vtkPoints()
         textureSamplingPointsUv.SetNumberOfPoints(numOfPoints)
         for pointIndex in range(numOfPoints):

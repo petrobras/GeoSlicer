@@ -1,0 +1,68 @@
+Properties	Values
+Pixel Area (mm^2)	0.010471
+ROI Voxel Count (#px)	1271810
+Segment Voxel Count (#px)	1271260
+Segment 1: Name	'Calcita (0% a 1%MgO)'
+Segment 1: %	8.37193
+Segment 1: % SOI	8.37555
+Segment 1: #px	106475
+Segment 2: Name	'Calcita (1% a 4%MgO)'
+Segment 2: %	5.46772
+Segment 2: % SOI	5.47008
+Segment 2: #px	69539
+Segment 3: Name	'Calcita (4% a 7%MgO)'
+Segment 3: %	3.7346
+Segment 3: % SOI	3.73621
+Segment 3: #px	47497
+Segment 4: Name	'Calcita (7% a 10%MgO)'
+Segment 4: %	4.35953
+Segment 4: % SOI	4.36142
+Segment 4: #px	55445
+Segment 5: Name	'Dolomita (17% a 20%MgO)'
+Segment 5: %	33.72626
+Segment 5: % SOI	33.74086
+Segment 5: #px	428934
+Segment 6: Name	'Dolomita (20% a 22%MgO)'
+Segment 6: %	2.97639
+Segment 6: % SOI	2.97768
+Segment 6: #px	37854
+Segment 7: Name	'Goyazita'
+Segment 7: %	1.51453
+Segment 7: % SOI	1.51519
+Segment 7: #px	19262
+Segment 8: Name	'Magnesita'
+Segment 8: %	2.98818
+Segment 8: % SOI	2.98948
+Segment 8: #px	38004
+Segment 9: Name	'Nefelina'
+Segment 9: %	6.37776
+Segment 9: % SOI	6.38052
+Segment 9: #px	81113
+Segment 10: Name	'Outros'
+Segment 10: %	4.57002
+Segment 10: % SOI	4.572
+Segment 10: #px	58122
+Segment 11: Name	'Poros'
+Segment 11: %	11.91271
+Segment 11: % SOI	11.91786
+Segment 11: #px	151507
+Segment 12: Name	'Quartzo'
+Segment 12: %	13.95712
+Segment 12: % SOI	13.96315
+Segment 12: #px	177508
+Function	'snow'
+Targets	'1, 2, 3'
+Mesoporo grande (%)	0.278
+Mesoporo muito pequeno (%)	35.285
+Mesoporo médio (%)	5.09
+Mesoporo pequeno (%)	22.929
+Microporo (%)	36.418
+parameter.sigma	0.0054
+parameter.d_min_filter	3.0
+parameter.size_min_threshold	0.0
+parameter.direction	None
+parameter.generate_throat_analysis	False
+parameter.voxel_size	None
+parameter.calculate_coordination_number	False
+parameter.is_pore	True
+parameter.do_preprocessing	True

@@ -9,7 +9,7 @@ import numpy as np
 import qt
 import slicer
 
-from ltrace.slicer.helpers import (
+from commons.slicer.helpers import (
     tryGetNode,
     tryGetNodes,
     reset_style_on_valid_text,
@@ -17,10 +17,10 @@ from ltrace.slicer.helpers import (
     copy_attributes,
     copy_hierarchy_attributes,
 )
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.transforms import resample_if_needed
+from commons.slicer.metadata import copy_metadata
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.transforms import resample_if_needed
 
 # Checks if closed source code is available
 try:
@@ -253,7 +253,7 @@ class VolumeCalculatorWidget(LTracePluginWidget):
         except slicer.util.MRMLNodeNotFoundException as e:
             self.statusLabel.setText("Status: Error")
             logging.error("Invalid volume name: " + str(e) + ".")
-        except KeyError as e:
+        except KeyError:
             self.statusLabel.setText("Status: Error")
             logging.error("Invalid formula.")
 
@@ -308,7 +308,7 @@ class VolumeCalculatorLogic(LTracePluginLogic):
 
             try:
                 outputArray = ne.evaluate(formulaString, local_dict=localVars) * 1
-            except (TypeError, SyntaxError, ValueError) as e:
+            except (TypeError, SyntaxError, ValueError):
                 raise CalculateError("Invalid formula.")
 
             outputVolume = tryGetNode(outputVolumeName, hasImageData=True)

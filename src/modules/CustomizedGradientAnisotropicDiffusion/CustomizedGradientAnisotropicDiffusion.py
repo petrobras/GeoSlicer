@@ -1,20 +1,17 @@
 from dataclasses import dataclass
-import datetime
 import logging
 import os
-from collections import namedtuple
 from pathlib import Path
 
 import ctk
 import qt
 import slicer
-from ltrace.slicer.helpers import copy_display, copy_attributes, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import *
-from ltrace.slicer import helpers
-from ltrace.utils.Markup import MarkupFiducial
+from commons.slicer.helpers import copy_display
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import *
+from commons.slicer import helpers
+from commons.utils.Markup import MarkupFiducial
 
 try:
     from Test.CustomizedGradientAnisotropicDiffusionTest import CustomizedGradientAnisotropicDiffusionTest
@@ -332,7 +329,7 @@ class CustomizedGradientAnisotropicDiffusionWidget(LTracePluginWidget):
             self.previewSizeSliderWidget.maximum = 1000  # Reset to default max if no input node
             self.previewSizeSliderWidget.value = 120  # Reset to default value
 
-        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode != None else ""
+        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode is not None else ""
         self.outputVolumeNameLineEdit.setText(newOutputName)
 
     def onSettingsChanged(self):

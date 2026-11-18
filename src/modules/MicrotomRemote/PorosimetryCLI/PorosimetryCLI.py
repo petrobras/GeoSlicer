@@ -7,12 +7,14 @@ from __future__ import print_function
 
 import json
 
-import vtk, slicer, slicer.util, mrml
+import slicer
+import slicer.util
+import mrml
 
 import numpy as np
 import pandas as pd
 
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 
 import microtom
 
@@ -72,7 +74,7 @@ def main(args):
         "Sw (frac)": sw,
     }
 
-    if vfrac != None:
+    if vfrac is not None:
         table["Sws (frac)"] = sw
         sw_corrected = vfrac + sw * (1.0 - vfrac)
         table["Sw (frac)"] = sw_corrected

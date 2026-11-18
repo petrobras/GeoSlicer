@@ -8,10 +8,10 @@ import slicer
 import vtk
 
 from scipy.spatial.transform import Rotation
-from ltrace.slicer_utils import *
-from ltrace.slicer.helpers import BlockSignals, setOrientationMarkers
-from ltrace.slicer_utils import getResourcePath
-from ltrace.slicer import ui
+from commons.slicer_utils import *
+from commons.slicer.helpers import BlockSignals, setOrientationMarkers
+from commons.slicer_utils import getResourcePath
+from commons.slicer import ui
 
 try:
     from Test.MicroCTTransformsTest import MicroCTTransformsTest
@@ -123,7 +123,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             dial.setRange(-1800, 1800)
             dial.setOrientation(qt.Qt.Horizontal)
             dial.notchesVisible = True
-            dial.setToolTip(f"Click and drag to rotate dial")
+            dial.setToolTip("Click and drag to rotate dial")
             dial.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Minimum)
             gridLayout.addWidget(dial, 1, i)
             self.dials.append(dial)
@@ -133,12 +133,12 @@ class MicroCTTransformsWidget(LTracePluginWidget):
             incrementSpinBox.decimals = 4
             incrementSpinBox.singleStep = 0.1
             incrementSpinBox.value = 0.5
-            incrementSpinBox.toolTip = f"Set the rotation increment for the arrow buttons"
+            incrementSpinBox.toolTip = "Set the rotation increment for the arrow buttons"
             incrementSpinBox.minimum = 0.0001
             incrementSpinBox.maximum = 180
             incrementSpinBox.setSizePolicy(qt.QSizePolicy.Fixed, qt.QSizePolicy.Fixed)
             buttons = []
-            for mul, label in zip([-1, +1], ["\u2039", "\u203A"]):
+            for mul, label in zip([-1, +1], ["\u2039", "\u203a"]):
                 button = qt.QPushButton(label)
 
                 def increment(*args, dial=dial, incBox=incrementSpinBox, mul=mul):
@@ -151,7 +151,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
                 button.setSizePolicy(qt.QSizePolicy.Maximum, qt.QSizePolicy.Fixed)
                 button.setContentsMargins(0, 0, 0, 0)
                 button.setMaximumWidth(20)
-                button.setToolTip(f"Rotate dial by the current increment")
+                button.setToolTip("Rotate dial by the current increment")
                 buttons.append(button)
 
             incrementLayout.addWidget(buttons[0])
@@ -323,7 +323,7 @@ class MicroCTTransformsWidget(LTracePluginWidget):
         transformNode = self.transformNodeSelector.currentNode()
         slicer.util.updateTransformMatrixFromArray(transformNode, newMatrix)
 
-        self.rotationLabels[dialIndex].setText(f"{angle:+.1f}\u00B0")
+        self.rotationLabels[dialIndex].setText(f"{angle:+.1f}\u00b0")
 
     def onSliderReleased(self):
         newTransformMatrix = slicer.util.arrayFromTransformMatrix(self.transformNodeSelector.currentNode())

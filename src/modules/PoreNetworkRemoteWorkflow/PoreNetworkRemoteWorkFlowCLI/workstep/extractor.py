@@ -7,7 +7,7 @@ import sys
 
 import numpy as np
 
-from ltrace.remote.object_transfer import JsonObjectTransfer, NumpyArrayObjectTransfer
+from commons.remote.object_transfer import JsonObjectTransfer, NumpyArrayObjectTransfer
 from .workstep import Workstep, WorkflowContext, deep_update
 
 

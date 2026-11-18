@@ -1,7 +1,6 @@
-import sympy  # import it before torch to avoid crash
 import torch
 import monai
-from monai.networks.blocks.convolutions import Convolution, ResidualUnit
+from monai.networks.blocks.convolutions import ResidualUnit
 
 
 def _get_last_act_layer(last_act):

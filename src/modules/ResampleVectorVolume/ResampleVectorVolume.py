@@ -7,11 +7,11 @@ import csv
 import numpy as np
 import qt
 import slicer
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import *
-from ltrace.slicer import helpers as lsh
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import *
+from commons.slicer import helpers as lsh
 from functools import partial
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.ResampleVectorVolumeTest import ResampleVectorVolumeTest
@@ -162,7 +162,7 @@ class ResampleVectorVolumeLogic(LTracePluginLogic):
         def makeColorsSlices(volumeNode, outputPrefix):
             # the strategy of making color channels slices is hacky,
             # works only for 2D data and thus should be avoided
-            from ltrace.slicer.helpers import rgb2label
+            from commons.slicer.helpers import rgb2label
 
             originalNode = volumeNode
             volumeNode = rgb2label(originalNode, outputPrefix.replace("{type}", "TMP_REFNODECM"))
@@ -206,7 +206,7 @@ class ResampleVectorVolumeLogic(LTracePluginLogic):
             self.cli_observer_tag = self.cliNode.AddObserver(
                 "ModifiedEvent", partial(self.eventHandler, outputVolumeID=outputVolume.GetID())
             )
-        except Exception as e:
+        except Exception:
             lsh.removeTemporaryNodes(nodes=[outputVolume])
 
     def getVolumeRealDimensions(self, volume):
@@ -229,7 +229,7 @@ class ResampleVectorVolumeLogic(LTracePluginLogic):
                 logging.info(status)
                 lsh.removeTemporaryNodes(nodes=[outputNode])
 
-        except Exception as e:
+        except Exception:
             lsh.removeTemporaryNodes(nodes=[outputNode])
 
     def cancel(self):

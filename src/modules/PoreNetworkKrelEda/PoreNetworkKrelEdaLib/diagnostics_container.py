@@ -2,10 +2,10 @@ import qt
 import shiboken2
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer.nodes.directory_node import DirectoryNode
-from ltrace.slicer.widget.layout import SlicerLayoutWindow
-from ltrace.slicer.app.onboard_view import _svgIcon
+from commons.slicer import ui
+from commons.slicer.nodes.directory_node import DirectoryNode
+from commons.slicer.widget.layout import SlicerLayoutWindow
+from commons.slicer.app.onboard_view import _svgIcon
 
 
 class DiagnosticsContainerWidget(qt.QWidget):

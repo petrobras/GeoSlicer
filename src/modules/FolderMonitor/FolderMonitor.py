@@ -8,15 +8,14 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import BlockSignals
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.virtual import folder as virtual_folder
-from ltrace.slicer.virtual.fourd.dataset import FourDDataset
-from ltrace.slicer.virtual.fourd.manager import get_manager as get_fourd_manager
-from ltrace.slicer.virtual.monitor import FolderMonitorService
-from ltrace.slicer.widget.fourd_player import FourDPlayerWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
+from commons.slicer import ui
+from commons.slicer.helpers import BlockSignals
+from commons.slicer.virtual import folder as virtual_folder
+from commons.slicer.virtual.fourd.dataset import FourDDataset
+from commons.slicer.virtual.fourd.manager import get_manager as get_fourd_manager
+from commons.slicer.virtual.monitor import FolderMonitorService
+from commons.slicer.widget.fourd_player import FourDPlayerWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 
 try:
     from Test.FolderMonitorTest import FolderMonitorTest

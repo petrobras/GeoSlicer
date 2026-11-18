@@ -1,0 +1,4 @@
+# Color table file C:/repositorios/slicerltrace/src/modules/ImageLogInstanceSegmenter/Test/Resources/Ellipses/Data/TMP-LM_ColorTable_3.ctbl
+# 2 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255

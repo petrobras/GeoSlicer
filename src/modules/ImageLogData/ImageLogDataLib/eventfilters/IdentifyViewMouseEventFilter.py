@@ -1,7 +1,7 @@
 import qt
 import slicer
 import logging
-from ImageLogDataLib.viewdata.ViewData import SliceViewData, GraphicViewData, EmptyViewData
+from ImageLogDataLib.viewdata.ViewData import SliceViewData, GraphicViewData
 
 
 class IdentifyViewMouseEventFilter(qt.QObject):
@@ -13,7 +13,7 @@ class IdentifyViewMouseEventFilter(qt.QObject):
     def getCursorPhysicalPosition(self, viewWidget, imageLogView, x, y):
         width = viewWidget.geometry.width()
 
-        if imageLogView.widget == None:
+        if imageLogView.widget is None:
             # This avoids raising unnecessary errors,
             # but might also avoid unknown necessary ones, too
             return -1, -1
@@ -87,7 +87,7 @@ class IdentifyViewMouseEventFilter(qt.QObject):
                 or type(viewData) is GraphicViewData
                 and (viewData.primaryTableNodeColumn != "" or viewData.secondaryTableNodeColumn != "")
             ):
-                if viewData.primaryNodeId == None:
+                if viewData.primaryNodeId is None:
                     return False
 
                 logGeometry = slicer.util.getModuleWidget("ImageLogData").getGeometry(viewWidget)

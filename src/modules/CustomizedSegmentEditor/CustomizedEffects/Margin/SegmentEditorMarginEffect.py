@@ -1,12 +1,12 @@
 # fmt: off
 import os
-import vtk, qt, ctk, slicer
-import logging
-import math
+import vtk
 import qt
+import slicer
+import math
 from SegmentEditorEffects import *
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorMarginEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -95,10 +95,8 @@ class SegmentEditorMarginEffect(AbstractScriptedSegmentEditorEffect, LTraceSegme
     self.shrinkOptionRadioButton.setChecked(marginSizePixels < 0)
     self.shrinkOptionRadioButton.blockSignals(wasBlocked)
 
-    selectedSegmentLabelmapSpacing = [1.0, 1.0, 1.0]
     selectedSegmentLabelmap = self.scriptedEffect.selectedSegmentLabelmap()
     if selectedSegmentLabelmap:
-      selectedSegmentLabelmapSpacing = selectedSegmentLabelmap.GetSpacing()
       marginSizePixel = self.getMarginSizePixel()
       if marginSizePixel[0] < 1 or marginSizePixel[1] < 1 or marginSizePixel[2] < 1:
         self.marginSizeLabel.text = "Not feasible at current resolution."

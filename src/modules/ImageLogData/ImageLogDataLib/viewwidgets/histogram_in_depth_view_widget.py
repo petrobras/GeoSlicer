@@ -8,13 +8,12 @@ import slicer
 from .base_view_widget import BaseViewWidget
 from collections import namedtuple
 from ImageLogDataLib.view.View import PlotControlsEventFilter
-from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data, tryGetNode, hex2Rgb
-from ltrace.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
-from ltrace.slicer.node_attributes import PlotScaleXAxisAttribute, HistogramGraphType
+from commons.slicer.helpers import export_las_from_histogram_in_depth_data, tryGetNode, hex2Rgb
+from commons.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
+from commons.slicer.node_attributes import PlotScaleXAxisAttribute, HistogramGraphType
 from Plots.HistogramInDepthPlot.HistogramInDepthPlotWidgetModel import HistogramInDepthPlotWidgetModel
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-from scipy.stats import gaussian_kde
 
 PlotInformation = namedtuple("PlotInformation", ["graph_data", "x_parameter", "y_parameter"])
 
@@ -479,7 +478,9 @@ class PlotWidget(QtWidgets.QWidget):
         return self._plotItem
 
     def build_plot_generator(self, plot_type: str = LINE_PLOT_TYPE):
-        function = lambda: None
+        def function():
+            return None
+
         if plot_type == LINE_PLOT_TYPE:
             function = self._create_curve_plot
         elif plot_type == SCATTER_PLOT_TYPE:

@@ -7,10 +7,10 @@ import numpy as np
 import qt
 import slicer
 
-from ltrace.algorithms.fast_registration import fast_reg, fast_reg_slicer
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.algorithms.fast_registration import fast_reg, fast_reg_slicer
+from commons.slicer import ui
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.FastRegistrationTest import FastRegistrationTest
@@ -25,17 +25,14 @@ _FAILURE_MESSAGES = {
         "Not enough high-density features were detected in one or both scans. This method needs "
         "compact, bright inclusions visible in both volumes. Try manual registration instead."
     ),
-    "no RANSAC consensus": (
+    "no matching blob constellations": (
         "Features were detected but could not agree on a single alignment. The scans may not "
         "overlap, or may differ too much for automatic registration. Try manual registration."
     ),
-    "consensus too low": (
-        "Features were detected but too few agreed on a single alignment to trust the result. "
-        "Try manual registration."
-    ),
-    "no geometric lock": (
-        "Features were detected but could not agree on one rigid transform. The scans may not "
-        "overlap, or may differ too much for automatic registration. Try manual registration."
+    "no significant alignment": (
+        "Features were detected but too few of them line up under one rigid transform to rule out "
+        "a coincidence. The scans may not overlap, or may differ too much for automatic "
+        "registration. Try manual registration."
     ),
 }
 
@@ -254,8 +251,7 @@ class FastRegistrationWidget(LTracePluginWidget):
         self.cancelResultButton = qt.QPushButton("Cancel")
         self.cancelResultButton.setFixedHeight(40)
         self.cancelResultButton.setToolTip(
-            "Discard this registration: remove the transform and restore the volumes and views to "
-            "how they were before."
+            "Discard this registration: remove the transform and restore the volumes and views to how they were before."
         )
         self.cancelResultButton.clicked.connect(self._onCancelResultClicked)
 
@@ -320,8 +316,6 @@ class FastRegistrationWidget(LTracePluginWidget):
             return ""
         if fixed is moving:
             return "Fixed and moving volumes must be different."
-        if not np.allclose(fixed.GetSpacing(), moving.GetSpacing(), rtol=1e-3):
-            return "Fixed and moving volumes must have the same voxel spacing."
         return None
 
     def _updateApplyState(self):
@@ -381,7 +375,7 @@ class FastRegistrationWidget(LTracePluginWidget):
             self._transformNode, ras_matrix = fast_reg_slicer.build_transform_node(
                 self._fixedNode, self._movingNode, self.logic.result
             )
-            self._showResult(self.logic.result, ras_matrix)
+            self._showResult(ras_matrix, self.logic.resultInfo)
         elif self.logic.failure is not None:
             logging.info(
                 "Fast registration failed: %s (%s)",
@@ -396,11 +390,20 @@ class FastRegistrationWidget(LTracePluginWidget):
 
     # ------------------------------------------------------------------ result display
 
-    def _showResult(self, index_matrix, ras_matrix):
+    def _showResult(self, ras_matrix, info):
+        """`info` is the fast_reg.register report on how well the matched features agree."""
         self.failureSection.visible = False
-        r = index_matrix[:3, :3]
+        # The RAS matrix, not the index-space one: with different voxel spacings the latter is not
+        # a rotation.
+        r = ras_matrix[:3, :3]
         rotation_deg = np.degrees(np.arccos(np.clip((np.trace(r) - 1) / 2, -1.0, 1.0)))
-        self.qcBanner.text = f"Registration succeeded: {rotation_deg:.1f}° rotation."
+        # Slicer spacing is in mm; the RMS is a property of the scans, not a pass/fail criterion.
+        # The RMS only covers pairs close enough to be refit, so the pair count is what drops when the
+        # alignment is poor.
+        self.qcBanner.text = (
+            f"Registration succeeded: {rotation_deg:.1f}° rotation. {info['refit_pairs']} matched features "
+            f"agree within {info['rms'] * 1000:.0f} µm RMS ({info['rms_voxels']:.2f} voxel)."
+        )
         self._fillMatrixTable(ras_matrix)
         self.applyTransformButton.enabled = True
         self.cancelResultButton.enabled = True
@@ -607,6 +610,7 @@ class FastRegistrationLogic(LTracePluginLogic):
     def __init__(self):
         LTracePluginLogic.__init__(self)
         self.result = None
+        self.resultInfo = None
         self.failure = None
         self.error = None
 
@@ -616,11 +620,15 @@ class FastRegistrationLogic(LTracePluginLogic):
         `progress_callback(fraction, message)` is forwarded to fast_reg.register. The result is
         published on `registrationFinished`, not returned -- see the class docstring.
         """
-        self.result = self.failure = self.error = None
+        self.result = self.resultInfo = self.failure = self.error = None
         try:
-            fixed_arr = slicer.util.arrayFromVolume(fixedNode)
-            moving_arr = slicer.util.arrayFromVolume(movingNode)
-            self.result = fast_reg.register(fixed_arr, moving_arr, progress_callback=progress_callback)
+            self.result, self.resultInfo = fast_reg.register(
+                slicer.util.arrayFromVolume(fixedNode),
+                slicer.util.arrayFromVolume(movingNode),
+                fixed_spacing=fixedNode.GetSpacing(),
+                moving_spacing=movingNode.GetSpacing(),
+                progress_callback=progress_callback,
+            )
         except fast_reg.RegistrationFailed as exc:
             # A structured failure is an expected outcome, not a crash: the widget maps the reason
             # to actionable text.

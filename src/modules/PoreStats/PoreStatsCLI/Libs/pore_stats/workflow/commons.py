@@ -5,7 +5,6 @@ import sys
 import tempfile
 
 import nrrd
-import sympy  # import it before torch to avoid crash
 import torch
 
 
@@ -74,7 +73,7 @@ def get_models_dir():
     geoslicer_path = sys.executable.split(os.path.join(os.sep, "bin"))[0]
     for envs_dir in ["trained_models", "private"]:
         models_dir = os.path.join(
-            geoslicer_path, "lib", "Python", "Lib", "site-packages", "ltrace", "assets", envs_dir, "ThinSectionEnv"
+            geoslicer_path, "lib", "Python", "Lib", "site-packages", "commons", "assets", envs_dir, "ThinSectionEnv"
         )
         candidate_dirs.append(models_dir)
         if os.path.exists(models_dir):

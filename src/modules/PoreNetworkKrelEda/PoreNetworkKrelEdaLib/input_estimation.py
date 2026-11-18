@@ -3,8 +3,8 @@ import pandas as pd
 from scipy import optimize
 from sklearn import preprocessing, linear_model
 
-from ltrace.pore_networks.krel_result import INPUT_PREFIX, KrelParameterParser, RESULT_PREFIX
-from ltrace.pore_networks.pnflow_parameter_defs import PARAMETERS
+from commons.pore_networks.krel_result import INPUT_PREFIX, KrelParameterParser, RESULT_PREFIX
+from commons.pore_networks.pnflow_parameter_defs import PARAMETERS
 
 
 def closest_estimate(parameters_df, output_ranges):

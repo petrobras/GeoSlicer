@@ -133,12 +133,7 @@ def define_env(env: object) -> None:
         )
 
         if caption:
-            return (
-                f'<figure class="video-container">'
-                f"  {video_html}"
-                f"  <figcaption>{caption}</figcaption>"
-                f"</figure>"
-            )
+            return f'<figure class="video-container">  {video_html}  <figcaption>{caption}</figcaption></figure>'
         else:
             return video_html
 

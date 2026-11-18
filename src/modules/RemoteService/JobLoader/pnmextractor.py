@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path, PurePosixPath
 
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers.PoreNetworkExtractorHandler import PoreNetworkExtractorHandler
 
 
 def pnmextractor_loader(job: JobExecutor):

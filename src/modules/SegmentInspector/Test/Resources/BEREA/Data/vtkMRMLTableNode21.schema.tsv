@@ -1,0 +1,7 @@
+columnName	type	nullValue	componentNames
+<default>	double		
+Mineralogy	string		
+Background	string		
+Segment_1	string		
+Segment_2	string		
+Segment_3	string		

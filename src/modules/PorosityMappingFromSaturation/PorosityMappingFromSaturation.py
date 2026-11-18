@@ -4,6 +4,7 @@ import os
 import re
 import typing
 from pathlib import Path
+from timeit import default_timer as timer
 
 import PySide2
 import ctk
@@ -18,18 +19,18 @@ from numba import uint32
 from numba.types import ListType, Array
 import shiboken2
 
-from ltrace.algorithms.microporosity.modelling import SampleModel, fastMapping, ModelDataTypeError
-from ltrace.slicer import helpers, ui, data_utils as du
-from ltrace.slicer.microct import pcrMinMaxFromTableNode
-from ltrace.slicer.helpers import themeIsDark, BlockSignals
-from ltrace.slicer.ui import FloatInput, ApplyButton
-from ltrace.slicer.widget.combined_inputs import DoubleImageWithSegmentationInputWidget
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import (
+from commons.algorithms.microporosity.modelling import SampleModel, fastMapping, ModelDataTypeError
+from commons.slicer import helpers, ui, data_utils as du
+from commons.slicer.microct import pcrMinMaxFromTableNode
+from commons.slicer.helpers import themeIsDark, BlockSignals
+from commons.slicer.ui import FloatInput, ApplyButton
+from commons.slicer.widget.combined_inputs import DoubleImageWithSegmentationInputWidget
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import (
     GraphicsLayoutWidget,
 )
-from ltrace.slicer.widget.global_progress_bar import CompanionProgressBar
-from ltrace.slicer.widget.histogram_frame import SegmentationModellingHistogramFrame
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
+from commons.slicer.widget.global_progress_bar import CompanionProgressBar
+from commons.slicer.widget.histogram_frame import SegmentationModellingHistogramFrame
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 
 
 class HistogramPGWidget(GraphicsLayoutWidget):
@@ -140,7 +141,6 @@ class HistogramWidget(qt.QWidget):
 
 
 class FactorsWidget(qt.QWidget):
-
     fieldFactorChanged = qt.Signal(float, float)
 
     def __init__(self, lowerInputText: str, higherInputText: str, parent=None):
@@ -402,7 +402,7 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
                 gc.collect()
 
                 self.applyCancelButton.setEnabled(True)
-            except Exception as e:
+            except Exception:
                 import traceback
 
                 traceback.print_exc()
@@ -443,12 +443,12 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
         missing = []
         try:
             pcrDryRange = self.logic.getMinMaxFromPCR(dryImageNode)
-        except:
+        except Exception:
             missing.append("dry")
 
         try:
             pcrWetRange = self.logic.getMinMaxFromPCR(wetImageNode)
-        except:
+        except Exception:
             missing.append("saturated")
 
         if not missing:
@@ -484,7 +484,9 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
         calciteSegmentId = self.referenceSolidSegmentSelector.currentData
         porousSegmentId = self.porousSegmentSelector.currentData
 
-        to_RGB = lambda color: tuple(np.array(color) * 255)
+        def to_RGB(color):
+            return tuple(np.array(color) * 255)
+
         colors = [
             to_RGB(segmentation.GetSegment(calciteSegmentId).GetColor()),
             to_RGB(segmentation.GetSegment(porousSegmentId).GetColor()),
@@ -610,7 +612,7 @@ class PorosityMappingFromSaturationWidget(LTracePluginWidget):
                 outputDir,
             )
 
-        except Exception as e:
+        except Exception:
             import traceback
 
             traceback.print_exc()
@@ -653,7 +655,6 @@ def jittedMultiConditionBinCountUInt32(
     for x in range(dimX):
         for y in range(dimY):
             for z in range(dimZ):
-
                 for i in range(len(conditions)):
                     condition = conditions[i]
                     target = expectations[i]
@@ -719,9 +720,6 @@ def modelRegionX(imageArray, filters):
     # Compute the attenuation factor for the modelled region
     return multiConditionBinCountUInt32(imageArray, filters, 65535)
     # return litehistogram(imageArray, 1000, filters[0][0] == filters[0][1] & filters[1][0] == filters[1][1], 1)
-
-
-from timeit import default_timer as timer
 
 
 # def convertToNumpyArray(imageData):
@@ -812,7 +810,8 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
     def dryWetModel(
         self, dryImageNode, wetImageNode, segmentationNode, segments, targets, pcrDryRange, pcrWetRange, maskNode=None
     ):
-        to_RGB = lambda color: tuple(np.array(color) * 255)
+        def to_RGB(color):
+            return tuple(np.array(color) * 255)
 
         # TODO inform factor UI that there is no normalization
 
@@ -875,7 +874,7 @@ class PorosityMappingFromSaturationLogic(LTracePluginLogic):
             return models
         except ModelDataTypeError as mde:
             raise RuntimeError(f"Please, check the input data TYPE. {str(mde)}")
-        except Exception as e:
+        except Exception:
             import traceback
 
             traceback.print_exc()

@@ -16,7 +16,7 @@ import sys
 import time
 
 from pathlib import Path
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
+from commons.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
 
 
 if __name__ == "__main__":
@@ -63,3 +63,4 @@ if __name__ == "__main__":
     writeDataInto(outputNodeId, output, mrml.vtkMRMLLabelMapVolumeNode, reference=masterVolumeNode)
 
     print("Done")
+

@@ -4,19 +4,17 @@ import os
 import qt
 import slicer
 import vtk
-import xarray as xr
 import logging
 import traceback
 
-from dataclasses import dataclass
 from humanize import naturalsize
-from ltrace.slicer import netcdf
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.helpers import BlockSignals
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.labels_table_widget import LabelsTableWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import netcdf
+from commons.slicer.lazy import lazy
+from commons.slicer.helpers import BlockSignals
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.labels_table_widget import LabelsTableWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.utils.ProgressBarProc import ProgressBarProc
 from pathlib import Path
 from time import perf_counter
 from vtk.util.numpy_support import numpy_to_vtk
@@ -141,7 +139,7 @@ class BigImageWidget(LTracePluginWidget):
 
             self.sliceSliders.append(sliceSlider)
 
-        previewLayout.addRow(f"Z:", self.sliceSliders[0])
+        previewLayout.addRow("Z:", self.sliceSliders[0])
 
         yxSection = ctk.ctkCollapsibleButton()
         yxSection.text = "Y and X axes"
@@ -406,7 +404,7 @@ class BigImageWidget(LTracePluginWidget):
             pb.setTitle("Loading image to memory")
 
             # Size will be read by h5pyd
-            pb.setMessage(f"Loading image, please wait...")
+            pb.setMessage("Loading image, please wait...")
             pb.sharedDict["total_size"] = self.getOutputSize(afterTypeConversion=False)
             pb._updateSharedMem()
             reducedVolume = self.logic.loadReducedVolume(origin, size, stride, type_, remap)

@@ -1,0 +1,21 @@
+{
+    "failing_tests": {
+        "ImageLogDataTest": [
+            "test_proportion_label_map_exists_when_segmentation_is_empty"
+        ],
+        "PoreNetworkExtractorTest": [
+            "test_multiscale_extract_float",
+            "test_multiscale_extract_float_100",
+            "test_multiscale_extract_int",
+            "test_multiscale_extract_w_pores"
+        ],
+        "Segmenter": [
+            "test_pre_trained_microct_basins_unet",
+            "test_random_forest_2d_gaussian_keep_features",
+            "test_random_forest_2d_raw_keep_features",
+            "test_pre_trained_thin_section_pore_cleaning_with_soi",
+            "test_pre_trained_thin_section_spurious_pores_removal",
+            "test_random_forest_2d_load_classifier"
+        ]
+    }
+}

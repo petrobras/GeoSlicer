@@ -15,23 +15,23 @@ import qt
 import slicer
 
 from Libs.scale_detect_rect import detect_scale, image_corners
-from ltrace.image.io import (
+from commons.image.io import (
     volume_from_czi,
     volume_from_common_formats,
     get_czi_sizes,
     read_czi_data,
     get_czi_item_count,
 )
-from ltrace.slicer import loader, ui
-from ltrace.slicer.helpers import getTesseractCmd, save_path, isImageFile, tryGetNode, clear_layout, themeIsDark
-from ltrace.slicer.node_attributes import LosslessAttribute
-from ltrace.slicer.node_observer import NodeObserver
-from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
-from ltrace.slicer.widget.status_panel import StatusPanel
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT  # ureg comes from pint library
+from commons.slicer import loader, ui
+from commons.slicer.helpers import getTesseractCmd, save_path, isImageFile, tryGetNode, clear_layout, themeIsDark
+from commons.slicer.node_attributes import LosslessAttribute
+from commons.slicer.node_observer import NodeObserver
+from commons.slicer.widget.pixel_size_editor import PixelSizeEditor
+from commons.slicer.widget.status_panel import StatusPanel
+from commons.slicer_utils import *
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT  # ureg comes from pint library
+from PIL import Image
 
 # Checks if closed source code is available
 try:
@@ -41,7 +41,6 @@ except ImportError:
 
 pytesseract.pytesseract.tesseract_cmd = getTesseractCmd()
 
-from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -465,7 +464,7 @@ class CommonFormatWidget(qt.QWidget):
         self.update_lossless_option()
 
     def update_scalesize_parameters_visibility(self):
-        visible = self.logic.getCurrentNode() != None
+        visible = self.logic.getCurrentNode() is not None
         self.pixelSizeEditor.setVisible(visible)
 
     def update_lossless_option(self):
@@ -733,7 +732,6 @@ class ThinSectionLoaderLogic(LTracePluginLogic):
             return None
         image = filtered_image.astype(np.uint8)
         w, h = image.shape[:2]
-        dpi = int(100 / scale_factor**2)
 
         sparse_text_with_osd_psm = 12
         legacy_plus_neural_oem = 0

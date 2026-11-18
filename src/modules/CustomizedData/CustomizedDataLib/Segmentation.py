@@ -1,8 +1,7 @@
 import qt
 import slicer
-from ltrace.slicer.widget.proportions import ProportionsSection
-
-from ltrace.slicer.widget.show_3d_segmentation_button import Show3DSegmentationButton
+from commons.slicer.widget.proportions import ProportionsSection
+from commons.slicer.widget.show_3d_segmentation_button import Show3DSegmentationButton
 
 
 class SegmentationWidget(qt.QWidget):

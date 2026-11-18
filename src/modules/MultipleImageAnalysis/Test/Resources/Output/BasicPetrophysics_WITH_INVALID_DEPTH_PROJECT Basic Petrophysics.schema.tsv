@@ -1,0 +1,13 @@
+columnName	type	componentNames
+DEPTH	double	
+Porosity (%)	double	
+Density (g/cm^3)	double	
+Bulk modulus (Gpa) - Mineral mix (lower)	double	
+Bulk modulus (Gpa) - Mineral mix (upper)	double	
+Shear modulus (Gpa) - Mineral mix (lower)	double	
+Shear modulus (Gpa) - Mineral mix (upper)	double	
+calcite (%)	double	
+dolomite (%)	double	
+other (%)	double	
+pore (%)	double	
+quartz (%)	double	

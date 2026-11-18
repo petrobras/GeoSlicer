@@ -1,5 +1,7 @@
 import os
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import slicer
 import logging
 from SegmentEditorEffects import *
 
@@ -344,8 +346,6 @@ class DrawPipeline:
             # creating poly data
             selPolyData = vtk.vtkPolyData()
             selPolyData.SetPoints(selXyPoints)
-
-            import vtkSegmentationCorePython as vtkSegmentationCore
 
             self.scriptedEffect.appendPolyMask(modifierLabelmap, selPolyData, self.sliceWidget, segmentationNode)
 

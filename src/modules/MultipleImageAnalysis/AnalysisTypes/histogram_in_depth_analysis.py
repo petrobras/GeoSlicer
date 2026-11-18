@@ -7,11 +7,11 @@ import numpy as np
 import pandas as pd
 import qt
 
-from ltrace.slicer.node_attributes import TableDataOrientation, TableType
-from ltrace.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
-from ltrace.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
-from ltrace.slicer.segment_inspector.inspector_files.inspector_variables_file import InspectorVariablesFile
-from ltrace.slicer.ui import numberParamInt
+from commons.slicer.node_attributes import TableDataOrientation, TableType
+from commons.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
+from commons.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
+from commons.slicer.segment_inspector.inspector_files.inspector_variables_file import InspectorVariablesFile
+from commons.slicer.ui import numberParamInt
 from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
 
 
@@ -190,7 +190,6 @@ class HistogramInDepthAnalysis(AnalysisBase):
         normalizeCheckBox = self.configWidget.normalizeCheckBox.isChecked()
         nBins = self.configWidget.histogramBinSpinBox.value
         histogramHeight = self.configWidget.histogramHeightSpinBox.value
-        projectName = os.path.basename(filesDir)
 
         poresNumber = len(poresDataDict.keys())
         if poresNumber <= 0:

@@ -6,15 +6,14 @@ from pathlib import Path, PurePosixPath
 
 import slicer
 
-from ltrace.remote.constants import JOB_STATE_GHOST
-from ltrace.remote.utils import argstring, try_scancel
-from ltrace.remote.jobs import JobManager
-from ltrace.remote.paths import storage_for
-from ltrace.remote import utils as slurm_utils
+from commons.remote.constants import JOB_STATE_GHOST
+from commons.remote.utils import argstring, try_scancel
+from commons.remote.jobs import JobManager
+from commons.remote.paths import storage_for, to_local
+from commons.remote import utils as slurm_utils
 
 
 class PUCModelExecutionHandler:
-
     job_id_pattern = re.compile("job_id = ([a-zA-Z0-9]+)")
 
     def __init__(
@@ -28,8 +27,6 @@ class PUCModelExecutionHandler:
         depth_interval=(0, 0),
         opening_cmd: str = "",
     ) -> None:
-        LTRACE_DIR = PurePosixPath("servicos/LTRACE/GEOSLICER")
-
         self.return_results = result_handler
 
         self.output_name = output_name
@@ -87,10 +84,7 @@ class PUCModelExecutionHandler:
 
     def deploy(self, caller: JobManager, uid: str, client: Any):
         acc_query = (
-            "sacctmgr show assoc user=`whoami` format=User,Account"
-            " | awk '{$1=$1};1'"
-            " | cut -d' ' -f2"
-            " | sed -n '3p'"
+            "sacctmgr show assoc user=`whoami` format=User,Account | awk '{$1=$1};1' | cut -d' ' -f2 | sed -n '3p'"
         )
 
         acc_query_response = client.run_command(acc_query)
@@ -98,7 +92,7 @@ class PUCModelExecutionHandler:
 
         dirname = JobManager.dirname(caller.jobs[uid])
         job_dir = self.jobs_remote_path / dirname
-        stdout = client.run_command(f"mkdir --parents {job_dir} && chmod -R 777 {job_dir}")
+        client.run_command(f"mkdir --parents {job_dir} && chmod -R 777 {job_dir}")
 
         PYTHONSLICER = (
             self.bin_path
@@ -224,7 +218,7 @@ class PUCModelExecutionHandler:
         try:
             self.cleanup(caller, uid, client)
             # caller.set_state(uid, "CANCELLED", 0, message="Execution Cancelled.")
-        except:
+        except Exception:
             pass
 
     def cleanup(self, caller: JobManager, uid: str, client: Any = None):

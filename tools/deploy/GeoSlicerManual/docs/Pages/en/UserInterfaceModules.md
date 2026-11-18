@@ -2,7 +2,7 @@
 
 GeoSlicer is a modular application, meaning each specific function added to the _software_ is implemented through a new
 module.
-This allows GeoSlicer to be easily expanded and customized to meet different project needs. Users can even develop their own modules and integrate them into GeoSlicer.
+This allows GeoSlicer to be easily expanded and customized to meet different project needs. Users can even develop their own modules and load them into GeoSlicer with the [Module Manager](../ModuleManager.md).
 
 ### Design
 

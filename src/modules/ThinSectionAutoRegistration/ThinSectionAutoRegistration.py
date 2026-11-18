@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from collections import namedtuple
@@ -10,21 +9,20 @@ import qt
 import slicer
 from scipy.ndimage import zoom
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import (
+from commons.slicer import ui
+from commons.slicer.helpers import (
     triggerNodeModified,
     highlight_error,
     reset_style_on_valid_node,
     reset_style_on_valid_text,
 )
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widgets import SingleShotInputWidget
-from ltrace.slicer_utils import (
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widgets import SingleShotInputWidget
+from commons.slicer_utils import (
     slicer_is_in_developer_mode,
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
-    getResourcePath,
 )
 
 
@@ -48,7 +46,6 @@ class ThinSectionAutoRegistration(LTracePlugin):
 
 
 class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
-
     RegisterParameters = namedtuple(
         "RegisterParameters",
         [
@@ -161,7 +158,6 @@ class ThinSectionAutoRegistrationWidget(LTracePluginWidget):
 
     def onRegisterButtonClicked(self):
         try:
-
             if self.fixedNodeInputWidget.mainInput.currentNode() is None:
                 highlight_error(self.fixedNodeInputWidget.mainInput)
                 return

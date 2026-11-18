@@ -7,15 +7,14 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer.helpers import themeIsDark, hex2Rgb
-from ltrace.slicer.node_attributes import TableType, ImageLogDataSelectable, DataOrigin
-from ltrace.slicer.ui import filteredNodeComboBox
-from ltrace.slicer.widget.elided_label import ElidedLabel
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import getResourcePath
+from commons.slicer.helpers import themeIsDark, hex2Rgb
+from commons.slicer.node_attributes import TableType, ImageLogDataSelectable, DataOrigin
+from commons.slicer.ui import filteredNodeComboBox
+
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer_utils import getResourcePath
 from ImageLogDataLib.viewdata.ViewData import GraphicViewData
 from ImageLogDataLib.viewdata.ViewData import SliceViewData
-from ImageLogDataLib.view.View import CustomPlotItem
 
 
 class ViewControllerWidget(qt.QWidget):
@@ -82,7 +81,7 @@ class ViewControllerWidget(qt.QWidget):
 
         self.settingsPopup = ctk.ctkPopupWidget(self.settingsToolButton)
         self.settingsPopup.setStyleSheet(
-            "ctkPopupWidget {background-color:#" f"{'000000' if themeIsDark() else 'AAAAAA'}" ";}"
+            f"ctkPopupWidget {{background-color:#{'000000' if themeIsDark() else 'AAAAAA'};}}"
         )
         self.settingsPopup.setObjectName("settingsPopup" + str(self.identifier))
         self.settingsPopup.installEventFilter(self.logic.dragAndDropViewEventFilter)
@@ -406,11 +405,7 @@ class ColorPickerCell(qt.QWidget):
         self.button = qt.QPushButton("+")
         self.button.setFixedSize(20, 20)
         self.button.setStyleSheet(
-            "QPushButton {"
-            "font-size:11px;"
-            f"color:{color};"
-            f"background-color:{color};"
-            "border: 2px solid #222222 }"
+            f"QPushButton {{font-size:11px;color:{color};background-color:{color};border: 2px solid #222222 }}"
         )
         layout = self.layout()
         layout.addWidget(self.button)
@@ -484,7 +479,7 @@ class ColorPickerCell(qt.QWidget):
 
     def setButtonColor(self, rgba: str) -> None:
         self.button.setStyleSheet(
-            "QPushButton {" "font-size:11px;" f"color:{rgba};" f"background-color:{rgba};" "border: 2px solid #222222 }"
+            f"QPushButton {{font-size:11px;color:{rgba};background-color:{rgba};border: 2px solid #222222 }}"
         )
 
     def setHistogramScaleValue(self, scaleValue):
@@ -497,11 +492,7 @@ class ColorPickerCell(qt.QWidget):
 class ElidedLabel(qt.QLabel):
     def event(self, event):
         if event.type() == qt.QEvent.Paint:
-            painter = qt.QPainter(self)
-
-            metrics = qt.QFontMetrics(self.font)
             newWidth = self.width if self.parent() is None else self.parent().width
-            elided = metrics.elidedText(self.text, qt.Qt.ElideRight, newWidth - 8)
 
             rect = self.rect
             rect.setWidth(newWidth)

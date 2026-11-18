@@ -1,0 +1,7 @@
+# Color table file C:\ltrace\slicerltrace\src\modules\MicroCTExport\Test\Resources\microct_export_test\Data\tmp-basins_ColorTable.ctbl
+# 6 values
+1 Microporosity 255 0 0 255
+2 Pore 0 255 255 255
+3 Calcite 1 1 207 255
+4 High_attenuation 255 255 0 255
+5 Quartz 0 128 0 255

@@ -3,10 +3,10 @@ import os
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import createTemporaryNode, makeTemporaryNodePermanent, removeTemporaryNodes, tryGetNode
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer import ui
+from commons.slicer.helpers import createTemporaryNode, makeTemporaryNodePermanent, removeTemporaryNodes, tryGetNode
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from pathlib import Path
 
 try:
@@ -174,3 +174,4 @@ class {{name}}Logic(LTracePluginLogic):
 
         del self.__cliNode
         self.__cliNode = None
+

@@ -48,8 +48,8 @@ class ShadingCorrectionWorkstep(Workstep):
         }
         cmd = [sys.executable, cli_script, "--params", json.dumps(big_image_shading_correction_params)]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        self.logger.info(f"Shading correction cli call completed successfully.")
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+        self.logger.info("Shading correction cli call completed successfully.")
 
         with xr.open_dataset(str(absolute_output_path), engine="h5netcdf") as output_dataset:
             shading_corrected_array = output_dataset[list(output_dataset.data_vars)[0]].values

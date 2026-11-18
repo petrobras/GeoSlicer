@@ -42,6 +42,28 @@ Aplica um filtro de mediana ao volume, o parâmetro _Neighborhood size_ define o
 
 ---
 
+## Non-Local Means Filter
+
+Remove ruído preservando bordas e texturas finas. Para cada voxel, o filtro busca em sua vizinhança _patches_ de aparência semelhante e faz a média dos voxels centrais desses _patches_, dando mais peso aos mais semelhantes. Ao contrário dos filtros gaussiano e de mediana, que fazem a média apenas dos vizinhos imediatos, ele faz a média de regiões parecidas mesmo que estejam a alguns voxels de distância, preservando melhor contornos de grãos e poros pequenos. A implementação utilizada é a do [scikit-image](https://scikit-image.org/docs/stable/api/skimage.restoration.html#skimage.restoration.denoise_nl_means).
+
+Os parâmetros do módulo são:
+
+- **Modo** (_Mode_): _3D_ compara _patches_ em todo o volume, usando a informação das fatias vizinhas. _2D (slice by slice)_ filtra cada fatia axial de forma independente, o que é mais rápido e adequado a imagens com grandes diferenças entre fatias.
+
+- **Intensidade** (_Strength (× noise std)_): Intensidade _h_ do filtro, como múltiplo do desvio padrão do ruído. Valores maiores suavizam mais, ao custo de detalhes finos. Os valores recomendados são de 0,45 a 0,6 em 3D e de 0,6 a 0,8 em 2D. Ao trocar o modo, a intensidade passa ao padrão do novo modo (0,5 em 3D, 0,7 em 2D), a menos que tenha sido editada.
+
+- **Desvio padrão do ruído** (_Noise std_): Desvio padrão do ruído da imagem, em unidades de intensidade. Com _Estimate_ marcado, ele é estimado a partir da própria imagem, ignorando as regiões nulas ao redor da amostra. Desmarque para digitar um valor conhecido. Os valores utilizados são exibidos abaixo do botão _Apply_ ao final da filtragem.
+
+- **Tamanho do patch** (_Patch size (voxels)_): Lado dos _patches_ comparados para encontrar regiões semelhantes. _Patches_ maiores são mais robustos ao ruído, porém mais lentos, e podem borrar estruturas menores que o _patch_.
+
+- **Distância de busca** (_Search distance (voxels)_): Distância máxima para buscar _patches_ semelhantes. O tempo de processamento cresce rapidamente com este valor, principalmente em 3D.
+
+- **Modo rápido** (_Fast mode_): Usa uma comparação de _patches_ mais rápida, com pesos uniformes. Desmarcado, as comparações são ponderadas por uma gaussiana, o que é um pouco mais preciso, porém muito mais lento. Disponível apenas em 2D, pois o modo 3D sempre usa a comparação rápida.
+
+Voxels com o valor nulo da imagem são mantidos inalterados. Imagens RGB, geralmente imagens em tons de cinza exportadas com três canais, são convertidas para tons de cinza em um único canal antes da filtragem, e um aviso é exibido acima do botão _Apply_ quando isso ocorrer.
+
+---
+
 ## Simple Filters
 
 Esse módulo, carregado a partir do 3D Slicer original, apresenta um conjunto diverso de filtros para calcular a morfologia binária e em escala de cinza, remoção de ruído, limiar, manipulação de intensidade da imagem, crescimento de regiões, transformada de Fourier, etc. Para uma explicação mais detalhada de cada uma das opções disponíveis nesse módulo, consulte a documentação [específica](https://slicer.readthedocs.io/en/latest/user_guide/modules/simplefilters.html).
@@ -98,3 +120,20 @@ O fluxo de trabalho do módulo _Shading Correction_ é dividido em três etapas:
 
 1.  **Apply:** Clique para iniciar o processo de correção na imagem de entrada.
 2.  **Apply to full volume:** Se a sua imagem de entrada for uma imagem virtual (_lazy node_), este botão estará visível. Clicar nele abrirá o módulo **Polynomial Shading Correction Big Image**, que é otimizado para processar imagens grandes. Os parâmetros definidos neste módulo serão automaticamente transferidos para o módulo de imagem grande.
+
+---
+
+## Ring Artifact Removal
+
+Remove artefatos em anel de volumes de CT/micro-CT já reconstruídos. A correção é feita fatia a fatia, em torno de um ou mais centros marcados pelo usuário: o viés sistemático que é constante em um dado raio (igual em todos os ângulos) é isolado e subtraído, sem reamostrar a imagem, para não borrar a textura real. Um segundo modo, _Radial fan_, remove listras que emanam de um ponto fixo (por exemplo, uma inclusão densa ou grão metálico).
+
+### Uso
+1. Selecione o **Input volume**.
+2. Escolha o **Artifact type**: _Ring (circular)_ ou _Radial fan (streaks emanating from a point)_.
+3. Em **Correction**, clique em _Add point_ para colocar um marcador em um centro estimado e arraste-o até o centro de cada anel visível. No modo _Ring_, a estimativa é o centro de rotação guardado com o volume (quando o arquivo o tem) ou, caso contrário, o centro da imagem. Sem nenhum marcador, a correção usa essa mesma estimativa. No modo _Radial fan_, marque exatamente um ponto; o marcador é colocado sobre o grão denso de onde as listras saem, encontrado automaticamente.
+4. Ajuste os parâmetros: _Ring width_ (modo Ring), ou _Streak width_ e _Radial coherence_ (modo Radial fan). Opcionalmente, defina um **Radius range** (em pixels a partir de cada ponto) para corrigir apenas essa faixa; a correção entra e sai gradualmente nas pontas, e _No limit_ deixa a ponta externa aberta.
+5. Clique em **Preview on current slice** para ver a fatia antes, depois e a diferença (antes - depois) lado a lado. Use **Exit preview** para voltar ao layout anterior.
+6. Defina o **Output name** e clique em **Apply to entire volume**.
+
+!!!note
+	Nem todo padrão radial é um artefato em anel clássico. Se a correção for desprezível mesmo com o centro bem ajustado, o padrão provavelmente é um artefato do tipo "zinger", que só pode ser corrigido adequadamente no sinograma, antes da reconstrução.

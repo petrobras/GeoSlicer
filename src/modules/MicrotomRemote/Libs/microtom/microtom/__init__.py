@@ -9,18 +9,18 @@ from microtom.converting import *
 
 try:
     from microtom.darcy import *
-except:
+except Exception:
     pass
 try:
     from microtom.stokes import *
-except:
+except Exception:
     pass
 try:
     from microtom.variograma_phi import *
-except:
+except Exception:
     pass
 try:
     from microtom.krel import *
-except:
+except Exception:
     pass
 # try except for closed source microtom modules

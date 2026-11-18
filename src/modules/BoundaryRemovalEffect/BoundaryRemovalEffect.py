@@ -1,10 +1,9 @@
 import os
 
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 
 class BoundaryRemovalEffect(LTracePlugin):
-
     SETTING_KEY = "BoundaryRemovalEffect"
 
     def __init__(self, parent):

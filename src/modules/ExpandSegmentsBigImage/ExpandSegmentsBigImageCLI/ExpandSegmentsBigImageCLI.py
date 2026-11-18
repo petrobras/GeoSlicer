@@ -7,18 +7,16 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
 import argparse
 import dask.array as da
 import json
-import ltrace.slicer.netcdf as netcdf
+import commons.slicer.netcdf as netcdf
 import numpy as np
 import xarray as xr
 
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.cli_utils import progressUpdate
-from ltrace.algorithms.big_image.expand_segments import expand_segments
-from ltrace.algorithms.big_image.common import DaskCLICallback
+from commons.slicer.lazy import lazy
+from commons.algorithms.big_image.expand_segments import expand_segments
+from commons.algorithms.big_image.common import DaskCLICallback
 
 
 def run(params: dict) -> None:

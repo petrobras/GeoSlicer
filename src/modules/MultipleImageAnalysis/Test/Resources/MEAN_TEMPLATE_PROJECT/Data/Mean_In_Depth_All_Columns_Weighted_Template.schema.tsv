@@ -1,0 +1,18 @@
+columnName	type	componentNames
+DEPTH	double	
+MEAN_voxelCount	double	
+MEAN_area	double	
+MEAN_angle	double	
+MEAN_max_feret	double	
+MEAN_min_feret	double	
+MEAN_mean_feret	double	
+MEAN_aspect_ratio	double	
+MEAN_elongation	double	
+MEAN_eccentricity	double	
+MEAN_ellipse_perimeter	double	
+MEAN_ellipse_area	double	
+MEAN_ellipse_perimeter_over_ellipse_area	double	
+MEAN_perimeter	double	
+MEAN_perimeter_over_area	double	
+MEAN_gamma	double	
+MEAN_pore_size_class	double	

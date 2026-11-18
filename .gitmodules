@@ -1,12 +1,12 @@
-[submodule "src/submodules/porespy"]
-	path = src/submodules/porespy
+[submodule "src/third-parties/porespy"]
+	path = src/third-parties/porespy
 	url = git@github.com:ltracegeo/porespy.git
-[submodule "src/submodules/pnflow"]
-	path = src/submodules/pnflow
+[submodule "src/third-parties/pnflow"]
+	path = src/third-parties/pnflow
 	url = git@github.com:ltracegeo/pnflow.git
-[submodule "src/submodules/py_pore_flow"]
-	path = src/submodules/py_pore_flow
-	url = git@bitbucket.org:ltrace/py_pore_flow.git
-[submodule "src/submodules/pyflowsolver"]
-	path = src/submodules/pyflowsolver
+[submodule "src/third-parties/py_pore_flow"]
+	path = src/third-parties/py_pore_flow
+	url = git@ssh.bitbucket.org:ltrace/py_pore_flow.git
+[submodule "src/third-parties/pyflowsolver"]
+	path = src/third-parties/pyflowsolver
 	url = git@github.com:ltracegeo/PyFlowSolver.git	

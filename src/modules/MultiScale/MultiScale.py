@@ -17,14 +17,14 @@ import slicer
 from tifffile import tifffile
 from functools import partial
 
-from ltrace.multiscaleLib.multiscaleSingleShotWidget import MultiscaleSingleShotWidget
-from ltrace.multiscaleLib.multiscaleResampleBox import ResampleBox
-from ltrace.slicer import helpers
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.multiscaleLib.multiscaleSingleShotWidget import MultiscaleSingleShotWidget
+from commons.multiscaleLib.multiscaleResampleBox import ResampleBox
+from commons.slicer import helpers
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.MultiScaleTest import MultiScaleTest
@@ -318,7 +318,7 @@ class MultiScaleWidget(LTracePluginWidget):
         self.resampleDataCheckbox.objectName = "resampleCheckBox"
 
         self.patchesSpinBox = qt.QSpinBox()
-        self.patchesSpinBox.objectName = f"patchesSpinBox"
+        self.patchesSpinBox.objectName = "patchesSpinBox"
         self.patchesSpinBox.setRange(1, 64)
         self.patchesSpinBox.setValue(1)
         self.patchesSpinBox.setEnabled(False)
@@ -539,8 +539,8 @@ class MultiScaleWidget(LTracePluginWidget):
         helpers.removeTemporaryNodes()
 
     def onReload(self) -> None:
-        importlib.reload(sys.modules["ltrace.multiscaleLib.multiscaleSingleShotWidget"])
-        importlib.reload(sys.modules["ltrace.multiscaleLib.multiscaleResampleBox"])
+        importlib.reload(sys.modules["commons.multiscaleLib.multiscaleSingleShotWidget"])
+        importlib.reload(sys.modules["commons.multiscaleLib.multiscaleResampleBox"])
         super().onReload()
 
     def cleanup(self):
@@ -966,14 +966,16 @@ class MultiScaleWidget(LTracePluginWidget):
                 else:
                     maskNode = self.maskWidget.mainInput.currentNode()
 
-            preprocessing.update(
-                {
-                    "maskVolume": maskNode,
-                    "maskSegments": [segment + 1 for segment in self.maskWidget.getSelectedSegments()],
-                }
-            ),
+            (
+                preprocessing.update(
+                    {
+                        "maskVolume": maskNode,
+                        "maskSegments": [segment + 1 for segment in self.maskWidget.getSelectedSegments()],
+                    }
+                ),
+            )
             if self.continuousDataCheckBox.isChecked():
-                preprocessing.update({"maskReference": self.maskWidget.referenceInput.currentNode()}),
+                (preprocessing.update({"maskReference": self.maskWidget.referenceInput.currentNode()}),)
                 metadataReferenceNode = preprocessing["maskReference"]
             else:
                 preprocessing.update(
@@ -1068,7 +1070,7 @@ class MultiScaleWidget(LTracePluginWidget):
 
                 self.cancelButton.enabled = True
                 self.changeRunButtonsState(False)
-            except Exception as error:
+            except Exception:
                 logging.exception("Failed to execute MultiScale process.")
                 self.changeRunButtonsState(True)
 
@@ -1828,7 +1830,7 @@ class MultiScaleLogic(LTracePluginLogic):
 
         for number in colors_list.keys():
             r, g, b, a = colors_list[number]["color"]
-            success = colorNode.SetColor(number, colors_list[number]["name"], r, g, b, a)
+            colorNode.SetColor(number, colors_list[number]["name"], r, g, b, a)
 
         return colorNode
 

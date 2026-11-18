@@ -4,12 +4,12 @@ import qt
 import slicer
 import json
 
-from ltrace.slicer.app import getApplicationVersion
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer import helpers
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.ui import hierarchyVolumeInput
+from commons.slicer.app import getApplicationVersion
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer import helpers
+from commons.slicer.lazy import lazy
+from commons.slicer.ui import hierarchyVolumeInput
 from pathlib import Path
 
 

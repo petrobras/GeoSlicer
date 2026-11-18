@@ -7,7 +7,10 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
+import vtk
+import slicer
+import slicer.util
+import mrml
 
 import csv
 from dask.distributed import Client, LocalCluster
@@ -18,8 +21,7 @@ from scipy.interpolate import griddata
 import sklearn.cluster
 from time import time
 
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
-import microtom
+from commons.slicer.cli_utils import readFrom, progressUpdate
 
 
 @njit
@@ -90,7 +92,6 @@ def process_segmentation_points(input_image, points, radii, n_attrib, min_z, i_j
     i_radius = 0
 
     for radius in radii:
-        structural_element = structural_element_3d(2 * radius - 1)
         radius_minus_one = radius - 1
 
         for i in range(n_points):
@@ -253,12 +254,10 @@ def main(args):
     progressUpdate(value=30 / 100.0)
     attrib, points = determine_attributes_from_points(array, n_points, radii, n_parallel_jobs=int(args.threads))
 
-    array_lenght = len(array)
     array_shape = array.shape
     del array  # deleta o array para liberar espaço na memória para o output
 
     n_phases = int(args.classes)
-    size_pot = len(points)
 
     progressUpdate(value=60 / 100.0)
     print("Normalizing")
@@ -313,7 +312,7 @@ def main(args):
 
     progressUpdate(value=100 / 100.0)
     et = time()
-    print(f"Elapsed Time: {et-st}s")
+    print(f"Elapsed Time: {et - st}s")
 
 
 if __name__ == "__main__":

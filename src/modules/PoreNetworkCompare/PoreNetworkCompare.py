@@ -15,13 +15,13 @@ import vtk
 from scipy.ndimage import zoom
 from scipy.spatial import distance
 
-from ltrace.pore_networks.visualization_model import PORE_TYPE, TUBE_TYPE
-from ltrace.slicer.graph_data import DataFrameGraphData
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.transforms import transformPoints
+from commons.pore_networks.visualization_model import PORE_TYPE, TUBE_TYPE
+from commons.slicer.graph_data import DataFrameGraphData
+from commons.slicer.helpers import highlight_error, reset_style_on_valid_text
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.data_plot_widget import DataPlotWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.transforms import transformPoints
 
 NUMBER_OF_VIEWS = 2
 
@@ -622,7 +622,7 @@ class PoreNetworkCompareLogic(LTracePluginLogic):
         layout += """</layout>"""
         layout += """</item>"""
         layout += """<item splitSize="500">"""
-        layout += f"""
+        layout += """
             <layout type="horizontal">
                 <item>
                     <view class="vtkMRMLSliceNode" singletontag="PoreNetworkCompareRed">
@@ -893,7 +893,7 @@ class PoreNetworkCompareLogic(LTracePluginLogic):
                     poreLabel = watershedPoreLabelMapArray[pointIJK]
                     if poreLabel == 0:
                         continue
-                except:
+                except Exception:
                     continue
 
                 saturationValue = self.getSaturationValueFromArray(
@@ -958,7 +958,7 @@ class PoreNetworkCompareLogic(LTracePluginLogic):
                     pore2Label = watershedPoreLabelMapArray[point2IJK]
                     if pore1Label == 0 or pore2Label == 0:
                         continue
-                except:
+                except Exception:
                     continue
 
                 saturationValue1 = self.getSaturationValueFromArray(

@@ -299,7 +299,7 @@ has never been built. What *was* checked, by running the scripts against the
 client's own code:
 
 - `bin/microtom-sim`'s stdout parses correctly through
-  `ltrace.readers.microtom.utils.parse_command_stdout` for the psd, stokes_kabs,
+  `commons.readers.microtom.utils.parse_command_stdout` for the psd, stokes_kabs,
   darcy_kabs_foam and krel paths: integer `job_id`, `final_results` resolving to
   the right local path through `truncate_relative_path_on`, empty stderr (a
   non-empty stderr fails the job in `OneResultSlurmHandler.start`), and the

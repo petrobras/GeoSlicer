@@ -2,10 +2,10 @@ import ctk
 import numpy as np
 import qt
 import slicer
-from ltrace.lmath.filtering import DistributionFilter
-from ltrace.slicer.helpers import getVolumeNullValue
-from ltrace.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
-from ltrace.slicer.node_attributes import ColorMapSelectable
+from commons.lmath.filtering import DistributionFilter
+from commons.slicer.helpers import getVolumeNullValue
+from commons.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
+from commons.slicer.node_attributes import ColorMapSelectable
 
 
 class TrackImageWidget(qt.QWidget):

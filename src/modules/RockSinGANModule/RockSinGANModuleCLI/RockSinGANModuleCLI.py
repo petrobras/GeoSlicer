@@ -7,26 +7,24 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
+import slicer
+import slicer.util
+import mrml
 import json
-import logging
 import numpy as np
 import os
-import sys
-import time
 import xarray as xr
 
 from pathlib import Path
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
+from commons.slicer.cli_utils import readFrom, progressUpdate
 
-import sympy  # import it before torch to avoid crash
 import torch
 from types import SimpleNamespace
-from ltrace.RockSinGANLibs.config import OPT_FILE
-from ltrace.RockSinGANLibs.functions import range_transform, prepare_injection, prepare_imagelog_integration
-from ltrace.RockSinGANLibs.noise import DynamicNoise, NoiseReconstruction
-from ltrace.RockSinGANLibs.rocksingan import RockSinGAN
-from ltrace.RockSinGANLibs.unwraputils import get_wrap
+from commons.RockSinGANLibs.config import OPT_FILE
+from commons.RockSinGANLibs.functions import prepare_injection, prepare_imagelog_integration
+from commons.RockSinGANLibs.noise import DynamicNoise, NoiseReconstruction
+from commons.RockSinGANLibs.rocksingan import RockSinGAN
+from commons.RockSinGANLibs.unwraputils import get_wrap
 
 
 def generate_image(args):
@@ -59,7 +57,7 @@ def generate_image(args):
             try:
                 radius = int((imagelog.shape[1] / np.pi) // 2 - 1)
                 imagelog = get_wrap(imagelog, radius)
-            except:
+            except Exception:
                 radius = int((imagelog.shape[1] / np.pi) // 2 - 1) - 1
                 imagelog = get_wrap(imagelog, radius)
 

@@ -1,0 +1,8 @@
+# Color table file C:\Users\LTrace\Desktop\slicerltrace\src\modules\Segmenter\Test\Resources\QEMSCAN\Data\LabelMapVolume_ColorTable (4).ctbl
+# 7 values
+1 Calcite_(0%_a_1%MgO) 0 255 255 255
+2 Dolomite 0 112 192 255
+3 Mg-Clay_minerals 218 165 32 255
+4 Pore 0 0 0 255
+5 Quartz 255 255 0 255
+6 Others 255 255 255 255

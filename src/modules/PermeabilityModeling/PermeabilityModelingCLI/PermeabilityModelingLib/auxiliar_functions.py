@@ -4,6 +4,7 @@ Created on Fri Nov 13 13:32:43 2020
 
 @author: leandro
 """
+
 import numpy as np
 import pandas as pd
 
@@ -47,6 +48,9 @@ def compute_segment_proportion_array(segmentation, id_segment_null):
 
     total_valid_pixels = (np.shape(segmentation)[2] * np.shape(segmentation)[1]) - n_null_values
     for segment_index, segment in enumerate(segment_list):
+        # The null segment is excluded from the valid pixels, so its proportion is defined as 0
+        if segment == id_segment_null:
+            continue
         auxiliar_array2count = np.zeros(np.shape(segmentation))
         auxiliar_array2count[segmentation == segment] = 1
         aux = np.sum(auxiliar_array2count, axis=1)
@@ -107,13 +111,15 @@ def smooth_proportions(proportions: np.ndarray, window_size: int) -> np.ndarray:
     return smoothed
 
 
-def compute_permeability(proportions, segment_list, porosity_array, perm_parameters, ids, excess_k_power_parameter=1.0):
+def compute_permeability(
+    proportions, segment_list, porosity_array, perm_parameters, ids, excess_k_power_parameter=1.0, zero_perm_id=None
+):
     """
     Calculate permeability by combining segment proportions and porosity using empirical models.
 
     Macropore segments contribute via a single multiplier parameter, while rock matrix segments
-    use power-law porosity-dependent contributions. Minimum permeability is set to 0.000001 to avoid
-    zero/negative values.
+    use power-law porosity-dependent contributions. The optional zero perm segment contributes with zero
+    permeability (it has no parameters). Minimum permeability is set to 0.000001 to avoid zero/negative values.
 
         Based on the article "Permeability Estimation Using Ultrasonic Borehole Image Logs in Dual-Porosity
             Carbonate Reservoirs", by Candida Menezes de Jesus, André Luiz Martins Compan, and Rodrigo Surmas.
@@ -130,6 +136,11 @@ def compute_permeability(proportions, segment_list, porosity_array, perm_paramet
         Parameters of the permeability equation of the paper Jesus, Candida, 2016
     ids : list
         [macropore_segment_id, null_segment_id] to identify special segments, macro-pore and null/ignored.
+    excess_k_power_parameter : float
+        Power applied to the macro pore fraction.
+    zero_perm_id : int, optional
+        Zero perm segment ID/label. It contributes with zero permeability and has no parameters.
+        None if the zero perm segment is not defined.
 
     Returns
     -------
@@ -148,6 +159,9 @@ def compute_permeability(proportions, segment_list, porosity_array, perm_paramet
                 proportions[:, segment_index].reshape(n_lines, 1), excess_k_power_parameter
             )
             index_parameter += 1
+        # Zero perm: contributes with zero permeability (nothing is added) and has no parameters
+        elif segment == zero_perm_id:
+            pass
         # Rock Matrix (not null value)
         elif segment != ids[1]:
             aux = proportions[:, segment_index].reshape(n_lines, 1)
@@ -167,12 +181,14 @@ def compute_permeability(proportions, segment_list, porosity_array, perm_paramet
     return permeability
 
 
-def compute_permeability_rock_matrix(proportions, segment_list, porosity_array, perm_parameters, ids):
+def compute_permeability_rock_matrix(
+    proportions, segment_list, porosity_array, perm_parameters, ids, zero_perm_id=None
+):
     """
     Calculate rock matrix permeability by excluding macropore contribution.
 
     Sets macropore proportion to 0, renormalizes other segments, then computes permeability
-    using only rock matrix contributions.
+    using only rock matrix contributions. The optional zero perm segment contributes with zero permeability.
 
 
     Parameters
@@ -187,6 +203,9 @@ def compute_permeability_rock_matrix(proportions, segment_list, porosity_array, 
         Permeability model parameters.
     ids : list
         [macropore_segment_id, null_segment_id].
+    zero_perm_id : int, optional
+        Zero perm segment ID/label. It contributes with zero permeability and has no parameters.
+        None if the zero perm segment is not defined.
 
     Returns
     -------
@@ -208,6 +227,9 @@ def compute_permeability_rock_matrix(proportions, segment_list, porosity_array, 
         # Macro pore
         if segment == ids[0]:
             index_parameter += 1
+        # Zero perm: contributes with zero permeability (nothing is added) and has no parameters
+        elif segment == zero_perm_id:
+            pass
         # Rock Matrix (not null value)
         elif segment != ids[1]:
             aux = proportions[:, segment_index].reshape(n_lines, 1)
@@ -241,6 +263,7 @@ def objective_funcion(
     inOptimization=False,
     use_only_matrix_k_plug_error_term=False,
     excess_k_power_parameter: float = 1.0,
+    zero_perm_id=None,
 ) -> float:
     """
     Calculate optimization error comparing measured plugs against modeled permeability.
@@ -276,6 +299,8 @@ def objective_funcion(
         Weight for KDST error term.
     inOptimization : bool
         If True, return single error value; if False, return (error, error_plug, kdsOptError).
+    zero_perm_id : int, optional
+        Zero perm segment ID/label (zero permeability, no parameters). None if not defined.
 
     Returns
     -------
@@ -285,11 +310,11 @@ def objective_funcion(
     # use compute_permeability_rock_matrix instead of compute_permeability if we want to compute only the permeability related to the rock matrix
     if use_only_matrix_k_plug_error_term:
         permeability_2opt = compute_permeability_rock_matrix(
-            proportions_2opt, segment_list, porosity_2opt, perm_parameters, ids
+            proportions_2opt, segment_list, porosity_2opt, perm_parameters, ids, zero_perm_id
         )
     else:  # use compute_permeability to compute the permeability including both macro-pore and rock matrix,
         permeability_2opt = compute_permeability(
-            proportions_2opt, segment_list, porosity_2opt, perm_parameters, ids, excess_k_power_parameter
+            proportions_2opt, segment_list, porosity_2opt, perm_parameters, ids, excess_k_power_parameter, zero_perm_id
         )
 
     not_nan_indices = ~np.isnan(permeability_2opt)
@@ -302,7 +327,6 @@ def objective_funcion(
 
     hasKdsOptimization = len(kdsOptimizationDataFrame.index) > 0 if kdsOptimizationDataFrame is not None else False
     if hasKdsOptimization and kdsOptimizationDataFrame is not None and kdsOptimizationWeight is not None:
-
         kiH, kDstlkRro, h, kRro_interval_values = calculate_kiH_for_intervals(
             kdsOptimizationDataFrame,
             depth2work,
@@ -312,6 +336,7 @@ def objective_funcion(
             perm_parameters,
             ids,
             excess_k_power_parameter,
+            zero_perm_id,
         )
 
         kdsOptError = np.power(np.log10(kiH) - np.log10(kDstlkRro), 2)
@@ -334,6 +359,7 @@ def calculate_kiH_for_intervals(
     perm_parameters: List,
     ids: List,
     excess_k_power_paramater: float,
+    zero_perm_id=None,
 ) -> List[float]:
     """
     Compute kiH (equivalent of mean permeability times depth interval) for each interval with measured KDS.
@@ -354,6 +380,10 @@ def calculate_kiH_for_intervals(
         Permeability model parameters.
     ids : List
         [macropore_id, null_id].
+    excess_k_power_paramater : float
+        Power applied to the macro pore fraction.
+    zero_perm_id : int, optional
+        Zero perm segment ID/label (zero permeability, no parameters). None if not defined.
 
     Returns
     -------
@@ -381,6 +411,7 @@ def calculate_kiH_for_intervals(
             perm_parameters,
             ids,
             excess_k_power_paramater,
+            zero_perm_id,
         )
 
         kiH = permeability_of_interval.mean() * np.abs(stopDepth - startDepth)

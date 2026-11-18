@@ -1,0 +1,28 @@
+Properties	Values
+Pixel Area (mm^2)	0.169333333333333
+ROI Voxel Count (#px)	380659
+Segment Voxel Count (#px)	377207
+Segment 1: Name	'Segment_1'
+Segment 1: %	8.46742
+Segment 1: % SOI	8.54491
+Segment 1: #px	32232
+Segment 2: Name	'Segment_2'
+Segment 2: %	83.91395
+Segment 2: % SOI	84.68189
+Segment 2: #px	319426
+Segment 3: Name	'Segment_3'
+Segment 3: %	6.30249
+Segment 3: % SOI	6.36017
+Segment 3: #px	23991
+Segment 4: Name	'capillary'
+Segment 4: %	0.40929
+Segment 4: % SOI	0.41304
+Segment 4: #px	1558
+Function	'islands'
+Targets	'1, 2, 3'
+Megaporo grande (%)	100.0
+parameter.size_min_threshold	0.0847
+parameter.direction	None
+parameter.calculate_coordination_number	False
+parameter.is_pore	True
+parameter.do_preprocessing	True

@@ -1,12 +1,10 @@
 import os
-import slicer
 import qSlicerSegmentationsEditorEffectsPythonQt as qSlicerSegmentationsEditorEffects
 
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 
 class SampleSegmentationEffect(LTracePlugin):
-
     SETTING_KEY = "SampleSegmentationEffect"
 
     def __init__(self, parent):

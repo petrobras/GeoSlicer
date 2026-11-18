@@ -1,0 +1,3 @@
+columnName	unitLabel	type	componentNames
+DEPTH	mm	double	
+TEMPERATURE [degC]	degC	int	

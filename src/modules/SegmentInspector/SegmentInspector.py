@@ -1,3 +1,4 @@
+import copy
 import importlib
 import json
 import logging
@@ -18,10 +19,10 @@ from slicer.util import VTKObservationMixin
 from Output import SegmentInspectorVariablesOutput as SegmentInspectorVariablesOutputClass
 from Output.BasicPetrophysicsOutput import generate_basic_petrophysics_output
 from Output.SegmentInspectorVariablesOutput import SegmentInspectorVariablesOutput
-from ltrace.algorithms.partition import InvalidSegmentError, runPartitioning, ResultInfo
-from ltrace.assets_utils import get_model_by_name
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.helpers import (
+from commons.algorithms.partition import InvalidSegmentError, runPartitioning, ResultInfo
+from commons.assets_utils import get_model_by_name
+from commons.slicer import ui, helpers, widgets
+from commons.slicer.helpers import (
     tryGetNode,
     generateName,
     rand_cmap,
@@ -32,16 +33,16 @@ from ltrace.slicer.helpers import (
     themeIsDark,
     isNodeImage2D,
 )
-from ltrace.slicer.node_attributes import Tag, NodeEnvironment
-from ltrace.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widgets import BaseSettingsWidget
-from ltrace.slicer_utils import (
+from commons.slicer.node_attributes import Tag, NodeEnvironment
+from commons.slicer.segment_report_navigator import linkReportToLabelMap
+from commons.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widgets import BaseSettingsWidget
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
     dataFrameToTableNode,
-    getResourcePath,
 )
 
 # Checks if closed source code is available
@@ -54,6 +55,9 @@ except ImportError:
 SegmentLabel = recordtype("SegmentLabel", ["name", "color", "id", "value", ("property", "Solid")])
 
 TAB_COLORS = [name for name in mcolors.TABLEAU_COLORS]
+
+# Default Size Filter value, in pixels, applied when a reference image is selected
+DEFAULT_SIZE_FILTER_PX = 3
 
 
 class SegmentInspector(LTracePlugin):
@@ -97,6 +101,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.filterUpdateThread = None
         self.blockVisibilityChanges = False
         self.supports3D = True
+        self.__referenceNodeId = None
 
     def onReload(self) -> None:
         LTracePluginWidget.onReload(self)
@@ -265,6 +270,38 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.outputPrefix.objectName = "Output Prefix Line Edit"
         self.outputPrefix.textChanged.connect(self.__on_output_prefix_changed)
 
+        self.centroidCheckBox = qt.QCheckBox("Include segment centroids in the report")
+        self.centroidCheckBox.setToolTip(
+            "Add the centroid_z, centroid_y and centroid_x columns (mm) to the report: the mean position of each "
+            "segment's voxels in world coordinates, with z = S, y = A and x = R."
+        )
+        self.centroidCheckBox.setChecked(False)
+        self.centroidCheckBox.objectName = "Centroid CheckBox"
+        self.outputFormLayout.addRow(self.centroidCheckBox)
+
+        # 3D only: hidden when the reference image is 2D
+        self.orientationCheckBox = qt.QCheckBox("Include principal axis orientations in the report")
+        self.orientationCheckBox.setToolTip(
+            "3D only. Add the direction of each segment's major, intermediate and minor principal axes (from the PCA "
+            "of its voxels) as unit vectors in world coordinates: nine columns, such as major_axis_z, major_axis_y and "
+            "major_axis_x, with z = S, y = A and x = R. Each axis points toward +S; horizontal axes toward +A."
+        )
+        self.orientationCheckBox.setChecked(False)
+        self.orientationCheckBox.objectName = "Orientation CheckBox"
+        self.outputFormLayout.addRow(self.orientationCheckBox)
+
+        self.axisLengthsCheckBox = qt.QCheckBox("Include ellipsoid axis lengths in the report")
+        self.axisLengthsCheckBox.setToolTip(
+            "3D only. Add the full length (mm) of the major, intermediate and minor axes of each segment's equivalent "
+            "ellipsoid, the same ellipsoid as ellipsoid_volume and ellipsoid_area."
+        )
+        self.axisLengthsCheckBox.setChecked(False)
+        self.axisLengthsCheckBox.objectName = "Axis Lengths CheckBox"
+        self.outputFormLayout.addRow(self.axisLengthsCheckBox)
+
+        self.methodSelector.currentWidgetChanged.connect(self.__update_report_options_state)
+        self.__update_report_options_state()
+
         return widget
 
     def _setupApplySection(self):
@@ -320,8 +357,9 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
                     for i in range(self.methodSelector.count()):
                         self.methodSelector.widget(i).onModeChanged(self.currentMode)
 
+                    self.__update_report_options_state()
                     break
-            except KeyError as ke:
+            except KeyError:
                 # happens only during initialization
                 pass
 
@@ -349,7 +387,9 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
         self.outputPrefix.setText(f"{node.GetName()}_Inspector")
 
     def _onReferenceSelected(self, node):
+        self.__referenceNodeId = node.GetID() if node is not None else None
         self.__update_apply_button_state()
+        self.__update_report_options_state()
 
         for i in range(self.methodSelector.count()):
             self.methodSelector.widget(i).onReferenceChanged(node, False)
@@ -372,9 +412,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
             if roiSegNode and not self.blockVisibilityChanges:
                 roiSegNode.GetDisplayNode().SetVisibility(False)
 
-            params = self.methodSelector.currentWidget().toJson()
-            params["is_pore"] = self.poreRadioBtn.isChecked()
-            params["do_preprocessing"] = self.preprocessingCheckBox.isChecked()
+            params = self._collectParams()
 
             cli = self.logic.runSelectedMethod(
                 segmentationNode,
@@ -389,7 +427,7 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
             self.progressBar.setCommandLineModuleNode(cli)
         except InvalidSegmentError as e:
             slicer.util.warningDisplay(str(e))
-        except AttributeError as ve:
+        except AttributeError:
             modeWidget.checkSelection()
         except Exception:
             import traceback
@@ -417,11 +455,22 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
             roiTag=roiTag,
             valuesTag=valTag,
             labelTag=labelTag,
+            params=self._collectParams(),
+            products=list(self.selectedProducts),
         ):
             self.progressBar.setCommandLineModuleNode(cli)
             while cli.IsBusy():
                 time.sleep(0.200)
                 slicer.app.processEvents()
+
+    def _collectParams(self):
+        params = self.methodSelector.currentWidget().toJson()
+        params["is_pore"] = self.poreRadioBtn.isChecked()
+        params["do_preprocessing"] = self.preprocessingCheckBox.isChecked()
+        params["include_centroid"] = self.centroidCheckBox.isChecked()
+        params["include_orientation"] = self.orientationCheckBox.isChecked()
+        params["include_axis_lengths"] = self.axisLengthsCheckBox.isChecked()
+        return params
 
     def _onApplyClicked(self):
         if not self.methodSelector.currentWidget().validatePrerequisites():
@@ -452,10 +501,27 @@ class SegmentInspectorWidget(LTracePluginWidget, VTKObservationMixin):
             try:
                 get_model_by_name("deep_ws_3d")
                 get_model_by_name("deep_ws_2d")
-            except:
+            except Exception:
                 valid_deep_watershed = False
 
         self.applyCancelButtons.applyBtn.setEnabled(valid_output_prefix and valid_input_config and valid_deep_watershed)
+
+    def __update_report_options_state(self):
+        if not hasattr(self, "centroidCheckBox"):
+            return  # called during setup, before the output section exists
+
+        # Mineralogy and basic petrophysics don't produce a per-segment report
+        method = self.methodSelector.currentWidget().METHOD
+        perSegmentReport = method not in (MineralogySettingsWidget.METHOD, BasePetrophysicsSettingsWidget.METHOD)
+
+        # In batch mode, or before a reference is selected, the dimension is unknown: the CLI ignores 3D options on 2D
+        known2D = self.currentMode == widgets.SingleShotInputWidget.MODE_NAME and isNodeImage2D(self.__referenceNodeId)
+        show3DOptions = self.supports3D and not known2D
+
+        self.centroidCheckBox.setEnabled(perSegmentReport)
+        for checkBox in (self.orientationCheckBox, self.axisLengthsCheckBox):
+            checkBox.setVisible(show3DOptions)
+            checkBox.setEnabled(perSegmentReport)
 
     def __on_output_prefix_changed(self, text):
         modeWidget: widgets.SingleShotInputWidget = self.modeWidgets[self.currentMode]
@@ -476,7 +542,7 @@ class BasePetrophysicsSettingsWidget(BaseSettingsWidget):
         self.setup()
 
     def setup(self):
-        formLayout = qt.QFormLayout(self)
+        qt.QFormLayout(self)
         # self.includeBackgroundCheckBox = qt.QCheckBox("Include Background")
         # self.includeBackgroundCheckBox.setToolTip(
         #     "Select this to include the background information in the output table."
@@ -534,7 +600,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
     def __init__(self, voxelSizeGetter=None, onSelect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.showPxOnly = voxelSizeGetter == None
+        self.showPxOnly = voxelSizeGetter is None
         self.userUnit = "px" if self.showPxOnly else "mm"
         self.voxeSizeGetter = voxelSizeGetter or (lambda: 1)
 
@@ -547,7 +613,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
 
         sizeFilterBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
+        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=6)
         self.sizeFilterThreshold.setToolTip(
             "Filter spurious partitions with major axis (feret_max) smaller than Size Filter value."
         )
@@ -588,15 +654,14 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
 
         smoothFactorBox = qt.QHBoxLayout()
         step = 1 if self.showPxOnly else 0.001
-        self.smoothFactor = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=4)
+        self.smoothFactor = ui.numberParam((0.0, 99999.0), value=0, step=step, decimals=6)
         self.smoothFactor.setToolTip(
             "Smooth Factor being the standard deviation of the Gaussian filter applied to distance transform. "
             "As Smooth Factor increases less partitions will be created. Use small values for more reliable results."
         )
 
         self.smoothFactor.objectName = "Smooth Factor SpinBox"
-        self.smoothFactorPixelLabel = qt.QLabel("  0 px")
-        self.smoothFactorPixelLabel = qt.QLabel("  0 px")
+        self.smoothFactorPixelLabel = qt.QLabel("  0.0 px")
 
         smoothFactorBox.addWidget(self.smoothFactor)
         smoothFactorBox.addWidget(self.smoothFactorPixelLabel)
@@ -640,7 +705,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
             lambda v, w=self.sizeFilterPixelLabel: self._onPixelArgumentChanged(v, w)
         )
         self.smoothFactor.valueChanged.connect(
-            lambda v, w=self.smoothFactorPixelLabel: self._onPixelArgumentChanged(v, w)
+            lambda v, w=self.smoothFactorPixelLabel: self._onPixelArgumentChanged(v, w, decimals=1)
         )
         self.minimumDistance.valueChanged.connect(
             lambda v, w=self.minDistPixelLabel: self._onPixelArgumentChanged2(v, w)
@@ -649,10 +714,10 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
         slicer.app.processEvents(1000)
         self._onPixelArgumentChanged2(self.minimumDistance.value, self.minDistPixelLabel)
 
-    def _onPixelArgumentChanged(self, value, labelWidget):
+    def _onPixelArgumentChanged(self, value, labelWidget, decimals=0):
         voxelSize = self.voxeSizeGetter()
-        pixel = int(np.round(value / voxelSize))
-        labelWidget.setText(f"  {pixel} px")
+        pixel = value / voxelSize
+        labelWidget.setText(f"  {pixel:.{decimals}f} px")
 
     def _onPixelArgumentChanged2(self, value, labelWidget):
         voxelSize = self.voxeSizeGetter()
@@ -702,6 +767,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
             return
 
         voxelSize = self.voxeSizeGetter()
+        self.sizeFilterThreshold.value = voxelSize * DEFAULT_SIZE_FILTER_PX
         self.smoothFactor.value = voxelSize * 0.5
         self._onPixelArgumentChanged2(self.minimumDistance.value, self.minDistPixelLabel)
 
@@ -716,7 +782,7 @@ class OSWatershedSettingsWidget(BaseSettingsWidget):
         self.throatAnalysisCheckBox.setEnabled(is_2d_image)
         self.throatAnalysisCheckBox.setVisible(is_2d_image)
         self.throatOptionLabel.setVisible(is_2d_image)
-        if self.throatAnalysisCheckBox.isChecked() and is_2d_image == False:
+        if self.throatAnalysisCheckBox.isChecked() and not is_2d_image:
             self.throatAnalysisCheckBox.setChecked(False)
 
     def onModeChanged(self, mode):
@@ -752,7 +818,7 @@ class IslandsSettingsWidget(BaseSettingsWidget):
         formLayout = qt.QFormLayout(self)
 
         sizeFilterBox = qt.QHBoxLayout()
-        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=0.001, decimals=4)
+        self.sizeFilterThreshold = ui.numberParam((0.0, 99999.0), value=0, step=0.001, decimals=6)
         self.sizeFilterThreshold.setToolTip(
             "Filter spurious partitions with major axis (feret_max) smaller than Size Filter value."
         )
@@ -805,6 +871,12 @@ class IslandsSettingsWidget(BaseSettingsWidget):
         self.sizeFilterThreshold.value = json["size_min_threshold"]
         self.orientationInput.setCurrentNode(json["direction"])
         self.calculateCoordinationNumberCheckBox.setChecked(json.get("calculate_coordination_number", False))
+
+    def onReferenceChanged(self, node, selected):
+        if node is None:
+            return
+
+        self.sizeFilterThreshold.value = self.voxeSizeGetter() * DEFAULT_SIZE_FILTER_PX
 
     def validatePrerequisites(self):
         return True
@@ -879,7 +951,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
     def __init__(self, voxelSizeGetter=None, onSelect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.showPxOnly = voxelSizeGetter == None
+        self.showPxOnly = voxelSizeGetter is None
         self.userUnit = "px" if self.showPxOnly else "mm"
         self.voxeSizeGetter = voxelSizeGetter or (lambda: 1)
 
@@ -890,7 +962,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         try:
             get_model_by_name("deep_ws_3d")
             get_model_by_name("deep_ws_2d")
-        except:
+        except Exception:
             self.setEnabled(False)
         else:
             self.setEnabled(True)
@@ -922,7 +994,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.throatWidgetsLayout.addWidget(self.throatWarningLabel)
         self.throatWidgetsLayout.addStretch(1)
 
-        self.tslabel = qt.QLabel(f"Split Threshold (0-1): ")
+        self.tslabel = qt.QLabel("Split Threshold (0-1): ")
         self.tslabel.setToolTip(SplitThresholdTooltip)
         formLayout.addRow(self.tslabel, ThresholdSplitBox)
 
@@ -972,19 +1044,19 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.ThresholdBackground.objectName = "Deep Watershed Background Threshold SpinBox"
         ThresholdBackgroundBox.addWidget(self.ThresholdBackground)
 
-        self.bvlabel = qt.QLabel(f"Base Volume (px): ")
+        self.bvlabel = qt.QLabel("Base Volume (px): ")
         self.bvlabel.setToolTip(baseVolumeTooltip)
         advancedFormLayout.addRow(self.bvlabel, baseVolumeBox)
 
-        self.itlabel = qt.QLabel(f"Intersection (px): ")
+        self.itlabel = qt.QLabel("Intersection (px): ")
         self.itlabel.setToolTip(intersectionTooltip)
         advancedFormLayout.addRow(self.itlabel, intersectionBox)
 
-        self.bdlabel = qt.QLabel(f"Border (px): ")
+        self.bdlabel = qt.QLabel("Border (px): ")
         self.bdlabel.setToolTip(borderTooltip)
         advancedFormLayout.addRow(self.bdlabel, borderBox)
 
-        self.tblabel = qt.QLabel(f"Background Threshold (0-1): ")
+        self.tblabel = qt.QLabel("Background Threshold (0-1): ")
         self.tblabel.setToolTip(ThresholdBackgroundTooltip)
         advancedFormLayout.addRow(self.tblabel, ThresholdBackgroundBox)
 
@@ -1050,7 +1122,7 @@ class DeepWatershedSettingsWidget(BaseSettingsWidget):
         self.throatAnalysisCheckBox.setEnabled(is_2d_image)
         self.throatAnalysisCheckBox.setVisible(is_2d_image)
         self.throatOptionLabel.setVisible(is_2d_image)
-        if self.throatAnalysisCheckBox.isChecked() and is_2d_image == False:
+        if self.throatAnalysisCheckBox.isChecked() and not is_2d_image:
             self.throatAnalysisCheckBox.setChecked(False)
 
     def onModeChanged(self, mode):
@@ -1095,6 +1167,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
         labelTag = kwargs.get("labelTag", "Pore")
 
         params = kwargs.get("params")
+        products = kwargs.get("products", ["all"])
 
         for dirname in os.listdir(batchDirectory):
             epath = Path(batchDirectory) / dirname
@@ -1103,7 +1176,8 @@ class SegmentInspectorLogic(LTracePluginLogic):
                 valuesNode = None
                 roiNode = None
 
-                allNodesFound = lambda: not (segmentationNode is None or valuesNode is None)
+                def allNodesFound():
+                    return not (segmentationNode is None or valuesNode is None)
 
                 for file in os.listdir(epath):
                     if file.endswith(".mrml"):
@@ -1142,15 +1216,14 @@ class SegmentInspectorLogic(LTracePluginLogic):
                         if labelTag in segment.GetName():
                             segments.append(index)
 
-                    if roiNode:
-                        extra["soiNode"] = roiNode
-
-                    extra["params"] = params
+                    extra["soiNode"] = roiNode
+                    extra["params"] = copy.deepcopy(params)  # each run adjusts its own params
+                    extra["products"] = products
                     extra["saveTo"] = str(epath)
 
                     yield self.runSelectedMethod(segmentationNode, segments, outputPrefix, **extra)
 
-                except AttributeError as ve:
+                except AttributeError:
                     return
                 except Exception:
                     slicer.mrmlScene.Clear(0)
@@ -1171,7 +1244,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
 
     def __callSelectedMethod(self, segmentationNode, segments, outputPrefix, **kwargs):
         params = kwargs.get("params")
-        products = kwargs.get("products", "all")
+        products = kwargs.get("products", ["all"])
 
         referenceNode = kwargs["referenceNode"]
 
@@ -1248,7 +1321,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
                         slicer.util.errorDisplay(msg)
                         raise AttributeError(msg)
 
-                if params.get("generate_throat_analysis", False) == True:
+                if params.get("generate_throat_analysis", False):
                     self.__throatAnalysisGenerator = ThroatAnalysisGenerator(
                         input_node_id=None,
                         base_name=outputPrefix,
@@ -1297,7 +1370,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
                     tag=self.tag,
                 )
             else:
-                raise RuntimeError(f'Partition method {params.get("method", None)} not found')
+                raise RuntimeError(f"Partition method {params.get('method', None)} not found")
 
             self.cliNode = cliNode
             self.__cliNodeModifiedObserver = self.cliNode.AddObserver(
@@ -1403,7 +1476,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
                 if reportNode and resultNode:
                     helpers.moveNodeTo(outputDir, reportNode, dirTree=folderTree)
 
-                    if info.params.get("generate_throat_analysis") == True:
+                    if info.params.get("generate_throat_analysis"):
                         self.__throatAnalysisGenerator.handle_process_completed()
 
                         throatTableNode = tryGetNode(self.__throatAnalysisGenerator.throat_table_node_id)
@@ -1424,8 +1497,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
                         output_report_data = pd.read_pickle(str(info.outputReport))
                         if len(output_report_data.index) > 0:
                             makeTemporaryNodePermanent(reportNode, show=True)
-                            reportNode.SetAttribute("ReferenceVolumeNode", resultNode.GetID())
-                            resultNode.SetAttribute("ResultReport", reportNode.GetID())  # não existia
+                            linkReportToLabelMap(reportNode, resultNode)
                             dataFrameToTableNode(output_report_data, tableNode=reportNode)
 
                         dpath.unlink(missing_ok=True)
@@ -1504,7 +1576,7 @@ class SegmentInspectorLogic(LTracePluginLogic):
             elif caller.GetStatusString() == "Completed with errors":
                 if self.results_queue is not None:
                     self.results_queue.append(None)
-        except Exception as e:
+        except Exception:
             import traceback
 
             traceback.print_exc()

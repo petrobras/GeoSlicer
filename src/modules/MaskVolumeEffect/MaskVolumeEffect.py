@@ -1,12 +1,10 @@
 import os
 
-import slicer
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 import qSlicerSegmentationsEditorEffectsPythonQt as qSlicerSegmentationsEditorEffects
 
 
 class MaskVolumeEffect(LTracePlugin):
-
     SETTING_KEY = "MaskVolumeEffect"
 
     def __init__(self, parent):

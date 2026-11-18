@@ -112,4 +112,4 @@ class TwoPhaseSimulationWorkstep(Workstep):
                         removed_dirs.append(item.name)
 
                 if removed_dirs:
-                    self.logger.info(f"Cleaned up subprocess directories.")
+                    self.logger.info("Cleaned up subprocess directories.")

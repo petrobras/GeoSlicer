@@ -2,24 +2,25 @@ import logging
 import shutil
 import subprocess
 
-import qt, slicer
+import qt
+import slicer
 import numpy as np
 import pandas as pd
 
-from ltrace.slicer.image_log.import_logic import ChannelMetadata
-from ltrace.slicer.image_log.table_viewer_widget import ImageLogTableViewer
+from commons.slicer.image_log.import_logic import ChannelMetadata
+from commons.slicer.image_log.table_viewer_widget import ImageLogTableViewer
 from pathlib import Path
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES, handle_null_values
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import highlight_error, remove_highlight
-from ltrace.slicer.node_attributes import (
+from commons.image.optimized_transforms import DEFAULT_NULL_VALUES, handle_null_values
+from commons.slicer import ui
+from commons.slicer.helpers import highlight_error, remove_highlight
+from commons.slicer.node_attributes import (
     ImageLogDataSelectable,
     TableType,
     TableDataOrientation,
     TableDataTypeAttribute,
 )
-from ltrace.slicer_utils import dataFrameToTableNode
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer_utils import dataFrameToTableNode
+from commons.utils.ProgressBarProc import ProgressBarProc
 from .GeologConnectWidget import GeologConnectWidget, GEOLOG_SCRIPT_ERRORS, GeologScriptError
 
 
@@ -131,7 +132,7 @@ class GeologImportWidget(qt.QWidget):
             loadAsTable[logicalFile][mnemonic] = asTable
             loadAsLabelmap[logicalFile][mnemonic] = asLabelmap
 
-        with ProgressBarProc() as progressBar:
+        with ProgressBarProc():
             try:
                 for logical in setData:
                     self.logic.importGeologData(

@@ -1,6 +1,5 @@
 #! /usr/bin/env python-real
 
-import vtk
 
 import logging
 import numpy as np
@@ -8,10 +7,10 @@ import itertools
 import pickle
 import cv2
 from pathlib import Path
-from ltrace.units import global_unit_registry as ureg
-from ltrace.image.segmentation import TF_RGBImageArrayBinarySegmenter
-from ltrace.assets import get_model_by_name, get_h5
-from ltrace.cli_progress import ProgressBarClient, StoppedError
+from commons.units import global_unit_registry as ureg
+from commons.image.segmentation import TF_RGBImageArrayBinarySegmenter
+from commons.assets import get_model_by_name, get_h5
+from commons.cli_progress import ProgressBarClient, StoppedError
 
 
 def find_plug_holes(images_folder, progress_bar):
@@ -67,7 +66,6 @@ def _find_plug_holes_in_file(file, model, progress_bar):
         # cv2.imwrite(str(save_folder / ("core_" + str(i) + ".png")), rgb_2_bgr(core))
         core_begin_y = _white_out_background(core, model)
         # cv2.imwrite(str(save_folder / ("core_whiteed_out" + str(i) + ".png")), rgb_2_bgr(core))
-        top_offset = core_begin_y - template_start_y
 
         circles_centers = []
         for center_x, center_y, radius in _find_plug_holes(core, i):

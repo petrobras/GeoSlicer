@@ -8,17 +8,10 @@ Before you begin, you will need to install the following tools and libraries on 
 
 ### Common Requirements (All Operating Systems)
 
--   **Python 3.12**: GeoSlicer is built on top of 3D Slicer and requires Python 3.12 for compatibility. We recommend using a conda-based package manager like [miniforge](https://github.com/conda-forge/miniforge) to manage your Python environment.
-    
-    To create and activate a new environment with Python 3.12, run the following commands:
-    
-    ```bash
-    conda create --name geoslicer python=3.12
-    conda activate geoslicer
-    ```
-    
+-   **Python 3.12**: GeoSlicer is built on top of 3D Slicer and requires Python 3.12 for compatibility. We use [`uv`](https://docs.astral.sh/uv/) to manage the Python version and virtual environment. The `setup_dev.sh` / `setup_dev.ps1` scripts described in [Python Dependencies](#3-python-dependencies) will install `uv` and Python 3.12 for you, so no manual setup is required here.
+
 -   **Git LFS**: This repository uses Git LFS to handle large files. You will need to install it on your system.
-    
+
     ```bash
     git lfs install
     ```
@@ -26,7 +19,7 @@ Before you begin, you will need to install the following tools and libraries on 
 -   **CUDA and cuDNN**: For GPU acceleration, you will need to install CUDA and cuDNN. Make sure you have the correct NVIDIA drivers installed for your system.
 
     > **NVIDIA Driver Compatibility**: For stable operation with GeoSlicer's Python environment, we recommend using **NVIDIA Driver version 576.28 or earlier**. Newer versions may exhibit stability issues with specific internal dependencies.
-    
+
     1.  Download and install **CUDA 12.1.0** from the [NVIDIA archive](https://developer.nvidia.com/cuda-12-1-0-download-archive).
     2.  Ensure the `CUDA_PATH_V12_1` environment variable is set and valid (e.g. `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1`).
     3.  Download **cuDNN 8.9.7** for CUDA 12.x from the [NVIDIA developer website](https://developer.nvidia.com/rdp/cudnn-archive).
@@ -56,14 +49,36 @@ Before you begin, you will need to install the following tools and libraries on 
 GeoSlicer is built on top of a modified version of 3D Slicer called **GeoSlicerBase**. You have two options for obtaining it:
 
 -   **Download the pre-built binaries (Recommended)**: This is the easiest and fastest way to get started. You can download the pre-built binaries for your operating system from the links below:
-    
+
     *   [Windows amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/fTj1fha337JiQkTHVSJZzN1tNVvz7VFJ9mcfFlNpy6csjwIgIgy-KtH_h_PZoHhJ/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/win32/GeoSlicer-2.7.1-2025-08-07-win-amd64.zip)
     *   [Linux amd64](https://objectstorage.sa-saopaulo-1.oraclecloud.com/p/wxxSabOwh2b69CV3EodNcWF3srseT-R6D-5aUFTlv-KBqGNhKyF_eeV86WWhTR3O/n/grrjnyzvhu1t/b/General_ltrace_files/o/GeoSlicer/base/release/linux/GeoSlicer-2.7.1-2025-08-07-linux-amd64.tar.gz)
 -   **Build from source**: If you need to make changes to the base application, you can build GeoSlicerBase from the source by cloning the [geoslicerbase](https://github.com/ltracegeo/geoslicerbase) and [slicer](https://github.com/ltracegeo/Slicer) repositories.
 
-## 3. Deployment
+## 3. Python Dependencies
 
-Once you have all the prerequisites installed, you can deploy GeoSlicer in two modes: **development** and **production**.
+Before deploying GeoSlicer, you need to install the required Python dependencies.
+
+**Using `uv` (recommended):** Run the following setup scripts to configure the development environment:
+- Linux/macOS: `./setup_dev.sh`
+- Windows PowerShell: `./setup_dev.ps1`
+
+These scripts install `uv` if it's not already installed, and then install the project dependencies.
+
+**Using `pip` (alternative):** If you prefer pip, you can install the dependencies:
+
+```bash
+pip install . ".[dev]"
+pip install -r requirements-dev.txt
+```
+
+## 4. Deployment
+
+The deployment script `tools/deploy/deploy_slicer.py` is the primary tool for setting up your environment. It handles:
+- **Dependency Management**: installs local packages (like `commons`) in editable mode (for dev) or as standard packages.
+- **Extension Linking**: Links or copies GeoSlicer modules into the base application.
+- **Asset Injection**: Configures icons, splash screens, and partner-specific code.
+
+You can deploy GeoSlicer in two modes: **development** and **production**.
 
 ### Development Mode
 
@@ -79,25 +94,36 @@ Replace `<path_to_geoslicer_base>` with the path to your GeoSlicerBase directory
 
 ### Production Mode
 
-This mode is used to create a distributable version of GeoSlicer. It packages all the necessary files into a single archive that can be shared with users.
+This mode creates a standalone, distributable version of GeoSlicer. It packages all code, compiles Cython extensions, and optionally creates a compressed archive.
 
-To deploy in production mode, you will need to provide a version number for the release. Run the following command:
+To deploy in production mode, run:
 
 ```bash
 python ./tools/deploy/deploy_slicer.py --geoslicer-version <version_number> <path_to_geoslicer_base>
 ```
 
-Replace `<version_number>` with the version number for this release (e.g., `2.3.0`) and `<path_to_geoslicer_base>` with the path to your GeoSlicerBase directory or archive file.
+### uv alias
+
+You can run the deploy script through the alias:
+
+```bash
+uv run deploy <arguments>
+```
 
 ### Additional Deployment Options
 
-The deployment script provides several options to customize the build process. Here are a few of the most common ones:
+The deployment script provides several options:
 
--   `--sfx`: Creates a self-extracting archive for easier distribution.
--   `--generate-public-version`: Generates a public version of GeoSlicer, excluding any proprietary code.
--   `--fast-and-dirty`: Skips some of the build steps, such as installing dependencies, to create a build more quickly. This is useful for testing purposes but should not be used for production releases.
+-   `--partner <name>`: Injects proprietary code from `src/partners/<name>`.
+-   `--sfx`: Creates a self-extracting archive (Windows only).
+-   `--fast-and-dirty`: Skips dependency installation and asset copying to speed up deployment. Useful for quick module tests.
+-   `--without-porespy`: Skips the installation of the `porespy` submodule if already present in the base.
+-   `--plugin-to-geolog <path>`: Integrates GeoSlicer into an existing Geolog installation.
+-   `--keep-tests`: Includes test files in the production build (they are excluded by default).
+-   `--disable-archiving`: Prevents the creation of a `.zip` or `.tar.gz` file after deployment.
+-   `-o, --output-dir <path>`: Specifies where the deployed application should be stored.
 
-For a full list of options, you can run the deployment script with the `--help` flag:
+For a full list of options, run:
 
 ```bash
 python ./tools/deploy/deploy_slicer.py --help

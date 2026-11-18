@@ -9,7 +9,7 @@ import slicer
 
 from pyedt import edt
 
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 
 
 def main(args):

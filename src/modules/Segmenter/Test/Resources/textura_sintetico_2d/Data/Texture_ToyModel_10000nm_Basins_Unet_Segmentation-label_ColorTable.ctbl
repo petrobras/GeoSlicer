@@ -1,0 +1,5 @@
+# Color table file C:/seg118/src/modules/Segmenter/Test/Resources/tmp/textura_sintetico_2d/Data/Texture_ToyModel_10000nm_Basins_Unet_Segmentation-label_ColorTable.ctbl
+# 4 values
+1 Pore 0 128 255 255
+2 Microporosity 255 0 0 255
+3 Calcite 0 255 0 255

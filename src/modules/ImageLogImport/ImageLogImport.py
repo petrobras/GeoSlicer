@@ -1,17 +1,9 @@
 import pickle
-import re
-import time
-import numpy as np
 import qt
-import slicer
 
-from pathlib import Path
-from queue import Queue
-from threading import Thread
-from dlisio import dlis as dlisio
-from ltrace.slicer_utils import *
-from ltrace.slicer.image_log.import_widget import WellLogImportWidget
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import *
+from commons.slicer.image_log.import_widget import WellLogImportWidget
+from commons.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.ImageLogImportTest import ImageLogImportTest
@@ -20,7 +12,6 @@ except ImportError:
 
 
 class ImageLogImport(LTracePlugin):
-
     SETTING_KEY = "ImageLogImport"
 
     def __init__(self, parent):

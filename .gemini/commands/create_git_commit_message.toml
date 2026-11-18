@@ -1,0 +1,13 @@
+description = "Generates a git commit message for staged files"
+prompt = """
+You are an expert programmer tasked with writing a git commit message for the GeoSlicer project. Analyze the provided git diff output for the staged files and the current git branch name to generate a clear, concise, and conventional commit message.
+
+Based on the branch name and the provided diff, generate the complete and final git commit message. Do not include any other explanatory text in your response.
+
+Staged Changes diff:
+
+```diff
+!{git diff --staged}
+```
+"""
+

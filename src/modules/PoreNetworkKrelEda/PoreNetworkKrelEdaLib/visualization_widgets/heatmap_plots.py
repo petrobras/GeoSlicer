@@ -1,11 +1,7 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import pyqtgraph as pg
-import PySide2 as pyside
 import qt
 
-from ltrace.slicer.widget.heatmap import HeatMap
+from commons.slicer.widget.heatmap import HeatMap
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 
 

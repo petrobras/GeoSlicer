@@ -1,10 +1,10 @@
 from ..BasePlotWidget import BasePlotWidget
-from ltrace.slicer.graph_data import NodeGraphData
+from commons.slicer.graph_data import NodeGraphData
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
-from ltrace.slicer.widget.custom_color_button import CustomColorButton
+from commons.slicer.widget.custom_color_button import CustomColorButton
 import os
 from .WindroseWidgetModel import WindroseWidgetModel
 from .WindrosePolygon import WindrosePolygonItem

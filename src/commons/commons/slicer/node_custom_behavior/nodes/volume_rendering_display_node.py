@@ -1,0 +1,24 @@
+import slicer
+
+from commons.slicer.node_custom_behavior.node_custom_behavior_base import (
+    NodeCustomBehaviorBase,
+    CustomBehaviorRequirements,
+)
+from commons.slicer.node_custom_behavior.defs import TriggerEvent
+from commons.slicer.hierarchy_visibility_manager import HierarchyVisibilityManager
+
+
+class VolumeRenderingDisplayNodeCustomBehavior(NodeCustomBehaviorBase):
+    """Custom behavior for vtkMRMLVolumeRenderingDisplayNode"""
+
+    REQUIREMENTS = CustomBehaviorRequirements(nodeTypes=[slicer.vtkMRMLVolumeRenderingDisplayNode], attributes={})
+
+    def __init__(self, node: slicer.vtkMRMLNode, event: TriggerEvent, eventArgs: dict) -> None:
+        super().__init__(node=node, event=event, eventArgs=eventArgs)
+
+    def _onNodeAdded(self, node: slicer.vtkMRMLNode) -> None:
+        node.SetFollowVolumeDisplayNode(True)
+        HierarchyVisibilityManager(node, lambda _node: _node.GetVolumeNode())
+
+    def _onNodeRemoved(self, node: slicer.vtkMRMLNode) -> None:
+        pass

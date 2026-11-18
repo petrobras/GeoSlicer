@@ -118,7 +118,7 @@ Join our community to ask questions, share your work, and connect with other Geo
 
 ## License
 
-GeoSlicer is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for more details.
+GeoSlicer is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE.md) file for more details.
 
 ## Citations
 

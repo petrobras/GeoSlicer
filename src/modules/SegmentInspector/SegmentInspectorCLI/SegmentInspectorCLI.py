@@ -6,8 +6,6 @@ from __future__ import print_function
 import itertools
 import json
 
-from collections import defaultdict
-from pathlib import Path
 import time
 
 import scipy.ndimage as spim
@@ -24,20 +22,22 @@ import sys
 import os
 import gc
 
-from ltrace import transforms
-from ltrace.algorithms import partition
+from commons import transforms
+from commons.algorithms import partition
 from porespy.filters import snow_partitioning
-from ltrace.algorithms.measurements import (
+from commons.algorithms.measurements import (
     LabelStatistics2D,
     calculate_statistics_on_segments,
     LabelStatistics3D,
     PORE_SIZE_CATEGORIES,
     GRAIN_SIZE_CATEGORIES,
+    CENTROID_COLUMNS,
+    AXIS_LENGTH_COLUMNS,
 )
-from ltrace.pore_networks.generalized_network_extractor import generate_pore_network_label_map
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
-from ltrace.slicer.throat_analysis.throat_analysis import ThroatAnalysis
-from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
+from commons.pore_networks.generalized_network_extractor import generate_pore_network_label_map
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.throat_analysis.throat_analysis import ThroatAnalysis
+from commons.slicer.volume_operator import VolumeOperator, SegmentOperator
 
 from DeepWatershedLib import deepwatershed
 
@@ -119,8 +119,6 @@ def experiment1(regions, attributes: pd.DataFrame):
     breakouts = set([])
     visited = set([])
 
-    backtrack = defaultdict(list)
-
     for row in regions:
         spots = np.where(row)
         labels = {v for v in row[spots]}
@@ -131,7 +129,7 @@ def experiment1(regions, attributes: pd.DataFrame):
             visited.add(pair)
             label_a, label_b = pair
 
-            anchor_label, small_label = (
+            anchor_label, _small_label = (
                 label_a,
                 label_b if attributes.voxelCount[label_a - 1] > attributes.voxelCount[label_b - 1] else label_b,
             )
@@ -144,7 +142,7 @@ def experiment1(regions, attributes: pd.DataFrame):
                 if not np.isclose(distance, half, rtol=0.1):
                     print("bad distance", distance, half, centroid_a, label_a, centroid_b, label_b)
                     continue
-            except Exception as e:
+            except Exception:
                 print("labels", label_a, label_a, spots, labels)
                 raise
 
@@ -329,6 +327,7 @@ def main(args):
         if "all" in products or "report" in products:
             is_pore = params.get("is_pore", True)
             calculate_coordination_number = params.get("calculate_coordination_number", False)
+            include_centroid = params.get("include_centroid", False)
             if result.regions.ndim == 2:
                 directionVector = params.get("direction", None)
                 operator = LabelStatistics2D(
@@ -345,18 +344,26 @@ def main(args):
                     size_min_threshold,
                     ras_to_ijk_transform=ras_to_ijk_matrix_list,
                     calculate_coordination_number=calculate_coordination_number,
+                    include_orientation=params.get("include_orientation", False),
+                    include_axis_lengths=params.get("include_axis_lengths", False),
                 )
 
+            segment_operator = SegmentOperator(
+                operator,
+                volumeOperator.ijkToRasOperator,
+                centroidMatrix=volumeOperator.ijkToZyxOperator if include_centroid else None,
+            )
             df, nlabels = calculate_statistics_on_segments(
                 result.regions,
-                SegmentOperator(operator, volumeOperator.ijkToRasOperator),
+                segment_operator,
                 callback=lambda i, total: progressUpdate(i / total),
             )
 
             progressUpdate(0.3)
 
             if df.shape[1] > 1 and df.shape[0] > 0:
-                df = df.set_axis(operator.ATTRIBUTES, axis=1)
+                columns = operator.attributes + CENTROID_COLUMNS if include_centroid else operator.attributes
+                df = df.set_axis(columns, axis=1)
 
                 df = df.dropna(axis=1, how="all")  # Remove unused columns
                 df = df.dropna(axis=0, how="any")  # Remove unused columns
@@ -411,7 +418,7 @@ def main(args):
 
     if (
         ("all" in products or ("partitions" in products and "report" in products))
-        and params.get("generate_throat_analysis") == True
+        and params.get("generate_throat_analysis")
         and args.throatOutputVolume is not None
     ):
         # TODO isolate better pore throat analysis to separate in partitions and report
@@ -458,6 +465,8 @@ def addUnitsToDataFrameParameters(df):
     df = appendUnit(df, "ellipsoid_volume", "mm^3")
     df = appendUnit(df, "ellipsoid_area_over_ellipsoid_volume", "1/mm")
     df = appendUnit(df, "sphere_diameter_from_volume", "mm")
+    for column in CENTROID_COLUMNS + AXIS_LENGTH_COLUMNS:
+        df = appendUnit(df, column, "mm")
 
     return df
 

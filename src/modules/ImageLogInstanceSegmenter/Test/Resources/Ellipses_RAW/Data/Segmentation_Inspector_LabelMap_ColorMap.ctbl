@@ -1,0 +1,9 @@
+# Color table file /home/git/slicerltrace/src/modules/ImageLogInstanceSegmenter/Test/Resources/Ellipses_RAW/Data/Segmentation_Inspector_LabelMap_ColorMap.ctbl
+# 7 values
+0 Background 0 0 0 0
+1 1 254 232 191 255
+2 2 87 71 241 255
+3 3 71 244 50 255
+4 4 229 106 231 255
+5 5 236 175 183 255
+6 6 151 233 43 255

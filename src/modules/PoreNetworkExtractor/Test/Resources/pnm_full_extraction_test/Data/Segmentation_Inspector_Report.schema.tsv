@@ -1,0 +1,14 @@
+columnName	type	componentNames	nullValue
+label	int		
+voxelCount	int		
+volume (mm^3)	float		
+max_feret (mm)	float		
+aspect_ratio	float		
+elongation	float		
+flatness	float		
+ellipsoid_area (mm^2)	float		
+ellipsoid_volume (mm^3)	float		
+ellipsoid_area_over_ellipsoid_volume (1/mm)	float		
+sphere_diameter_from_volume (mm)	float		
+pore_size_class	string		
+<default>	double		

@@ -1,0 +1,8 @@
+columnName	type	componentNames
+depth (m)	double	
+label	int	
+area (m²)	double	
+insc diam (mm)	double	
+azimuth (°)	int	
+Circularity	double	
+Perimeter over Area (1/mm)	double	

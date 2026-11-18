@@ -4,10 +4,7 @@
 from __future__ import print_function
 
 import json
-import math
-import os
 import sys
-from pathlib import Path
 
 import vtk
 import slicer
@@ -21,7 +18,7 @@ from scipy.ndimage import zoom
 from scipy.signal import fftconvolve
 from sklearn.preprocessing import QuantileTransformer
 
-from ltrace import transforms
+from commons import transforms
 
 from torch import load as torch_load
 from PIL import Image
@@ -153,7 +150,6 @@ def create_stencil_mask(dim, stencil, kernel_size):
 
 def bayesian_inference(img, considered_segments, mean, cov, stride, stencil="axes", unsafe_memory_opt=False):
     kernel_size = np.ceil(np.power(cov[0].shape[0], 1.0 / img.ndim)).astype(int)
-    kernel_radius = (int(kernel_size - 1) // 2,) * img.ndim
 
     # use fftconvolve
     if img.ndim == 2 and stride == 1 and kernel_size > 50 and stencil == "cubes":
@@ -165,8 +161,7 @@ def bayesian_inference(img, considered_segments, mean, cov, stride, stencil="axe
 
         P = []
         for m in range(len(considered_segments)):
-            segment = tuple(annotations[0][annotations[1] == considered_segments[m]].T)
-            mu = float(img[segment].mean())
+            mu = float(mean[m])
 
             Pm = np.zeros_like(img)
             for i in range(Sigma_inv[m].shape[0]):
@@ -184,7 +179,7 @@ def bayesian_inference(img, considered_segments, mean, cov, stride, stencil="axe
     else:
         A = create_stencil_mask(img.ndim, stencil, kernel_size)
 
-        cov = cov[:, A == True, :][:, :, A == True] + 0.001 * np.eye(sum(A))
+        cov = cov[:, A, :][:, :, A] + 0.001 * np.eye(sum(A))
         cov_inv = np.array([np.linalg.inv(cov[m]) for m in range(len(considered_segments))])
 
         logdet = np.array([np.linalg.slogdet(cov[m])[1] for m in range(len(considered_segments))])
@@ -201,7 +196,7 @@ def bayesian_inference(img, considered_segments, mean, cov, stride, stencil="axe
                     w = w[::stride, ::stride, ::stride]
 
                 w = w.reshape(np.prod(w.shape[: img.ndim]), np.prod(w.shape[img.ndim :])).T
-                w = w[A == True]
+                w = w[A]
 
                 P[m, ...] = ((-np.sum(w * (cov_inv[m] @ w), axis=0) - logdet[m]) / 2.0).reshape(
                     np.ceil(np.array(img.shape) / stride).astype(int)
@@ -216,7 +211,7 @@ def bayesian_inference(img, considered_segments, mean, cov, stride, stencil="axe
                 w = sliding_window_view(padded_img - mean[m], [kernel_size] * padded_img.ndim)
                 for i in range(len(points_inf)):
                     x = w[tuple(points_inf[i])].ravel()
-                    x = x[A == True]
+                    x = x[A]
 
                     P[m][tuple(points_inf_stride[i])] = (-np.sum(x * (cov_inv[m] @ x), axis=0) - logdet[m]) / 2.0
 

@@ -22,7 +22,6 @@ class DragNDropViewEventFilter(qt.QObject):
             return True
 
         elif event.type() == qt.QEvent.Drop:
-
             dragViewManager = self.dataLogic.dragViewManager
             match = re.search(rf"{dragViewManager.dragMimeTextPrefix}(\d+)$", event.mimeData().text())
 
@@ -33,7 +32,7 @@ class DragNDropViewEventFilter(qt.QObject):
             if int(match.group(1)) != dragViewManager.viewsIdentifiersFromTo[0]:
                 return False
 
-            if dragViewManager.dragging == True:
+            if dragViewManager.dragging:
                 dragViewManager.dragging = False
 
             globalPos = obj.mapToGlobal(event.pos())

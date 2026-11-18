@@ -5,14 +5,14 @@ import slicer
 import vtk
 import ctk
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer import ui, export
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.slicer import ui
 from pathlib import Path
-from ltrace.slicer.helpers import save_path
+from commons.slicer.helpers import save_path
 
-from ltrace.slicer import netcdf
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.utils.callback import Callback
+from commons.slicer import netcdf
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.utils.callback import Callback
 
 
 def findChildDataNodes(parentItemIds, exportableTypes):
@@ -175,7 +175,9 @@ class NetCDFExportWidget(LTracePluginWidget):
         if current not in selected_items:
             current = None
 
-        is_good_ref = lambda node: type(node) in (slicer.vtkMRMLScalarVolumeNode, slicer.vtkMRMLVectorVolumeNode)
+        def is_good_ref(node):
+            return type(node) in (slicer.vtkMRMLScalarVolumeNode, slicer.vtkMRMLVectorVolumeNode)
+
         if current and is_good_ref(current):
             return
 

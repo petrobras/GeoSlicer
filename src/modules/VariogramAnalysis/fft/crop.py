@@ -2,7 +2,7 @@ import numpy as np
 import slicer
 import vtk
 
-from ltrace.transforms import transformPoints
+from commons.transforms import transformPoints
 
 
 def inscribedCuboidArray(volumeNode, radiusCutoffFactor=0.98, heightCutoffFactor=0.98):

@@ -3,12 +3,11 @@ import os
 import qt
 import slicer
 
-from ltrace.slicer import helpers
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
-from ltrace.slicer.ui import hierarchyVolumeInput, numericInput, numberParamInt
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.utils.recursive_progress import RecursiveProgress
+from commons.slicer import helpers
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.ui import hierarchyVolumeInput, numericInput, numberParamInt
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 from typing import Callable
 
@@ -163,7 +162,7 @@ class CLAHEToolWidget(LTracePluginWidget):
                 prefix=self.outputPrefix.text,
                 callback=self.progress_callback,
             )
-        except RuntimeError as e:
+        except RuntimeError:
             # logging.error(e)
             self.progressBar.setValue(0)
             self.currentStatusLabel.setStyleSheet("color: red;")

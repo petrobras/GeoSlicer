@@ -1,1 +1,0 @@
-# MicroCT Cups Analysis (advanced)

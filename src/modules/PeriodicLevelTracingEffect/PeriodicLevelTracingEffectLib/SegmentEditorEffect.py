@@ -10,7 +10,7 @@ import vtkITK
 
 from SegmentEditorEffects import *
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -571,7 +571,7 @@ class PeriodicLevelTracingPipeline:
 
         masterImageData = self.effect.scriptedEffect.sourceVolumeImageData()
         dims = masterImageData.GetDimensions()
-        NI, NJ, NK = dims[0], dims[1], dims[2]
+        NI, _NJ, NK = dims[0], dims[1], dims[2]
         W = self._tileW
         j = self._lastSeedJ
 

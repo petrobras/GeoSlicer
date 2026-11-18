@@ -7,10 +7,11 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
-from ltrace.slicer.cli_utils import readFrom, writeDataInto
+import slicer
+import slicer.util
+import mrml
+from commons.slicer.cli_utils import readFrom, writeDataInto
 import numpy as np
-from math import ceil
 from itertools import product
 from skimage.transform import resize
 
@@ -76,9 +77,9 @@ def runcli(args):
     if not any(output_spacing_xyz):
         output_spacing_xyz = input_spacing_xyz
     else:
-        assert all(
-            output_spacing_xyz
-        ), "0 spacing is only accepted if applied for all dimensions (input spacing is used in this case)"
+        assert all(output_spacing_xyz), (
+            "0 spacing is only accepted if applied for all dimensions (input spacing is used in this case)"
+        )
 
     output_scale_zyx = [input_spacing_xyz[i] / output_spacing_xyz[i] for i in reversed(range(len(input_spacing_xyz)))]
 

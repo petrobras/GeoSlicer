@@ -1,0 +1,5 @@
+# Color table file C:/Users/camba/ltrace/slicerltrace/src/modules/ThinSectionInstanceSegmenter/Test/Resources/ThinSectionInstanceSegTests/../TMP/Data/LabelMapVolume_1_ColorTable.ctbl
+# 4 values
+1 Pore 0 0 0 255
+2 Quartz 255 255 0 255
+3 Others 255 255 255 255

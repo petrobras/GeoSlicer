@@ -1,0 +1,4 @@
+columnName	unitLabel	type	componentNames
+DEPTH	mm	double	
+<default>		double	
+c1 [ms]	gapi	float	

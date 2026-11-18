@@ -1,0 +1,44 @@
+version: "3"
+services:
+  slicerltrace-windows:
+    image: slicerltrace-windows:latest
+    build:
+      context: .
+      dockerfile: tools/docker/windows.Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HOME=C:/Users/ContainerAdministrator
+    volumes:
+      - ~/.ssh:C:/Users/ContainerAdministrator/.ssh
+      - ~/.oci:C:/Users/ContainerAdministrator/.oci
+      - .:c:/slicerltrace/
+      - slicerltrace_windows_venv:c:/slicerltrace/.venv
+    storage_opt:
+      size: '70G'
+
+  slicerltrace-linux:
+    image: slicerltrace-linux:latest
+    build:
+      context: .
+      dockerfile: tools/docker/linux.Dockerfile
+      args:
+        USER_ID: ${UID:-1000}
+        GROUP_ID: ${GID:-1000}
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+      - DOCKER_BUILDKIT=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - "$HOME/.oci:/home/sliceruser/.oci"
+      - ~/.ssh/:/home/sliceruser/.ssh/
+      - ~/.ssh/:/root/.ssh/
+      - .:/slicerltrace/
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+
+volumes:
+  slicerltrace_windows_venv:

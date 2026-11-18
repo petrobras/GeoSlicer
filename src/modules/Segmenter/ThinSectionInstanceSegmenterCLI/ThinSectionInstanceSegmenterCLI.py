@@ -3,24 +3,25 @@
 
 from __future__ import print_function
 
-import vtk, slicer, slicer.util, mrml
+import vtk
+import slicer
+import slicer.util
+import mrml
 import json
 import numpy as np
 import sys
 import time
 
 from pathlib import Path
-from ltrace.assets_utils import get_metadata, get_pth
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
-from ltrace.slicer.volume_operator import VolumeOperator, SegmentOperator
-from ltrace.algorithms.measurements import LabelStatistics2D, calculate_statistics_on_segments
-from ltrace import transforms
+from commons.assets_utils import get_metadata, get_pth
+from commons.slicer.volume_operator import VolumeOperator, SegmentOperator
+from commons.algorithms.measurements import LabelStatistics2D, calculate_statistics_on_segments
+from commons import transforms
 
 import cv2
 from mmdet.apis import init_detector, inference_detector
 from mmdet.utils import register_all_modules
 from mmengine import Config
-import sympy  # import it before torch to avoid crash
 import torch
 import pandas as pd
 import scipy
@@ -176,7 +177,6 @@ class mmdetInference:
         labels = []
         idx = np.zeros(len(self.classes), dtype=np.uint16)
         instances = np.zeros((len(self.classes), self.height, self.width), dtype=np.uint16)
-        scale = 1.0 / self.scale_percent
         if len(indices_list) > 0:
             for num, i in enumerate(indices.flatten()):
                 mask = masks[i]
@@ -272,9 +272,7 @@ class mmdetInference:
                         class_ids[i],
                         origins[i, 1] : origins[i, 1] + chunk_size,
                         origins[i, 0] : origins[i, 0] + chunk_size,
-                    ] += (
-                        idx[class_ids[i]] * (mask > 0) * (chunk_instance == 0)
-                    )
+                    ] += idx[class_ids[i]] * (mask > 0) * (chunk_instance == 0)
                     labels.append(idx[class_ids[i]])
                 else:
                     removed_inds.append(i)
@@ -347,7 +345,6 @@ def calculate_statistics(df, instances, class_ids, classes, scale, spacing):
     df_props = pd.DataFrame()
     spacing[:2] *= scale
     referenceSpacing = spacing
-    voxel_area = np.product(referenceSpacing)
     tot_classes = np.unique(class_ids)
     for idx, class_id in enumerate(tot_classes):
         progressUpdate(0.9 + 0.05 * np.float64(idx) / len(tot_classes))
@@ -439,8 +436,6 @@ def runcli(args):
 
     progressUpdate(0.01)
     ref_shape = np.array([1, *channels[0].shape[:2]])
-    valid_axis = np.squeeze(np.argwhere(ref_shape > 1))
-    is_2d = np.any(ref_shape == 1)
 
     params = json.loads(args.xargs)
     conf_thresh = params["conf_thresh"] / 100

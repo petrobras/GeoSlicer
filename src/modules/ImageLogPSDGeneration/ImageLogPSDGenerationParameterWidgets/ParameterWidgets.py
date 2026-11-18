@@ -1,9 +1,9 @@
 import qt
 import slicer
 
-from ltrace.slicer import ui, helpers
-from ltrace.constants import PSDLib
-from ltrace.slicer.widget.help_button import HelpButton
+from commons.slicer import ui, helpers
+from commons.constants import PSDLib
+from commons.slicer.widget.help_button import HelpButton
 from typing import Any, Callable
 from pathlib import Path
 

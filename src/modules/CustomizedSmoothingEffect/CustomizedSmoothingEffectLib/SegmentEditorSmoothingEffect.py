@@ -8,10 +8,9 @@ import vtk
 import slicer
 import logging
 import numpy as np
-import os
 import traceback
 
-from ltrace.slicer.helpers import getSourceVolume
+from commons.slicer.helpers import getSourceVolume
 from pathlib import Path
 from SegmentEditorEffects import *
 from scipy import ndimage
@@ -570,7 +569,7 @@ class SegmentEditorSmoothingEffect(AbstractScriptedSegmentEditorPaintEffect):
             slicer.util.errorDisplay("Failed to apply smoothing. The selected node is not valid.")
             return
 
-        self.showStatusMessage(f"Joint smoothing ...")
+        self.showStatusMessage("Joint smoothing ...")
         # Generate merged labelmap of all visible segments
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         visibleSegmentIds = vtk.vtkStringArray()

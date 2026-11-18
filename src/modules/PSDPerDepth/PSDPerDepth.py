@@ -4,35 +4,31 @@ import ctk
 import os
 import qt
 import slicer
-from ltrace.slicer.widget.preset_widget import Preset, PresetWidget
-from slicer.parameterNodeWrapper import parameterNodeWrapper, parameterPack
+from commons.slicer.widget.preset_widget import Preset, PresetWidget
+from slicer.parameterNodeWrapper import parameterNodeWrapper
 import logging
 import pandas as pd
 import numpy as np
-import logging
-import uuid
 import json
 import porespy as ps
 from scipy.signal import savgol_filter
 
-from ltrace.algorithms.measurements import GENERIC_PROPERTIES
-from ltrace.slicer import ui
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer.node_attributes import (
+from commons.slicer import ui
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.slicer.node_attributes import (
     HistogramGraphType,
     PlotScaleXAxisAttribute,
     TableType,
     TableDataOrientation,
     TableDataTypeAttribute,
 )
-from ltrace.slicer.helpers import (
+from commons.slicer.helpers import (
     tryGetNode,
     arrayPartsFromNode,
     copy_subject_hierarchy_item_parent,
 )
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer.metadata import Metadata
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.metadata import Metadata
 from PSDPerDepthParameterWidget.PSDPerDepthParameterWidget import PSDPerDepthPresetParameters
 from pathlib import Path
 import time
@@ -384,7 +380,7 @@ class PSDPerDepthWidget(LTracePluginWidget):
         start_time = time.time()
         while not view.widget:
             if time.time() - start_time > timeout_seconds:
-                logging.error(f"PSDPerDepthWidget: Time out waiting view's widget to be ready!")
+                logging.error("PSDPerDepthWidget: Time out waiting view's widget to be ready!")
                 break
             qt.QApplication.processEvents()
             time.sleep(0.1)
@@ -752,8 +748,8 @@ class PSDPerDepthWidget(LTracePluginWidget):
             else:
                 self.outputPrefixLineEdit.text = ""
             self.checkApplyButtonsState()
-        except Exception as e:
-            logging.error(f"")
+        except Exception:
+            logging.error("")
 
     def tryApply(self):
         node = self.inputSelector.currentNode()
@@ -835,7 +831,7 @@ class PSDPerDepthWidget(LTracePluginWidget):
 
     def removeObservers(self):
         for handler in self._observerTags:
-            if type(self._observerTags[handler]) == list:
+            if isinstance(self._observerTags[handler], list):
                 for tag in self._observerTags[handler]:
                     handler.RemoveObserver(tag)
             else:

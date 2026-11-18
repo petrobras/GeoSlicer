@@ -31,12 +31,17 @@ If you have a bugfix or a new feature that you would like to contribute to GeoSl
 #### Pull Request Workflow
 
 1.  **Fork the repository** and create your branch from `master`.
-2.  **Set up your development environment** by following the instructions in the [compiling guide](BUILD.md).
+2.  **Set up your development environment** by running `./setup_dev.sh` (Linux/macOS) or `.\setup_dev.ps1` (Windows) from the root of the repository. The script installs [`uv`](https://docs.astral.sh/uv/) and Python 3.12, syncs all project packages into a virtual environment and installs the Git hooks. To compile and deploy GeoSlicer itself, follow the [compiling guide](BUILD.md).
+
 3.  **Make your changes.**
 4.  **Run the test suite** to ensure that your changes don't break anything.
 
     ```bash
-    pytest tests/unit -v
+    # Using uv (recommended)
+    uv run pytest
+
+    # Using the current python interpreter in environment
+    python -m pytest
     ```
 
 5.  **Commit your changes** using a descriptive commit message that follows our [commit message conventions](#commit-message-conventions).
@@ -62,16 +67,17 @@ Here are some examples:
 The repository is structured as follows:
 
 *   `src`: Contains all the source code.
-    *   `ltrace`: The library with code shared across different modules.
+    *   `commons`: Core library containing shared algorithms, utilities, and UI components (formerly `ltrace`). The package code is in `src/commons/commons` and its dependencies are declared in `src/commons/pyproject.toml`. Shared assets are in `src/commons/commons/assets`; partner assets are injected into `src/commons/commons/assets/private`.
     *   `modules`: Houses the various modules of the GeoSlicer application. Each module is in its own subdirectory.
         *   `ModuleName`: Each module folder contains the Python files that define its functionality. The `new_module.py` script can be used to generate a new module from a template.
         *   `ModuleNameCLI`: Command Line Interface modules are denoted by a `CLI` suffix in their folder name.
-    *   `submodules`: Contains git submodules used in the project.
+    *   `third-parties`: Contains git submodules for external libraries used in the project.
+    *   `partners`: Optional directory for partner-specific or proprietary code, injected during deployment. See [Create a Partner structure](#create-a-partner-structure).
+*   `tests`: Unit tests, run with `pytest` outside of GeoSlicer.
 *   `tools`: Provides scripts and utilities for developers.
     *   `deploy`: Includes scripts for application deployment.
-    *   `hooks`: Holds Git hooks for the repository.
     *   `resources`: Files used by the tool scripts.
-*   The root directory also general files such as documentation and configuration files.
+*   The root directory also contains general files such as documentation and configuration files.
 
 
 ## Create a new GeoSlicer module
@@ -143,6 +149,64 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
 
 After making this change, your module will appear in the MicroCT environment's toolbar the next time you run GeoSlicer.
 
+### Load a module without deploying
+
+Modules developed outside the repository, or that are not part of GeoSlicer, don't need to be deployed. The **Module Manager** loads them straight from their folders on disk and lists them under **My Modules** in the module toolbar, with reload and edit buttons in the module header. A folder can hold a single module (`MyModule/MyModule.py`) or a collection of them (`TeamModules/MyModule/MyModule.py`).
+
+See the Module Manager page of the GeoSlicer manual (`tools/deploy/GeoSlicerManual/docs/Pages/en/ModuleManager.md`) for details.
+
+
+## Create a Partner structure
+
+Partner structures are used to manage proprietary code that customize the GeoSlicer application and also should not be part of the core repository.
+
+### Structure
+
+To create a new partner structure, follow these steps:
+
+1.  **Create the partner directory:** Inside `src/partners`, create a new folder with the partner's name (e.g., `src/partners/MyPartner`).
+
+2.  **Define overwrites:** Create an `overwrite.toml` file in the partner directory. This file defines which files and folders from the partner directory are injected into the main repository workspace, and it can also replace files from the core. Each key is a path inside the partner directory (looked up first in the partner directory, then in its `src` folder), and each value is the destination, relative to the repository root. An existing destination is replaced.
+
+    **Example `overwrite.toml`:**
+    ```toml
+    [overwrites]
+    "src/modules/MyPartnerModule" = "src/modules/MyPartnerModule"
+    "src/modules/MicroCTEnv/config.yml" = "src/modules/MicroCTEnv/config.yml"
+    "src/commons/commons/assets/" = "src/commons/commons/assets/private"
+    ```
+
+    Folders are injected before single files, so a file overwrite inside an overwritten folder takes precedence.
+
+3.  **Add partner-specific code:** Place your modules, utilities, or assets within the partner directory, following a structure that mirrors the repository's source (e.g., `src/partners/MyPartner/src/modules/MyPartnerModule`). Partner assets, such as AI models, go to `src/commons/commons/assets/private`, where GeoSlicer looks them up.
+
+4.  **Dependencies (Optional):** If the partner structure requires external libraries, place them in a `third-parties` folder inside the partner directory (e.g., `src/partners/MyPartner/src/third-parties/`). The deployment script installs every package it finds there, as well as the partner directory itself when it has a `pyproject.toml` or `setup.py`.
+
+### Injection
+
+Partner-specific code is injected into the workspace using the deployment script with the `--partner` flag:
+
+```bash
+uv run deploy --dev --partner MyPartner <path_to_geoslicer_base>
+```
+
+This will link (in `--dev` mode) or copy the files specified in `overwrite.toml` to their respective destinations. In `--dev` mode on Windows, creating the links requires Developer Mode to be enabled.
+
+Several partners can be injected at once by listing them after the flag:
+
+```bash
+uv run deploy --dev --partner MyPartner OtherPartner <path_to_geoslicer_base>
+```
+
+When two partners overwrite the same path, the script asks which one takes priority. In a non-interactive terminal, the partner listed first wins.
+
+To inject partner files without deploying, or to undo the injection and restore the core files from git, run:
+
+```bash
+uv run python -m deploy.partner_setup MyPartner --dev --install
+uv run python -m deploy.revert_partner_customization MyPartner
+```
+
 
 ## Debugging
 
@@ -162,15 +226,15 @@ GeoSlicer integrates multiple third-party libraries, including VTK, CTK, Slicer,
 When contributing to GeoSlicer, please adhere to the naming conventions appropriate for the context of your code:
 
 -   **`camelCase`**: Use for scripting in GeoSlicer modules, especially when interacting with Qt, 3D Slicer, and CTK libraries.
-    
+
     *Example: `myVariableName`, `calculateVolume()`*
-    
+
 -   **`PascalCase`**: Preferred for class names and when working with the VTK library.
-    
+
     *Example: `MyClassName`, `vtkImageData`*
-    
+
 -   **`snake_case`**: Use for the LTrace library code, except when the code directly interfaces with Qt or Slicer libraries.
-    
+
     *Example: `my_variable_name`, `calculate_volume()`*
 
 ### General Guidelines
@@ -178,14 +242,15 @@ When contributing to GeoSlicer, please adhere to the naming conventions appropri
 -   **PEP 8**: GeoSlicer follows the default [PEP 8](https://www.python.org/dev/peps/pep-0008/) style guide, with the exception of an increased line length limit of **120 characters**.
 -   **Consistency**: If you are modifying existing code, maintain the established style of that file. If you encounter code that does not adhere to the current style guide, feel free to refactor it, but only if it does not involve a significant amount of work.
 
-### Auto-formatting
+### Auto-formatting and Linting
 
-To ensure a consistent code style, we use [Black](https://pypi.org/project/black/) as our auto-formatter. The configuration for Black is available in the `pyproject.toml` file.
+To ensure a consistent code style, we use [Ruff](https://astral.sh/ruff) as our linter and auto-formatter. The configuration for Ruff is available in the `pyproject.toml` file.
 
-To format your code manually, run the following command from the root of the repository:
+To format and lint your code manually, run the following commands from the root of the repository:
 
 ```bash
-black .
+uv run ruff format .
+uv run ruff check . --fix
 ```
 
 ### Typing
@@ -207,17 +272,20 @@ In this example, the `register` method is defined to accept a `model` of type `s
 
 ## Pre-Commit Hook
 
-This project uses a pre-commit hook to automatically format your code with Black before each commit. This ensures that all code pushed to the repository adheres to a consistent style.
+This project uses [pre-commit](https://pre-commit.com/) hooks to keep the code consistent. Before each commit, they lint and format your code with Ruff, normalize line endings, reject large files and, when `pyproject.toml` or `uv.lock` changes, check dependency licenses with `pylic`. Before each push, they run the unit test suite.
 
 ### Installation
 
-To install the pre-commit hook, run the following command from the root of the repository:
+The hooks are installed by the development setup script, run from the root of the repository:
 
 ```bash
-python ./tools/install_pre_commit_hook.py
+./setup_dev.sh    # Linux/macOS
 ```
 
-This script will copy the pre-commit hook to the `.git/hooks` directory and make it executable.
+```powershell
+.\setup_dev.ps1   # Windows
+```
+
 
 ### Bypassing the Hook
 

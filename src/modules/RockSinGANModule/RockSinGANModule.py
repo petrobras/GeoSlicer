@@ -7,19 +7,18 @@ import ctk
 import qt
 import slicer
 import numpy as np
-import sympy  # import it before torch to avoid crash
 import torch
 
 from CustomResampleScalarVolume import CustomResampleScalarVolumeLogic, ResampleScalarVolumeData
-from ltrace.assets_utils import get_metadata
-from ltrace.slicer import ui, widgets, helpers
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
-from ltrace.RockSinGANLibs.functions import get_generation_params, get_base_volume
-from ltrace.RockSinGANLibs.rocksingan import load_singan_model, reshape_singan_model
-from ltrace.RockSinGANLibs.generator import GENERATION_METHODS
+from commons.assets_utils import get_metadata
+from commons.slicer import ui, widgets, helpers
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.trained_model_selector import TrainedModelSelector
+from commons.RockSinGANLibs.functions import get_generation_params, get_base_volume
+from commons.RockSinGANLibs.rocksingan import load_singan_model, reshape_singan_model
+from commons.RockSinGANLibs.generator import GENERATION_METHODS
 from BigImage import BigImageLogic
 from MultiScale import MultiScaleLogic
 

@@ -1,6 +1,6 @@
 import qt
 
-from ltrace.slicer.widgets import PixelLabel
+from commons.slicer.widgets import PixelLabel
 
 
 class CorrelationDistance:

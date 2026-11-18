@@ -1,0 +1,6 @@
+# Color table file C:/seg118/src/modules/Segmenter/Test/Resources/tmp/textura_sintetico_2d/Data/LabelMapVolume_1_ColorTable (2).ctbl
+# 5 values
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255
+4 Segment_4 255 255 0 255

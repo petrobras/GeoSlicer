@@ -4,22 +4,21 @@ import os
 import qt
 import slicer
 import logging
-import sys
 import vtk
 import numpy as np
-import ltrace.slicer.helpers as helpers
+import commons.slicer.helpers as helpers
 import traceback
 
-from ltrace.slicer.app import getApplicationVersion
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer import ui
-from ltrace.slicer.ui import numberParamInt
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.widget.custom_path_line_edit import CustomPathLineEdit
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.app import getApplicationVersion
+from commons.slicer.lazy import lazy
+from commons.slicer import ui
+from commons.slicer.ui import numberParamInt
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.widget.custom_path_line_edit import CustomPathLineEdit
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from pathlib import Path
 from pathvalidate import sanitize_filepath
-from ltrace.slicer import netcdf
+from commons.slicer import netcdf
 
 from PolynomialShadingCorrection import PolynomialShadingCorrection
 
@@ -405,12 +404,11 @@ class PolynomialShadingCorrectionBigImageWidget(LTracePluginWidget):
         self.__updateButtonsEnablement(running=False)
 
     def onProcessCancelled(self) -> None:
-        logging.debug(f"Process cancelled by the user.")
+        logging.debug("Process cancelled by the user.")
         self.__updateButtonsEnablement(running=False)
 
 
 class PolynomialShadingCorrectionBigImageLogic(LTracePluginLogic):
-
     signalProcessRuntimeError = qt.Signal(str)
     signalProcessSucceed = qt.Signal(str)
     signalProcessCancelled = qt.Signal()

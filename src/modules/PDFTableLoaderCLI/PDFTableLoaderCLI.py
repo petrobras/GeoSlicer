@@ -8,20 +8,18 @@
 
 from __future__ import print_function
 
-import logging
-import os, sys
-import traceback
 
 from pathlib import Path
 
-import vtk, slicer, slicer.util, mrml
-import vtkSegmentationCorePython as vtkSegmentationCore
+import vtk
+import slicer
+import slicer.util
+import mrml
 
 import csv
 import numpy as np
-import pandas as pd
 
-from ltrace.ocr import parse_pdf
+from commons.ocr import parse_pdf
 
 
 def is_float(value):

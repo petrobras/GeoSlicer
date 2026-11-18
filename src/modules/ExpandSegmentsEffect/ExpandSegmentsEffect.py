@@ -1,13 +1,10 @@
 import os
 
-import slicer
 
-
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 
 class ExpandSegmentsEffect(LTracePlugin):
-
     SETTING_KEY = "ExpandSegmentsEffect"
 
     def __init__(self, parent):

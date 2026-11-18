@@ -1,0 +1,54 @@
+default_stages: [pre-commit, manual] 
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.19
+    hooks:
+      - id: ruff-check  # Inherits defaults: runs locally and in CI/CD (check-only)
+
+      # LOCAL HOOK: Only runs on 'git commit' on local machines. Applies the formatting.
+      - id: ruff-format
+        name: ruff format (local fix)
+        stages: [pre-commit] # Overrides default: restricted to local commit stage only
+
+      # CI/CD HOOK: Only runs in Jenkins. Checks formatting without modifying files.
+      - id: ruff-format
+        name: ruff format check (CI/CD check-only)
+        args: [--check]
+        stages: [manual] # Overrides default: restricted to manual/CI stage only
+  
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files # Inherits defaults
+      - id: check-case-conflict     # Inherits defaults
+      
+      # LOCAL HOOK: Only runs on 'git commit' on local machines. Applies the fixes.
+      - id: mixed-line-ending
+        name: mixed line endings (local fix)
+        args: [--fix, lf]
+        stages: [pre-commit] # Overrides default: restricted to local commit stage only
+        exclude: \.nrrd$
+        
+      # CI/CD HOOK: Only runs in Jenkins. Checks line endings without modifying files.
+      - id: mixed-line-ending
+        name: mixed line endings check (CI/CD check-only)
+        args: [--fix=no]
+        stages: [manual] # Overrides default: restricted to manual/CI stage only
+        exclude: \.nrrd$
+        
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run python tools/hooks/run_and_clean_lock.py pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push] # Overrides default: restricted to pre-push only
+      - id: pylic-check
+        name: pylic license check
+        entry: uv run python tools/hooks/run_and_clean_lock.py pylic check --allow-extra-safe-licenses --allow-extra-unsafe-packages --quiet
+        language: system
+        pass_filenames: false
+        files: .*(pyproject\.toml|uv\.lock)$ # Inherits defaults

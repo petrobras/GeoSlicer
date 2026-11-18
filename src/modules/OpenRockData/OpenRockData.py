@@ -10,10 +10,10 @@ import xarray as xr
 import time
 
 from Libs.drd_wrapper import Source, DATASET_METADATA
-from ltrace.slicer import netcdf
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
+from commons.slicer import netcdf
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 
 try:
     from Test.OpenRockDataTest import OpenRockDataTest
@@ -80,7 +80,7 @@ library by Lukas-Mosser to access microtomography data from various sources.
         for key, value in metadata.items():
             childItem = qt.QTreeWidgetItem(datasetItem, [key])
             for key in value:
-                subchildItem = qt.QTreeWidgetItem(childItem, [key])
+                qt.QTreeWidgetItem(childItem, [key])
 
         datasetItem = qt.QTreeWidgetItem(root, [Source.ICL_2009])
         datasetItem.setExpanded(True)
@@ -200,7 +200,7 @@ library by Lukas-Mosser to access microtomography data from various sources.
 
     def onDownloadFinished(self):
         try:
-            with xr.open_dataarray(self.outputPath) as array:
+            with xr.open_dataarray(self.outputPath, engine="h5netcdf") as array:
                 node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", self.outputNodeName)
                 netcdf._array_to_node(array, node)
         except (FileNotFoundError, ValueError):

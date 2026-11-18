@@ -1,6 +1,6 @@
 from ..BasePlotWidget import BasePlotWidget
-from ltrace.slicer.graph_data import NodeGraphData
-from ltrace.slicer.node_attributes import TableDataTypeAttribute, PlotScaleXAxisAttribute
+from commons.slicer.graph_data import NodeGraphData
+from commons.slicer.node_attributes import TableDataTypeAttribute, PlotScaleXAxisAttribute
 from pyqtgraph.Qt import QtCore
 from typing import Union
 
@@ -49,7 +49,7 @@ class HistogramInDepthPlotWidgetModel(QtCore.QObject):
 
     def removeGraphDataFromTable(self, graphData: NodeGraphData, updatePlot: bool = True):
         """Remove data and objects related to the GraphData object."""
-        if not graphData in self.__graphDataList:
+        if graphData not in self.__graphDataList:
             return
 
         self.__graphDataList.remove(graphData)

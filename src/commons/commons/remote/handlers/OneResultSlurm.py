@@ -1,0 +1,449 @@
+import os
+from datetime import datetime
+import logging
+import shutil
+from typing import Any, Callable
+import re
+import time
+import traceback
+from pathlib import Path
+
+import vtk
+
+from commons.remote import errors
+from commons.remote.utils import argstring, SlurmJobStatusMixin
+from commons.remote import utils as slurm_utils
+from commons.remote.constants import (
+    JOB_EVENT_CANCEL,
+    JOB_EVENT_COLLECT,
+    JOB_EVENT_DEPLOY,
+    JOB_EVENT_DISCONNECTED,
+    JOB_EVENT_PROGRESS,
+    JOB_EVENT_START,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_DEPLOYING,
+    JOB_STATE_FAILED,
+    JOB_STATE_NOTCONNECTED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+)
+from commons.remote.jobs import JobManager
+from commons.remote.paths import storage_for
+
+import microtom
+
+from commons.readers.microtom.utils import parse_command_stdout, node_to_mct_format
+
+
+def truncate_relative_path_on(dirname: str, path: Path):
+    relindex = 0
+    for i, part in enumerate(path.parts):
+        if part == dirname:
+            relindex = i + 1
+
+    return Path(*path.parts[relindex:])
+
+
+class OneResultSlurmHandler(SlurmJobStatusMixin):
+    JOB_ID_PATTERN = re.compile("job_id = ([a-zA-Z0-9]+)")
+    TRACEBACK_PATTERN = r"Traceback[\s\S]*?(?:File[\s\S]*?)+\w+Error:.*"
+
+    def __init__(
+        self,
+        simulator: str,
+        collector: Callable,
+        input_volume_node,
+        opening_command: str,
+        partition: str,
+        params: dict,
+        prefix: str,
+        ref_volume_node_id: str,
+        tag: str,
+        timeout_seconds: int = 600,
+        post_args: dict = None,
+    ) -> None:
+        super().__init__(timeout_seconds=timeout_seconds)
+
+        self.jobid = None
+        self.results = []
+        self.simulator = simulator
+        self.collector = collector
+        self.running_jobs = []
+        self.input_volume_node = input_volume_node
+
+        self.img_type = self.defineInputImageType(input_volume_node, simulator)
+
+        self.cmd_params = params
+
+        self.prefix = prefix
+        self.ref_volume_node_id = ref_volume_node_id
+        self.tag = tag
+
+        self.post_args = post_args
+
+        self.command = ""
+
+        self.partition = partition
+
+        self.opening_command = opening_command
+
+        self.closed_jobs = set([])
+
+        # Resolved against the host's configured layout once the job is bound
+        # to one; the defaults stand in until then, which is what a handler
+        # rebuilt from disk starts with.
+        self._storage = storage_for(None)
+
+        self.is_strict = True
+
+        self.last_slurm_out_size = 0
+
+        self.__action_map = {
+            JOB_EVENT_DEPLOY: self.deploy,
+            JOB_EVENT_DISCONNECTED: self.disconnected,
+            JOB_EVENT_START: self.start,
+            JOB_EVENT_PROGRESS: self.progress,
+            JOB_EVENT_CANCEL: self.cancel,
+            JOB_EVENT_COLLECT: self.collect,
+        }
+
+    @property
+    def remote_dir(self) -> Path:
+        return self._storage.remote_dir("microtom_jobs")
+
+    @property
+    def local_dir(self) -> Path:
+        return self._storage.local_dir("microtom_jobs")
+
+    def defineInputImageType(self, node, simulator: str):
+        if simulator == "darcy_kabs_foam":
+            return "kabs"
+        elif "kabs" in simulator and node is not None:
+            imageData = node.GetImageData()
+            scalarRange = imageData.GetScalarRange()
+            minValue, maxValue = scalarRange
+            isFloat = imageData.GetScalarType() in [vtk.VTK_FLOAT, vtk.VTK_DOUBLE]
+
+            if 0 <= minValue and maxValue <= 1 and isFloat:
+                return "porosity"
+        return "bin"
+
+    def retrieve_jobinfo_from_file(self, client: Any, deploy_path: Path):
+        time.sleep(5)
+
+        jobidcat = client.run_command(f"cat {deploy_path}/job_id;", verbose=True)
+        jobid = jobidcat["stdout"].replace("\n", "").strip()
+
+        output = [
+            f"work_dir = atena_{jobid}",
+            f"job_id = {jobid}",
+            f"final_results = {deploy_path}/atena_{jobid}/atena_{jobid}.nc",
+        ]
+
+        return output
+
+    def __call__(self, caller: JobManager, uid: str, action: str, **kwargs):
+        # Bind to the host's storage layout before doing anything: the handler
+        # is constructed before it knows which account it belongs to.
+        job = caller.jobs.get(uid)
+        if job is not None:
+            self._storage = storage_for(job.host)
+
+        try:
+            client = kwargs.get("client")
+            self.__action_map[action](caller, uid, client)
+        except KeyError:
+            pass
+
+    def deploy(self, caller: JobManager, uid: str, client: Any = None):
+        def exportNode(node, direction, img_type, dirpath):
+            ds, key = node_to_mct_format(node, direction=direction, img_type=img_type)
+            filename = microtom.write_raw_file(ds, save_raw_to=dirpath, data_array=key)
+            return filename
+
+        try:
+            remote_path = self.remote_dir / uid
+            client.run_command(f"mkdir --parents {remote_path} && chmod -R 777 {remote_path}")
+            time.sleep(0.1)
+            dest_path = self.local_dir / uid
+
+            if self.simulator == "krel":
+                direction = self.cmd_params.pop("direction", "z")
+                self.post_args["direction"] = direction
+                filename = exportNode(self.input_volume_node, direction, self.img_type, dest_path)
+            else:
+                self.post_args["direction"] = self.cmd_params.get("direction", None)
+                filename = exportNode(self.input_volume_node, None, self.img_type, dest_path)
+
+            input_image_remote_path = str(remote_path / filename)
+
+            if "diameters" in self.cmd_params:
+                diameters = self.cmd_params.pop("diameters")
+                args = [argstring(self.cmd_params), input_image_remote_path, diameters]
+            else:
+                args = [argstring(self.cmd_params), input_image_remote_path]
+
+            s_args = " ".join(args)
+
+            self.command = f"microtom_{self.simulator} {s_args}"
+
+            caller.set_state(uid, JOB_STATE_DEPLOYING, 0, message="Configuration done. Starting job deployment.")
+            caller.schedule(uid, JOB_EVENT_START)
+
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+
+    def start(self, caller: JobManager, uid: str, client: Any = None):
+        tsnow = datetime.now().timestamp()
+
+        try:
+            if not self.command:
+                caller.set_state(uid, JOB_STATE_FAILED, 0, message="Command not defined.")
+                return
+
+            deploy_path = self.remote_dir / uid
+
+            if len(self.opening_command.strip()) == 0:
+                if caller.jobs[uid].host.opening_command:
+                    self.opening_command = caller.jobs[uid].host.opening_command
+                else:
+                    self.opening_command = "echo 'Opening command not defined. Proceeding with default.'"
+
+            bash_args = " && ".join([self.opening_command, rf"cd {deploy_path}", self.command])
+            setup_cmd = rf'bash -c "{bash_args}"'
+
+            output = client.run_command(setup_cmd, verbose=True)
+
+            if len(output["stderr"]) > 0:
+                caller.set_state(
+                    uid, JOB_STATE_FAILED, 0, message="Failed to run command. Check the logs.", traceback=output
+                )
+                return
+
+            if self.simulator == "darcy_kabs_foam":
+                stdout_items = self.retrieve_jobinfo_from_file(client, deploy_path)
+                sim_info = parse_command_stdout(stdout_items)
+            else:
+                sim_info = parse_command_stdout(output["stdout"].split("\n"))
+
+            self.slurm_job_ids = [str(j) for j in sim_info["job_id"]]
+
+            if not self.slurm_job_ids:
+                caller.set_state(
+                    uid, JOB_STATE_FAILED, 100, end_time=tsnow, message="Execution failed to create a job on cluster."
+                )
+                return
+
+            logging.debug(f"Parsed simulation info: {sim_info}")
+            self.jobid = sim_info["job_id"][0]
+
+            details = {
+                **sim_info,
+                "simulator": self.simulator,
+                "command": self.command,
+                "output_prefix": self.prefix,
+                "reference_volume_node_id": self.ref_volume_node_id,
+                "geoslicer_tag": self.tag,
+                **self.post_args,
+            }
+
+            caller.set_state(
+                uid,
+                JOB_STATE_PENDING,
+                0,
+                message="Job submmited. Waiting for job to start.",
+                start_time=tsnow,
+                details=details,
+            )
+            caller.persist(uid)
+
+            caller.schedule(uid, JOB_EVENT_PROGRESS)
+
+        except errors.ChannelError as e:
+            # The host dropped us mid-submission: nothing is known about the
+            # processing, so this must not become a terminal FAILED. Hand it to
+            # the reconnection backoff, which flags NOT CONNECTED and retries.
+            self.disconnected(caller, uid, client, error=e)
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+            caller.set_state(
+                uid,
+                JOB_STATE_FAILED,
+                0,
+                start_time=tsnow,
+                end_time=tsnow,
+                message="Execution failed to start a job on cluster.",
+            )
+
+    def _post_status_update(self, caller: JobManager, uid: str, client: Any, jobstatus: list):
+        try:
+            slurm_out = self.get_slurm_log(uid)
+
+            submitted_jobs = []
+            for job in jobstatus:
+                if job["jobid"] not in self.closed_jobs:
+                    new_jobs = slurm_utils.find_submitted_jobs(job["jobid"], slurm_out)
+                    if new_jobs:
+                        submitted_jobs.extend(new_jobs)
+
+                    if job["state"] == JOB_STATE_COMPLETED:
+                        self.closed_jobs.add(job["jobid"])
+
+            # Remove duplicates but keep order
+            self.slurm_job_ids = list(dict.fromkeys([*self.slurm_job_ids, *submitted_jobs]))
+
+            if slurm_utils.all_done(jobstatus):
+                if slurm_utils.all_failed(jobstatus):
+                    caller.set_state(
+                        uid,
+                        JOB_STATE_FAILED,
+                        0,
+                        message="Job(s) failed. Check the logs.",
+                        end_time=datetime.now().timestamp(),
+                        traceback=slurm_out,
+                    )
+                    return  # EXIT
+
+                # TODO change condition to subprocess is a spawner check
+                if self.simulator == "krel":
+                    results = self.subprocess_results(self.local_dir / uid / self.simulator)
+                else:
+                    job = caller.jobs[uid]
+                    sim_info = job.details
+                    results = []
+                    for result_location in sim_info["final_results"]:
+                        remote_path = Path(result_location)
+                        target = truncate_relative_path_on(uid, remote_path)
+                        local_file = self.local_dir / uid / target
+                        results.append(local_file)
+
+                self.results = []
+                seen = set([])
+                for r in results:
+                    if r not in seen:
+                        self.results.append(r)
+                        seen.add(r)
+
+                if self.confirm_results(strict=self.is_strict):
+                    """job finished and got out of queue"""
+                    caller.set_state(
+                        uid,
+                        JOB_STATE_COMPLETED,
+                        100,
+                        message="Execution Completed.",
+                        end_time=datetime.now().timestamp(),
+                        traceback=slurm_out,
+                    )
+                else:
+                    caller.set_state(
+                        uid, "FINISHING", 90, message="Finishing Execution. Waiting for results.", traceback=slurm_out
+                    )
+                    caller.schedule(uid, JOB_EVENT_PROGRESS)
+            else:
+                """If there is still jobs on the list, we just update their status"""
+                caller.set_state(uid, JOB_STATE_RUNNING, 23, message="Execution in progress.")
+                caller.schedule(uid, JOB_EVENT_PROGRESS)
+
+        except Exception as e:
+            # import traceback
+            # traceback.print_exc()
+            logging.debug(f"Error in progress: {repr(e)}")
+
+    def cancel(self, caller: JobManager, uid: str, client: Any = None):
+        try:
+            self.cleanup(caller, uid, client)
+            # caller.set_state(uid, JOB_STATE_CANCELLED, 0, message="Execution Cancelled.")
+        except Exception:
+            pass
+
+    def cleanup(self, caller: JobManager, uid: str, client: Any = None):
+        # scancel reports "invalid job id" for slurm jobs that already
+        # finished. Those are not cancellation failures, and treating them as
+        # such used to move the job to NOT CONNECTED -- a state the monitor
+        # refuses to cancel, so the entry could never be removed afterwards.
+        ghost_reason = slurm_utils.try_scancel(client, self.slurm_job_ids)
+
+        if ghost_reason:
+            slurm_out = self.get_slurm_log(uid)
+            caller.set_state(
+                uid,
+                JOB_STATE_NOTCONNECTED,
+                0,
+                message="Execution cannot be cancelled.",
+                traceback={"traceback": ghost_reason, **slurm_out},
+            )
+            return
+
+        try:
+            caller.remove(uid)
+
+            remote_path = self.remote_dir / uid
+            """ Note: must be done remotely because of permissions """
+            client.run_command(f"rm -rf {remote_path}")
+        except Exception:
+            local_path = self.local_dir / uid
+            if local_path.exists():
+                shutil.rmtree(local_path, ignore_errors=True)
+
+    def collect(self, caller: JobManager, uid: str, client: Any = None):
+        # TODO use job.details instead of this partial sim_info below
+        sim_info = {
+            "simulator": self.simulator,
+            "command": self.command,
+            "output_prefix": self.prefix,
+            "reference_volume_node_id": self.ref_volume_node_id,
+            "geoslicer_tag": self.tag,
+            "results": self.results,
+            **self.post_args,
+        }
+        logging.debug(f"Collecting results with: {sim_info}")
+        self.collector(sim_info)
+
+    def confirm_results(self, strict=True):
+        done = []
+        for local_file in self.results:
+            done.append(local_file.exists())
+
+        return all(done) if strict else any(done)
+
+    def subprocess_results(self, workdir: Path):
+
+        results = []
+        for sim_dir in workdir.iterdir():
+            try:
+                k_table = sim_dir / "permeability.csv"
+                last_blue = sorted(sim_dir.glob("blue*.vtk"), key=os.path.getmtime, reverse=True)[0]
+                last_red = sorted(sim_dir.glob("red*.vtk"), key=os.path.getmtime, reverse=True)[0]
+
+                results.append(k_table)
+                results.append(last_blue)
+                results.append(last_red)
+            except IndexError:
+                pass  # no files found
+            except Exception as e:
+                logging.error(f"{e}.\n{traceback.format_exc()}")
+
+        return results
+
+    def get_slurm_log(self, uid):
+        content = {}
+        for jobid in self.slurm_job_ids:
+            logfilename = f"slurm-{jobid}.out"
+            slurm_path = self.local_dir / uid / logfilename
+
+            if not slurm_path.exists():
+                continue
+
+            current_slurm_out_size = slurm_path.stat().st_size
+
+            if self.last_slurm_out_size != current_slurm_out_size:
+                with open(slurm_path, "r") as f:
+                    slurm_out_content = f.read()
+
+                content[logfilename] = slurm_out_content
+
+        return content

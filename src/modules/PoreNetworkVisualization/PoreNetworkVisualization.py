@@ -12,15 +12,13 @@ import slicer
 import vtk
 from pyqtgraph.Qt import QtCore
 
-from ltrace.slicer import ui, widgets
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer_utils import (
+from commons.slicer import ui, widgets
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     hide_nodes_of_type,
-    getResourcePath,
 )
-from ltrace.slicer import widgets
 
 
 try:
@@ -419,7 +417,7 @@ class PoreNetworkVisualizationWidget(LTracePluginWidget):
             table_sw = self.data_points[int(new_step)]
             table_cycle = int(self.data_cycles[int(new_step)])
             self.inputSelector.currentNode().GetDisplayNode().SetActiveScalarName(
-                f"{self.comboBoxVariable.currentText}_{int(new_step)+1}"
+                f"{self.comboBoxVariable.currentText}_{int(new_step) + 1}"
             )
 
             nearest_index = self.getNearestIndex(table_cycle, table_sw)

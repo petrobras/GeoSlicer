@@ -9,10 +9,10 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer.helpers import triggerNodeModified, tryGetNode
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.slicer.helpers import triggerNodeModified, tryGetNode
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 try:
     from Test.UnwrapRegistrationTest import UnwrapRegistrationTest
@@ -40,7 +40,6 @@ class UnwrapRegistration(LTracePlugin):
 
 
 class UnwrapRegistrationWidget(LTracePluginWidget):
-
     ApplyParameters = namedtuple(
         "ApplyParameters",
         [

@@ -1,0 +1,29 @@
+{
+    "nodeType": "volume",
+    "reference": {
+        "name": "DEPTH",
+        "top": 1000.0,
+        "bottom": 1001.001,
+        "spacing": 0.001,
+        "type": "DOUBLE",
+        "unit": "METRES"
+    },
+    "logs": {
+        "TEST_WELL_TEST_SCALAR": {
+            "top": 1000.0,
+            "bottom": 1001.001,
+            "height": 1001,
+            "spacing": 0.001,
+            "type": "DOUBLE",
+            "unit": "UNITS"
+        },
+        "TEST_WELL_TEST_LABELMAP": {
+            "top": 1000.0,
+            "bottom": 1001.001,
+            "height": 1001,
+            "spacing": 0.001,
+            "type": "REAL",
+            "unit": null
+        }
+    }
+}

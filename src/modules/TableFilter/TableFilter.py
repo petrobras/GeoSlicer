@@ -2,7 +2,7 @@ import copy
 import ctk
 import importlib
 
-import ltrace.slicer.widget.color_picker_cell as ColorPicker
+import commons.slicer.widget.color_picker_cell as ColorPicker
 import numpy as np
 import os
 import pandas as pd
@@ -11,19 +11,19 @@ import PySide2 as ps
 import qt
 import slicer
 import time
+import matplotlib.colors as mcolors
 
 from functools import lru_cache, partial
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.helpers import getPythonQtWidget, tryGetNode
-from ltrace.slicer_utils import *
+from commons.slicer import ui, helpers, widgets
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.helpers import getPythonQtWidget, tryGetNode
+from commons.slicer_utils import *
 from numpy.random import RandomState
 from pathlib import Path
 from PIL import ImageColor
 from sklearn.cluster import KMeans
 from slicer.util import dataframeFromTable
 from typing import List
-
 
 CLUSTER_COUNT_WARNING = 50
 
@@ -42,8 +42,6 @@ class Filter:
     def __repr__(self):
         return str(self)
 
-
-import matplotlib.colors as mcolors
 
 _COLORS = [mcolors.TABLEAU_COLORS[name] for name in mcolors.TABLEAU_COLORS]
 _DEFAULT_COLOR_TABLE = list(range(len(_COLORS)))
@@ -77,7 +75,6 @@ def SegmentTuple(label, name, minimum, maximum, color=None, visible=True, discre
 
 
 class DiscreteTuple(object):
-
     COLUMNS = " ", " ", "Name"
 
     def __init__(self, label, name, color=None, visible=True):
@@ -112,7 +109,6 @@ class DiscreteTuple(object):
 
 
 class ContinuousTuple(DiscreteTuple):
-
     COLUMNS = " ", " ", "Name", "Min", "Max"
 
     def __init__(self, label, name, minimum, maximum, color=None, visible=True):
@@ -529,7 +525,7 @@ class TableFilterWidget(LTracePluginWidget):
             else:
                 self.referenceNodeSelector.setCurrentNode(None)
             self.enableFilterControls()
-        except AssertionError as ae:
+        except AssertionError:
             self.enableFilterControls(False)
         except Exception as e:
             slicer.util.errorDisplay(repr(e))
@@ -895,7 +891,7 @@ class TableFilterLogic(LTracePluginLogic):
 
             if (
                 len(self._labels) > 0
-                and type(self._labels[0]) == ContinuousTuple
+                and isinstance(self._labels[0], ContinuousTuple)
                 and len(transitions) == len(self._labels)
             ):
                 self.updateSegments([(a, b) for _, a, b in transitions])
@@ -1412,7 +1408,6 @@ class LabelDialog(qt.QDialog):
 
         alwaysValidItemIndex = self.logic.columns().index(itemText)
         if alwaysValidItemIndex == self.logic._colorBy:
-
             self.logic.updateLabels(self.logic._labels, self.masterNode)
             self._redrawHistogram()
         else:

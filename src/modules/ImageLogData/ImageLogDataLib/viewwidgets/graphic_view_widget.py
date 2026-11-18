@@ -6,8 +6,8 @@ import slicer
 
 from .base_view_widget import BaseViewWidget
 from ImageLogDataLib.view.View import CurvePlot, SECONDARY_VIEW_BOX
-from ltrace.slicer.graph_data import LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
-from ltrace.slicer_utils import tableNodeToDict
+from commons.slicer.graph_data import LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
+from commons.slicer_utils import tableNodeToDict
 
 
 class GraphicViewWidget(BaseViewWidget):

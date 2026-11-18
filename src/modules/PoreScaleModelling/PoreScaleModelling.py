@@ -11,12 +11,12 @@ import numpy as np
 import qt
 import slicer
 
-from ltrace.lbpm.config import WaterflowConfig
-from ltrace.lbpm.geometry import CaseGeometry
-from ltrace.lbpm.results import LBPMResults
-from ltrace.lbpm.scheduler import SlurmScheduler
-from ltrace.slicer import ui
-from ltrace.slicer.lbpm import (
+from commons.lbpm.config import WaterflowConfig
+from commons.lbpm.geometry import CaseGeometry
+from commons.lbpm.results import LBPMResults
+from commons.lbpm.scheduler import SlurmScheduler
+from commons.slicer import ui
+from commons.slicer.lbpm import (
     REMOTE_FIELDS_LBPM,
     SETTING_BINARY,
     SETTING_REMOTE_ROOT,
@@ -24,13 +24,13 @@ from ltrace.slicer.lbpm import (
     NoBackendAvailable,
     build_result_nodes,
 )
-from ltrace.slicer.virtual import folder as virtual_folder
-from ltrace.slicer.virtual.fourd.manager import get_manager as get_fourd_manager
-from ltrace.slicer.widget.execution import ExecutionSettings, ExecutionWidget
-from ltrace.slicer.widget.fourd_player import FourDPlayerWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget, openInTextEditor
-from ltrace.remote.constants import JOB_STATE_CANCELLED
-from ltrace.remote.jobs import JobManager
+from commons.slicer.virtual import folder as virtual_folder
+from commons.slicer.virtual.fourd.manager import get_manager as get_fourd_manager
+from commons.slicer.widget.execution import ExecutionSettings, ExecutionWidget
+from commons.slicer.widget.fourd_player import FourDPlayerWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget, openInTextEditor
+from commons.remote.constants import JOB_STATE_CANCELLED
+from commons.remote.jobs import JobManager
 
 from PoreScaleModellingLib import ConfigFormWidget, ReportWidget
 
@@ -575,7 +575,7 @@ class PoreScaleModellingWidget(LTracePluginWidget):
         """Show a run as if it had just run from here: its case and the run itself, its frames as a time
         sequence, its report and its tables; and follow its job again while there is one.
 
-        What the Job Monitor's *Open* ends in (see ``ltrace.slicer.lbpm.open_run``). ``simulationDir`` is the
+        What the Job Monitor's *Open* ends in (see ``commons.slicer.lbpm.open_run``). ``simulationDir`` is the
         run's simNNN, ``outputDir`` where it wrote its frames and logs: the run folder itself, or for a cluster
         run its copy on the share. A job recorded before its run folder was kept names only its output: the
         run is then looked for in the case on screen, and without it the output is shown alone.
@@ -791,7 +791,7 @@ class PoreScaleModellingLogic(LTracePluginLogic):
         """Copy the case into a fresh ``simNNN`` folder and submit it.
 
         ``options`` is what the execution section holds — where to run and under which settings; see
-        :class:`~ltrace.slicer.widget.execution.ExecutionOptions`. ``container`` and ``binds`` are the
+        :class:`~commons.slicer.widget.execution.ExecutionOptions`. ``container`` and ``binds`` are the
         cluster's own way of running LBPM, from the same settings; see :data:`REMOTE_FIELDS_LBPM`.
         """
         case_dir = Path(case_dir)

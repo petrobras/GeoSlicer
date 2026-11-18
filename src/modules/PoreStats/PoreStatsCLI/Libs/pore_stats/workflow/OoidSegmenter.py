@@ -11,7 +11,6 @@ from workflow.commons import no_extra_dim_read, write
 
 
 class OoidSegmenter:
-
     ## OoidSegmenter: Segmentação de oóides
 
     # Um modelo neural treinado para detecção de oóides também é aplicado e tem seu resultado salvo em

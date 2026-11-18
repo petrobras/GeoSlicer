@@ -6,12 +6,12 @@ import re
 import numpy as np
 import logging
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer import helpers, export, netcdf
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.utils.callback import Callback
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer import helpers, export, netcdf
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.help_button import HelpButton
+from commons.utils.callback import Callback
 from collections import OrderedDict
 from pathlib import Path
 
@@ -89,7 +89,7 @@ class MicroCTExportWidget(LTracePluginWidget):
 
 - **RAW**: raw binary files. Supports scalar, labelmap and segmentation volumes. Will export a separate file for each volume with standard nomenclature.
 - **TIF**: TIFF files. Supports scalar volumes only. Will export a separate file for each volume with standard nomenclature.
-- **NetCDF**: NetCDF files. Supports scalar, labelmap and segmentation volumes. Will export a single .nc file with all volumes.""",
+- **NetCDF**: NetCDF files. Supports scalar, labelmap and segmentation volumes. Will export a single .nc file with all volumes. Each volume keeps its data type from the scene, so the bit depths described for each image type apply only to RAW and TIF.""",
     }
 
     def __init__(self, parent):
@@ -315,6 +315,7 @@ class MicroCTExportLogic(LTracePluginLogic):
         "KABS": "kabs",
     }
 
+    # Dtype conventions for RAW files, which carry no dtype. NetCDF stores the dtype, so it keeps the scene's.
     TYPE_TO_DTYPE = {
         "CT": np.uint16,
         "CT filtered": np.uint16,
@@ -374,7 +375,6 @@ class MicroCTExportLogic(LTracePluginLogic):
                 path = (Path(outputDir) / imageName).with_suffix(".nc")
                 images = []
                 names = []
-                dtypes = []
                 bestPriority = len(self.REFERENCE_PRIORITY) + 1
                 referenceItem = None
                 for type_, image in imageDict.items():
@@ -392,7 +392,6 @@ class MicroCTExportLogic(LTracePluginLogic):
 
                     images.append(image)
                     names.append(self.TYPE_TO_NC_NAME[type_])
-                    dtypes.append(self.TYPE_TO_DTYPE[type_])
 
                     priority = self.REFERENCE_PRIORITY.index(type_)
                     if priority < bestPriority:
@@ -403,7 +402,6 @@ class MicroCTExportLogic(LTracePluginLogic):
                     path,
                     images,
                     nodeNames=names,
-                    nodeDtypes=dtypes,
                     callback=callback,
                     single_coords=singleCoords,
                     referenceItem=referenceItem,

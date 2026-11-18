@@ -3,7 +3,7 @@ from pathlib import Path
 
 import qt
 import slicer
-from ltrace.slicer_utils import *
+from commons.slicer_utils import *
 
 
 class ModuleToolBarCustomizer(LTracePlugin):

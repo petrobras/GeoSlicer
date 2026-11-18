@@ -6,13 +6,15 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-import qt, ctk, slicer
+import qt
+import ctk
+import slicer
 import vtk
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import highlight_error, remove_highlight
-from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import ui
+from commons.slicer.helpers import highlight_error, remove_highlight
+from commons.slicer.node_attributes import TableType
+from commons.slicer.widget.help_button import HelpButton
+from commons.utils.ProgressBarProc import ProgressBarProc
 from .GeologConnectWidget import GeologConnectWidget, GEOLOG_SCRIPT_ERRORS, GeologScriptError
 
 NEW_WELL = "New Well"
@@ -229,7 +231,7 @@ class GeologExportWidget(qt.QWidget):
 
         overwrite = self.overwriteCheckBox.isChecked()
 
-        with ProgressBarProc() as progressBar:
+        with ProgressBarProc():
             try:
                 self.logic.exportGeologData(
                     self.geologConnectWidget.projectComboBox.currentText,

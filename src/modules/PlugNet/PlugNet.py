@@ -1,11 +1,10 @@
-from builtins import breakpoint
 import os
 import ctk
 import qt
 import slicer
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, is_tensorflow_gpu_enabled
-from ltrace.slicer import helpers
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, is_tensorflow_gpu_enabled
+from commons.slicer import helpers
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from pathlib import Path
 
 

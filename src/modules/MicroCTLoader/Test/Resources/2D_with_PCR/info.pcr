@@ -1,0 +1,10 @@
+[Section]
+foo=hello
+[VolumeData]
+Flavor=chocolate
+Min=-1.7
+Max=123.45
+Something=80.1
+[AnotherSection]
+bar=7
+biz=8

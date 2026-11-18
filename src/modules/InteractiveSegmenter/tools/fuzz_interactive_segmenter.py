@@ -66,7 +66,7 @@ import qt
 import slicer
 import vtk
 
-from ltrace.interactive.widget import ApplyToOtherImagesDialog, get_annotation_node
+from commons.interactive.widget import ApplyToOtherImagesDialog, get_annotation_node
 
 ANNOTATION_SLICE = "SideBySideDumb1"
 VIEW_PLANES = ("XY", "XZ", "YZ")  # matches widget.VIEW_PLANES
@@ -513,8 +513,7 @@ class InteractiveSegmenterFuzzer:
         if enabled != (self.extra_inputs == 0):
             self._flag_crash(
                 "invariant",
-                f"batch button {'enabled' if enabled else 'disabled'} with "
-                f"{self.extra_inputs} extra channel input(s)",
+                f"batch button {'enabled' if enabled else 'disabled'} with {self.extra_inputs} extra channel input(s)",
             )
 
     def _make_other_image(self, idx, cfg, spatial):

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import slicer
 import slicer.util
-from ltrace.lmath.filtering import DistributionFilter
+from commons.lmath.filtering import DistributionFilter
 from scipy.ndimage import zoom
 
 

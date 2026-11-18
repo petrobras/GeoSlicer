@@ -6,10 +6,8 @@ from __future__ import print_function
 import vtk
 import mrml
 
-from ltrace.slicer.cli_utils import readFrom, writeDataInto
-from ltrace.slicer.throat_analysis.throat_analysis import ThroatAnalysis
-
-import numpy as np
+from commons.slicer.cli_utils import readFrom, writeDataInto
+from commons.slicer.throat_analysis.throat_analysis import ThroatAnalysis
 
 
 def write_to_table(df, table_path):

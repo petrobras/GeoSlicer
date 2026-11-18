@@ -4,12 +4,12 @@ import qt
 import slicer
 import configparser
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import save_path
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.slicer import ui
+from commons.slicer.helpers import save_path
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from pathlib import Path
-from ltrace.slicer.metadata import Metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.metadata import Metadata
+from commons.slicer.node_attributes import NodeEnvironment
 
 try:
     from Test.AttributeToolsTest import AttributeToolsTest

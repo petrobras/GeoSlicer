@@ -2,12 +2,11 @@ import os
 
 import logging
 import pandas as pd
-import slicer
 
 from collections import defaultdict
 from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
-from ltrace.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
-from ltrace.slicer.node_attributes import TableDataOrientation, TableType
+from commons.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
+from commons.slicer.node_attributes import TableDataOrientation, TableType
 
 
 class BasicPetrophysicsAnalysisWidget(AnalysisWidgetBase):
@@ -58,7 +57,6 @@ class BasicPetrophysicsAnalysis(AnalysisBase):
             TableDataOrientation.name(): TableDataOrientation.COLUMN.value,
             TableType.name(): TableType.BASIC_PETROPHYSICS.value,
         }
-        projectName = os.path.basename(filesDir)
         report = AnalysisReport(name=outputName, data=data, config=config)
         return report
 

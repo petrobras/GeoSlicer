@@ -8,13 +8,13 @@ import json
 import math
 
 from functools import partial
-from ltrace.slicer import ui, widgets, helpers
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.preset_widget import Preset, PresetWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.node_attributes import Tag, ImageLogDataSelectable
-from ltrace.slicer.metadata import Metadata
-from ltrace.constants import PSDLib
+from commons.slicer import ui, widgets, helpers
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.preset_widget import Preset, PresetWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.node_attributes import Tag, ImageLogDataSelectable
+from commons.slicer.metadata import Metadata
+from commons.constants import PSDLib
 from pathlib import Path
 from CustomResampleScalarVolume import CustomResampleScalarVolumeLogic, ResampleScalarVolumeData
 from ImageLogPSDGenerationParameterWidgets.ParameterWidgets import MicrotomParameters, PorespyParameters
@@ -652,7 +652,7 @@ class ImageLogPSDGenerationLogic(LTracePluginLogic):
         except ValueError as ve:
             self.processFinished.emit()
             raise ve
-        except Exception as e:
+        except Exception:
             import traceback
 
             traceback.print_exc()

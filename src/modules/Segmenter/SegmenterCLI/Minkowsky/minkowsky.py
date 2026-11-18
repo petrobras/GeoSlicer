@@ -6,7 +6,6 @@ Created on Sun Jul 12 14:48:23 2020
 
 import os
 import numpy as np
-import sys
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.ndimage import zoom
 from numba import njit

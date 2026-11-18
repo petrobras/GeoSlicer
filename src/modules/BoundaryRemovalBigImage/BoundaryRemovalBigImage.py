@@ -5,19 +5,19 @@ import qt
 import slicer
 import logging
 import sys
-import ltrace.slicer.helpers as helpers
+import commons.slicer.helpers as helpers
 import traceback
 
-from ltrace.slicer.app import getApplicationVersion
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.widget.custom_path_line_edit import CustomPathLineEdit
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.app import getApplicationVersion
+from commons.slicer.lazy import lazy
+from commons.slicer import ui
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.widget.custom_path_line_edit import CustomPathLineEdit
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from pathlib import Path
 from pathvalidate import sanitize_filepath
 
-import ltrace.slicer.netcdf as netcdf
+import commons.slicer.netcdf as netcdf
 
 try:
     from Test.BoundaryRemovalBigImageTest import BoundaryRemovalBigImageTest
@@ -200,7 +200,6 @@ class BoundaryRemovalBigImageWidget(LTracePluginWidget):
 
 
 class BoundaryRemovalBigImageLogic(LTracePluginLogic):
-
     signalProcessRuntimeError = qt.Signal(str)
     signalProcessSucceed = qt.Signal(str)
 

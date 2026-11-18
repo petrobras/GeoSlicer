@@ -1,0 +1,18 @@
+columnName	type	componentNames
+network.input_volume_porosity	double	
+network.input_resolved_porosity	double	
+network.input_subscale_porosity	double	
+network.input_total_volume	double	
+network.voxel_volume	double	
+network.pore_resolved_volume	double	
+network.pore_subscale_volume	double	
+network.pore_total_volume	double	
+network.pore_resolved_porosity	double	
+network.pore_subscale_porosity	double	
+network.pore_total_porosity	double	
+network.throat_resolved_volume	double	
+network.throat_subscale_volume	double	
+network.throat_total_volume	double	
+network.throat_resolved_porosity	double	
+network.throat_subscale_porosity	double	
+network.throat_total_porosity	double	

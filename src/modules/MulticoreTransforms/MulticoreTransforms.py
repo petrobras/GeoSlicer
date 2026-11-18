@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import qt
 import slicer
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
 
 
 class MulticoreTransforms(LTracePlugin):

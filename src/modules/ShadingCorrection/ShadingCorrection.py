@@ -8,25 +8,21 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.constants import DLISImportConst
-from ltrace.slicer.helpers import (
+from commons.slicer import ui
+from commons.slicer.helpers import (
     createTemporaryVolumeNode,
     getSourceVolume,
     makeTemporaryNodePermanent,
     copy_display,
-    copy_attributes,
     copy_subject_hierarchy_item_parent,
-    copy_hierarchy_attributes,
     getVolumeNullValue,
     setVolumeNullValue,
     extractSegmentInfo,
     highlight_error,
 )
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.widgets import InputState, PixelLabel, get_input_widget_color
-from ltrace.slicer_utils import *
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widgets import InputState, PixelLabel, get_input_widget_color
+from commons.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
 
 
 class ShadingCorrection(LTracePlugin):
@@ -301,7 +297,7 @@ class ShadingCorrectionLogic(LTracePluginLogic):
             if status == "Completed":
                 makeTemporaryNodePermanent(self.outputVolume, show=True)
                 input_null_value = getVolumeNullValue(self.inputVolume)
-                output_null_value = input_null_value if input_null_value != None else 0
+                output_null_value = input_null_value if input_null_value is not None else 0
                 setVolumeNullValue(self.outputVolume, output_null_value)
             elif status == "Cancelled":
                 slicer.mrmlScene.RemoveNode(self.outputVolume)

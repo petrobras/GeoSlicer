@@ -1,12 +1,10 @@
 import logging
-from pathlib import Path
 
 import slicer
 
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.jobs import JobManager
-from ltrace.remote.handlers import OneResultSlurmHandler
-from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers import OneResultSlurmHandler
+from commons.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
 
 
 def microtom_job_loader(job: JobExecutor):

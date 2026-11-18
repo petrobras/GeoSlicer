@@ -46,6 +46,20 @@
       <description><![CDATA[Multiplier value]]></description>
       <default>1</default>
     </integer>
+    <integer>
+      <name>zeroPermSegment</name>
+      <label>Zero perm segment id</label>
+      <longflag>zeroPermSegment</longflag>
+      <description><![CDATA[Optional zero permeability segment label value. Use -1 when no zero perm segment is defined.]]></description>
+      <default>-1</default>
+    </integer>
+    <string>
+      <name>segmentNames</name>
+      <label>Segment names</label>
+      <longflag>segmentNames</longflag>
+      <description><![CDATA[JSON dictionary {label value: segment name}, used only to print the results with the segment names.]]></description>
+      <default>{}</default>
+    </string>
   </parameters>
 
   <parameters>
@@ -109,10 +123,10 @@
     <double>
       <name>nullable</name>
       <longflag>nullable</longflag>
-      <label>Null Value</label>
-      <description><![CDATA[.....]]></description>
+      <label>Ignored/null segment label value</label>
+      <description><![CDATA[Optional ignored/null segment label value. Use -1 when no ignored/null segment is defined.]]></description>
       <channel>input</channel>
-      <default>-999.25</default>
+      <default>-1</default>
     </double>
    
     <integer>
@@ -139,7 +153,7 @@
       <label>Use Matrix-K Plug Error Term</label>
       <description><![CDATA[Use Matrix-K Plug Error Term.]]></description>
       <channel>input</channel>
-      <default></default>
+      <default>true</default>
     </boolean>
 
     <double>

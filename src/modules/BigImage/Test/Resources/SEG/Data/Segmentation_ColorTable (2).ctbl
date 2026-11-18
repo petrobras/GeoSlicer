@@ -1,0 +1,7 @@
+# Color table file C:/Users/LTrace/Desktop/slicerltrace/src/modules/BigImage/Test/Resources/SEG/Data/Segmentation_ColorTable (2).ctbl
+# 5 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255
+4 Segment_4 255 255 0 255

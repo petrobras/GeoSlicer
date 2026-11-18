@@ -10,7 +10,6 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class ThinSectionLoader:
-
     ## ThinSectionLoader: Carregamento das imagens
 
     # A imagem PP/c1 é carregada e salva em formato NRRD compatível com as aplicações em CLI executadas nas etapas

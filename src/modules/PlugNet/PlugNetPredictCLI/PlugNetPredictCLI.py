@@ -1,7 +1,6 @@
 #!/usr/bin/env python-real
 # -*- coding: utf-8 -*-
 
-import vtk
 
 import sys
 from argparse import ArgumentParser
@@ -10,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from PlugNetPredictLib.GeneratorNrrd import GeneratorNrrd
-from ltrace.plug_net.output_processing import postprocess
-from ltrace.slicer.cli_utils import writeToTable
+from commons.plug_net.output_processing import postprocess
+from commons.slicer.cli_utils import writeToTable
 
 
 def predict(modelPath, coreDirPath, tableId, gpuEnabled):

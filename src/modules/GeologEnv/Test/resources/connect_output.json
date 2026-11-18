@@ -1,0 +1,64 @@
+{
+    "TEST_WELL": {
+        "REFERENCE": {
+            "DEPTH": {
+                "comment": "REFERENCE DEPTH",
+                "unit": "FEET",
+                "sr": "1",
+                "repeat": 1.0,
+                "dir": "",
+                "dimension": "",
+                "frames": "",
+                "top": "1000",
+                "bottom": "1001"
+            }
+        },
+        "TEST_SET": {
+            "DEPTH": {
+                "comment": "SET DEPTH",
+                "unit": "METRES",
+                "sr": "0.001",
+                "repeat": 1.0,
+                "dir": "Down",
+                "dimension": "1",
+                "frames": "",
+                "top": "1000.001",
+                "bottom": "1001"
+            },
+            "TEST_SCALAR": {
+                "comment": "LOG TEST",
+                "unit": "UNITS",
+                "sr": "0.001",
+                "repeat": 200.0,
+                "dir": "DOWN",
+                "dimension": "200",
+                "frames": "",
+                "top": "1000",
+                "bottom": "1001"
+            },
+            "TEST_LABELMAP": {
+                "comment": "As Labelmap test",
+                "unit": "",
+                "sr": "0.001",
+                "repeat": 200.0,
+                "dir": "DOWN",
+                "dimension": "200",
+                "frames": "",
+                "top": "1000",
+                "bottom": "1001"
+            },
+            "TEST_TABLE": {
+                "comment": "as table test",
+                "unit": "V/V",
+                "sr": "0.1000000014901",
+                "repeat": 54.0,
+                "dir": "UP",
+                "dimension": "54",
+                "frames": "",
+                "top": "5207.199995339",
+                "bottom": "5519.099999987"
+            }
+        }
+    },
+    "WELL_PROJECT": {}
+}

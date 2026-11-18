@@ -13,11 +13,11 @@ import openpnm
 import pandas as pd
 import slicer
 
-from ltrace.pore_networks.functions_extract import spy2geo, _get_paired_throats_table
-from ltrace.pore_networks.simulation_parameters_node import dict_to_parameter_node
-from ltrace.pore_networks.subres_models import normalize_psd, estimate_radius, estimate_pressure, centers_to_edges
-from ltrace.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
-from ltrace.slicer_utils import tableNodeToDict
+from commons.pore_networks.functions_extract import spy2geo, _get_paired_throats_table
+from commons.pore_networks.simulation_parameters_node import dict_to_parameter_node
+from commons.pore_networks.subres_models import normalize_psd, estimate_radius, centers_to_edges
+from commons.slicer_utils import LTracePluginLogic, dataFrameToTableNode, slicer_is_in_developer_mode
+from commons.slicer_utils import tableNodeToDict
 
 
 class MercurySimulationLogic(LTracePluginLogic):
@@ -272,12 +272,11 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         ##################################################
 
-        poreVolumeDir = folderTree.CreateFolderItem(currentDir, f"Pore volume distributions")
+        poreVolumeDir = folderTree.CreateFolderItem(currentDir, "Pore volume distributions")
         folderTree.SetItemExpanded(poreVolumeDir, False)
 
         table_type = "pore"
         bins = experimental_radius if experimental_radius is not None else micp_results["radii"]
-        hist_range = (0, df[table_type]["pore.effective_volume"].max())
         pore_phases_num = df[table_type]["pore.phase"].to_numpy().max()
 
         pore_volume_hist, bin_edges = create_histogram_data(df[table_type]["pore.effective_volume"], bins)
@@ -318,12 +317,11 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         ##################################################
 
-        throatVolumeDir = folderTree.CreateFolderItem(currentDir, f"Throat volume distributions")
+        throatVolumeDir = folderTree.CreateFolderItem(currentDir, "Throat volume distributions")
         folderTree.SetItemExpanded(throatVolumeDir, False)
 
         table_type = "throat"
         bins = experimental_radius if experimental_radius is not None else micp_results["radii"]
-        hist_range = (0, df[table_type]["throat.volume"].max())
 
         throat_volume_hist, bin_edges = create_histogram_data(df[table_type]["throat.volume"], bins)
         throatTableName = slicer.mrmlScene.GenerateUniqueName("Throat Volume Distribution")
@@ -339,12 +337,11 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         ##################################################
 
-        poreRadiiDir = folderTree.CreateFolderItem(currentDir, f"Pore radii distributions")
+        poreRadiiDir = folderTree.CreateFolderItem(currentDir, "Pore radii distributions")
         folderTree.SetItemExpanded(poreRadiiDir, False)
 
         table_type = "pore"
         bins = experimental_radius if experimental_radius is not None else micp_results["radii"]
-        hist_range = (0, df[table_type]["pore.cap_radius"].max())
 
         pore_radii_hist, bin_edges = create_histogram_data(df[table_type]["pore.cap_radius"], bins)
         poreTableName = slicer.mrmlScene.GenerateUniqueName("Pore Radii Distribution")
@@ -383,12 +380,11 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         ##################################################
 
-        throatRadiiDir = folderTree.CreateFolderItem(currentDir, f"Throat radii distributions")
+        throatRadiiDir = folderTree.CreateFolderItem(currentDir, "Throat radii distributions")
         folderTree.SetItemExpanded(throatRadiiDir, False)
 
         table_type = "throat"
         bins = experimental_radius if experimental_radius is not None else micp_results["radii"]
-        hist_range = (0, df[table_type]["throat.cap_radius"].max())
 
         throat_radii_hist, bin_edges = create_histogram_data(df[table_type]["throat.cap_radius"], bins)
         throatTableName = slicer.mrmlScene.GenerateUniqueName("Throat Radii Distribution")
@@ -404,10 +400,10 @@ class MercurySimulationLogic(LTracePluginLogic):
 
         if pore_phases_num == 2:
             throat_radii = df[table_type]["throat.cap_radius"]
-            phase1_filter = df[table_type]["throat.phase1_phase1"] == True
-            phase2_filter = df[table_type]["throat.phase2_phase2"] == True
-            phase1_phase2_filter = df[table_type]["throat.phase1_phase2"] == True
-            phase2_phase1_filter = df[table_type]["throat.phase2_phase1"] == True
+            phase1_filter = df[table_type]["throat.phase1_phase1"]
+            phase2_filter = df[table_type]["throat.phase2_phase2"]
+            phase1_phase2_filter = df[table_type]["throat.phase1_phase2"]
+            phase2_phase1_filter = df[table_type]["throat.phase2_phase1"]
 
             throat_radii_hist, bin_edges = create_histogram_data(throat_radii[phase1_filter], bins)
             throatTableName = slicer.mrmlScene.GenerateUniqueName("Resolved Throat Radii Distribution")

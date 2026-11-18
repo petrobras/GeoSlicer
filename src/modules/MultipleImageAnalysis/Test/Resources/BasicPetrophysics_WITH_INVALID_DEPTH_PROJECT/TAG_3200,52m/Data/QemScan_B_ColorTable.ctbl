@@ -1,0 +1,16 @@
+# Color table file C:/git/slicerltrace/src/modules/MultipleImageAnalysis/Test/Resources/BasicPetrophysics/TAG_3200,52m/Data/QemScan_B_ColorTable.ctbl
+# 14 values
+0 Background 0 0 0 0
+1 Calcita_(0%_a_1%MgO) 0 255 255 255
+2 Calcita_(1%_a_4%MgO) 32 178 170 255
+3 Calcita_(4%_a_7%MgO) 0 90 90 255
+4 Calcita_(7%_a_10%MgO) 0 50 50 255
+5 Dolomita_(17%_a_20%MgO) 0 0 128 255
+6 Dolomita_(20%_a_22%MgO) 128 128 255 255
+7 Goyazita 143 59 211 255
+8 Magnesita 82 165 178 255
+9 Nefelina 0 128 0 255
+10 Outros 255 255 255 255
+11 Poros 0 0 0 255
+12 Quartzo 255 255 0 255
+13 Titanita 143 188 139 255

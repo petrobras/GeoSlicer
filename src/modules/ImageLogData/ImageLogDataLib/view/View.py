@@ -3,7 +3,6 @@ View related classes.
 """
 
 import warnings
-from collections import namedtuple
 
 import numpy as np
 import pyqtgraph as pg
@@ -11,7 +10,7 @@ import qt
 import slicer
 
 from dataclasses import dataclass
-from ltrace.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
+from commons.slicer.graph_data import NodeGraphData, LINE_PLOT_TYPE, SCATTER_PLOT_TYPE
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from typing import Union
 
@@ -152,7 +151,9 @@ class CurvePlot(QtWidgets.QWidget):
         del self.__plots
 
     def _build_plot_generator(self, plot_type: str = LINE_PLOT_TYPE):
-        function = lambda: None
+        def function():
+            return None
+
         if plot_type == LINE_PLOT_TYPE:
             function = self._create_curve_plot
         elif plot_type == SCATTER_PLOT_TYPE:
@@ -282,7 +283,7 @@ class CurvePlot(QtWidgets.QWidget):
 
     def remove_plot(self, plot_info: PlotInformation):
         """Remove data and objects related to the GraphData object."""
-        if not plot_info in self.__plots:
+        if plot_info not in self.__plots:
             return
 
         self.__plots.remove(plot_info)

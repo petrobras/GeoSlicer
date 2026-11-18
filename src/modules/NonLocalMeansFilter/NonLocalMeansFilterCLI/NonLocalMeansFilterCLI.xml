@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>LTrace Tools</category>
+  <index>3</index>
+  <title>Non-Local Means Filter CLI</title>
+  <description><![CDATA[Denoises a volume with the scikit-image non-local means filter, in full 3D or slice by slice.]]></description>
+  <version>0.1.0</version>
+  <documentation-url></documentation-url>
+  <license/>
+  <contributor>LTrace Geophysics Team</contributor>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions]]></acknowledgements>
+
+  <parameters>
+    <label>Input Images</label>
+    <image type="scalar">
+      <name>inputVolume</name>
+      <label>Input Volume</label>
+      <longflag>inputVolume</longflag>
+      <description><![CDATA[Volume to be filtered.]]></description>
+      <channel>input</channel>
+    </image>
+  </parameters>
+
+  <parameters>
+    <label>Parameters</label>
+    <string-enumeration>
+      <name>mode</name>
+      <label>Mode</label>
+      <longflag>mode</longflag>
+      <description><![CDATA[Filter the full volume in 3D, or each axial slice independently in 2D.]]></description>
+      <element>3d</element>
+      <element>2d</element>
+      <default>3d</default>
+    </string-enumeration>
+
+    <double>
+      <name>strength</name>
+      <label>Strength</label>
+      <longflag>strength</longflag>
+      <description><![CDATA[Filter strength h as a multiple of the noise standard deviation.]]></description>
+      <default>0.5</default>
+    </double>
+
+    <double>
+      <name>sigma</name>
+      <label>Noise standard deviation</label>
+      <longflag>sigma</longflag>
+      <description><![CDATA[Noise standard deviation in intensity units. Zero estimates it from the volume.]]></description>
+      <default>0</default>
+    </double>
+
+    <integer>
+      <name>patchSize</name>
+      <label>Patch size</label>
+      <longflag>patchSize</longflag>
+      <description><![CDATA[Side, in voxels, of the patches compared to compute weights.]]></description>
+      <default>5</default>
+    </integer>
+
+    <integer>
+      <name>patchDistance</name>
+      <label>Search distance</label>
+      <longflag>patchDistance</longflag>
+      <description><![CDATA[Maximal distance, in voxels, to search for similar patches.]]></description>
+      <default>6</default>
+    </integer>
+
+    <boolean>
+      <name>fastMode</name>
+      <label>Fast mode</label>
+      <longflag>fastMode</longflag>
+      <description><![CDATA[Use the faster, box-weighted patch distance.]]></description>
+      <default>false</default>
+    </boolean>
+
+    <string>
+      <name>nullValue</name>
+      <label>Null value</label>
+      <longflag>nullValue</longflag>
+      <description><![CDATA[Voxels with this value are kept unchanged. Empty if the volume has no null value.]]></description>
+      <default></default>
+    </string>
+
+  </parameters>
+
+  <parameters>
+    <label>Output</label>
+    <image type="scalar">
+      <name>outputVolume</name>
+      <label>Output Volume</label>
+      <longflag>outputVolume</longflag>
+      <description><![CDATA[Filtered volume.]]></description>
+      <channel>output</channel>
+    </image>
+
+    <double>
+      <name>usedSigma</name>
+      <label>Noise standard deviation used</label>
+      <description><![CDATA[Noise standard deviation used by the filter, estimated or given.]]></description>
+      <channel>output</channel>
+      <default>0</default>
+    </double>
+
+    <double>
+      <name>usedH</name>
+      <label>Filter strength used</label>
+      <description><![CDATA[Filter strength h used by the filter, in intensity units.]]></description>
+      <channel>output</channel>
+      <default>0</default>
+    </double>
+  </parameters>
+
+</executable>

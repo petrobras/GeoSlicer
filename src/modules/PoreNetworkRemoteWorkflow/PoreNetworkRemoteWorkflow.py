@@ -7,7 +7,7 @@ import pandas as pd
 import qt
 import slicer
 
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.simulation_parameters_node import (
     parameter_node_to_dict,
     save_dict_to_parameter_node,
     PNM_PARAMETER_TYPE_ATTR,
@@ -16,13 +16,13 @@ from ltrace.pore_networks.simulation_parameters_node import (
     TWO_PHASE_SIMULATION_TYPE,
     REMOTE_WORKFLOW_TYPE,
 )
-from ltrace.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
-from ltrace.remote.handlers.PoreNetworkRemoteWorkflowHandler import PoreNetworkRemoteWorkflowHandler
-from ltrace.remote.slurm import MAX_WORKERS
-from ltrace.slicer import ui
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
+from commons.pore_networks.simulation_parameters_widgets import LoadParamsLayout, SaveParamsLayout
+from commons.remote.handlers.PoreNetworkRemoteWorkflowHandler import PoreNetworkRemoteWorkflowHandler
+from commons.remote.slurm import MAX_WORKERS
+from commons.slicer import ui
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
 
 
 class PoreNetworkRemoteWorkflow(LTracePlugin):
@@ -552,8 +552,7 @@ class PoreNetworkRemoteWorkflowWidget(LTracePluginWidget):
         self.applyButton.clicked.connect(self.onApply)
 
         actionsHelp = HelpButton(
-            "**Visualize:** Perform a visualization-only execution.\n\n"
-            "**Apply:** Submit the workflow to the cluster."
+            "**Visualize:** Perform a visualization-only execution.\n\n**Apply:** Submit the workflow to the cluster."
         )
 
         actionsLayout.addWidget(self.visualizeButton, 1)

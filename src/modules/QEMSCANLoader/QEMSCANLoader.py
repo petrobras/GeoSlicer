@@ -10,17 +10,16 @@ import pandas as pd
 import qt
 import slicer
 import vtk
-from ltrace.slicer import ui
+from commons.slicer import ui
 
-from slicer.util import MRMLNodeNotFoundException
 from slicer.util import dataframeFromTable
 
-from ltrace.file_utils import read_csv
-from ltrace.slicer import helpers
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from ltrace.utils.callback import Callback
+from commons.file_utils import read_csv
+from commons.slicer import helpers
+from commons.slicer_utils import *
+from commons.slicer_utils import getResourcePath
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.utils.callback import Callback
 
 
 class QEMSCANLoader(LTracePlugin):
@@ -209,7 +208,7 @@ class QEMSCANLoaderWidget(LTracePluginWidget):
         try:
             currentLookupColorTableNode = slicer.util.getNode(self.getLookupColorTableName())
             self.lookupColorTable.setCurrentNode(currentLookupColorTableNode)
-        except:
+        except Exception:
             pass
 
     def onDeleteLookupColorTableButtonClicked(self):
@@ -427,7 +426,7 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
         labelmapNodeName = f"TMP-{sourceVolume.GetName()}-LabelMap"
         try:
             lbnode = slicer.util.getNode(labelmapNodeName)
-        except:
+        except Exception:
             lbnode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode", labelmapNodeName)
         lbnode.SetSpacing(sourceVolume.GetSpacing())
         return lbnode
@@ -477,7 +476,7 @@ class QEMSCANLoaderLogic(LTracePluginLogic):
             try:
                 df = self.csv_to_df(str(csvFiles[0]))
                 return df
-            except:
+            except Exception:
                 raise LoadError(
                     "Error while loading local CSV file for QEMSCAN image: "
                     + str(file)

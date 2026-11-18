@@ -4,7 +4,7 @@ import vtk
 from vtk.util.numpy_support import vtk_to_numpy
 
 from PySide2.QtCore import Qt
-from PySide2.QtGui import QImage, QPixmap, QCursor
+from PySide2.QtGui import QImage, QPixmap
 from PySide2.QtWidgets import QLabel, QWidget
 
 

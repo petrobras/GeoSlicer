@@ -2,15 +2,17 @@ import csv
 import json
 import pickle
 
-import vtk, qt, ctk, slicer
+import qt
+import ctk
+import slicer
 
 from pathlib import Path
 
-from ltrace.slicer_utils import *
-from ltrace.units import convert_to_global_registry, global_unit_registry as ureg
+from commons.slicer_utils import *
+from commons.units import convert_to_global_registry, global_unit_registry as ureg
 
-from ltrace.slicer.directorylistwidget import DirectoryListWidget
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.directorylistwidget import DirectoryListWidget
+from commons.slicer.node_attributes import NodeEnvironment
 
 #
 # CorePluggingExporter
@@ -100,7 +102,7 @@ class CorePluggingExporterLogic(LTracePluginLogic):
     def run(self, dataSources, format=".csv"):
         import shutil
 
-        from ltrace.cli_progress import RunCLIWithProgressBar
+        from commons.cli_progress import RunCLIWithProgressBar
 
         """
         Run the actual algorithm
@@ -172,7 +174,6 @@ class CorePluggingExporterLogic(LTracePluginLogic):
 
             for file, plugs in result:
                 filename = file.stem
-                core_start = 0 * ureg.centimeter
 
                 for i, ((start, end), holes) in enumerate(plugs):
                     start = convert_to_global_registry(start)

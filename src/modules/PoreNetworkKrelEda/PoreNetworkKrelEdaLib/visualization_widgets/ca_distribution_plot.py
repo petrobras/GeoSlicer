@@ -4,11 +4,10 @@ import PySide2
 import qt
 import re
 import shiboken2
-import slicer
 
-from ltrace.slicer import helpers
-from ltrace.slicer_utils import dataframeFromTable
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer import helpers
+from commons.slicer_utils import dataframeFromTable
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 
 

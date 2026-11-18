@@ -1,0 +1,6 @@
+# Color table file /home/git/slicerltrace/src/modules/BoundaryRemovalBigImage/Test/Resources/RAW/Data/TMP-LM-0_ColorTable_1.ctbl
+# 5 values
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255
+4 Segment_4 255 255 0 255

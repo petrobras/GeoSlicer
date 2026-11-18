@@ -1,6 +1,6 @@
 import slicer
 import vtk
-from ltrace.slicer.node_attributes import TableType
+from commons.slicer.node_attributes import TableType
 
 
 def save_parameters_to_table(parameters, parent_folder_id):

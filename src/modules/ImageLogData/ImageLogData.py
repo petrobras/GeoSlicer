@@ -7,22 +7,21 @@ import qt
 import logging
 import json
 import math
-import vtk
 import numpy as np
 import os
 import pyqtgraph as pg
 import traceback
 import re
 
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.debounce_caller import DebounceCaller
-from ltrace.slicer.widget.depth_overview_axis_item import DepthOverviewAxisItem
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.constants import ImageLogConst
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer.debounce_caller import DebounceCaller
+from commons.slicer.widget.depth_overview_axis_item import DepthOverviewAxisItem
+from commons.slicer_utils import *
+from commons.slicer_utils import getResourcePath
+from commons.constants import ImageLogConst
 from pathlib import Path
 from slicer.util import VTKObservationMixin
-from ltrace.slicer.helpers import tryGetNode, getCurrentEnvironment
+from commons.slicer.helpers import tryGetNode, getCurrentEnvironment
 
 from CustomizedData import CustomizedDataWidget
 from CustomizedDataLib.LabelMap import LabelMapWidget
@@ -76,10 +75,8 @@ class ImageLogDataWidget(CustomizedDataWidget):
         if hasattr(slicer.modules.AppContextInstance, "imageLogDataLogic"):
             self.logic = ImageLogDataWidget.logic = slicer.modules.AppContextInstance.imageLogDataLogic
         else:
-            self.logic = (
-                ImageLogDataWidget.logic
-            ) = slicer.modules.AppContextInstance.imageLogDataLogic = ImageLogDataLogic(
-                slicer.modules.AppContextInstance.mainWindow
+            self.logic = ImageLogDataWidget.logic = slicer.modules.AppContextInstance.imageLogDataLogic = (
+                ImageLogDataLogic(slicer.modules.AppContextInstance.mainWindow)
             )
 
         ## Add custom context menu actions
@@ -384,7 +381,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         qwidget.findChild(ViewControllerWidget, "viewControllerWidget").changeIdentifier(newIdentifier)
 
     def viewControllerWidget_PrimaryNodeComboBox(self, identifier: int):
-        from ltrace.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
+        from commons.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
 
         widget = self.viewControllerWidgets[identifier]
         return (
@@ -394,7 +391,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         )
 
     def viewControllerWidget_Label(self, identifier: int):
-        from ltrace.slicer.widget.elided_label import ElidedLabel
+        from commons.slicer.widget.elided_label import ElidedLabel
 
         widget = self.viewControllerWidgets[identifier]
         return widget.findChild(ElidedLabel, "viewLabel" + str(identifier))
@@ -448,7 +445,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
         if "segmentationNodeId" in viewData:
             segNode = tryGetNode(viewData["segmentationNodeId"])
         self.imageLogViewList.append(ImageLogView(primaryNode, segNode))
-        if viewData["proportionsNodeHidden"] == False:
+        if not viewData["proportionsNodeHidden"]:
             self.__refreshViews("LoadView")
             viewControllerWidget = self.viewControllerWidgets[identifier]
             showHideProportionsNodeButton = viewControllerWidget.findChild(
@@ -705,7 +702,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 self.setupGraphicViewWidget(identifier)
 
     def setupGraphicViewWidget(self, identifier):
-        viewWidget = self.viewWidgets[identifier]
+        pass
 
     def setupEmptyViewWidget(self, identifier):
         viewWidget = self.viewWidgets[identifier]
@@ -926,7 +923,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewData = self.imageLogViewList[identifier].viewData
             viewControllerWidget = self.viewControllerWidgets[identifier]
 
-            from ltrace.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
+            from commons.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
 
             primaryNodeComboBox = viewControllerWidget.findChild(
                 FilteredNodeComboBox, "primaryNodeComboBox" + str(identifier)
@@ -952,7 +949,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 qt.QComboBox, "primaryTableNodeColumnComboBox" + str(identifier)
             )
             if primaryTableNodeColumnComboBox is not None:
-                primaryTableNode = self.getNodeById(viewData.primaryNodeId)
                 primaryTableNodeColumnComboBox.blockSignals(True)
                 primaryTableNodeColumnComboBox.addItem("")
                 primaryTableNodeColumnComboBox.addItems(viewData.primaryTableNodeColumnList)
@@ -987,7 +983,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewData = self.imageLogViewList[identifier].viewData
             viewControllerWidget = self.viewControllerWidgets[identifier]
 
-            from ltrace.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
+            from commons.slicer.widget.filtered_node_combo_box import FilteredNodeComboBox
 
             secondaryTableNodeComboBox = viewControllerWidget.findChild(
                 FilteredNodeComboBox, "secondaryTableNodeComboBox" + str(identifier)
@@ -1285,7 +1281,6 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             colorBarWidget.setColorTableNode(displayNode.GetColorNode())
 
     def addView(self, selectedNode=None):
-        nodeName = selectedNode.GetName() if selectedNode is not None else "None"
         if len(self.imageLogViewList) >= self.MAXIMUM_NUMBER_OF_VIEWS:
             slicer.app.layoutManager().setLayout(
                 slicer.modules.AppContextInstance.imageLogLayoutId
@@ -1446,7 +1441,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
             viewData = self.imageLogViewList[identifier].viewData
             if type(viewData) is SliceViewData:
                 segmentationNode = self.getNodeById(viewData.segmentationNodeId)
-                if segmentationNode is not None and viewData.segmentationNodeHidden == False:
+                if segmentationNode is not None and not viewData.segmentationNodeHidden:
                     displayNode = segmentationNode.GetDisplayNode()
                     if displayNode is None:
                         segmentationNode.CreateDefaultDisplayNodes()
@@ -2116,7 +2111,7 @@ class ImageLogDataLogic(LTracePluginLogic, VTKObservationMixin):
                 type(viewData) is GraphicViewData
                 and (viewData.primaryTableNodeColumn != "" or viewData.secondaryTableNodeColumn != "")
             ):
-                if viewData.primaryNodeId == None:
+                if not viewData.primaryNodeId:
                     continue
 
                 logGeometry = slicer.util.getModuleWidget("ImageLogData").getGeometry(viewWidget)

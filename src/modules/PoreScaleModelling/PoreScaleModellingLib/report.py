@@ -3,10 +3,9 @@
 import logging
 
 import qt
-import slicer
 
-from ltrace.lbpm.results import LBPMResults
-from ltrace.slicer.helpers import getPythonQtWidget
+from commons.lbpm.results import LBPMResults
+from commons.slicer.helpers import getPythonQtWidget
 
 SUMMARY_LABELS = (
     ("frames", "Frames written"),

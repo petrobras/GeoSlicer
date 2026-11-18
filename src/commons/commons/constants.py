@@ -1,0 +1,76 @@
+"""
+This module contains the constants used in the ltrace library and the GeoSlicer modules.
+"""
+
+from enum import Enum
+
+
+MAX_LOOP_ITERATIONS = 100000
+SIDE_BY_SIDE_IMAGE_LAYOUT_ID = 200
+SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID = 201
+SIDE_BY_SIDE_DUMB_LAYOUT_ID = 202
+
+# Largest table, in rows, that the Explorer previews
+TABLE_PREVIEW_MAX_ROWS = 3000
+
+
+class ImageLogConst:
+    """
+    Constants for the ImageLogData module.
+    """
+
+    # The default layout ID value for the ImageLogData module.
+    DEFAULT_LAYOUT_ID_START_VALUE = 15000
+
+
+class ImageLogInpaintConst:
+    """
+    Constants for ImageLogInpaint module
+    """
+
+    SEGMENT_ID = "Segment_1"
+    TEMP_SEGMENTATION_NAME = "Inpaint_Segmentation_ImageLog"
+    TEMP_LABEL_MAP_NAME = "Inpaint_Mask_ImageLog"
+    TEMP_VOLUME_NAME = "Inpaint_Volume_ImageLog"
+
+
+class DLISImportConst:
+    SCALAR_VOLUME_TYPE = "ScalarVolumeType"
+    WELL_PROFILE_TAG = "WellProfile"
+    NULL_VALUE_TAG = "NullValue"
+    LOGICAL_FILE_TAG = "LogicalFile"
+    FRAME_TAG = "Frame"
+    WELL_NAME_TAG = "WellName"
+    UNITS_TAG = "Units"
+    DEPTH_LABEL = "DEPTH"
+    ORIGIN_TAG = "Origin"
+
+
+class SaveStatus(Enum):
+    IN_PROGRESS = 0
+    SUCCEED = 1
+    CANCELLED = 2
+    FAILED = 3
+    FAILED_FILE_ALREADY_EXISTS = 4
+
+
+class model_selector_tags(str, Enum):
+    IMAGELOG_INSTANCE_SEGMENTER = "ImageLogInstanceSegmenter"
+    SILICLASTICS_PORES = "SiliciclasticsPore"
+    SINGAN = "RockSinGAN"
+    PORE_STATS = "PoreStats"
+    TEST_ENV = "testEnv"
+    TEXTURAL_STRUCTURES = "TexturalStructures"
+    THIN_SECTION_ENV = "ThinSectionEnv"
+
+
+class PSDLib(Enum):
+    MICROTOM = "Microtom"
+    PORESPY = "PoreSpy"
+
+    @classmethod
+    def getFromName(cls, name):
+        for lib in cls:
+            if lib.name == name.upper():
+                return lib
+        return None

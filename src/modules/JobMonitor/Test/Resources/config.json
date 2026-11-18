@@ -1,0 +1,29 @@
+{
+  "hosts": [
+    {
+      "username": "user1",
+      "name": "Atena 02",
+      "address": "10.0.0.2",
+      "rsa_key": null,
+      "port": 22,
+      "opening_command": null,
+      "remote_mount": "",
+      "gpu_partition": "gpu",
+      "cpu_partition": "cpu",
+      "protocol": "ssh"
+    },
+    {
+      "username": "user2",
+      "name": "Zeus 01",
+      "address": "10.0.0.3",
+      "rsa_key": null,
+      "port": 22,
+      "opening_command": null,
+      "remote_mount": "",
+      "gpu_partition": "gpu",
+      "cpu_partition": "cpu",
+      "protocol": "ssh"
+    }
+  ],
+  "default": "Atena 02"
+}

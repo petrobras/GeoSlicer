@@ -8,19 +8,18 @@ import pyqtgraph as pg
 import qt
 import slicer
 
-from ltrace.pore_networks.krel_result import KrelResult, KrelTables
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import getPythonQtWidget
-from ltrace.slicer_utils import (
+from commons.pore_networks.krel_result import KrelResult, KrelTables
+from commons.slicer import ui
+from commons.slicer.helpers import getPythonQtWidget
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
     dataframeFromTable,
     dataFrameToTableNode,
     slicer_is_in_developer_mode,
-    getResourcePath,
 )
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from PoreNetworkKrelEdaLib.diagnostics_container import DiagnosticsContainerWidget
 from PoreNetworkKrelEdaLib.export.PoreNetworkKrelEdaExport import PoreNetworkKrelEdaExportWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.crossed_plots import CrossedError, CrossedParameters
@@ -244,7 +243,7 @@ class PoreNetworkKrelEdaWidget(LTracePluginWidget):
         if not file_path:
             return
 
-        from ltrace.file_utils import load_and_parse_data
+        from commons.file_utils import load_and_parse_data
 
         df = load_and_parse_data(Path(file_path), filter_empty_columns=True)
         if df is None:

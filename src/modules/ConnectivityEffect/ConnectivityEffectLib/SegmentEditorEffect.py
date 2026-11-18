@@ -1,20 +1,16 @@
 import os
-import re
 import vtk
 import qt
-import ctk
 import logging
-import vtk.util.numpy_support as vn
 
 import numpy as np
 
 import slicer
-from ltrace.slicer import helpers
-from ltrace.slicer import metadata
-from ltrace.image import optimized_transforms
+from commons.slicer import helpers
+from commons.image import optimized_transforms
 from SegmentEditorEffects import *
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -56,15 +52,6 @@ Calculate the connected image in a given direction. The input is a segment from 
 Simple instructions: Select the input segment by selecting it from the segment list, then select a direction and type an output prefix for the output segment.
 </p>
 </html>"""
-
-    def activate(self):
-        currentName = self.scriptedEffect.parameter(f"ConnectivityEffect.OutputVolumeName")
-        self.scriptedEffect.setParameterDefault("ConnectivityEffect.OutputVolumeName", currentName)
-        self.outputNamePrefixEdit.text = currentName
-        helpers.hide_masking_widget(self)
-
-    def deactivate(self):
-        pass
 
     def setMRMLDefaults(self):
         self.scriptedEffect.setParameterDefault("ConnectivityEffect.hops", 1)
@@ -148,8 +135,8 @@ Simple instructions: Select the input segment by selecting it from the segment l
         return labelmap
 
     def cropBox(self, referenceNode):
-        from ltrace import transforms
-        from ltrace.slicer import helpers
+        from commons import transforms
+        from commons.slicer import helpers
 
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
 
@@ -175,10 +162,7 @@ Simple instructions: Select the input segment by selecting it from the segment l
 
             inputSegmentName = segmentationNode.GetSegmentation().GetSegment(params.GetSelectedSegmentID()).GetName()
             outputSegmentName = (
-                f"{outputNamePrefix}"
-                f"_{inputSegmentName}"
-                f"_{direction.capitalize()}"
-                f"_C{int(self.hopsNumberSlider.value)}"
+                f"{outputNamePrefix}_{inputSegmentName}_{direction.capitalize()}_C{int(self.hopsNumberSlider.value)}"
             )
             outputSegmentName = slicer.mrmlScene.GenerateUniqueName(outputSegmentName)
 

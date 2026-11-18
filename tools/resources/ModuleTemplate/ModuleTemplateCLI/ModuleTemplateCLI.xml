@@ -8,7 +8,7 @@
   <documentation-url>https://github.com/lassoan/SlicerPythonCLIExample</documentation-url>
   <license/>
   <contributor>LTrace Geophysics Team</contributor>
-  <acknowledgements><![CDATA[LTrace Geophysical Solutions in partnership with Petrobras]]></acknowledgements>
+  <acknowledgements><![CDATA[LTrace Geophysical Solutions]]></acknowledgements>
 
   <parameters>
     <label>Input Images</label>

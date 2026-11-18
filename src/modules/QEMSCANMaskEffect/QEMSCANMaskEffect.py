@@ -1,10 +1,9 @@
 import os
 
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 
 class QEMSCANMaskEffect(LTracePlugin):
-
     SETTING_KEY = "QEMSCANMaskEffect"
 
     def __init__(self, parent):

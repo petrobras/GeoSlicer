@@ -1,0 +1,10 @@
+columnName	type	componentNames
+cycle	int	
+Sw	double	
+cycle_0	double	
+Pc_0	double	
+Krw_0	double	
+Kro_0	double	
+Pc_middle	double	
+Krw_middle	double	
+Kro_middle	double	

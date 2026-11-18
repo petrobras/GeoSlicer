@@ -10,7 +10,10 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
+import vtk
+import slicer
+import slicer.util
+import mrml
 
 import io
 import json
@@ -19,7 +22,7 @@ import sys
 import numpy as np
 
 from PIL import Image
-from ltrace.file_utils import read_csv
+from commons.file_utils import read_csv
 
 
 def progressUpdate(value):

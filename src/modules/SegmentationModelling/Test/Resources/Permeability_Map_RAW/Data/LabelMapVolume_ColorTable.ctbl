@@ -1,0 +1,6 @@
+# Color table file /home/git/slicerltrace/src/modules/SegmentationModelling/Test/Resources/Permeability_Map_RAW/Data/LabelMapVolume_ColorTable.ctbl
+# 4 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255

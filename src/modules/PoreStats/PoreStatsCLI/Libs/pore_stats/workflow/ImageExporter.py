@@ -8,7 +8,6 @@ from workflow.commons import no_extra_dim_read
 
 
 class ImageExporter:
-
     ## ImageExporter: Geração de imagem destacando as instâncias segmentadas em cada imagem original
 
     # Módulo responsável por salvar uma imagem em formato trandicional (PNG) exibindo os resultados

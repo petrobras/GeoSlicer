@@ -1,12 +1,14 @@
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import slicer
 import logging
 from AbstractScriptedSubjectHierarchyPlugin import *
 import numpy as np
-from ltrace.slicer import helpers
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.vtk_utils.well_model.well_model import create_well_model_from_node
+from commons.slicer import helpers
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.vtk_utils.well_model.well_model import create_well_model_from_node
 
 
 def _getCurrentItems() -> vtk.vtkIdList:

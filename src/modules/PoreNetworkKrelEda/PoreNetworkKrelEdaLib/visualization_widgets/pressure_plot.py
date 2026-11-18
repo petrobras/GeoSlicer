@@ -3,26 +3,23 @@ import numbers
 import PySide2
 import ctk
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
 import qt
 import shiboken2
 import slicer
 import warnings
 from PoreNetworkKrelEdaLib.input_estimation import (
-    closest_estimate,
     CurveFilter,
     ErrorToReferences,
     filter_simulations,
-    regression_estimate,
 )
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import PressureResultCurves
 
-from ltrace.pore_networks.krel_result import KrelParameterParser, RESULT_PREFIX
-from ltrace.slicer import ui, widgets
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer_utils import dataframeFromTable, getResourcePath
+from commons.pore_networks.krel_result import KrelParameterParser
+from commons.slicer import ui, widgets
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer_utils import dataframeFromTable, getResourcePath
 
 
 class PressurePlot(PlotBase):

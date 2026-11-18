@@ -1,7 +1,6 @@
 import qt
-import slicer
 
-from ltrace.slicer.widget.labels_table_widget import LabelsTableWidget
+from commons.slicer.widget.labels_table_widget import LabelsTableWidget
 
 
 class LabelMapWidget(qt.QWidget):

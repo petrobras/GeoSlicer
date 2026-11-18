@@ -1,0 +1,2 @@
+label	voxelCount	volume (mm^3)	max_feret (mm)	aspect_ratio	elongation	flatness	ellipsoid_area (mm^2)	ellipsoid_volume (mm^3)	ellipsoid_area_over_ellipsoid_volume (1/mm)	sphere_diameter_from_volume (mm)	pore_size_class
+1	385189	11044.8	39.4459	0.6762	1.43501	1.03054	2784.36	143.276	19.4336	27.6304	Megaporo grande

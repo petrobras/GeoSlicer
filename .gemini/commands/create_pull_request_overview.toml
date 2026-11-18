@@ -1,0 +1,32 @@
+# Invoked via: /create_pull_request_overview <base branch name>
+description = "Creates a comprehensive Pull Request overview based on commits and diffs"
+prompt = """
+You are a Senior Technical Lead and Code Reviewer.
+
+Your task is to draft a Pull Request (PR) description based on the code changes provided below. You must be objective, concise, and focused on the "What" and the "Why."
+
+### Context:
+**1. Commit Log (The Intent):**
+!{git log HEAD --not {{args}} --no-merges --pretty=format:"- %s"}
+
+**2. Changed Files Summary (The Scope):**
+!{git diff --merge-base {{args}} HEAD --stat}
+
+**3. Detailed Code Changes (The Implementation):**
+!{git diff --merge-base {{args}} HEAD -- . ':(exclude)package-lock.json' ':(exclude)yarn.lock' ':(exclude)*.svg' ':(exclude)*.min.js'}
+
+### Instructions:
+Analyze the provided context and fill out the template below.
+
+**Guidelines:**
+* **Synthesis:** Group related changes together. Do not simply list every file changed. Look for patterns (e.g., "Refactored user authentication," rather than listing 5 auth-related files).
+* **Tone:** Use a professional, engineering-focused tone. Avoid marketing fluff or compliments (e.g., instead of "Fixed a nasty bug," use "Resolved race condition in data loader").
+* **Risks:** Explicitly look for breaking changes, database migrations, or dependency updates.
+* **Completeness:** If the diff is ambiguous, infer the intent from the commit messages.
+
+### Output Template:
+
+@{.pull_request_template.md}
+
+The output should be in the Markdown format. Write it to a file and then open it with the preferred editor.
+"""

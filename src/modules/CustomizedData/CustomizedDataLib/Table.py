@@ -2,6 +2,8 @@ import qt
 import slicer
 import os
 
+from commons.slicer.segment_report_navigator import SegmentReportNavigator
+
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources", "Icons")
 CHARTS_ICON_PATH = os.path.join(RESOURCES_PATH, "Charts.png")
 
@@ -29,6 +31,7 @@ class TableWidget(qt.QWidget):
         self.tableView = slicer.qMRMLTableView()
         self.tableView.setEditTriggers(slicer.qMRMLTableView.NoEditTriggers)
         contentsFrameLayout.addRow(self.tableView)
+        SegmentReportNavigator().watch(self.tableView)
 
     def setNode(self, node):
         self.tableView.setMRMLTableNode(node)

@@ -16,22 +16,22 @@ import openpnm
 import pandas as pd
 import vtk
 
-from ltrace.algorithms.common import generate_equidistant_points_on_sphere, points_are_below_plane
-from ltrace.pore_networks.functions_extract import geo2pnf, get_sub_spy, get_connected_spy_network, geo2spy
-from ltrace.pore_networks.functions_simulation import (
+from commons.algorithms.common import generate_equidistant_points_on_sphere, points_are_below_plane
+from commons.pore_networks.functions_extract import geo2pnf, get_sub_spy, get_connected_spy_network, geo2spy
+from commons.pore_networks.functions_simulation import (
     get_flow_rate,
     manual_valvatne_blunt,
     set_subresolution_conductance,
     single_phase_permeability,
 )
-from ltrace.pore_networks.krel_result import KrelResult, KrelTables
-from ltrace.pore_networks.pnflow_parameter_defs import DIAGNOSTICS_OFF, diagnostics_level
-from ltrace.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
-from ltrace.pore_networks.processing.vtk_utils import create_flow_model, create_permeability_sphere
-from ltrace.pore_networks.subres_models import get_subres_function
-from ltrace.pore_networks.visualization_model import generate_model_variable_scalar
-from ltrace.remote.object_transfer import PickleObjectTransfer
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.pore_networks.krel_result import KrelResult, KrelTables
+from commons.pore_networks.pnflow_parameter_defs import DIAGNOSTICS_OFF, diagnostics_level
+from commons.pore_networks.processing.two_phase.two_phase_simulation import PNFLOW, PORE_FLOW, TwoPhaseSimulation
+from commons.pore_networks.processing.vtk_utils import create_flow_model, create_permeability_sphere
+from commons.pore_networks.subres_models import get_subres_function
+from commons.pore_networks.visualization_model import generate_model_variable_scalar
+from commons.remote.object_transfer import PickleObjectTransfer
+from commons.slicer.cli_utils import progressUpdate
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -122,7 +122,6 @@ def onePhase(args, params):
             perm = 0
         if (perm == 0) or (perm.network.throats("all").size == 0):
             continue
-        net = perm.project.network
 
         flow_rate = get_flow_rate(
             pn_pores, pn_throats, viscosity=params["fluid_viscosity"], pressure_drop=params["pressure_drop"]
@@ -149,7 +148,7 @@ def onePhase(args, params):
             try:
                 min_throat = np.min(throat_values[throat_values > (-np.inf)])
                 max_throat = np.max(throat_values[throat_values > (-np.inf)])
-            except:
+            except Exception:
                 min_throat = -np.inf
                 max_throat = np.inf
             minmax.append({"inlet": inlet, "outlet": outlet, "min": min_throat, "max": max_throat})
@@ -167,7 +166,7 @@ def onePhase(args, params):
             )
 
             writePolydata(pores_model, f"{args.tempDir}/pore_pressure_{inlet}_{outlet}.vtk")
-            if params["advanced visualization"] == True:
+            if params["advanced visualization"]:
                 writePolydata(resolved_model, f"{args.tempDir}/resolved_pore_pressure_{inlet}_{outlet}.vtk")
                 writePolydata(unresolved_model, f"{args.tempDir}/unresolved_pore_pressure_{inlet}_{outlet}.vtk")
             writePolydata(throats_model, f"{args.tempDir}/throat_flow_rate_{inlet}_{outlet}.vtk")
@@ -305,7 +304,7 @@ def onePhaseMultiAngle(args, params):
         try:
             min_throat = np.min(throat_values[throat_values > (-np.inf)])
             max_throat = np.max(throat_values[throat_values > (-np.inf)])
-        except:
+        except Exception:
             min_throat = -np.inf
             max_throat = np.inf
         minmax.append({"index": i, "min": min_throat, "max": max_throat})
@@ -553,7 +552,7 @@ def parse_simulation_interval(s):
         if start > end:
             raise ValueError("Start must be <= End")
         return (start, end + 1)
-    except Exception as e:
+    except Exception:
         raise argparse.ArgumentTypeError(f"Invalid simulation interval '{s}'. Expected format: start:end")
 
 

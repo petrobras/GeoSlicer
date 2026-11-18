@@ -8,17 +8,15 @@ import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
 
-import qt, slicer
+import qt
+import slicer
 
-from ltrace.slicer_utils import *
+from commons.slicer_utils import *
 
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.msrfnet_frontend import ComboBox, FormSection
-from ltrace.slicer import helpers
-from ltrace.slicer.ui import hierarchyVolumeInput
-
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.jobs import JobManager
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.msrfnet_frontend import ComboBox, FormSection
+from commons.slicer import helpers
+from commons.slicer.ui import hierarchyVolumeInput
 
 
 TARGETS = ("Breakouts", "Fraturas")
@@ -240,7 +238,7 @@ class ResultHandler:
             parentItemId = folderTree.GetItemParent(itemTreeId)
 
             outputDir = folderTree.CreateFolderItem(
-                parentItemId, helpers.generateName(folderTree, f"Segmentation Result")
+                parentItemId, helpers.generateName(folderTree, "Segmentation Result")
             )
 
             helpers.makeTemporaryNodePermanent(node, show=True)
@@ -270,7 +268,7 @@ class ImageLogCustomSegmenterEventHandler:
             parentItemId = folderTree.GetItemParent(itemTreeId)
 
             outputDir = folderTree.CreateFolderItem(
-                parentItemId, helpers.generateName(folderTree, f"Segmentation Result")
+                parentItemId, helpers.generateName(folderTree, "Segmentation Result")
             )
 
             helpers.makeTemporaryNodePermanent(outputLabelMapVolumeNode, show=True)

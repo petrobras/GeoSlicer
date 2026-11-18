@@ -4,8 +4,8 @@ from pathlib import Path
 import qt
 import slicer.util
 
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import *
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import *
 
 
 class FilteringTools(LTracePlugin):
@@ -62,6 +62,10 @@ class FilteringToolsWidget(LTracePluginWidget):
                 slicer.modules.customizedmedianimagefilter.createNewWidgetRepresentation(),
             ),
             (
+                "Non-Local Means Filter",
+                slicer.modules.nonlocalmeansfilter.createNewWidgetRepresentation(),
+            ),
+            (
                 "Euclidean Distance Transform",
                 slicer.modules.euclideandistancetransform.createNewWidgetRepresentation(),
             ),
@@ -76,6 +80,10 @@ class FilteringToolsWidget(LTracePluginWidget):
             (
                 "Shading correction - Polynomial",
                 slicer.modules.polynomialshadingcorrection.createNewWidgetRepresentation(),
+            ),
+            (
+                "Ring Artifact Removal",
+                slicer.modules.ringartifactremoval.createNewWidgetRepresentation(),
             ),
         ]
 

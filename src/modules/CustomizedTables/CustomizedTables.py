@@ -11,10 +11,10 @@ import qt
 import slicer
 from vtk.util.numpy_support import vtk_to_numpy
 
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer_utils import *
+from commons.slicer_utils import getResourcePath
+from commons.slicer.node_attributes import NodeEnvironment
 
 RESOURCES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Resources", "Icons")
 CHARTS_ICON_PATH = os.path.join(RESOURCES_PATH, "Charts.png")
@@ -145,8 +145,8 @@ class CustomizedTablesWidget(LTracePluginWidget):
         csvLoadButton.clicked.connect(self.onLoadCSVClicked)
 
     def onLoadCSVClicked(self):
-        from ltrace.file_utils import read_csv
-        from ltrace.slicer.data_utils import dataFrameToTableNode
+        from commons.file_utils import read_csv
+        from commons.slicer.data_utils import dataFrameToTableNode
 
         path = self.csvPathEdit.currentPath
         if not path:

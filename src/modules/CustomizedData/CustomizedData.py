@@ -6,10 +6,12 @@ import traceback
 
 from pathlib import Path
 
-from ltrace.slicer import helpers
-from ltrace.slicer.virtual import virtual_node
-from ltrace.slicer.virtual.fourd import proxy as fourdProxy
-from ltrace.slicer_utils import *
+from commons.constants import TABLE_PREVIEW_MAX_ROWS
+from commons.slicer.virtual import virtual_node
+from commons.slicer.virtual.fourd import proxy as fourdProxy
+from commons.slicer import metadata
+from commons.slicer_utils import *
+from commons.slicer_utils import fitSliceViewsWhereVolumeIsOffscreen
 
 from CustomizedDataLib import *
 
@@ -52,6 +54,23 @@ class CustomizedDataWidget(LTracePluginWidget):
             if action is not self.registerThisAction:
                 action.visible = False
 
+    def onTreeViewPressed(self, index):
+        if index.column() != self.subjectHierarchyTreeView.model().visibilityColumn:
+            return
+        itemID = self.subjectHierarchyTreeView.sortFilterProxyModel().subjectHierarchyItemFromIndex(index)
+        node = slicer.mrmlScene.GetSubjectHierarchyNode().GetItemDataNode(itemID)
+        if not isinstance(node, slicer.vtkMRMLScalarVolumeNode):
+            return
+        plugin = slicer.qSlicerSubjectHierarchyPluginHandler.instance().getOwnerPluginForSubjectHierarchyItem(itemID)
+        wasVisible = plugin.getDisplayVisibility(itemID)
+
+        # The tree view toggles visibility right after emitting pressed. Slicer's own fit is disabled in slicerrc.py
+        def afterToggle():
+            if not wasVisible and plugin.getDisplayVisibility(itemID):
+                fitSliceViewsWhereVolumeIsOffscreen(node)
+
+        qt.QTimer.singleShot(0, afterToggle)
+
     def setup(self):
         LTracePluginWidget.setup(self)
         # self.layout.addStretch(1)
@@ -73,6 +92,7 @@ class CustomizedDataWidget(LTracePluginWidget):
                 slicer.modules.AppContextInstance.fuzzySearch.exec_()
 
         self.subjectHierarchyTreeView.doubleClicked.connect(showSearchPopup)
+        self.subjectHierarchyTreeView.pressed.connect(self.onTreeViewPressed)
 
         # Adds confirmation step before delete action
         self.nodeMenu = self.subjectHierarchyTreeView.findChild(qt.QMenu, "nodeMenuTreeView")
@@ -215,7 +235,8 @@ class CustomizedDataWidget(LTracePluginWidget):
         self.segmentationWidget.setVisible(False)
         self.textWidget.setVisible(False)
 
-        node = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene).GetItemDataNode(itemID)
+        sh = slicer.mrmlScene.GetSubjectHierarchyNode()
+        node = sh.GetItemDataNode(itemID)
 
         if itemID == 0 or not node:
             self.tabWidget.setVisible(False)
@@ -235,13 +256,23 @@ class CustomizedDataWidget(LTracePluginWidget):
             logging.info(f"Unable to show the deferred data information: {error}\n{traceback.format_exc()}")
 
         # Handle attributes tab
-        metadata_node_id = node.GetAttribute("MetadataNode")
-        metadata_node = slicer.mrmlScene.GetNodeByID(metadata_node_id) if metadata_node_id else None
-        if metadata_node:
-            self.attributesWidget.setNode(metadata_node)
+        nodeText = self._metadataText(node.GetAttribute(metadata.METADATA_KEY))
+        # Same rule as NetCDF export: dataset attributes belong to nodes directly under the dataset folder
+        parentId = sh.GetItemParent(itemID)
+        datasetText = None
+        if sh.GetItemAttribute(parentId, "netcdf_path"):
+            datasetText = self._metadataText(sh.GetItemAttribute(parentId, metadata.METADATA_KEY))
+
+        if datasetText:
+            sections = []
+            if nodeText:
+                sections.append(f"# {node.GetName()}\n{nodeText}")
+            sections.append(f"# Dataset ({sh.GetItemName(parentId)})\n{datasetText}")
+            text = "\n".join(sections)
         else:
-            self.attributesWidget.textEdit.setPlainText("")
-            self.attributesWidget.highlightMatches()
+            text = nodeText or ""
+        self.attributesWidget.textEdit.setPlainText(text)
+        self.attributesWidget.highlightMatches()
 
         # Handle info tab
         try:
@@ -252,7 +283,7 @@ class CustomizedDataWidget(LTracePluginWidget):
                 self.vectorVolumeWidget.setNode(node)
                 self.vectorVolumeWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLTableNode:
-                if node.GetNumberOfRows() <= 3000:
+                if node.GetNumberOfRows() <= TABLE_PREVIEW_MAX_ROWS:
                     self.tableWidget.setNode(node)
                     self.tableWidget.setVisible(True)
             elif type(node) is slicer.vtkMRMLLabelMapVolumeNode:
@@ -270,6 +301,11 @@ class CustomizedDataWidget(LTracePluginWidget):
         except Exception as error:
             logging.info(f"{error}\n{traceback.print_exc()}")
             pass
+
+    @staticmethod
+    def _metadataText(metadataNodeId):
+        metadataNode = slicer.mrmlScene.GetNodeByID(metadataNodeId) if metadataNodeId else None
+        return metadataNode.GetText() if metadataNode else None
 
     def cleanup(self):
         super().cleanup()

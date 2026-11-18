@@ -1,5 +1,3 @@
-import ctypes
-
 import ctk
 import numpy as np
 import os
@@ -9,16 +7,14 @@ import slicer
 import vtk
 
 from collections import namedtuple
-from ltrace.slicer.widget.style_editor_widget import NO_CHANGE
-from ltrace.slicer.graph_data import NodeGraphData, SCATTER_PLOT_TYPE, TEXT_SYMBOLS, LINE_STYLES
-from ltrace.slicer import helpers, ui
-from ltrace.slicer.equations.equation_base import EquationBase
-from ltrace.slicer.equations.fit_data import FitData
-from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
-from ltrace.slicer.widget.help_button import HelpButton
+from commons.slicer.widget.style_editor_widget import NO_CHANGE
+from commons.slicer.graph_data import NodeGraphData, SCATTER_PLOT_TYPE, TEXT_SYMBOLS, LINE_STYLES
+from commons.slicer import helpers
+from commons.slicer.equations.fit_data import FitData
+from commons.slicer.widget.data_plot_widget import DataPlotWidget
+from commons.slicer.widget.help_button import HelpButton
 from matplotlib import cm as matplotlibcm
 from pint import Unit, UndefinedUnitError, DefinitionSyntaxError
-from pint_pandas import PintArray
 from ..BasePlotWidget import BasePlotWidget
 from .data_table_widget import DataTableWidget
 from .equations.line import Line
@@ -916,7 +912,7 @@ class CrossplotWidget(BasePlotWidget):
 
     def __removeGraphDataFromTable(self, graphData: NodeGraphData):
         """Remove data and objects related to the GraphData object."""
-        if not graphData in self.__graphDataList:
+        if graphData not in self.__graphDataList:
             return
 
         self.__graphDataList.remove(graphData)
@@ -927,7 +923,7 @@ class CrossplotWidget(BasePlotWidget):
 
     def __removeFitDataFromTable(self, fitData: FitData):
         """Remove data and objects related to the FitData object."""
-        if not fitData in self.__fitDataList:
+        if fitData not in self.__fitDataList:
             return
 
         self.__fitDataList.remove(fitData)
@@ -977,7 +973,7 @@ class CrossplotWidget(BasePlotWidget):
 
         self.__zMinValueRange = value
 
-        if not self.__autoRangeCheckBox.isChecked() is True and self.__hasValidZAxisRange():
+        if self.__autoRangeCheckBox.isChecked() is not True and self.__hasValidZAxisRange():
             self.__updatePlot()
 
     def __onZMaxValueRangeChanged(self, value):
@@ -987,7 +983,7 @@ class CrossplotWidget(BasePlotWidget):
 
         self.__zMaxValueRange = value
 
-        if not self.__autoRangeCheckBox.isChecked() is True and self.__hasValidZAxisRange():
+        if self.__autoRangeCheckBox.isChecked() is not True and self.__hasValidZAxisRange():
             self.__updatePlot()
 
     def __hasValidZAxisRange(self):

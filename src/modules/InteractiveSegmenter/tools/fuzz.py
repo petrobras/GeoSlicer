@@ -137,8 +137,7 @@ def main():
                 print("\n=== CRASH ===")
                 print(json.dumps(info["crash_info"], indent=2, default=str))
                 print(
-                    "\nGeoSlicer is frozen at the crash for inspection.\n"
-                    "Run `python fuzz.py --stop` when you are done."
+                    "\nGeoSlicer is frozen at the crash for inspection.\nRun `python fuzz.py --stop` when you are done."
                 )
                 return 1
             if not info["running"]:

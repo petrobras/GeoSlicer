@@ -3,14 +3,15 @@
 
 from __future__ import print_function
 
-import vtk
 
 import json
 import sys
 
-import slicer, mrml, slicer.util
+import slicer
+import mrml
+import slicer.util
 
-from ltrace.utils.NeighbourPixelCount import NeighbourPixelCount
+from commons.utils.NeighbourPixelCount import NeighbourPixelCount
 
 
 def progressUpdate(value):

@@ -5,12 +5,11 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import MeanShift
 
-from ltrace.algorithms.measurements import LabelStatistics2D
+from commons.algorithms.measurements import LabelStatistics2D, is_spatial_column
 from workflow.commons import addUnitsToDataFrameParameters, DESCRIPTIVE_STATISTICS
 
 
 class SheetExporter:
-
     ## SheetExporter: Geração de planilhas contendo propriedades e estatísticas calculadas
 
     # Salva em planilha as propriedades geológicas calculadas e estatísticas relacionadas para cada
@@ -38,7 +37,8 @@ class SheetExporter:
 
         image_output_dir = os.path.join(output_dir, image_name)
         os.makedirs(image_output_dir, exist_ok=True)
-        df = df.drop(unnecessary_attrs, axis=1)
+        spatial_attrs = [column for column in df.columns if is_spatial_column(column)]
+        df = df.drop(unnecessary_attrs + spatial_attrs, axis=1)
         df.to_excel(
             os.path.join(image_output_dir, f"{self.stats_sheet_prefix}_{image_name}_{instance_type}.xlsx"), index=False
         )

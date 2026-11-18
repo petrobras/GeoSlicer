@@ -1,8 +1,8 @@
 import ctk
-from ltrace.slicer.node_observer import NodeObserver
-from ltrace.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
-from ltrace.slicer.widget.pixel_size_editor import PixelSizeEditor
-from ltrace.slicer.helpers import getScalarTypesAsString
+from commons.slicer.node_observer import NodeObserver
+from commons.slicer.widget.histogram_frame import DisplayNodeHistogramFrame
+from commons.slicer.widget.pixel_size_editor import PixelSizeEditor
+from commons.slicer.helpers import getScalarTypesAsString
 import qt
 import slicer
 
@@ -29,9 +29,9 @@ class VectorVolumeWidget(qt.QWidget):
         self.activeVolumeNodeSelector = self.volumesWidget.findChild(
             slicer.qMRMLSubjectHierarchyTreeView, "ActiveVolumeNodeSelector"
         )
-        assert (
-            self.activeVolumeNodeSelector is not None
-        ), "Could not find ActiveVolumeNodeSelector in the volume display widget"
+        assert self.activeVolumeNodeSelector is not None, (
+            "Could not find ActiveVolumeNodeSelector in the volume display widget"
+        )
 
         imageDimensionsHBoxLayout = qt.QHBoxLayout()
         self.imageDimensions1LineEdit = qt.QLineEdit()

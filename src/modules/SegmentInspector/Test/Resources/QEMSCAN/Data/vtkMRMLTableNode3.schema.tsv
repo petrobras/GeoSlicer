@@ -1,0 +1,15 @@
+columnName	type	nullValue	componentNames
+<default>	double		
+Mineralogy	string		
+Calcita (0% a 1%MgO)	string		
+Calcita (1% a 4%MgO)	string		
+Calcita (4% a 7%MgO)	string		
+Calcita (7% a 10%MgO)	string		
+Dolomita (17% a 20%MgO)	string		
+Dolomita (20% a 22%MgO)	string		
+Goyazita	string		
+Magnesita	string		
+Nefelina	string		
+Outros	string		
+Poros	string		
+Quartzo	string		

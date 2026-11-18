@@ -9,7 +9,6 @@ from workflow.commons import DESCRIPTIVE_STATISTICS
 
 
 class LASExporter:
-
     ## LASExporter: Geração de arquivos LAS descritores das propriedades do poço
 
     # Uma vez que todas as imagens do poço são processadas, arquivos LAS são criados separando suas
@@ -48,7 +47,7 @@ class LASExporter:
                 # para lidar com diferentes versões da lasio
                 try:
                     las.add_curve(param, curve, unit=unit)
-                except:
+                except Exception:
                     las.append_curve(param, curve, unit=unit)
                 return las
 
@@ -77,9 +76,9 @@ class LASExporter:
             grouped_data = pd.DataFrame([])
             for image_name in images_names:
                 image_info = image_name.split("_")
-                assert (
-                    well_name is None or image_info[0] == well_name
-                ), f"Images are describing different wells in the same set (previous: {well_name}; current: {image_info[0]})"
+                assert well_name is None or image_info[0] == well_name, (
+                    f"Images are describing different wells in the same set (previous: {well_name}; current: {image_info[0]})"
+                )
                 well_name = image_info[0]
                 depth, _, unit = split_value_index_and_unit(image_info[1])
 

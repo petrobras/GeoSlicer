@@ -1,0 +1,8 @@
+columnName	type	componentNames
+Fitting equation	string	
+A	float	
+B	float	
+C	float	
+x_min	float	
+x_max	float	
+bins	int	

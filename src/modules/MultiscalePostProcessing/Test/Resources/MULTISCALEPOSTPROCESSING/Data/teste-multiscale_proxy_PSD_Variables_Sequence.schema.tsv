@@ -1,0 +1,7 @@
+columnName	type	componentNames	nullValue
+radii (voxel)	double		
+1/radii	double		
+log(1/radii)	double		
+Snw (frac)	double		
+Sw (frac)	double		
+<default>	double		

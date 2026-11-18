@@ -1,0 +1,2 @@
+# .ignore for .gitignore (used for ruff)
+!src/partners/

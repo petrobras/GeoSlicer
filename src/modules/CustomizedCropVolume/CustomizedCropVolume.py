@@ -7,13 +7,12 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import copy_display, bounds2size, copy_attributes, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.utils.callback import Callback
+from commons.slicer import ui
+from commons.slicer.helpers import copy_display, bounds2size
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import *
+from commons.utils.callback import Callback
 
 try:
     from Test.CustomizedCropVolumeTest import CustomizedCropTest

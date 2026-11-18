@@ -1,0 +1,4 @@
+# Color table file /home/anthony/dev/smartseg/slicerltrace/src/modules/Segmenter/Test/Resources/QEMSCAN/Data/SOI_ColorTable.ctbl
+# 2 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255

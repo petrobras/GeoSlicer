@@ -3,8 +3,8 @@ import os
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer import ui
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from pathlib import Path
 
 try:
@@ -210,8 +210,8 @@ class WidgetTrackingWidget(LTracePluginWidget):
 
         # Add items to the lists
         for idx, listWidget in enumerate([self._listWidget1, self._listWidget2, self._listWidget3]):
-            listWidgetItem1 = qt.QListWidgetItem(f"List Widget {idx+1} Item 1")
-            listWidgetItem2 = qt.QListWidgetItem(f"List Widget {idx+1} Item 2")
+            listWidgetItem1 = qt.QListWidgetItem(f"List Widget {idx + 1} Item 1")
+            listWidgetItem2 = qt.QListWidgetItem(f"List Widget {idx + 1} Item 2")
             listWidgetItem2.setFlags(listWidgetItem2.flags() | qt.Qt.ItemIsUserCheckable | qt.Qt.ItemIsSelectable)
             listWidgetItem2.setCheckState(qt.Qt.Unchecked)
             listWidget.addItem(listWidgetItem1)
@@ -252,8 +252,8 @@ class WidgetTrackingWidget(LTracePluginWidget):
 
         # Add items to the lists
         for idx, tableWidget in enumerate([self._tableWidget1, self._tableWidget2, self._tableWidget3]):
-            tableWidgetItem1 = qt.QTableWidgetItem(f"Table Widget {idx+1} Item 1")
-            tableWidgetItem2 = qt.QTableWidgetItem(f"Table Widget {idx+1} Item 2")
+            tableWidgetItem1 = qt.QTableWidgetItem(f"Table Widget {idx + 1} Item 1")
+            tableWidgetItem2 = qt.QTableWidgetItem(f"Table Widget {idx + 1} Item 2")
 
             tableWidget.setRowCount(1)
             tableWidget.setItem(0, 0, tableWidgetItem1)

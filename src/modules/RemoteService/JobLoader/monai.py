@@ -1,7 +1,7 @@
 import logging
 
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.handlers import MonaiLabelServerHandler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers import MonaiLabelServerHandler
 
 
 def monai_job_loader(job: JobExecutor):

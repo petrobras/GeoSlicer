@@ -1,4 +1,4 @@
-from ltrace.slicer.equations.line_equation import LineEquation
+from commons.slicer.equations.line_equation import LineEquation
 from Plots.Crossplot.equations.equation_widget import EquationWidget
 
 

@@ -1,15 +1,14 @@
-from ltrace.image.core_box.core_boxes_image_file import CoreBoxesImageFile
-from ltrace.slicer.helpers import createTemporaryNode, tryGetNode, getTesseractCmd, save_path
-from ltrace.slicer_utils import (
+from commons.image.core_box.core_boxes_image_file import CoreBoxesImageFile
+from commons.slicer.helpers import createTemporaryNode, tryGetNode, getTesseractCmd, save_path
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginLogic,
     LTracePluginWidget,
     addNodeToSubjectHierarchy,
     is_tensorflow_gpu_enabled,
 )
-from ltrace.slicer.cli_queue import CliQueue
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.utils.callback import Callback
+from commons.slicer.cli_queue import CliQueue
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from pathlib import Path
 
 import ctk
@@ -331,9 +330,10 @@ class CorePhotographLoaderLogic(LTracePluginLogic):
                     outputReport=table_node.GetID(),
                     gpuEnabled=is_tensorflow_gpu_enabled(),
                 )
-                modified_callback = lambda caller, event, config=cli_config: self._cli_node_event_handler(
-                    caller, event, config
-                )
+
+                def modified_callback(caller, event, config=cli_config):
+                    return self._cli_node_event_handler(caller, event, config)
+
                 self.__cli_queue.create_cli_node(slicer.modules.corephotographloadercli, cli_config, modified_callback)
 
         self.__cli_queue.signal_queue_finished.connect(self._on__process_finished)

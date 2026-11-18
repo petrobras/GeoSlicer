@@ -1,0 +1,22 @@
+{
+  "ImageLogPSDGeneration": {
+    "b3235dd9-6488-4786-b527-025d3e96a8f5": {
+      "id": "b3235dd9-6488-4786-b527-025d3e96a8f5",
+      "name": "Preset 1",
+      "satResMicrotom": "0.88",
+      "radResMicrotom": "0.99",
+      "sizesPorespy": "1, 1",
+      "smoothPorespy": false,
+      "methodPorespy": "bf"
+    },
+    "4b72af67-1e53-4a79-a52c-dff8084e434e": {
+      "id": "4b72af67-1e53-4a79-a52c-dff8084e434e",
+      "name": "Preset 2",
+      "satResMicrotom": "0.03",
+      "radResMicrotom": "0.05",
+      "sizesPorespy": "25",
+      "smoothPorespy": true,
+      "methodPorespy": "dt"
+    }
+  }
+}

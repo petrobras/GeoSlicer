@@ -7,11 +7,10 @@ import mrml
 import slicer
 import slicer.util
 import numpy as np
-from ltrace import transforms
+from commons import transforms
 import SimpleITK as sitk
 
-from ltrace.transforms import clip_to
-from ltrace.slicer.helpers import getVolumeNullValue, setVolumeNullValue
+from commons.slicer.helpers import getVolumeNullValue
 
 
 def get_origin(data, node, rasbounds, kij=False):
@@ -112,7 +111,7 @@ def runcli(args):
     corrected_data = corrected_data - np.mean(corrected_data[maskArray == 1]) + np.mean(volumeArray[maskArray == 1])
 
     input_null_value = getVolumeNullValue(inputVolumeNode)
-    output_null_value = input_null_value if input_null_value != None else 0
+    output_null_value = input_null_value if input_null_value is not None else 0
     corrected_data[maskArray == 0] = output_null_value
 
     writeDataInto(

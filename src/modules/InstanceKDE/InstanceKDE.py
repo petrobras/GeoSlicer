@@ -8,17 +8,17 @@ import logging
 import pandas as pd
 import numpy as np
 
-from ltrace.algorithms.measurements import GENERIC_PROPERTIES
-from ltrace.slicer import ui
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer.node_attributes import (
+from commons.algorithms.measurements import GENERIC_PROPERTIES
+from commons.slicer import ui
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.slicer.node_attributes import (
     HistogramGraphType,
     PlotScaleXAxisAttribute,
     TableType,
     TableDataOrientation,
     TableDataTypeAttribute,
 )
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 from scipy.stats import gaussian_kde, norm
 
@@ -129,7 +129,7 @@ class InstanceKDEWidget(LTracePluginWidget):
                 self.bandwithSpinBox.value,
                 self.outputPrefixLineEdit.text,
             )
-        except ValueError:
+        except (ValueError, KeyError, IndexError):
             slicer.util.errorDisplay(
                 f"An issue occurred during execution. Check if '{self.inputSelector.currentNode().GetName()}' table has enough data and if its correct."
             )

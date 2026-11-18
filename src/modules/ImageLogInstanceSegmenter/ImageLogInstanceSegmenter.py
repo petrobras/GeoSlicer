@@ -1,10 +1,9 @@
 import os
-import string
 from pathlib import Path
 
 import qt
 
-from ltrace.slicer_utils import (
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,

@@ -1,0 +1,4 @@
+columnName	unitLabel	type	nullValue	componentNames
+DEPTH	mm	double		
+TDEP [ft]	ft	double		
+<default>		double		

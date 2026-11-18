@@ -3,7 +3,7 @@
 import struct
 import time
 
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.slicer.cli_utils import progressUpdate
 
 POLL_INTERVAL_SECONDS = 3
 MAX_READ_FAILURES = 3

@@ -14,11 +14,10 @@ import vtk
 from skimage.transform import resize
 
 import ThinSectionRegistrationLib
-from ltrace.slicer import ui
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
-from ltrace.transforms import getRoundedInteger
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import ui
+from commons.slicer_utils import *
+from commons.transforms import getRoundedInteger
+from commons.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.ThinSectionRegistrationTest import ThinSectionRegistrationTest
@@ -146,18 +145,18 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
     def finishRegistration(self):
         with ProgressBarProc() as progressBar:
-            progressBar.nextStep(0, f"Finishing registration (applying transform)...")
+            progressBar.nextStep(0, "Finishing registration (applying transform)...")
             transformedVolume = self.selectedVolumes.get("Transformed")
             transformedVolume.HardenTransform()
             self.fixHardenTransformBug(transformedVolume)
 
-            progressBar.nextStep(70, f"Finishing registration (equalizing spacing)...")
+            progressBar.nextStep(70, "Finishing registration (equalizing spacing)...")
             self.logic.equalizeSpacing(transformedVolume, self.selectedVolumes["Fixed"])
 
-            progressBar.nextStep(90, f"Finishing registration...")
+            progressBar.nextStep(90, "Finishing registration...")
             self.reset()
 
-            progressBar.nextStep(100, f"Registration finished.")
+            progressBar.nextStep(100, "Registration finished.")
         return transformedVolume
 
     def fixHardenTransformBug(self, volume):
@@ -578,7 +577,6 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
 
         volumeID = compositeNode.GetBackgroundVolumeID()
         if volumeID is None:
-
             return
 
         volumeNode = slicer.util.getNode(volumeID)
@@ -649,7 +647,7 @@ class ThinSectionRegistrationWidget(LTracePluginWidget):
         timing = True
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
 
-        if self.landmarksWidget.selectedLandmark != None:
+        if self.landmarksWidget.selectedLandmark is not None:
             if self.currentLocalRefinementInterface:
                 state = self.registrationState()
                 self.currentLocalRefinementInterface.refineLandmark(state)
@@ -751,7 +749,6 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         If list already has a fiducial with the given name, then
         set the position to the passed value.
         """
-        aname = associatedNode.GetName() if associatedNode is not None else "None"
         markupsLogic = slicer.modules.markups.logic()
         originalActiveListID = markupsLogic.GetActiveListID()  # TODO: naming convention?
         slicer.mrmlScene.StartState(slicer.mrmlScene.BatchProcessState)
@@ -833,7 +830,7 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
                 positionToAdd = movingPosition
             else:
                 positionToAdd = position
-            fiducial = self.addFiducial(landmarkName, position=positionToAdd, associatedNode=volumeNode)
+            self.addFiducial(landmarkName, position=positionToAdd, associatedNode=volumeNode)
         return landmarkName
 
     def removeLandmarkForVolumes(self, landmark, volumeNodes) -> None:
@@ -1072,7 +1069,6 @@ class ThinSectionRegistrationLogic(LTracePluginLogic):
         """
         # if there are significant differences in spacings
         if not np.all(np.isclose(firstVolume.GetSpacing(), secondVolume.GetSpacing())):
-
             if Counter(np.array(firstVolume.GetSpacing()) < np.array(secondVolume.GetSpacing())).most_common(1)[0][0]:
                 highResolutionVolume = firstVolume
                 lowResolutionVolume = secondVolume

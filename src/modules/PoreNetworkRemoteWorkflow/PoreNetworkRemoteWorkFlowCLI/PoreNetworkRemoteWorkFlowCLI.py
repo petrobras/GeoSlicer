@@ -19,8 +19,8 @@ import dask
 from dask.distributed import Client, as_completed
 from dask_jobqueue import SLURMCluster
 
-from ltrace.remote.slurm import MAX_WORKERS
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.remote.slurm import MAX_WORKERS
+from commons.slicer.cli_utils import progressUpdate
 from .workstep.crop_sample import CropSampleWorkstep
 from .workstep.extractor import ExtractorWorkstep
 from .workstep.load_data import LoadDataWorkstep

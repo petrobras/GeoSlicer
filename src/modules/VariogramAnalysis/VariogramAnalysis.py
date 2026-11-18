@@ -2,7 +2,10 @@ import cv2
 import os
 from pathlib import Path
 
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 
 import numpy as np
 from numba import jit
@@ -14,20 +17,20 @@ import shiboken2
 import warnings
 
 from fft.crop import getInscribedCuboidLimits
-from ltrace.conventions.petrobras_raw_file_name import PetrobrasRawFileName
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer.widgets import InputState, SingleShotInputWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.algorithms.variogram import GeneralizedVariogram
-from ltrace.algorithms.Variogram_FFT.variogram import VariogramFFT
-from ltrace.slicer.helpers import createTemporaryVolumeNode, createMaskWithROI, highlight_error, highlight_warning
-from ltrace.transforms import volume_ijk_to_ras
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.utils.report_builder import ReportBuilder
+from commons.conventions.petrobras_raw_file_name import PetrobrasRawFileName
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer.widgets import SingleShotInputWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.algorithms.variogram import GeneralizedVariogram
+from commons.algorithms.Variogram_FFT.variogram import VariogramFFT
+from commons.slicer.helpers import createTemporaryVolumeNode, createMaskWithROI, highlight_error, highlight_warning
+from commons.transforms import volume_ijk_to_ras
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.utils.report_builder import ReportBuilder
 
 # -*- extra imports -*-
-from ltrace.wrappers import timeit
+from commons.wrappers import timeit
 
 
 def useProgressBar(func):
@@ -199,7 +202,7 @@ class VariogramAnalysisWidget(LTracePluginWidget):
         self.maximumDistanceCheckBox.stateChanged.connect(self._on_maximum_distance_checked)
         self.maximumDistanceCheckBox.setChecked(False)
         self.maximumDistanceCheckBox.setToolTip(
-            "If checked maximum distance field will be used. Mean distance will be " "used otherwise."
+            "If checked maximum distance field will be used. Mean distance will be used otherwise."
         )
         self.maximumDistanceLayout.addWidget(self.maximumDistanceCheckBox)
         self.maximumDistanceLayout.addWidget(self.maximumDistanceSlider)
@@ -839,14 +842,14 @@ class VariogramAnalysisWidget(LTracePluginWidget):
 
     def _get_graphic_layout_image(self, garphics_layout):
         exporter = pg.exporters.ImageExporter(garphics_layout.scene())
-        tmp_file_path = "LTrace/temp/variogram_analysis_tmp.png"
+        tmp_file_path = str(Path(slicer.app.temporaryPath) / "variogram_analysis_tmp.png")
         exporter.export(tmp_file_path)
         image = cv2.imread(tmp_file_path)
         os.remove(tmp_file_path)
         return image
 
     def _get_slices_image(self):
-        tmp_file_path = "LTrace/temp/variogram_analysis_tmp.png"
+        tmp_file_path = str(Path(slicer.app.temporaryPath) / "variogram_analysis_tmp.png")
         cap = ScreenCapture.ScreenCaptureLogic()
         cap.captureImageFromView(None, tmp_file_path)
         image = cv2.imread(tmp_file_path)

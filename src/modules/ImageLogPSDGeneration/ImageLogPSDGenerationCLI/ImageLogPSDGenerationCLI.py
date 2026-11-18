@@ -7,15 +7,17 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
+import slicer
+import slicer.util
+import mrml
 import json
 import numpy as np
 import time
 import porespy
 import microtom
 
-from ltrace.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
-from ltrace.constants import PSDLib
+from commons.slicer.cli_utils import writeDataInto, readFrom, progressUpdate
+from commons.constants import PSDLib
 
 
 def run(args):

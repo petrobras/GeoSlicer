@@ -7,14 +7,11 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
 import argparse
 import os
-import json
-import numpy as np
 
-from ltrace.multiscaleLib.bychunks.sequential_mps import SequentialMPS
-from ltrace.multiscaleLib.bychunks.log import init_output_logging
+from commons.multiscaleLib.bychunks.sequential_mps import SequentialMPS
+from commons.multiscaleLib.bychunks.log import init_output_logging
 import time
 import datetime
 from pathlib import Path
@@ -109,7 +106,7 @@ parser.add_argument(
 opt = parser.parse_args()
 
 date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-name = f"{date}_ncond_{opt.ncond}_nmaxite_{opt.iterations}" f"_np_{opt.patches}_ns_{opt.neighbor_size}"
+name = f"{date}_ncond_{opt.ncond}_nmaxite_{opt.iterations}_np_{opt.patches}_ns_{opt.neighbor_size}"
 
 opt = vars(opt)
 
@@ -118,7 +115,7 @@ opt["root_path"] = str(Path(opt["temporaryPath"]).joinpath(name))
 
 
 os.makedirs(opt["root_path"], exist_ok=True)
-init_output_logging(f'{opt["root_path"]}/log.txt')
+init_output_logging(f"{opt['root_path']}/log.txt")
 print(f"{opt}\n")
 
 start_time = time.time()

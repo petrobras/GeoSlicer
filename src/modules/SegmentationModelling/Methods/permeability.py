@@ -1,9 +1,8 @@
 import json
-import numpy as np
 import qt
 import slicer
 
-from ltrace.slicer import helpers, ui, widgets
+from commons.slicer import helpers, ui, widgets
 from Methods.common import processVolume, processSegmentation
 
 
@@ -58,8 +57,7 @@ class Permeability(widgets.BaseSettingsWidget):
         pass
 
     def onReferenceChanged(self, node, status):
-        if len(self.segmentEquationDict) == 0:
-            self.updateEquationInputs()
+        self.updateEquationInputs()
 
     def updateEquationInputs(self):
         self.cleanEquationInputs()

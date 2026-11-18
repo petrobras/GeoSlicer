@@ -165,7 +165,6 @@ class VisualizationWidget(pqWidget):
                 self.flickerTimer = qt.QTimer()
                 self.flickerTimer.start(300)
                 self.flickerTimer.connect("timeout()", self.flicker)
-            import math
 
             self.fadeSlider.value = 1.0 - self.fadeSlider.value
 

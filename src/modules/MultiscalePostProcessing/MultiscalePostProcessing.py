@@ -7,13 +7,13 @@ from typing import Union
 
 import pandas as pd
 import numpy as np
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.utils.ProgressBarProc import ProgressBarProc
-from ltrace.slicer.node_attributes import ImageLogDataSelectable, TableType
-from ltrace.slicer.widget.segment_list_widget import SegmentListWidget
+from commons.slicer import ui, helpers
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer.node_attributes import ImageLogDataSelectable, TableType
+from commons.slicer.widget.segment_list_widget import SegmentListWidget
 
 try:
     from Test.MultiscalePostProcessingTest import MultiscalePostProcessingTest
@@ -211,7 +211,7 @@ class MultiscalePostProcessingWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def onApplyClicked(self):
-        with ProgressBarProc() as progressBar:
+        with ProgressBarProc():
             if self.methodComboBox.currentText == METHODS["Porosity"]:
                 self.runPorosityLogic()
             else:

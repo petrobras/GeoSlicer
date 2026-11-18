@@ -1,7 +1,6 @@
 import os
-import vtk, qt, ctk, slicer
 
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 #
 # ConnectivityEffect
@@ -9,7 +8,6 @@ from ltrace.slicer_utils import LTracePlugin
 
 
 class ConnectivityEffect(LTracePlugin):
-
     SETTING_KEY = "ConnectivityEffect"
 
     def __init__(self, parent):

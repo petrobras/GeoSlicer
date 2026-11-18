@@ -1,0 +1,7 @@
+label	voxelCount	volume (mm^3)	max_feret (mm)	aspect_ratio	elongation	flatness	ellipsoid_area (mm^2)	ellipsoid_volume (mm^3)	ellipsoid_area_over_ellipsoid_volume (1/mm)	sphere_diameter_from_volume (mm)	pore_size_class
+1	136270	3907.38	27.8756	0.48199	1.16038	1.78795	1554.91	51.8355	29.997	19.5417	Megaporo pequeno
+2	118207	3389.44	28.0013	0.48689	1.45585	1.41075	1309.44	41.2724	31.7267	18.637	Megaporo pequeno
+3	79007	2265.43	26.809	0.44156	1.38335	1.63711	1107.38	29.2432	37.8678	16.2949	Megaporo pequeno
+4	42334	1213.88	13.4025	0.99472	1.00172	1.00358	541.901	13.5767	39.9142	13.235	Megaporo pequeno
+5	6745	193.405	20.226	0.17895	2.64762	2.11062	285.466	2.98388	95.6693	7.17501	Megaporo pequeno
+6	2628	75.3547	17.4954	0.28471	2.37529	1.47871	175.641	1.43937	122.027	5.24047	Megaporo pequeno

@@ -6,36 +6,38 @@ import vtk
 import traceback
 
 from functools import partial
-from ltrace.constants import SaveStatus
-from ltrace.slicer.app import updateWindowTitle, getApplicationVersion, parseApplicationVersion, getJsonData
-from ltrace.slicer.app.custom_3dview import customize_3d_view
-from ltrace.slicer.app.custom_colormaps import customize_color_maps
-from ltrace.slicer.app.drawer import ExpandDataDrawer
-from ltrace.slicer.app.onboard import loadEnvironmentByName
-from ltrace.slicer.app.onboard_view import OnboardLayout, showOnboardView
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.slicer.custom_main_window_event_filter import CustomizerEventFilter
-from ltrace.slicer.debounce_caller import DebounceCaller
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.module_info import ModuleInfo
-from ltrace.slicer.module_utils import mapByCategory
-from ltrace.slicer.project_manager import ProjectManager, handleCopySuffixOnClonedNodes
-from ltrace.slicer.widget.custom_toolbar_buttons import addMenuRaw
-from ltrace.slicer.widget.docked_data import DockedData
-from ltrace.slicer.widget.fuzzysearch import FuzzySearchDialog, LinearSearchModel
-from ltrace.slicer_utils import LTracePlugin, getResourcePath
-from ltrace.constants import ImageLogConst
+from commons.constants import SaveStatus
+from commons.slicer.app import updateWindowTitle, getApplicationVersion, parseApplicationVersion, getJsonData
+from commons.slicer.app.custom_3dview import customize_3d_view
+from commons.slicer.app.custom_colormaps import customize_color_maps
+from commons.slicer.app.drawer import ExpandDataDrawer
+from commons.slicer.app.onboard import loadEnvironmentByName
+from commons.slicer.app.onboard_view import OnboardLayout, showOnboardView
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer.custom_main_window_event_filter import CustomizerEventFilter
+from commons.slicer.debounce_caller import DebounceCaller
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer.lazy import lazy
+from commons.slicer.module_info import ModuleInfo
+from commons.slicer.module_utils import mapByCategory
+from commons.slicer.project_manager import ProjectManager, handleCopySuffixOnClonedNodes
+from commons.slicer.segment_report_navigator import SegmentReportNavigator
+from commons.slicer.segment_report_picker import SegmentPicker
+from commons.slicer.widget.custom_toolbar_buttons import addMenuRaw
+from commons.slicer.widget.docked_data import DockedData
+from commons.slicer.widget.fuzzysearch import FuzzySearchDialog, LinearSearchModel
+from commons.slicer_utils import LTracePlugin, getResourcePath
+from commons.constants import ImageLogConst
 from pathlib import Path
 from typing import Any, Tuple, Dict
 
 try:
-    from ltrace.slicer.tracking.tracking_manager import TrackingManager
+    from commons.slicer.tracking.tracking_manager import TrackingManager
 except ImportError:
-    TrackingManager = lambda *args, **kwargs: None
 
-import sympy
-import torch
+    def TrackingManager(*args, **kwargs):
+        return None
+
 
 toBool = slicer.util.toBool
 
@@ -84,6 +86,8 @@ class AppContext(LTracePlugin):
         self.modules = ModuleManager(self)
 
         self.rightDrawer = ExpandDataDrawer(DockedData())
+        self.segmentReportNavigator = SegmentReportNavigator()
+        self.segmentPicker = SegmentPicker()
         self.appInitialized: bool = False
 
     @property
@@ -294,7 +298,7 @@ class ProjectEventsLogic:
         fileDialog = qt.QFileDialog(
             slicer.modules.AppContextInstance.mainWindow,
             "Load a scene",
-            "",
+            slicer.app.defaultScenePath,
             "GeoSlicer scene file (*.mrml)",
         )
         try:
@@ -323,8 +327,7 @@ class ProjectEventsLogic:
 
     @staticmethod
     def __dismissOnboarding() -> None:
-        """Close the onboarding overlay once a project has been opened.
-        """
+        """Close the onboarding overlay once a project has been opened."""
         try:
             OnboardLayout.hide()
         except Exception as error:  # pragma: no cover - never block a load
@@ -417,7 +420,7 @@ class ProjectEventsLogic:
         messageBox.setIcon(messageBox.Warning)
         messageBox.setText("Save the changes before closing the scene?")
         saveButton = messageBox.addButton("&Save and Close", qt.QMessageBox.AcceptRole)
-        dismissButton = messageBox.addButton("Close &without Saving", qt.QMessageBox.RejectRole)
+        messageBox.addButton("Close &without Saving", qt.QMessageBox.RejectRole)
         cancelButton = messageBox.addButton("&Cancel", qt.QMessageBox.ResetRole)
         messageBox.exec_()
 
@@ -465,7 +468,6 @@ class ProjectEventsLogic:
 
     def onRecentLoadedActionTriggered(self, sender: qt.QAction, state: bool) -> None:
         fileParameters = sender.property("fileParameters")
-        fileType = fileParameters.get("fileType")
         fileName = fileParameters.get("fileName")
 
         if not fileName:

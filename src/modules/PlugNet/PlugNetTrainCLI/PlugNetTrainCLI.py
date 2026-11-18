@@ -1,7 +1,6 @@
 #!/usr/bin/env python-real
 # -*- coding: utf-8 -*-
 
-import vtk
 
 import sys
 from argparse import ArgumentParser
@@ -12,7 +11,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv3D, Flatten, Dense, Input, Lambda, Normalization
 
 from PlugNetTrainLib.Generator3D import Generator3D
-from ltrace.plug_net.output_processing import preprocess
+from commons.plug_net.output_processing import preprocess
 
 EPOCHS = 20
 

@@ -6,7 +6,6 @@ from workflow.commons import get_check_cli_path, no_extra_dim_read, run_subproce
 
 
 class ForegroundSegmenter:
-
     ## ForegroundSegmenter: Isolamento da área de interesse da rocha
 
     # Normalmente, as imagens de seção delgada incluem grandes áreas de borda não-úteis para a análise

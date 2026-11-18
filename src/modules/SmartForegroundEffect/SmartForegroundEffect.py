@@ -1,10 +1,9 @@
 import os
 
-from ltrace.slicer_utils import LTracePlugin
+from commons.slicer_utils import LTracePlugin
 
 
 class SmartForegroundEffect(LTracePlugin):
-
     SETTING_KEY = "SmartForegroundEffect"
 
     def __init__(self, parent):

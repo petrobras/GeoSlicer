@@ -7,9 +7,9 @@ import vtk
 import qSlicerSegmentationsEditorEffectsPythonQt as effects
 import traceback
 
-from ltrace import transforms
-from ltrace.slicer import helpers, ui
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons import transforms
+from commons.slicer import helpers, ui
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 from SegmentEditorEffects import *
 
 import scipy.ndimage as ndi
@@ -143,7 +143,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             qemscanNode = self.qemscanInput.currentNode()
 
             qemscanLabels = helpers.extractLabels(qemscanNode)
-            othersClassIndex = next((i for i, l in qemscanLabels.items() if l == "Outros"), -1)
+            othersClassIndex = next((i for i, label in qemscanLabels.items() if label == "Outros"), -1)
 
             mask = slicer.util.arrayFromVolume(qemscanNode)[0] != othersClassIndex
             mask = ndi.binary_fill_holes(mask)

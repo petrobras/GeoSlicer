@@ -1,5 +1,5 @@
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.handlers.InstanceSegmenterHandler import ThinSectionInstanceSegmenterExecutionHandler, ResultHandler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers.InstanceSegmenterHandler import ThinSectionInstanceSegmenterExecutionHandler, ResultHandler
 
 
 def instseg_loader(job: JobExecutor):
@@ -14,6 +14,7 @@ def instseg_loader(job: JobExecutor):
     segmentation = details.get("segmentation", False)
     script_path = details.get("script_path", "")
     bin_path = details.get("bin_path", "")
+    model_path = details.get("model_path", None)
 
     handler = ResultHandler()
 
@@ -22,7 +23,7 @@ def instseg_loader(job: JobExecutor):
         output_name,
         bin_path=bin_path,
         script_path=script_path,
-        model_path=model,
+        model_path=model_path,
         reference_node_id=referenceNodeID,
         tmp_reference_node_id=tmpReferenceNodeID,
         soi_node_id=soiNodeID,

@@ -157,7 +157,7 @@ def main(args):
 
             image_filename = os.path.basename(image_path)
             image_name = os.path.splitext(image_filename)[0]
-            print("\n===", image_name, f"({image_idx+1}/{n_images})", "===\n")
+            print("\n===", image_name, f"({image_idx + 1}/{n_images})", "===\n")
             image_idx += 1
 
             n_largest_islands = None

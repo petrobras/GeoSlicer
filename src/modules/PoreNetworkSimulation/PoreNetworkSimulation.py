@@ -14,11 +14,11 @@ from PoreNetworkSimulationLib.OnePhaseSimulationWidget import OnePhaseSimulation
 from PoreNetworkSimulationLib.PoreNetworkSimulationLogic import OnePhaseSimulationLogic, TwoPhaseSimulationLogic
 from PoreNetworkSimulationLib.TwoPhaseSimulationWidget import TwoPhaseSimulationWidget
 from PoreNetworkSimulationLib.constants import MICP, ONE_PHASE, TWO_PHASE
-from ltrace.remote.handlers.PoreNetworkSimulationHandler import PoreNetworkSimulationHandler
-from ltrace.slicer import ui
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath, slicer_is_in_developer_mode
+from commons.remote.handlers.PoreNetworkSimulationHandler import PoreNetworkSimulationHandler
+from commons.slicer import ui
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, slicer_is_in_developer_mode
 
 try:
     from Test.PoreNetworkSimulationTest import PoreNetworkSimulationTest
@@ -157,12 +157,12 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.layout.addStretch(1)
 
     def onReload(self):
-        importlib.reload(sys.modules["ltrace.slicer.widget.simulation"])
+        importlib.reload(sys.modules["commons.slicer.widget.simulation"])
         importlib.reload(sys.modules["PoreNetworkSimulationLib.TwoPhaseSimulationWidget"])
         importlib.reload(sys.modules["PoreNetworkSimulationLib.OnePhaseSimulationWidget"])
         importlib.reload(sys.modules["MercurySimulationLib.MercurySimulationWidget"])
         importlib.reload(sys.modules["MercurySimulationLib.SubscaleModelWidget"])
-        importlib.reload(sys.modules["ltrace.pore_networks.pnflow_parameter_defs"])
+        importlib.reload(sys.modules["commons.pore_networks.pnflow_parameter_defs"])
         super().onReload()
 
     def onCancelButtonClicked(self):
@@ -313,5 +313,5 @@ class PoreNetworkSimulationWidget(LTracePluginWidget):
         self.snapshotSelector.setVisible(visible)
 
     def onChangeSnapshot(self):
-        if self.snapshotSelector.currentNode() != None:
+        if self.snapshotSelector.currentNode() is not None:
             self.twoPhaseSimWidget.uncheckCreateSnapshot()

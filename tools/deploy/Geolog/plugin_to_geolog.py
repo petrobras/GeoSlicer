@@ -79,7 +79,7 @@ def add_write_permission(path):
 
 
 def restore_permissions(geolog_menus_path: str, menu_file_path: str, geolog_resources_path: str, permissions: dict):
-    logger.debug(f"Restoring changed permissions to files and folders...")
+    logger.debug("Restoring changed permissions to files and folders...")
     os.chmod(geolog_menus_path, permissions["geolog_menus_path"])
     os.chmod(menu_file_path, permissions["menu_file_path"])
     os.chmod(geolog_resources_path, permissions["geolog_resources_path"])
@@ -218,7 +218,7 @@ def run(args):
     geolog_menus_path = get_geolog_menus_path(args)
 
     if geolog_menus_path is None or not geolog_menus_path.exists():
-        logger.error(f"Geolog not found. GeoSlicer shortcut not added.")
+        logger.error("Geolog not found. GeoSlicer shortcut not added.")
         return ReturnValues.GEOLOG_NOT_FOUND
 
     # Set write permission of geolog_menus_path:
@@ -403,7 +403,7 @@ def copy(path_from: Union[Path, str], path_to: Union[Path, str]) -> bool:
 
     try:
         shutil.copy2(path_from, path_to)
-    except OSError as e:
+    except OSError:
         logger.error(f"Error copying {path_from} to {path_to}.\n{traceback.print_exc()}")
         return False
 

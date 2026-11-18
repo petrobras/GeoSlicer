@@ -11,7 +11,6 @@ from workflow.commons import (
 
 
 class PoreSegmenter:
-
     ## PoreSegmenter: Segmentação binária de poros
 
     # O CLI de segmentação binária de poro é invocado para operar a partir do caminho para o NRRD da
@@ -35,9 +34,9 @@ class PoreSegmenter:
 
         assert pore_model_path is not None, f"No {pore_model} trained model was found in {get_models_dir()}"
         assert os.path.exists(pore_model_path), f"Trained model not found in {pore_model_path}"
-        assert (
-            os.path.isfile(pore_model_path) and os.path.splitext(pore_model_path)[-1] == ".pth"
-        ), f"Invalid trained model: {pore_model_path}"
+        assert os.path.isfile(pore_model_path) and os.path.splitext(pore_model_path)[-1] == ".pth", (
+            f"Invalid trained model: {pore_model_path}"
+        )
 
         return pore_model_path
 
@@ -56,9 +55,9 @@ class PoreSegmenter:
 
         cli_file_prefix, xargs, extra_args, model_type = get_cli_info()
         cli_path = get_check_cli_path(cli_file_prefix, cli_path)
-        assert ("bayes" in model_type) == (
-            cli_file_prefix == "BayesianInference"
-        ), f"{cli_file_prefix}CLI is not compatible with model of type {model_type}"
+        assert ("bayes" in model_type) == (cli_file_prefix == "BayesianInference"), (
+            f"{cli_file_prefix}CLI is not compatible with model of type {model_type}"
+        )
 
         return cli_path, xargs, extra_args
 

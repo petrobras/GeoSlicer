@@ -2,7 +2,6 @@ import math
 import os
 from pathlib import Path
 import sys
-import time
 
 from joblib import Parallel, delayed
 from skopt import Optimizer

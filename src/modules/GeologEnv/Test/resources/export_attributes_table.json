@@ -1,0 +1,21 @@
+{
+    "nodeType": "table",
+    "reference": {
+        "name": "DEPTH",
+        "top": 1000.0,
+        "bottom": 1001.0,
+        "spacing": 0.001,
+        "type": "DOUBLE",
+        "unit": "METRES"
+    },
+    "logs": {
+        "TEST_WELL_TEST_TABLE": {
+            "top": 1000.0,
+            "bottom": 1001.0,
+            "height": 1001,
+            "spacing": 0.001,
+            "type": "DOUBLE",
+            "unit": "V/V"
+        }
+    }
+}

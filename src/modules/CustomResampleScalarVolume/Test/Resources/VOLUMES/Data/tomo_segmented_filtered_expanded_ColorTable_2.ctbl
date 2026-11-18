@@ -1,0 +1,6 @@
+# Color table file C:/Users/LTrace/Desktop/slicerltrace/src/modules/CustomResampleScalarVolume/Test/Resources/VOLUMES/Data/tomo_segmented_filtered_expanded_ColorTable_2.ctbl
+# 4 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255

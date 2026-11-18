@@ -1,0 +1,2 @@
+label	voxelCount	area (mm^2)	angle (deg)	max_feret (mm)	min_feret (mm)	aspect_ratio	elongation	eccentricity	ellipse_perimeter (mm)	ellipse_area (mm^2)	ellipse_perimeter_over_ellipse_area (1/mm)	perimeter (mm)	perimeter_over_area (1/mm)	gamma	pore_size_class
+1	292829	32.1063	31.4575	17.2956	9.4403	0.54582	1.35355	0.67393	47.5063	512.946	0.09261	47.2608	1.47201	2.35289	Megaporo pequeno

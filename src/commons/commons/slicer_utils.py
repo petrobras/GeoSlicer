@@ -1,0 +1,771 @@
+import itertools
+import markdown2 as markdown
+import numpy as np
+import pandas as pd
+import os
+import qt
+import slicer
+import logging
+import subprocess
+import sys
+import traceback
+import vtk
+
+from typing import NamedTuple, Union
+from pathlib import Path
+from abc import abstractmethod
+from contextlib import contextmanager
+
+from SegmentEditorEffects import *
+from slicer import ScriptedLoadableModule
+
+from commons.slicer.app import MANUAL_BASE_URL
+from commons.slicer.application_observables import ApplicationObservables
+from commons.slicer.helpers import svgToQIcon, getCurrentEnvironment
+from commons.slicer.tests.ltrace_plugin_test import LTracePluginTest
+from commons.slicer.tests.ltrace_tests_widget import LTraceTestsWidget
+from commons.slicer.node_attributes import NodeEnvironment
+
+
+__all__ = [
+    "LTracePlugin",
+    "LTracePluginWidget",
+    "LTracePluginLogic",
+    "LTracePluginTest",
+    "slicer_is_in_developer_mode",
+    "dataFrameToTableNode",
+    "print_debug",
+]
+
+
+class LTraceSegmentEditorEffectMixin:
+    def SetSourceVolumeIntensityMaskOff(self):
+        """Override for AbstractScriptedSegmentEditorEffect activate method."""
+        try:
+            parameterSetNode = self.scriptedEffect.parameterSetNode()
+            parameterSetNode.SourceVolumeIntensityMaskOff()
+        except Exception as error:
+            logging.debug(f"Error {error}. Traceback:\n{traceback.format_exc()}")
+
+    def cancel(self):
+        pass
+
+    @contextmanager
+    def progress(self, text="Calculating...", cancel=True):
+        """Context manager to handle progress bar visibility and updates."""
+        progressBar = None
+        progressLabel = None
+        cancelButton = None
+        try:
+            widget = slicer.modules.customizedsegmenteditor.widgetRepresentation().self()
+            progressBar = widget.progressBar
+            progressLabel = widget.progressLabel
+            cancelButton = widget.cancelButton
+        except AttributeError:
+            pass
+
+        if progressLabel:
+            progressLabel.setText(text)
+            progressLabel.setVisible(True)
+
+        if progressBar:
+            progressBar.setVisible(True)
+            progressBar.setValue(0)
+
+        if cancelButton and cancel:
+            cancelButton.setVisible(True)
+            cancelButton.clicked.connect(self.cancel)
+
+        def update_progress(value, label=None):
+            if progressLabel and label:
+                progressLabel.setText(label)
+            if progressBar and progressBar.value != int(value):
+                progressBar.setValue(int(value))
+            slicer.app.processEvents()
+
+        try:
+            yield update_progress
+        finally:
+            if progressBar:
+                progressBar.setVisible(False)
+            if progressLabel:
+                progressLabel.setVisible(False)
+            if cancelButton and cancel:
+                cancelButton.setVisible(False)
+                cancelButton.clicked.disconnect(self.cancel)
+
+
+class LTracePlugin(ScriptedLoadableModule.ScriptedLoadableModule):
+    SETTING_KEY = None
+
+    HOME_DIR = os.path.join(str(Path.home()), ".ltrace")
+
+    def __init__(self, *args, **kwargs):
+        ScriptedLoadableModule.ScriptedLoadableModule.__init__(self, *args, **kwargs)
+        self.__helpUrl = dict()
+        if self.SETTING_KEY is None:
+            raise NotImplementedError
+
+        moduleDir = Path(self.parent.path).parent
+        iconPath = moduleDir / "Resources" / "Icons" / f"{self.moduleName}.svg"
+
+        if iconPath.is_file():
+            self.parent.icon = svgToQIcon(iconPath)
+
+    @classmethod
+    def help(cls):
+        htmlHelp = ""
+        with open(cls.readme_path(), "r", encoding="utf-8") as docfile:
+            docs = docfile.read().replace("$README_DIR", str(Path(cls.readme_path()).parent.absolute()))
+            md = markdown.Markdown(extras=["fenced-code-blocks"])
+            htmlHelp = md.convert(docs)
+            htmlHelp = htmlHelp.replace("{base_version}", base_version())
+        return htmlHelp
+
+    @classmethod
+    def readme_path(cls):
+        return "README.md"
+
+    def runTest(self, useGui=True, msec=100, **kwargs):
+        """Override for ScriptedLoadableModule.ScriptedLoadableModule runTest method.
+           Adds option to open the Test GUI.
+
+        Args:
+            msec: delay to associate with :func:`ScriptedLoadableModuleTest.delayDisplay()`.
+        """
+        if useGui:
+            testsWidget = LTraceTestsWidget(
+                parent=slicer.modules.AppContextInstance.mainWindow, currentModule=self.__class__.__name__
+            )
+            testsWidget.exec_()
+            testsWidget.deleteLater()
+            return
+
+        super().runTest(msec, **kwargs)
+
+    @classmethod
+    def get_setting(cls, key, default=None):
+        return slicer.app.settings().value(f"{cls.SETTING_KEY}/{key}", default)
+
+    @classmethod
+    def set_setting(cls, key, value):
+        slicer.app.settings().setValue(f"{cls.SETTING_KEY}/{key}", value)
+
+    def resource(self, resourceName):
+        return Path(slicer.util.modulePath(self.moduleName)).parent / "Resources" / resourceName
+
+    def title(self):
+        return self.parent.title
+
+    @property
+    def helpUrl(self):
+        env = getCurrentEnvironment()
+        default = self.__helpUrl.get("DEFAULT", "")
+        url = self.__helpUrl.get(env.value, default)
+        return url
+
+    def setHelpUrl(self, relativePath: str, environment: NodeEnvironment = None) -> None:
+        helpUrl = f"{MANUAL_BASE_URL}{relativePath}"
+        helpUrl = qt.QUrl(helpUrl)
+
+        if self.__helpUrl.get("DEFAULT") is None:
+            self.__helpUrl["DEFAULT"] = helpUrl
+
+        if environment is None:
+            return
+
+        self.__helpUrl[environment.value] = helpUrl
+
+
+class LTracePluginWidget(ScriptedLoadableModule.ScriptedLoadableModuleWidget):
+    DEFAULT_MINIMUM_WIDTH = 250
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    def setup(self):
+        super().setup()
+
+        # self.layout is normally Slicer's default panel layout, with margins and spacing left to the style. On reload,
+        # Slicer hands us whatever parent.layout() is, which is the main_layout from the previous setup, so unset its
+        # zero margins and spacing (-1 means "use the style default")
+        self.layout.setContentsMargins(-1, -1, -1, -1)
+        self.layout.setSpacing(-1)
+
+        # insert frame to make module widget fully shrinkable
+        main_frame = qt.QFrame()
+        main_frame.setSizePolicy(qt.QSizePolicy.Policy.Ignored, main_frame.sizePolicy.verticalPolicy())
+        main_frame.setLayout(self.layout)
+        main_layout = qt.QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(main_frame)
+        main_layout.setSizeConstraint(qt.QLayout.SizeConstraint.SetNoConstraint)
+        self.parent.setLayout(main_layout)
+
+        self.setModuleMinimumWidth(self.DEFAULT_MINIMUM_WIDTH)
+
+    def enter(self) -> None:
+        ApplicationObservables().moduleWidgetEnter.emit(self)
+
+    def cleanup(self):
+        super().cleanup()
+        slicer.app.moduleManager().moduleAboutToBeUnloaded.disconnect(self._onModuleAboutToBeUnloaded)
+        if slicer_is_in_developer_mode():
+            if hasattr(self, "testAction"):
+                self.testAction.triggered.disconnect()
+            if hasattr(self, "reloadTestAction"):
+                self.reloadTestAction.triggered.disconnect()
+
+        try:
+            for pluginWidget in self.parent.findChildren("qSlicerScriptedLoadableModuleWidget"):
+                pluginWidget.setParent(None)
+        except ValueError:
+            pass  # parent already deleted
+
+    def setModuleMinimumWidth(self, width: int):
+        self.layout.parent().setMinimumWidth(width)
+
+
+class LTracePluginLogicMeta(type(qt.QObject), type(ScriptedLoadableModule.ScriptedLoadableModuleLogic)):
+    pass
+
+
+class LTracePluginLogic(
+    qt.QObject,
+    ScriptedLoadableModule.ScriptedLoadableModuleLogic,
+    metaclass=LTracePluginLogicMeta,
+):
+    def __init__(self, parent=None):
+        qt.QObject.__init__(self, parent)
+        ScriptedLoadableModule.ScriptedLoadableModuleLogic.__init__(self)
+
+
+def slicer_is_in_developer_mode():
+    return slicer.util.settingsValue("Developer/DeveloperMode", False, converter=slicer.util.toBool)
+
+
+def is_tensorflow_gpu_enabled():
+    return slicer.util.settingsValue("TensorFlow/GPUEnabled", True, converter=slicer.util.toBool)
+
+
+def dataFrameToTableNode(dataFrame, tableNode=None):
+    """ "
+    =================================================================================================
+    DEPRECATED use dataFrameToTableNode from data_utils instead
+    =================================================================================================
+    """
+
+    def is_float(value):
+        return value.dtype in [np.dtype("float32")]
+
+    def is_double(value):
+        return value.dtype in [np.dtype("float64")]
+
+    def is_int(value):
+        return value.dtype in [
+            np.dtype("int64"),
+            np.dtype("int32"),
+            np.dtype("uint16"),
+            np.dtype("uint8"),
+        ]
+
+    def is_bool(value):
+        return value.dtype in [np.dtype("bool")]
+
+    if tableNode is None:
+        tableNode = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__)
+    tableWasModified = tableNode.StartModify()
+    for ind, column in enumerate(dataFrame.columns):
+        serie = dataFrame[column]
+        if is_float(serie):
+            arrX = vtk.vtkFloatArray()
+        elif is_double(serie):
+            arrX = vtk.vtkDoubleArray()
+        elif is_int(serie):
+            arrX = vtk.vtkIntArray()
+        elif is_bool(serie):
+            arrX = vtk.vtkBitArray()
+        else:
+            arrX = vtk.vtkStringArray()
+        for value in serie:
+            try:
+                arrX.InsertNextValue(value)
+            except TypeError:
+                arrX.InsertNextValue(str(value))
+        arrX.SetName(str(column) if column is not None else "--")
+        tableNode.AddColumn(arrX)
+    tableNode.Modified()
+    tableNode.EndModify(tableWasModified)
+    return tableNode
+
+
+class LTraceEnvironmentMixin:
+    @property
+    def modulesToolbar(self):
+        if not self.__modulesToolbar:
+            raise AttributeError("Modules toolbar not set")
+        return self.__modulesToolbar
+
+    @modulesToolbar.setter
+    def modulesToolbar(self, value):
+        self.__modulesToolbar = value
+
+    def segmentEditor(self):
+        return slicer.util.getModuleWidget("CustomizedSegmentEditor")
+
+    def setCategory(self, category):
+        self.category = category
+
+    @abstractmethod
+    def setupEnvironment(self):
+        pass
+
+    def setupSegmentation(self):
+        pass
+
+    def enter(self):
+        pass
+
+    def setupTools(self, tools: list):
+        self.getModuleManager().addToolsMenu(self.__modulesToolbar, tools)
+
+    def setupLoaders(self):
+        self.getModuleManager().addLoadersMenu(self.__modulesToolbar)
+
+    def setupCustomModules(self):
+        """Called for every environment after setupEnvironment. Override with a no-op to hide the section."""
+        from commons.slicer.custom_modules.menu import addCustomModulesSection
+
+        addCustomModulesSection(self.modulesToolbar)
+
+    @staticmethod
+    def getModuleManager():
+        return slicer.modules.AppContextInstance.modules
+
+
+def tableNodeToDict(tableNode):
+    """
+    Returns a dictionary of 1D numpy arrays
+    Dictionary is accessed as dict[column][row]
+    """
+
+    dataTypes = {}
+    columnNames = {}
+    n_rows = tableNode.GetNumberOfRows()
+    outputDict = {}
+
+    for i in range(tableNode.GetNumberOfColumns()):
+        column_name = tableNode.GetColumnName(i)
+        columnNames[i] = column_name
+        dataType = tableNode.GetValueTypeAsString(tableNode.GetColumnType(column_name))
+        if dataType == "bit":
+            dataType = "bool"
+        elif dataType == "string":
+            dataType = "str"
+        dataTypes[column_name] = dataType
+
+    for column_name, column_type in dataTypes.items():
+        outputDict[column_name] = np.empty((n_rows,), dtype=column_type)
+
+    intColumns = [i for i in columnNames.values() if dataTypes[i] == "int"]
+    floatColumns = [i for i in columnNames.values() if dataTypes[i] == "float"]
+    doubleColumns = [i for i in columnNames.values() if dataTypes[i] == "double"]
+    boolColumns = [i for i in columnNames.values() if dataTypes[i] == "bool"]
+    vtkTable = tableNode.GetTable()
+
+    for row in range(tableNode.GetNumberOfRows()):
+        for col in intColumns:
+            outputDict[col][row] = vtkTable.GetValueByName(row, col).ToInt()
+        for col in floatColumns:
+            outputDict[col][row] = vtkTable.GetValueByName(row, col).ToFloat()
+        for col in doubleColumns:
+            outputDict[col][row] = vtkTable.GetValueByName(row, col).ToDouble()
+        for col in boolColumns:
+            outputDict[col][row] = vtkTable.GetValueByName(row, col).ToInt()
+
+    return outputDict
+
+
+def restartSlicerIn2s():
+    text = "Slicer has been successfully configured and must be restarted."
+    mb = qt.QMessageBox(slicer.modules.AppContextInstance.mainWindow)
+    mb.text = text
+    mb.setWindowTitle("Configuration finished")
+    qt.QTimer.singleShot(2000, lambda: killSlicer(mb))
+    mb.show()
+
+
+def killSlicer(messagebox=None):
+    if messagebox is not None:
+        messagebox.close()
+        messagebox.delete()
+    slicer.app.restart()
+
+
+def addNodeToSubjectHierarchy(node, dirPaths: list = None):
+    """Add node to the subject hierarchy list regarding the folder hierarchy specified at 'dirPaths' argument.
+       ex: dirPaths = ["folder_a", "folder_b"] means that node will be displayed inside folder hierarchy: folder_a > folder_b > node.
+           dirPaths = None or [] means node will be displayed at the subject hierarcy's root folder.
+
+    Args:
+        node (vtkMRMLNode): the node object.
+        dirPaths (list, optional): The folders name hierarchy list. Defaults to None.
+    """
+    subjectHierarchyNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    parentDirID = subjectHierarchyNode.GetSceneItemID()
+    if dirPaths is not None and len(dirPaths) > 0:
+        for dirName in dirPaths:
+            dirID = subjectHierarchyNode.GetItemChildWithName(parentDirID, dirName)
+
+            if dirID == 0:
+                dirID = subjectHierarchyNode.CreateFolderItem(parentDirID, dirName)
+
+            parentDirID = dirID
+
+    subjectHierarchyNode.SetItemParent(subjectHierarchyNode.GetItemByDataNode(node), parentDirID)
+
+
+def print_debug(text):
+    if not slicer_is_in_developer_mode():
+        return
+
+    print(text)
+
+
+def base_version():
+    return f"{slicer.app.mainApplicationName}-{slicer.app.majorVersion}.{slicer.app.minorVersion}"
+
+
+def singleton(class_):
+    """Singleton decorator. Allow a class to behave like a singleton. QObject compatible."""
+    instances = {}
+
+    def getinstance(*args, **kwargs):
+        if class_ not in instances:
+            instances[class_] = class_(*args, **kwargs)
+        return instances[class_]
+
+    return getinstance
+
+
+def hide_nodes_of_type(mrml_node_type):
+    n_nodes = slicer.mrmlScene.GetNumberOfNodesByClass(mrml_node_type)
+    for i in range(n_nodes):
+        node = slicer.mrmlScene.GetNthNodeByClass(i, mrml_node_type)
+        node.SetDisplayVisibility(False)
+
+
+def arrayFromVolumeWithChannels(volumeNode) -> np.ndarray:
+    """Returns a view of the volume voxels indexed as (slice, row, column), plus a last channel axis if the image has
+    more than one component. Unlike slicer.util.arrayFromVolume, also works for multi-component images stored in
+    scalar volume nodes.
+    """
+    from vtk.util.numpy_support import vtk_to_numpy
+
+    imageData = volumeNode.GetImageData()
+    shape = tuple(reversed(imageData.GetDimensions()))
+    channels = imageData.GetNumberOfScalarComponents()
+    if channels > 1:
+        shape += (channels,)
+    return vtk_to_numpy(imageData.GetPointData().GetScalars()).reshape(shape)
+
+
+class SliceViewVolumeFractions(NamedTuple):
+    overlap: float
+    """Fraction (0-1) of the smaller of the slice view area and the volume's in-plane extent that the two share.
+    A view zoomed into the volume and a view showing the whole volume both give 1."""
+    coverage: float
+    """Fraction (0-1) of the slice view area that the volume covers."""
+
+
+def sliceViewVolumeFractions(
+    sliceNode: slicer.vtkMRMLSliceNode, volumeNode: slicer.vtkMRMLVolumeNode
+) -> SliceViewVolumeFractions:
+    """How much the slice view and the volume overlap, as fractions of their areas in view pixels.
+
+    Both fractions are 0 if the slice plane does not cross the volume. Uses the volume's RAS bounds, so it is
+    approximate for oblique views.
+    """
+    bounds = np.zeros(6)
+    volumeNode.GetRASBounds(bounds)
+    rasToXY = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Invert(sliceNode.GetXYToRAS(), rasToXY)
+    corners = np.array(
+        [rasToXY.MultiplyPoint([*corner, 1])[:3] for corner in itertools.product(bounds[0:2], bounds[2:4], bounds[4:6])]
+    )
+    low, high = corners.min(axis=0), corners.max(axis=0)
+    if not low[2] <= 0 <= high[2]:
+        return SliceViewVolumeFractions(0.0, 0.0)
+
+    width, height = sliceNode.GetDimensions()[:2]
+    viewArea = width * height
+    volumeArea = (high[0] - low[0]) * (high[1] - low[1])
+    smallerArea = min(viewArea, volumeArea)
+    overlapWidth = max(0.0, min(high[0], width) - max(low[0], 0))
+    overlapHeight = max(0.0, min(high[1], height) - max(low[1], 0))
+    overlapArea = overlapWidth * overlapHeight
+    return SliceViewVolumeFractions(
+        overlap=overlapArea / smallerArea if smallerArea > 0 else 0.0,
+        coverage=overlapArea / viewArea if viewArea > 0 else 0.0,
+    )
+
+
+def fitSliceViewsWhereVolumeIsOffscreen(
+    volumeNode: slicer.vtkMRMLVolumeNode, minOverlap: float = 0.5, minCoverage: float = 0.02
+) -> None:
+    """Fit the slice views showing the volume where it is mostly off-screen or too small to see.
+
+    A view is kept as is when its overlap with the volume is at least minOverlap and the volume covers at least
+    minCoverage of the view.
+    """
+    layoutManager = slicer.app.layoutManager()
+    for name in layoutManager.sliceViewNames():
+        sliceWidget = layoutManager.sliceWidget(name)
+        compositeNode = sliceWidget.mrmlSliceCompositeNode()
+        layerVolumeIDs = (
+            compositeNode.GetBackgroundVolumeID(),
+            compositeNode.GetForegroundVolumeID(),
+            compositeNode.GetLabelVolumeID(),
+        )
+        if volumeNode.GetID() not in layerVolumeIDs:
+            continue
+        sliceNode = sliceWidget.mrmlSliceNode()
+        fractions = sliceViewVolumeFractions(sliceNode, volumeNode)
+        if fractions.overlap < minOverlap or fractions.coverage < minCoverage:
+            # Fit to this volume rather than the background, since a labelmap is shown in the label layer
+            width, height = sliceNode.GetDimensions()[:2]
+            sliceWidget.sliceLogic().FitSliceToVolume(volumeNode, width, height)
+
+
+def dataframeFromTable(tableNode):
+    """
+    =================================================================================================
+    DEPRECATED use tableNodeToDataFrame from data_utils instead
+    =================================================================================================
+    """
+
+    """Optimized version from slicer.util.dataframeFromTable
+
+    Convert table node content to pandas dataframe.
+
+    Table content is copied. Therefore, changes in table node do not affect the dataframe,
+    and dataframe changes do not affect the original table node.
+    """
+    try:
+        # Suppress "lzma compression not available" UserWarning when loading pandas
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter(action="ignore", category=UserWarning)
+            import pandas as pd
+    except ImportError:
+        raise ImportError(
+            "Failed to convert to pandas dataframe. Please install pandas by running `slicer.util.pip_install('pandas')`"
+        )
+
+    if tableNode is None:
+        return pd.DataFrame()
+
+    vtable = tableNode.GetTable()
+    data = []
+    columns = []
+    for columnIndex in range(vtable.GetNumberOfColumns()):
+        vcolumn = vtable.GetColumn(columnIndex)
+        numberOfComponents = vcolumn.GetNumberOfComponents()
+        column_name = vcolumn.GetName()
+        columns.append(column_name)
+
+        if numberOfComponents == 1:
+            column_data = [vcolumn.GetValue(rowIndex) for rowIndex in range(vcolumn.GetNumberOfValues())]
+        else:
+            column_data = []
+            for rowIndex in range(vcolumn.GetNumberOfTuples()):
+                item = [vcolumn.GetValue(rowIndex, componentIndex) for componentIndex in range(numberOfComponents)]
+                column_data.append(tuple(item))
+        data.append(column_data)
+
+    dataframe = pd.DataFrame(zip(*data), columns=columns)
+
+    return dataframe
+
+
+def imageToHtml(image: Union[qt.QImage, qt.QPixmap], imageFormat=None, quality=-1) -> str:
+    """Bufferize a Qt Image object to an html string.
+
+    Args:
+        image (Union[qt.QImage, qt.QPixmap]): The Qt image object.
+        imageFormat (_type_, optional): The format to export the image (png, jpg, etc...). Defaults to a format Qt will attempt to identify by the image's filepath suffix.
+        quality (int, optional): Specify 0 to obtain small compressed files, 100 for large uncompressed files, and -1 (the default) to use the default settings.
+
+    Raises:
+        TypeError: When unable to buffer the related file.
+
+    Returns:
+        str: the buffered image as html.
+    """
+    byteArray = qt.QByteArray()
+    buffer = qt.QBuffer(byteArray)
+    buffer.open(qt.QIODevice.WriteOnly)
+    image.save(buffer, imageFormat, quality)
+    try:
+        bufferedImage = byteArray.toBase64().data().decode("utf-8")
+    except TypeError as e:
+        raise e
+
+    html = f'<img src="data:image/png;base64,{bufferedImage}"/>'
+    return html
+
+
+def loadImage(
+    imagePath: Union[str, Path],
+    cls: Union[qt.QImage, qt.QPixmap],
+    size: qt.QSize = None,
+    aspectRatio: qt.Qt.AspectRatioMode = qt.Qt.KeepAspectRatio,
+):
+    """Load an image file as a Qt object.
+
+    Args:
+        imagePath (Union[str, Path]): the image's file path.
+        cls (Union[qt.QImage, qt.QPixmap]): the desired Qt class output.
+        size (qt.QSize, optional): The size to scale the image. Defaults to maintain the original size.
+        aspectRatio (qt.Qt.AspectRatioMode, optional): The aspect ratio based on the rescale size. Defaults to qt.Qt.KeepAspectRatio.
+
+    Returns:
+        qt.QImage or qt.QPixmap: the Qt object file.
+    """
+    if isinstance(imagePath, str):
+        imagePath = Path(imagePath)
+
+    imageReader = qt.QImageReader(imagePath.as_posix())
+
+    if size:
+        originalSize = imageReader.size()
+        scaledSize = originalSize.scaled(size, aspectRatio)
+        imageReader.setScaledSize(scaledSize)
+
+    obj = imageReader.read() if cls == qt.QImage else qt.QPixmap.fromImageReader(imageReader)
+    return obj
+
+
+def tableWidgetToDataFrame(tableWidget: qt.QTableWidget) -> pd.DataFrame:
+    """Convert a QTableWidget to a pandas dataframe.
+
+    Args:
+        tableWidget (qt.QTableWidget): The QTableWidget to convert.
+
+    Returns:
+        pd.DataFrame: The pandas dataframe.
+    """
+    columnHeaders = [
+        tableWidget.horizontalHeaderItem(column).text()
+        for column in range(tableWidget.columnCount)
+        if tableWidget.horizontalHeaderItem(column) is not None
+    ]
+    if not columnHeaders:
+        columnHeaders = None
+    indexHeaders = [
+        tableWidget.verticalHeaderItem(row).text()
+        for row in range(tableWidget.rowCount)
+        if tableWidget.verticalHeaderItem(row) is not None
+    ]
+    if not indexHeaders:
+        indexHeaders = None
+
+    data = []
+    for row in range(tableWidget.rowCount):
+        columnData = []
+        for column in range(tableWidget.columnCount):
+            columnData.append(tableWidget.item(row, column).text())
+
+        data.append(columnData)
+
+    df = pd.DataFrame(data, columns=columnHeaders, index=indexHeaders)
+    return df
+
+
+def getResourcePath(rtype: str) -> Path:
+    return Path(slicer.app.slicerHome) / "LTrace" / "Resources" / rtype
+
+
+def openInTextEditor(path: Union[str, Path]) -> bool:
+    """Open a text file in the system's default text editor, whatever its extension.
+
+    Opening the file through its own association is not enough for configuration files such as LBPM's
+    ``.db``: Windows chooses the program by extension, and that extension belongs to no program or to a
+    database browser. There the file is opened with the program registered for ``.txt`` instead. Linux
+    desktops fall back to the file's content when no pattern claims its extension, so ``xdg-open`` already
+    reaches the text editor.
+
+    The editor runs detached and nothing waits for it. Returns whether one was started.
+    """
+    path = str(Path(path))
+    if sys.platform.startswith("win"):
+        return _openWithTextAssociationOnWindows(path)
+
+    try:
+        # The launcher's library paths would make the editor load GeoSlicer's libraries instead of its own.
+        subprocess.Popen(
+            ["xdg-open", path],
+            env=slicer.util.startupEnvironment(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except OSError as error:
+        logging.debug(f"xdg-open could not open {path}: {error}")
+
+    return bool(qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(path)))
+
+
+def _openWithTextAssociationOnWindows(path: str) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    class SHELLEXECUTEINFOW(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("fMask", wintypes.ULONG),
+            ("hwnd", wintypes.HWND),
+            ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR),
+            ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR),
+            ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE),
+            ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wintypes.LPCWSTR),
+            ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD),
+            ("hIconOrMonitor", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    SEE_MASK_CLASSNAME = 0x00000001  # Open with the association of lpClass instead of the file's own
+    SEE_MASK_FLAG_NO_UI = 0x00000400  # Fail quietly, so the fallback below can run
+    SW_SHOWNORMAL = 1
+
+    info = SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = SEE_MASK_CLASSNAME | SEE_MASK_FLAG_NO_UI
+    info.lpVerb = "open"
+    info.lpFile = path
+    info.lpDirectory = str(Path(path).parent)
+    info.lpClass = ".txt"
+    info.nShow = SW_SHOWNORMAL
+
+    try:
+        if ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
+            return True
+        logging.debug(f"No program is associated with .txt files: {ctypes.GetLastError()}")
+    except (AttributeError, OSError) as error:
+        logging.debug(f"ShellExecuteExW could not open {path}: {error}")
+
+    try:
+        subprocess.Popen(["notepad.exe", path])
+        return True
+    except OSError as error:
+        logging.error(f"Could not open {path} in a text editor: {error}")
+        return False

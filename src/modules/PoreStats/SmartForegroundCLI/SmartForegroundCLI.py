@@ -7,7 +7,7 @@ import slicer
 import slicer.util
 import mrml
 
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 
 import numpy as np
 import cv2

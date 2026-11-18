@@ -2,9 +2,9 @@ import ctk
 import qt
 import slicer
 
-from ltrace.algorithms import stops
-from ltrace.slicer.ui import hierarchyVolumeInput
-from .model import ModelLogic, ModelWidget
+from commons.algorithms import stops
+from commons.slicer.ui import hierarchyVolumeInput
+from .model import ModelWidget
 
 
 class StopsWidget(ModelWidget):
@@ -88,7 +88,7 @@ class StopsWidget(ModelWidget):
 
         def onInputChanged():
             node = self.ttStopsBox.currentNode()
-            applyButton.enabled = type(node) == slicer.vtkMRMLScalarVolumeNode
+            applyButton.enabled = type(node) is slicer.vtkMRMLScalarVolumeNode
             self.stopsOutputPrefixLineEdit.text = node.GetName() if node else ""
 
             if node:

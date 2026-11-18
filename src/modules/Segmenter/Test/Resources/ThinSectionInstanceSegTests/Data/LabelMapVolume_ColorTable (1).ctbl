@@ -1,0 +1,7 @@
+# Color table file C:/Users/camba/ltrace/slicerltrace/src/modules/ThinSectionInstanceSegmenter/Test/Resources/ThinSectionInstanceSegTests/../TMP/Data/LabelMapVolume_ColorTable (1).ctbl
+# 6 values
+1 Calcite_(0%_a_1%MgO) 0 255 255 255
+2 Dolomite 0 112 192 255
+3 Pore 0 0 0 255
+4 Quartz 255 255 0 255
+5 Others 255 255 255 255

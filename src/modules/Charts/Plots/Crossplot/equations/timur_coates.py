@@ -1,4 +1,4 @@
-from ltrace.slicer.equations.timur_coates_equation import TimurCoatesEquation
+from commons.slicer.equations.timur_coates_equation import TimurCoatesEquation
 from Plots.Crossplot.equations.equation_widget import EquationWidget
 
 

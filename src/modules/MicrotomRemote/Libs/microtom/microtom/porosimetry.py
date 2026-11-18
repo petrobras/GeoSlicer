@@ -8,7 +8,10 @@
 # Funções do tipo run_psd estão importando apenas os .raw para análise, quando deveriam importar também .nc.
 # Fazer transformação entre radii X Sw e Pc X Sw de maneira simples.
 
-import sys, time, os, datetime
+import sys
+import time
+import os
+import datetime
 import numpy as np
 import xarray as xr
 from scipy import ndimage
@@ -47,9 +50,9 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
                 Full map of regions with their characteristic lengths.
 
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -118,7 +121,7 @@ def psd(input_data, sat_resolution=0.03, rad_resolution=0.5, output_file_path=".
     output_psd_file.close()
     print("Time spent in psd: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["psd"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_psd": nw_saturation})
@@ -152,9 +155,9 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True):
                 Full map of regions with their characteristic lengths.
 
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_image = bin_data.copy()
@@ -200,7 +203,7 @@ def hpsd(input_data, output_file_path="./hpsd.csv", verbose=True):
 
     print("Time spent in hpsd: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["hpsd"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_hpsd": np.array(accumulated)})
@@ -243,9 +246,9 @@ def micp(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -324,7 +327,7 @@ def micp(
 
     print("Time spent in micp: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["micp"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_micp": nw_saturation})
@@ -370,9 +373,9 @@ def drainage_incompressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_path = os.path.dirname(os.path.abspath(output_file_path))
@@ -433,7 +436,7 @@ def drainage_incompressible(
 
     print("Time spent in drainage: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["drainage_incompressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_drainage_incompressible": nw_saturation})
@@ -485,9 +488,9 @@ def imbibition_compressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     if verbose:
@@ -561,7 +564,7 @@ def imbibition_compressible(
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["imbibition_compressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_imbibition_compressible": (1.0 - w_saturation)})
@@ -613,9 +616,9 @@ def imbibition_incompressible(
                 It is an output only if verbose is True.
                 Full map of regions with their characteristic lengths.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     output_path = os.path.dirname(os.path.abspath(output_file_path))
@@ -680,7 +683,7 @@ def imbibition_incompressible(
 
     print("Time spent in imbibition: " + str(time.time() - start))
     if verbose:
-        if type(input_data) == np.ndarray:
+        if isinstance(input_data, np.ndarray):
             input_data = ds_from_np(input_data)
         input_data["imbibition_incompressible"] = (("z", "y", "x"), output_image)
         input_data = input_data.assign_coords({"snw_imbibition_incompressible": (1.0 - w_saturation)})
@@ -707,9 +710,9 @@ def psd_nw_image(input_data, radius):
         nw_image : numpy.ndarray
             Image of the same size of the entry, where one are places where there is a sphere with the informed radius.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
     return np.multiply(
         bin_data,
@@ -738,9 +741,9 @@ def connected_image(input_data, connectivity=1, direction="z"):
         nw_image : numpy.ndarray
             Image of the same size of the entry, where one is connected porous.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
 
     label_image = measure.label(bin_data, connectivity=1)
@@ -809,9 +812,9 @@ def micp_nw_image(input_data, radius, direction="z"):
         nw_image : numpy.ndarray
             Image of the same size of the entry, where one are places where there is a sphere with the informed radius.
     """
-    if type(input_data) == np.ndarray:
+    if isinstance(input_data, np.ndarray):
         bin_data = input_data
-    elif type(input_data) == xr.core.dataset.Dataset:
+    elif isinstance(input_data, xr.core.dataset.Dataset):
         bin_data = input_data["bin"].data
     return connected_image(psd_nw_image(bin_data, radius), direction=direction)
 
@@ -970,7 +973,7 @@ def run_generic_psd(
                 + str(cut_info[3])
                 + "]\n"
             )
-        except:
+        except Exception:
             print("There were problems with the cut_info variable.")
             sys.exit()
     else:
@@ -1075,7 +1078,7 @@ def run_generic_psd(
             script_file.write("x=nc_data['x'][" + str(cut_info[0]) + ":" + str(cut_info[3]) + "]\n")
             script_file.write("y=nc_data['y'][" + str(cut_info[1]) + ":" + str(cut_info[4]) + "]\n")
             script_file.write("z=nc_data['z'][" + str(cut_info[2]) + ":" + str(cut_info[5]) + "]\n")
-        except:
+        except Exception:
             print("There were problems with the cut_info variable.")
             sys.exit()
     else:

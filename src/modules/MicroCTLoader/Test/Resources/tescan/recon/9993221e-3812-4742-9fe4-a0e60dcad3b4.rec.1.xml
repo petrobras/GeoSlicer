@@ -1,0 +1,15 @@
+<ParameterSet>
+	<Name>Reconstruction</Name>
+	<Parameter>
+		<Name>Version</Name>
+		<Value>0.17</Value>
+	</Parameter>
+	<Parameter>
+		<Name>ID</Name>
+		<Value>9993221e-3812-4742-9fe4-a0e60dcad3b4.rec.1.xml</Value>
+	</Parameter>
+	<Parameter>
+		<Name>VoxelSize</Name>
+		<Value>0.12313137082936966</Value>
+	</Parameter>
+</ParameterSet>

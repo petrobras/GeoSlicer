@@ -1,9 +1,8 @@
-import slicer
 import qt
 import sys
 import pandas as pd
-from ltrace.slicer import ui
-from ltrace.slicer_utils import tableWidgetToDataFrame
+from commons.slicer import ui
+from commons.slicer_utils import tableWidgetToDataFrame
 
 
 class KdsOptimizationItemModel:

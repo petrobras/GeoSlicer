@@ -2,7 +2,9 @@ import os
 import re
 from pathlib import Path
 
-import vtk, qt, ctk, slicer
+import qt
+import ctk
+import slicer
 from slicer import util
 import logging
 from scipy import ndimage
@@ -15,11 +17,11 @@ import pyedt
 import traceback
 
 from porespy.filters import reduce_peaks, find_peaks, trim_saddle_points, trim_nearby_peaks
-from ltrace.algorithms.common import get_two_highest_peaks, points_are_below_line
-from ltrace.algorithms.partition import runPartitioning
-from ltrace.slicer import helpers
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import (
+from commons.algorithms.common import get_two_highest_peaks, points_are_below_line
+from commons.algorithms.partition import runPartitioning
+from commons.slicer import helpers
+from commons.slicer import ui
+from commons.slicer.helpers import (
     generateName,
     clone_volume,
     get_subject_hierarchy_siblings,
@@ -37,19 +39,20 @@ from ltrace.slicer.helpers import (
     rand_cmap,
     getOverlappingSlices,
 )
-from ltrace.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
-from ltrace.slicer_utils import (
+from commons.slicer.segment_report_navigator import REPORT_LABELMAP_ROLE
+from commons.slicer.throat_analysis.throat_analysis_generator import ThroatAnalysisGenerator
+from commons.slicer_utils import (
     dataFrameToTableNode,
     LTracePlugin,
     slicer_is_in_developer_mode,
     LTracePluginWidget,
     LTracePluginLogic,
 )
-from ltrace.slicer.undo import manager
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.status_panel import StatusPanel
-from ltrace.utils.Markup import MarkupFiducial, MarkupLine
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.undo import manager
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.status_panel import StatusPanel
+from commons.utils.Markup import MarkupFiducial, MarkupLine
+from commons.slicer.node_attributes import NodeEnvironment
 
 # -*- extra imports -*-
 
@@ -268,10 +271,6 @@ class LabelMapEditorWidget(LTracePluginWidget):
         self._enable_controls(False)
 
     def reload(self):
-        self.connect_shortcuts(False)
-        super().reload()
-
-    def reload(self):
         self._set_shortcuts_connected(False)
         super().reload()
 
@@ -312,7 +311,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
                 "generate_throat_analysis": self.throat_analysis_checkbox.isChecked(),
             }
 
-            if params.get("generate_throat_analysis", False) == True:
+            if params.get("generate_throat_analysis", False):
                 self.__throat_analysis_generator = ThroatAnalysisGenerator(
                     input_node_id=None,
                     base_name=output_prefix + "_{type}",
@@ -421,7 +420,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
         self.required_control_points = 2
 
         def update_instruction(caller_markup, point_index=None):
-            self.status_panel.set_instruction(f"Click on two points to draw the cutting line")
+            self.status_panel.set_instruction("Click on two points to draw the cutting line")
 
         def pick_criterion(caller_markup, point_index=None):
             return True
@@ -435,7 +434,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
             coords_ijk = self.markup.get_selected_ijk_points(as_int=False)
 
             if np.allclose(np.round(coords_ijk[0]), np.round(coords_ijk[1])):
-                self.status_panel.set_instruction(f"Line extremes must differ", important=True)
+                self.status_panel.set_instruction("Line extremes must differ", important=True)
                 return
 
             qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
@@ -469,7 +468,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
 
                 search_indices = np.c_[search_array.nonzero()]
                 if search_indices.size == 0:
-                    self.status_panel.set_instruction(f"Could not cut label", important=True)
+                    self.status_panel.set_instruction("Could not cut label", important=True)
                 else:
                     middle_distances = np.sqrt(np.sum(np.square(search_indices - search_middle), axis=-1))
                     idx_min_distance = np.argmin(middle_distances)
@@ -494,7 +493,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
                         modified_array[idx_below_line] = second_label
                         manager.modify_and_save(edited_node, modified_array, bbox_slices=modified_bbox)
                     else:
-                        self.status_panel.set_instruction(f"Could not cut label", important=True)
+                        self.status_panel.set_instruction("Could not cut label", important=True)
             except Exception as e:
                 logging.warning(e)
             qt.QApplication.restoreOverrideCursor()
@@ -537,9 +536,9 @@ class LabelMapEditorWidget(LTracePluginWidget):
             current_control_points = caller_markup.get_number_of_selected_points()
             points_left_to_pick = self.required_control_points - current_control_points
             if points_left_to_pick > 1:
-                self.status_panel.set_instruction(f"Click on two labels to merge them")
+                self.status_panel.set_instruction("Click on two labels to merge them")
             else:
-                self.status_panel.set_instruction(f"Click on a second label to merge")
+                self.status_panel.set_instruction("Click on a second label to merge")
             if current_control_points == 0:
                 self.format_markups("First label")
             else:
@@ -781,9 +780,10 @@ class LabelMapEditorWidget(LTracePluginWidget):
                         makeTemporaryNodePermanent(reportNode, show=True)
                         helpers.moveNodeTo(outputDir, reportNode, dirTree=folderTree)
                         reportNode.SetAttribute("ReferenceVolumeNode", params.outputVolume)
+                        reportNode.SetNodeReferenceID(REPORT_LABELMAP_ROLE, params.outputVolume)
                         autoDetectColumnType(reportNode)
 
-                        if params.params.get("generate_throat_analysis") == True:
+                        if params.params.get("generate_throat_analysis"):
                             self.__throat_analysis_generator.handle_process_completed()
 
                             throatTableNode = tryGetNode(self.__throat_analysis_generator.throat_table_node_id)
@@ -1007,7 +1007,7 @@ class LabelMapEditorWidget(LTracePluginWidget):
 
     def __check_volume_selected(self):
         if not self.edition_labelmap:
-            self.status_panel.set_instruction(f"Please, select an input label map", True)
+            self.status_panel.set_instruction("Please, select an input label map", True)
             return False
         return True
 

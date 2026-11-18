@@ -5,10 +5,10 @@ import slicer
 import numpy as np
 import time
 
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.slicer.helpers import createTemporaryNode, removeTemporaryNodes, tryGetNode, create_color_table
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer import ui
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.helpers import createTemporaryNode, removeTemporaryNodes, tryGetNode, create_color_table
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from distinctipy import distinctipy
 
 from pathlib import Path

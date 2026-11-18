@@ -22,7 +22,6 @@ def get_modules_directory_path():
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="LTrace Extension Starter Kit.")
     parser.add_argument("-n", "--name", default="", type=str, help="The modules' name. Example: 'NewModule'")
     parser.add_argument(

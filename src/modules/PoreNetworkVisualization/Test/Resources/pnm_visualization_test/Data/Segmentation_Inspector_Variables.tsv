@@ -1,0 +1,18 @@
+Properties	Values
+Pixel Area (mm^2)	0.0016600000000000002
+ROI Voxel Count (#px)	64000000
+Segment Voxel Count (#px)	14189803
+Segment_1 [1] (#px) 	14189803
+Segment_1 [1] (%) 	22.17157
+Segment_1 [1] (% within segmentation) 	100.0
+Method:	'snow'
+Mesoporo muito pequeno (%)	22.755
+Mesoporo médio (%)	0.152
+Mesoporo pequeno (%)	7.306
+Microporo (%)	69.787
+parameter.sigma	0.0008
+parameter.d_min_filter	5.0
+parameter.size_min_threshold	0.0
+parameter.direction	None
+parameter.generate_throat_analysis	False
+parameter.voxel_size	None

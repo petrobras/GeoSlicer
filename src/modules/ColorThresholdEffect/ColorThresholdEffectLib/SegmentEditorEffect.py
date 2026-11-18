@@ -1,18 +1,18 @@
 import os
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 import logging
 from SegmentEditorEffects import *
 
 import vtkITK
-import SimpleITK as sitk
-import sitkUtils
-import math
 import numpy as np
 import qSlicerSegmentationsEditorEffectsPythonQt as effects
 
 import vtk.util.numpy_support as vn
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -33,7 +33,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.previewedSegmentID = None
 
         # Effect-specific members
-        import vtkITK
 
         self.autoThresholdCalculator = vtkITK.vtkITKImageThresholdCalculator()
 
@@ -156,12 +155,6 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
         displayNode.SetSegmentOpacity2DFill(self.previewedSegmentID, self.segment2DFillOpacity)
         displayNode.SetSegmentOpacity2DOutline(self.previewedSegmentID, self.segment2DOutlineOpacity)
         self.previewedSegmentID = None
-
-    def setCurrentSegmentTransparent(self):
-        pass
-
-    def restorePreviewedSegmentTransparency(self):
-        pass
 
     def buildHUEThresholdSliderWidget(self, minColor, maxColor, onChange, initMinColor=None, initMaxColor=None):
         initMinColor = initMinColor or minColor
@@ -330,7 +323,6 @@ Apply: set the previewed segmentation in the selected segment. Previous contents
     def onApply(self):
         try:
             # Get master volume image data
-            import vtkSegmentationCorePython as vtkSegmentationCore
 
             sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
             syncedImageData = self.scriptedEffect.sourceVolumeImageData()

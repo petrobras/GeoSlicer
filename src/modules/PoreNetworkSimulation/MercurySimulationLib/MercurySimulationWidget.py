@@ -9,14 +9,14 @@ from pyqtgraph.Qt import QtCore
 from vtk.util.numpy_support import vtk_to_numpy
 
 from .SubscaleModelWidget import SubscaleModelWidget
-from ltrace.pore_networks.subres_models import (
+from commons.pore_networks.subres_models import (
     get_pore_network_volume_data,
     estimate_pressure,
     rebin_psd_log_uniform,
     make_log_uniform_bins,
 )
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 from PoreNetworkSimulationLib.constants import MICP
 
 PA_TO_PSI = 0.000145038  # 1 Pa = 0.000145038 psi

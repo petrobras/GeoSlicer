@@ -8,7 +8,7 @@
 # import traceback
 # import itertools
 #
-# from ltrace.algorithms.common import ArrayProcessor, parseWindowFormat, bbox_3D, bbox_to_slices
+# from commons.algorithms.common import ArrayProcessor, parseWindowFormat, bbox_3D, bbox_to_slices
 #
 # import vtk, slicer, slicer.util, mrml
 #
@@ -18,10 +18,10 @@
 #
 # from PIL import Image
 #
-# from ltrace.algorithms.measurements import masking1d, sharding, textureProperties, labelmapProperties, scalarVolumeProperties
-# from ltrace.algorithms.supervised import random_forest
-# from ltrace.generators import InputData
-# from ltrace import transforms
+# from commons.algorithms.measurements import masking1d, sharding, textureProperties, labelmapProperties, scalarVolumeProperties
+# from commons.algorithms.supervised import random_forest
+# from commons.generators import InputData
+# from commons import transforms
 #
 # from numba import typed
 #

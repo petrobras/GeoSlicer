@@ -16,18 +16,18 @@ import slicer
 import vtk
 from numba import njit
 
-from ltrace.pore_networks.functions_extract import _get_paired_throats_table, calculateTransformNodeFromVolume
-from ltrace.pore_networks.simulation_parameters_node import (
+from commons.pore_networks.functions_extract import _get_paired_throats_table, calculateTransformNodeFromVolume
+from commons.pore_networks.simulation_parameters_node import (
     dict_to_parameter_node,
     TWO_PHASE_SIMULATION_TYPE,
     ONE_PHASE_SIMULATION_TYPE,
 )
-from ltrace.remote.object_transfer import JsonObjectTransfer, PickleObjectTransfer
-from ltrace.slicer import helpers
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer.nodes.binary_node import createBinaryNode, getBinary
-from ltrace.slicer.nodes.directory_node import DirectoryNode
-from ltrace.slicer_utils import LTracePluginLogic, hide_nodes_of_type, tableNodeToDict
+from commons.remote.object_transfer import JsonObjectTransfer, PickleObjectTransfer
+from commons.slicer import helpers
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.slicer.nodes.binary_node import createBinaryNode, getBinary
+from commons.slicer.nodes.directory_node import DirectoryNode
+from commons.slicer_utils import LTracePluginLogic, hide_nodes_of_type, tableNodeToDict
 from .constants import ONE_ANGLE, MULTI_ANGLE
 
 NUM_THREADS = 48
@@ -249,7 +249,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
                 ("throat_flow_rate", "Throat Flow Rate"),
                 ("border_pores", "Pore Inlets and Outlets"),
             ]
-            if self.params["advanced visualization"] == True:
+            if self.params["advanced visualization"]:
                 visualization_models.append(("resolved_pore_pressure", "Resolved Pore Pressure"))
                 visualization_models.append(("unresolved_pore_pressure", "Unresolved Pore Pressure"))
             model_node = {}
@@ -318,7 +318,7 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
             folderTree.CreateItem(subDir, vector_node)
 
             watershed_id = self.inputTable.GetAttribute("watershed_node_id")
-            if watershed_id is not None and (self.params["advanced visualization"] == True):
+            if watershed_id is not None and self.params["advanced visualization"]:
                 watershed_node = slicer.mrmlScene.GetNodeByID(watershed_id)
                 watershed_array = slicer.util.arrayFromVolume(watershed_node)
                 resolved_array, unresolved_array = self._create_volumetric_pressure(
@@ -483,7 +483,6 @@ class OnePhaseSimulationLogic(LTracePluginLogic):
         flow_array = vtk.vtkFloatArray()
         flow_array.SetName("flow")
 
-        min_flow = min(df_throats["throat.flow"])
         max_flow = max(abs(df_throats["throat.flow"]))
         max_radius = min(sizes.values()) * 2
         direction_array = vtk.vtkFloatArray()
@@ -771,7 +770,7 @@ class TwoPhaseSimulationLogic(LTracePluginLogic):
                     self.__createDiagnosticNode()
                     if "saturation_steps" in self.params:
                         self.loadAnimationNodes(self.params["saturation_steps"])
-                except:
+                except Exception:
                     self.removeNodes()
                     logging.error(traceback.format_exc())
                     slicer.util.errorDisplay("A problem has occurred during the simulation.")

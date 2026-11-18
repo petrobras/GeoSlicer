@@ -1,0 +1,19 @@
+columnName	type	componentNames
+label	int	
+voxelCount	int	
+area	double	
+angle	double	
+max_feret	double	
+min_feret	double	
+mean_feret	double	
+aspect_ratio	double	
+elongation	double	
+eccentricity	double	
+ellipse_perimeter	double	
+ellipse_area	double	
+ellipse_perimeter_over_ellipse_area	double	
+perimeter	double	
+perimeter_over_area	double	
+gamma	double	
+pore_size_class	int	
+pore_size_class_label	string	

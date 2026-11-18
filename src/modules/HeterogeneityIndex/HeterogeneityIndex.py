@@ -4,16 +4,16 @@ import os
 import pandas as pd
 import qt
 import slicer
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from skimage.measure import block_reduce
 from pathlib import Path
 from scipy import ndimage
 from vtk.util.numpy_support import numpy_to_vtk
-from ltrace.slicer.helpers import copy_attributes, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.constants import DLISImportConst
+from commons.slicer.helpers import copy_attributes, copy_hierarchy_attributes
+from commons.slicer.metadata import copy_metadata
+from commons.constants import DLISImportConst
 
 try:
     from Test.HeterogeneityIndexTest import HeterogeneityIndexTest
@@ -113,13 +113,8 @@ class HeterogeneityIndexWidget(LTracePluginWidget):
                 DLISImportConst.LOGICAL_FILE_TAG,
             ]
             copy_attributes(self.inputSelector.currentNode(), output_table, imageLogAttrs)
-            imageLogHierarchyAttrs = [
-                DLISImportConst.FRAME_TAG,
-                DLISImportConst.LOGICAL_FILE_TAG,
-                # DLISImportConst.SCALAR_VOLUME_TYPE, ?
-            ]
             copy_metadata(self.inputSelector.currentNode(), output_table)
-            copy_hierarchy_attributes(self.inputSelector.currentNode(), output_table, imageLogHierarchyAttrs)
+            copy_hierarchy_attributes(self.inputSelector.currentNode(), output_table)
             output_table.SetAttribute(ImageLogDataSelectable.name(), ImageLogDataSelectable.TRUE.value)
             output_table.CopyReferences(output_table)
             self.statusLabel.setText("Heterogeneity index computed.")
@@ -191,7 +186,7 @@ def compute_hi(amp, y_origin, y_spacing, window_size_m):
     x = np.log(x) * 2  # Same as log(x^2), since cylinder sector volume is proportional to size^2
     x_with_intercept = np.hstack((x, np.ones_like(x)))
     coefficients, residuals, _, _ = np.linalg.lstsq(x_with_intercept, stds, rcond=None)
-    slopes, intercepts = coefficients[:-1, :], coefficients[-1, :]
+    slopes, _intercepts = coefficients[:-1, :], coefficients[-1, :]
     hi_values = -slopes.flatten()
 
     df = pd.DataFrame(

@@ -1,23 +1,18 @@
 from pathlib import Path
 
-import itertools
-import json
-import logging
 import os
-import qt, ctk, slicer
+import qt
+import ctk
+import slicer
 import signal
 import subprocess
 
-from ltrace.slicer import widgets
-from ltrace.remote.paths import to_local
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.remote.paths import to_local
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from slicer.ScriptedLoadableModule import *
 
-from ltrace.remote.handlers import MonaiLabelServerHandler
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.jobs import JobManager
-
-LOCK_FILE = "monailabelserver.lock"
+from commons.remote.handlers import MonaiLabelServerHandler
+from commons.remote.jobs import JobManager
 
 
 class MonaiLabelServer(LTracePlugin):
@@ -178,10 +173,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
         self.PID = None
         self.UID = None
         self.timer = None
+        self.lockFile = Path(slicer.app.temporaryPath) / "monailabelserver.lock"
 
-        if Path(LOCK_FILE).exists():
+        if self.lockFile.exists():
             try:
-                lock_file = open(Path(LOCK_FILE), "r")
+                lock_file = open(self.lockFile, "r")
                 line = lock_file.readline()
                 self.PID = int(line.split("=")[1])
                 lock_file.close()
@@ -194,8 +190,8 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 self.widget.startServerButton.setEnabled(False)
                 self.widget.stopServerButton.setEnabled(True)
                 self.widget.localRadioButton.setChecked(True)
-            except:
-                os.remove(Path(LOCK_FILE))
+            except Exception:
+                os.remove(self.lockFile)
 
         for job in list(JobManager.jobs):
             if JobManager.jobs[job].job_type == "monai" and JobManager.jobs[job].status == "RUNNING":
@@ -213,11 +209,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             datasetStr = self.widget.datasetLineEdit.text
 
             if appStr == "":
-                slicer.util.errorDisplay(f"Choose a properly app folder.")
+                slicer.util.errorDisplay("Choose a properly app folder.")
                 return
 
             if datasetStr == "":
-                slicer.util.errorDisplay(f"Choose a properly dataset folder.")
+                slicer.util.errorDisplay("Choose a properly dataset folder.")
                 return
 
             appPath = Path(appStr)
@@ -251,11 +247,11 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             datasetStr = self.widget.datasetLineEdit.text
 
             if appStr == "":
-                slicer.util.errorDisplay(f"Choose a properly app folder.")
+                slicer.util.errorDisplay("Choose a properly app folder.")
                 return
 
             if datasetStr == "":
-                slicer.util.errorDisplay(f"Choose a properly dataset folder.")
+                slicer.util.errorDisplay("Choose a properly dataset folder.")
                 return
 
             appPath = Path(appStr)
@@ -300,7 +296,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             print(f"Starting {self.PID}...\n")
 
             # create the lock file
-            lock_file = open(Path(LOCK_FILE), "w")
+            lock_file = open(self.lockFile, "w")
             lock_file.write(f"PID={self.PID}")
             lock_file.close()
 
@@ -332,7 +328,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 self.onStopLocalServer()
 
     def onStopRemoteServer(self):
-        self.widget.statusIndicator.setText(f"Server stopped")
+        self.widget.statusIndicator.setText("Server stopped")
         self.widget.startServerButton.setEnabled(True)
         self.widget.stopServerButton.setEnabled(False)
 
@@ -352,7 +348,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
             self.timer.deleteLater()
             self.timer = None
 
-        self.widget.statusIndicator.setText(f"Server stopped")
+        self.widget.statusIndicator.setText("Server stopped")
         self.widget.startServerButton.setEnabled(True)
         self.widget.stopServerButton.setEnabled(False)
 
@@ -365,7 +361,7 @@ class MonaiLabelServerLogic(LTracePluginLogic):
                 )
             print(f"Killing {self.PID} and child processes...\n")
 
-            os.remove(Path(LOCK_FILE))
+            os.remove(self.lockFile)
 
         self.PID = None
         self.process = None

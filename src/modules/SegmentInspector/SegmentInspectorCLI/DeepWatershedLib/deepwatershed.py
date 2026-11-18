@@ -63,7 +63,6 @@ def get_3ddepths(volume, base_volume, intersection, border):
     total = len(slices)
 
     for i in range(total):
-
         img = volume[slices[i]]
         if len(img[img > 0]) / img.size < 0.05:
             depths = np.zeros(img.shape, dtype="float32")

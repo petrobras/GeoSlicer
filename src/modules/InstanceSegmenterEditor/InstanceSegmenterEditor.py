@@ -13,7 +13,7 @@ from InstanceSegmenterEditorLib.widget.FilterableTableWidgets import (
     GenericTableWidget,
 )
 from InstanceSegmenterEditorLib.widget.FilterableTableWidgets import SidewallSampleTableWidget, StopsTableWidget
-from ltrace.algorithms.measurements import (
+from commons.algorithms.measurements import (
     GENERIC_PROPERTIES,
     sidewall_sample_instance_properties,
     generic_instance_properties,
@@ -21,14 +21,14 @@ from ltrace.algorithms.measurements import (
     crop_to_content,
     get_2d_copy,
 )
-from ltrace.algorithms.stops import fit_line
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer_utils import dataFrameToTableNode
-from ltrace.transforms import transformPoints
+from commons.algorithms.stops import fit_line
+from commons.slicer.helpers import highlight_error, reset_style_on_valid_text, copy_hierarchy_attributes
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.slicer_utils import dataFrameToTableNode
+from commons.transforms import transformPoints
 
 
 class InstanceSegmenterEditor(LTracePlugin):
@@ -289,7 +289,7 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
 
     def onApplyButtonClicked(self):
         # If a segment is still being edited, show a message to let the user decide what he wants to do
-        if self.applySegmentButton.enabled == True:
+        if self.applySegmentButton.enabled:
             slicer.util.infoDisplay("A segment is currently being edited. Please finish it by applying or cancelling.")
             return
 
@@ -373,7 +373,7 @@ class InstanceSegmenterEditorWidget(LTracePluginWidget):
 
     def updateWarning(self):
         currentNode = self.inputTableNodeComboBox.currentNode()
-        if not type(currentNode) is slicer.vtkMRMLTableNode:
+        if type(currentNode) is not slicer.vtkMRMLTableNode:
             self.warningLabel.visible = False
             return
 
@@ -619,7 +619,7 @@ class InstanceSegmenterEditorLogic(LTracePluginLogic):
             elif slicer.app.mouseButtons() == 2:
                 self.circle(self.editedLabelMapNodeArray, pointIJK, 0)
             self.labelMapNode.Modified()
-        except:
+        except Exception:
             pass
 
     def setBrushSize(self, brushSize):

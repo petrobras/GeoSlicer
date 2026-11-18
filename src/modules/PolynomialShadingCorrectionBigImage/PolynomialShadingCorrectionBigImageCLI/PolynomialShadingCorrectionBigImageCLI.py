@@ -7,20 +7,20 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
 import argparse
+import dask
 import dask.array as da
 import json
 
-import ltrace.slicer.netcdf as netcdf
+import commons.slicer.netcdf as netcdf
 import numpy as np
 import xarray as xr
 
 from dask.callbacks import Callback
 
-from ltrace.algorithms.shading_correction import compute_polynomial_shading_correction
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.algorithms.shading_correction import compute_polynomial_shading_correction
+from commons.slicer.lazy import lazy
+from commons.slicer.cli_utils import progressUpdate
 from typing import Union, Dict
 
 

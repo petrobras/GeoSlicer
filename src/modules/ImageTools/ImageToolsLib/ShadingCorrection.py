@@ -78,11 +78,11 @@ class ShadingCorrectionLogic:
             function = polynomial
             try:
                 fittedParameters, pcov = curve_fit(function, [xData, yData], zData, p0=polynomialInitialParameters)
-            except:
+            except Exception:
                 function = plane
                 try:
                     fittedParameters, pcov = curve_fit(function, [xData, yData], zData, p0=planeInitialParameters)
-                except:
+                except Exception:
                     pass
 
             # Applying function

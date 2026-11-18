@@ -4,10 +4,10 @@ from pathlib import Path
 import slicer
 import qt
 
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer.widget.custom_toolbar_buttons import addAction, addMenu
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, getResourcePath, LTraceEnvironmentMixin
-from ltrace.constants import ImageLogConst
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer.widget.custom_toolbar_buttons import addAction, addMenu
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, getResourcePath, LTraceEnvironmentMixin
+from commons.constants import ImageLogConst
 
 
 class MultiscaleEnv(LTracePlugin):

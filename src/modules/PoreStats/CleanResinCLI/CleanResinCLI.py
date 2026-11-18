@@ -13,9 +13,8 @@ import slicer.util
 import mrml
 import numpy as np
 
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 from skimage.segmentation import watershed
-from pathlib import Path
 
 
 def incrementalProgressUpdate(progress, addition):

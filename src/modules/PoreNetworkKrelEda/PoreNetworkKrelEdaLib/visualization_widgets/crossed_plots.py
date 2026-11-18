@@ -3,8 +3,8 @@ import PySide2 as pyside
 import qt
 import shiboken2
 
-from ltrace.slicer.graph_data import DataFrameGraphData
-from ltrace.slicer.widget.data_plot_widget import DataPlotWidget
+from commons.slicer.graph_data import DataFrameGraphData
+from commons.slicer.widget.data_plot_widget import DataPlotWidget
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_base import PlotBase
 
 

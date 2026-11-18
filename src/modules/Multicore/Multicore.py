@@ -15,16 +15,16 @@ from collections import namedtuple
 from pathlib import Path
 from threading import Lock
 from DICOMLib.DICOMUtils import TemporaryDICOMDatabase
-from ltrace.image.core_box.core_box_depth_table_file import CoreBoxDepthTableFile
-from ltrace.slicer.helpers import setVolumeNullValue, save_path
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.ui import MultiplePathsWidget
-from ltrace.slicer_utils import *
-from ltrace.transforms import transformPoints, getRoundedInteger
-from ltrace.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
-from ltrace.utils.callback import Callback
+from commons.image.core_box.core_box_depth_table_file import CoreBoxDepthTableFile
+from commons.slicer.helpers import setVolumeNullValue, save_path
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.ui import MultiplePathsWidget
+from commons.slicer_utils import *
+from commons.transforms import transformPoints, getRoundedInteger
+from commons.units import global_unit_registry as ureg, SLICER_LENGTH_UNIT
+from commons.utils.callback import Callback
 from scipy.ndimage import gaussian_filter
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.utils.ProgressBarProc import ProgressBarProc
 
 
 def useProgressBar(func):
@@ -598,7 +598,7 @@ class MulticoreLogic(LTracePluginLogic):
                 self.setWindowLevelMinMax(volumes[i], windowLevelMinMax)
             self.sortDirectoriesByCoreDepth()
             self.centerOnFirstCoreVolume()
-        except RuntimeWarning as e:
+        except RuntimeWarning:
             pass
         except Exception as e:
             errors.append(f"Error while applying global window level: {e}")
@@ -1008,7 +1008,9 @@ class MulticoreLogic(LTracePluginLogic):
         R = np.sqrt(x**2 + y**2)
 
         # Calculate the median
-        f = lambda r: np.median(coreArrayMedian[(R >= r - 0.5) & (R < r + 0.5)])
+        def f(r):
+            return np.median(coreArrayMedian[(R >= r - 0.5) & (R < r + 0.5)])
+
         radius = getRoundedInteger(
             self.physicalToImageCoordinates(self.getCoreRadius(coreVolume), self.getIntraSliceSpacing(coreVolume)).m
         )
@@ -1353,7 +1355,7 @@ class MulticoreLogic(LTracePluginLogic):
         A = np.c_[x, y, np.ones(x.shape)]
         coefficients, residuals, _, _ = np.linalg.lstsq(A, z, rcond=None)
         # Coefficients are in the form: a*x + b*y + c*z + d = 0
-        a, b, c, d = coefficients[0], coefficients[1], -1, coefficients[2]
+        a, b, c, _d = coefficients[0], coefficients[1], -1, coefficients[2]
         perpendicularUnitVector = self.normalizeVector([a, b, c])  # Unit vector perpendicular to the plane
         rmsd = np.sqrt(residuals / len(points))  # Root Mean Squared Deviation
         nrmsd = rmsd / (np.max(z) - np.min(z))  # Normalized RMSD, to allow comparison with a global error threshold
@@ -1708,7 +1710,7 @@ class MulticoreLogic(LTracePluginLogic):
         value = np.around(value, decimals=decimals)
         # Workaround to avoid -0.0 (Pint has a bug when comparing to zero, we don't need to get the absolute value .m)
         if value == 0:
-            if type(value) == ureg.Quantity:
+            if isinstance(value, ureg.Quantity):
                 value = 0 * value.units
             else:
                 value = 0

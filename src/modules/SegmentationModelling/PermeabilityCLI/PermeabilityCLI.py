@@ -18,9 +18,9 @@ import slicer
 import slicer.util
 
 from io import StringIO
-from ltrace.slicer import cli_utils
-from ltrace.slicer.equations.line_equation import LineEquation
-from ltrace.slicer.equations.timur_coates_equation import TimurCoatesEquation
+from commons.slicer import cli_utils
+from commons.slicer.equations.line_equation import LineEquation
+from commons.slicer.equations.timur_coates_equation import TimurCoatesEquation
 
 
 class PermeabilityCli:

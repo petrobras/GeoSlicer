@@ -2,9 +2,9 @@ import qt
 import slicer
 
 from pathlib import Path
-from ltrace.slicer.lazy import lazy as lazy_module
-from ltrace.slicer.virtual import attributes as virtual_attributes
-from ltrace.slicer.virtual import virtual_node
+from commons.slicer.lazy import lazy as lazy_module
+from commons.slicer.virtual import attributes as virtual_attributes
+from commons.slicer.virtual import virtual_node
 
 
 class DisplayOverrideSubjectHierarchyPlugin:

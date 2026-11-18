@@ -5,21 +5,17 @@ import ctk
 import qt
 import slicer
 import numpy as np
-import vtk
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import (
+from commons.slicer import ui
+from commons.slicer.helpers import (
     clone_volume,
     copy_display,
-    copy_subject_hierarchy_item_parent,
     copy_hierarchy_attributes,
-    highlight_error,
-    remove_highlight,
 )
-from ltrace.slicer.metadata import Metadata, copy_metadata
-from ltrace.constants import DLISImportConst
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.metadata import Metadata, copy_metadata
+from commons.constants import DLISImportConst
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
     from Test.ImageLogCropVolumeTest import ImageLogCropVolumeTest
@@ -383,7 +379,6 @@ class ImageLogCropVolumeLogic(LTracePluginLogic):
         else:
             newNode.SetAttribute(DLIS_FRAME_TAG, "cropped")
             Metadata(newNode)[DLIS_FRAME_TAG] = "cropped"
-        copy_metadata(volumeNode, newNode)
         subjectHierarchyNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         itemID = subjectHierarchyNode.GetItemByDataNode(volumeNode)  # the hierarchy item ID corresponding to node
         value = subjectHierarchyNode.GetItemAttribute(itemID, DLIS_FRAME_TAG)

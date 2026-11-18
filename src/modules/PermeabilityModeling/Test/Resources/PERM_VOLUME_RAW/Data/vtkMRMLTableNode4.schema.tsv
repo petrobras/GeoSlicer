@@ -1,0 +1,4 @@
+columnName	unitLabel	type	nullValue	componentNames
+DEPTH	mm	double		
+KSDR_HR [mD]	mD	double		
+<default>		double		

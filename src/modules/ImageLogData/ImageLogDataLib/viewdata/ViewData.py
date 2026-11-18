@@ -5,8 +5,7 @@ View data classes. Objects of theses classes hold all the information about the 
  - The interface state of the view controllers (which item is selected in a combo box, if the data is hidden, etc);
 """
 
-from ltrace.slicer.graph_data import LINE_PLOT_TYPE
-from ltrace.slicer.helpers import themeIsDark
+from commons.slicer.graph_data import LINE_PLOT_TYPE
 
 PLOT_TYPE_SYMBOLS = {"―": LINE_PLOT_TYPE, "●": "o", "■": "s", "▲": "t1"}
 

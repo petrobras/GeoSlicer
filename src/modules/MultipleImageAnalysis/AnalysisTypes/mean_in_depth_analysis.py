@@ -1,5 +1,4 @@
 import qt
-import slicer
 import logging
 import numpy as np
 import pandas as pd
@@ -7,10 +6,10 @@ import os
 
 from .analysis_base import AnalysisBase, AnalysisReport, AnalysisWidgetBase, FILE_NOT_FOUND
 from collections import defaultdict
-from ltrace.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
-from ltrace.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
-from ltrace.slicer.node_attributes import TableDataOrientation, TableType
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.algorithms.measurements import is_spatial_column
+from commons.slicer.segment_inspector.inspector_files.inspector_file_reader import InspectorFileReader
+from commons.slicer.segment_inspector.inspector_files.inspector_report_file import InspectorReportFile
+from commons.slicer.node_attributes import TableDataOrientation, TableType
 from typing import Dict
 
 
@@ -97,6 +96,7 @@ class MeanInDepthAnalysis(AnalysisBase):
                 columns = list(reportData.select_dtypes(include=[np.number]))
                 if columns[0] == "label":
                     columns = columns[1:]
+                columns = [column for column in columns if not is_spatial_column(column)]
             else:
                 columns = [sampleColumnLabel]
 

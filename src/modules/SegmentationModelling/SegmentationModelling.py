@@ -2,11 +2,13 @@ import os
 from pathlib import Path
 from typing import List
 
-import vtk, qt, ctk, slicer
+import qt
+import ctk
+import slicer
 
-from ltrace.slicer import ui, widgets, helpers
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer import ui
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from Methods.permeability import Permeability
 from Methods.microporosity import MicroPorosity
 from Methods.output_info import OutputInfo
@@ -173,8 +175,8 @@ class SegmentationModellingWidget(LTracePluginWidget):
             return
         try:
             method_logic = self.method_selector.currentWidget().apply(self.output_prefix_lineedit.text)
-        except ValueError as e:
-            slicer.util.errorDisplay(f"Please, initialize the range values on quality control panel before applying.")
+        except ValueError:
+            slicer.util.errorDisplay("Please, initialize the range values on quality control panel before applying.")
             return
         except Exception as e:
             slicer.util.errorDisplay(f"Please, check the inputs. Error: {e}")

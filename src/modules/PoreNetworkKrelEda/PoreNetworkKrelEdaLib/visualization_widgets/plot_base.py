@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from ltrace.slicer import widgets
+from commons.slicer import widgets
 
 
 class PlotBase(widgets.BaseSettingsWidget):

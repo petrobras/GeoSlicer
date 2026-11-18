@@ -2,33 +2,37 @@ import ctk
 import markdown2 as markdown
 import qt
 import slicer
+import json
 import logging
 import os
 
-from ltrace.slicer import helpers, ui
-from ltrace.slicer.helpers import (
+from commons.slicer import helpers, ui
+from commons.slicer.helpers import (
     highlight_error,
     reset_style_on_valid_node,
     reset_style_on_valid_text,
     isSegmentIdEmpty,
     isLabelMapValueEmpty,
 )
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import (
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import (
     dataframeFromTable,
     dataFrameToTableNode,
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
 )
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 from typing import List
 from vtk.util.numpy_support import vtk_to_numpy
 from ImageLogsLib.KdsOptimizationTableWidget import KdsOptimizationWidget
 from pathlib import Path
 
 ERROR_CORRECTION_NODE_NAME = "ERROR_CORRECTION_TABLE_NODE"
+# Node attribute that prevents a node from being listed in the data selector of the Image Log viewer
+SHOW_IN_FILTERED_NODE_COMBO_BOX_ATTRIBUTE = "ShowInFilteredNodeComboBox"
+SEGMENTATION_LABELMAP_TMP_NODE_NAME = "SEGMENTATION_LABELMAP_TMP_NODE"
 
 try:
     from Test.PermeabilityModelingTest import PermeabilityModelingTest
@@ -57,6 +61,8 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         LTracePluginWidget.__init__(self, parent)
 
         self.__kdsOptimizationTableId = None
+        # IDs of the temporary nodes created in each run, removed when the run finishes
+        self.__temporaryNodeIds = []
 
         self.logic = PermeabilityModelingLogic(parent)
         self.onOutputNodeReady = lambda volumes: None
@@ -176,6 +182,9 @@ class PermeabilityModelingWidget(LTracePluginWidget):
                 self.kdsOptimizationWidget.setTableData(None)
                 return
 
+            # Also applied here for Kds tables loaded from projects saved before this attribute existed
+            node.SetAttribute(SHOW_IN_FILTERED_NODE_COMBO_BOX_ATTRIBUTE, "False")
+
             df = dataframeFromTable(node)
             self.kdsOptimizationWidget.setTableData(df)
 
@@ -247,23 +256,57 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         self.missingSelector.enabled = False
         self.missingSelector.currentIndexChanged.connect(self.onMissingSelectorChanged)
         self.missingSelector.objectName = "Ignored/null Segment Combo Box"
+        self.missingSelector.setToolTip("Optional. Select 'None' to not define an ignored/null segment.")
+
+        self.zeroPermSelector = qt.QComboBox()
+        self.zeroPermSelector.enabled = False
+        self.zeroPermSelector.currentIndexChanged.connect(self.onZeroPermSelectorChanged)
+        self.zeroPermSelector.objectName = "Zero Perm Segment Combo Box"
+        self.zeroPermSelector.setToolTip("Optional. Select 'None' to not define a zero permeability segment.")
 
         parametersFormLayout.addRow("Macro Pore Segment: ", self.modelSelector)
-        parametersFormLayout.addRow("Ignored/null Segment: ", self.missingSelector)
+        parametersFormLayout.addRow("Ignored/null Segment (optional): ", self.missingSelector)
+        parametersFormLayout.addRow("Zero Perm Segment (optional): ", self.zeroPermSelector)
+
+    @staticmethod
+    def getSelectedLabelValue(selector: qt.QComboBox):
+        """Return the label value of the segment currently selected in a segment combo box.
+
+        Each item of the segment combo boxes stores, besides the segment name that is displayed, the label value
+        of the segment (the pixel value that represents that segment in the image sent to the CLI).
+        See onSegmentedImageSelected, where the items are added.
+
+        Returns None when nothing is selected (empty combo box) or when the "None" item is selected.
+        """
+        return selector.itemData(selector.currentIndex)
 
     def onModelSelectorChanged(self, idx: int) -> None:
-        """Model segment selector changed event handler.
-        The index is incremented due to behavior of CLI receiving the segmentation node as a scalar volume, using a non-overlap merged segmentation array.
-        So the index 0 is not related to the first segment, but to the background.
-        """
-        self.onNumericChanged("class1", idx)
+        """Macro pore segment selector changed event handler. Sends the label value of the selected segment to the CLI."""
+        self.onNumericChanged("class1", self.getSelectedLabelValue(self.modelSelector))
 
     def onMissingSelectorChanged(self, idx: int) -> None:
-        """Missing segment selector changed event handler.
-        The index is incremented due to behavior of CLI receiving the segmentation node as a scalar volume, using a non-overlap merged segmentation array.
-        So the index 0 is not related to the first segment, but to the background.
+        """Ignored/null segment selector changed event handler. Sends the label value of the selected segment to the CLI.
+        This selector is optional, so its first item is "None" (no segment selected). In that case, the value -1
+        is sent to the CLI, meaning that no ignored/null segment was selected.
         """
-        self.onNumericChanged("nullable", idx)
+        # Clear any previous error highlight, including when the "None" option is selected,
+        # since not selecting a segment in this optional selector is a valid choice.
+        helpers.remove_highlight(self.missingSelector)
+
+        labelValue = self.getSelectedLabelValue(self.missingSelector)
+        self.onNumericChanged("nullable", labelValue if labelValue is not None else -1)
+
+    def onZeroPermSelectorChanged(self, idx: int) -> None:
+        """Zero perm segment selector changed event handler. Sends the label value of the selected segment to the CLI.
+        This selector is optional, so its first item is "None" (no segment selected). In that case, the value -1
+        is sent to the CLI, meaning that no zero perm segment was selected.
+        """
+        # Clear any previous error highlight, including when the "None" option is selected,
+        # since not selecting a segment in this optional selector is a valid choice.
+        helpers.remove_highlight(self.zeroPermSelector)
+
+        labelValue = self.getSelectedLabelValue(self.zeroPermSelector)
+        self.onNumericChanged("zeroPermSegment", labelValue if labelValue is not None else -1)
 
     def measurementSection(self):
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -315,6 +358,7 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         excessKFractionThresholdSpinBox = ui.numberParam(vrange=(0, 1.0), value=1.0, step=0.001, decimals=3)
         excessKFractionThresholdSpinBox.objectName = "Excess-K Fraction Threshold Spin Box"
         useMatrixKPlugErrorTermCheckBox = qt.QCheckBox("")
+        useMatrixKPlugErrorTermCheckBox.setChecked(True)
         useMatrixKPlugErrorTermCheckBox.objectName = "Use Matrix-K Plug Error Term Check Box"
         excessKPowerParamaterSpinBox = ui.numberParam(vrange=(0, 3.5), value=1.0, step=0.1, decimals=1)
         excessKPowerParamaterSpinBox.objectName = "Excess-K Power Paramater Spin Box"
@@ -346,8 +390,14 @@ class PermeabilityModelingWidget(LTracePluginWidget):
     def storeKdsOptimizationTable(self, df):
         node = helpers.tryGetNode(ERROR_CORRECTION_NODE_NAME)
         if node is None:
-            node = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLTableNode.__name__, ERROR_CORRECTION_NODE_NAME)
+            # The node is hidden BEFORE being added to the scene. Otherwise, some node selectors (e.g. the data
+            # selector of the Image Log viewer) see the node when it is added, while still visible, and list it.
+            node = slicer.mrmlScene.CreateNodeByClass(slicer.vtkMRMLTableNode.__name__)
+            node.UnRegister(None)  # avoid memory leak, as CreateNodeByClass returns a new reference
+            node.SetName(ERROR_CORRECTION_NODE_NAME)
             node.SetHideFromEditors(True)
+            node.SetAttribute(SHOW_IN_FILTERED_NODE_COMBO_BOX_ATTRIBUTE, "False")
+            slicer.mrmlScene.AddNode(node)
 
         node.RemoveAllColumns()
         dataFrameToTableNode(df, node)
@@ -449,6 +499,52 @@ class PermeabilityModelingWidget(LTracePluginWidget):
 
         reset_style_on_valid_node(self.modelSelector)
 
+        # The checks of the optional segments use the label values: the "None" item has no label value (None).
+        macroPoreLabelValue = self.getSelectedLabelValue(self.modelSelector)
+        nullLabelValue = self.getSelectedLabelValue(self.missingSelector)
+        zeroPermLabelValue = self.getSelectedLabelValue(self.zeroPermSelector)
+
+        # Check Ignored/null segment input (optional). If "None" is selected, there is nothing to check.
+        if nullLabelValue is not None and nullLabelValue == macroPoreLabelValue:
+            highlight_error(self.missingSelector)
+            slicer.util.errorDisplay(
+                "Segment registered as 'Ignored/null' cannot be the same as the 'Macro Pore' segment.",
+                windowTitle="Error",
+                parent=slicer.modules.AppContextInstance.mainWindow,
+            )
+            return
+
+        helpers.remove_highlight(self.missingSelector)
+
+        # Check Zero Perm segment input (optional)
+        zeroPermSegmentName = self.zeroPermSelector.currentText
+        if zeroPermLabelValue is not None:
+            if zeroPermLabelValue in (macroPoreLabelValue, nullLabelValue):
+                highlight_error(self.zeroPermSelector)
+                slicer.util.errorDisplay(
+                    "Segment registered as 'Zero Perm' cannot be the same as the 'Macro Pore' or the 'Ignored/null' segment.",
+                    windowTitle="Error",
+                    parent=slicer.modules.AppContextInstance.mainWindow,
+                )
+                return
+
+            if (
+                segmentationImageNode.IsA("vtkMRMLSegmentationNode")
+                and isSegmentIdEmpty(segmentationImageNode, segmentName=zeroPermSegmentName)
+            ) or (
+                segmentationImageNode.IsA("vtkMRMLLabelMapVolumeNode")
+                and isLabelMapValueEmpty(segmentationImageNode, labelName=zeroPermSegmentName)
+            ):
+                highlight_error(self.zeroPermSelector)
+                slicer.util.errorDisplay(
+                    "Segment registered as 'Zero Perm' is empty. Please, check the segmentation or change the selected segment.",
+                    windowTitle="Error",
+                    parent=slicer.modules.AppContextInstance.mainWindow,
+                )
+                return
+
+        helpers.remove_highlight(self.zeroPermSelector)
+
         self.logic.model["outputVolumeName"] = self.outputNameLineEdit.text
 
         # Update model parameters
@@ -506,6 +602,31 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         )
         self.logic.model["kdsOptimizationWeight"] = self.kdsOptimizationWidget.weightSpinBox.value
 
+        # The segment selectors send the label value of each segment to the CLI (see onSegmentedImageSelected).
+        # A segmentation node passed directly to the CLI keeps its internal label values, which do not follow
+        # the segment order (e.g. after reordering segments). So the segmentation node is exported to a labelmap
+        # in the current segment order, which guarantees that the i-th segment (starting at 0) has label value i + 1.
+        self.logic.model["inputVolume1"] = segmentationImageNode.GetID()
+        if segmentationImageNode.IsA("vtkMRMLSegmentationNode"):
+            segmentationLabelmapNode, _ = helpers.createLabelmapInput(
+                segmentationImageNode, SEGMENTATION_LABELMAP_TMP_NODE_NAME, uniqueName=False
+            )
+            self.logic.model["inputVolume1"] = segmentationLabelmapNode.GetID()
+
+        # Keep the IDs of the temporary nodes created in this run, so they can be removed when the CLI finishes.
+        # (The IDs are used instead of the names, because the names may receive a suffix like "_1" to be unique.)
+        temporaryNodes = [
+            porosityLogScalarNode,
+            porosityDepthScalarNode,
+            permeabilityPlugLogScalarNode,
+            permeabilityPlugDepthScalarNode,
+        ]
+        if segmentationImageNode.IsA("vtkMRMLSegmentationNode"):
+            # The labelmap exported from the segmentation also has its own color node
+            temporaryNodes.append(segmentationLabelmapNode.GetDisplayNode().GetColorNode())
+            temporaryNodes.append(segmentationLabelmapNode)
+        self.__temporaryNodeIds = [node.GetID() for node in temporaryNodes if node is not None]
+
         task = self.logic.run()
         if task:
             self.progressBar.setCommandLineModuleNode(task)
@@ -524,21 +645,41 @@ class PermeabilityModelingWidget(LTracePluginWidget):
             self.logic.model["inputVolume1"] = None
             self.modelSelector.enabled = False
             self.missingSelector.enabled = False
+            self.zeroPermSelector.enabled = False
             self.__checkUniqueErrorCorrectionNode()
             return
 
         self.modelSelector.clear()
         self.missingSelector.clear()
+        self.zeroPermSelector.clear()
 
+        # Dictionary {label value: segment name}, where the label value is the pixel value of the segment in the
+        # image sent to the CLI:
+        # - Labelmap: the label value is the pixel value of the segment in the labelmap.
+        # - Segmentation node: the label value is the segment position + 1 (1, 2, 3, ...), which matches the
+        #   labelmap exported in onApply.
         segmentsDict = helpers.extractLabels(volumeNode)
 
-        for selector in [self.modelSelector, self.missingSelector]:
-            selector.addItems(list(segmentsDict.values()))
+        # Ignored/null and Zero perm segments are optional, so their first item is "None"
+        # (no segment selected, without label value)
+        self.missingSelector.addItem("None")
+        self.zeroPermSelector.addItem("None")
+
+        # Each item shows the segment name and stores its label value, which is what is sent to the CLI.
+        # Sending the label value (instead of the item position) avoids mismatches when some segment is empty.
+        for labelValue, segmentName in segmentsDict.items():
+            for selector in [self.modelSelector, self.missingSelector, self.zeroPermSelector]:
+                selector.addItem(segmentName, labelValue)
+
+        # Send the segment names to the CLI, so it can print the results using the names instead of label values.
+        # It is sent as a JSON text: {"label value": "segment name", ...}
+        self.logic.model["segmentNames"] = json.dumps({str(label): name for label, name in segmentsDict.items()})
 
         self.logic.model["inputVolume1"] = volumeNode.GetID()
         self.outputNameLineEdit.setText(f"{volumeNode.GetName()}_Permeability_Output")
         self.modelSelector.enabled = True
         self.missingSelector.enabled = True
+        self.zeroPermSelector.enabled = True
         self.__checkUniqueErrorCorrectionNode()
 
     def onNumericChanged(self, key, value):
@@ -563,18 +704,13 @@ class PermeabilityModelingWidget(LTracePluginWidget):
         self.removeTemporaryNodes()
 
     def removeTemporaryNodes(self):
-        temp_nodes_name = [
-            "POROSITY_LOG_TMP_NODE",
-            "POROSITY_DEPTH_TMP_NODE",
-            "PERMEABILITY_PLUG_TMP_NODE",
-            "PERMEABILITY_PLUG_DEPTH_TMP_NODE",
-        ]
-        for node_name in temp_nodes_name:
-            node = helpers.tryGetNode(node_name)
-            if node is None:
-                continue
+        """Remove the temporary nodes created in the last run (see the end of onApply)."""
+        for nodeId in self.__temporaryNodeIds:
+            node = slicer.mrmlScene.GetNodeByID(nodeId)
+            if node is not None:
+                slicer.mrmlScene.RemoveNode(node)
 
-            slicer.mrmlScene.RemoveNode(node)
+        self.__temporaryNodeIds = []
 
 
 class PermeabilityModelingLogic(LTracePluginLogic):
@@ -630,12 +766,14 @@ def PermeabilityModelingModel():
         depth_plugs=None,
         perm_plugs=None,
         outputVolume=None,
-        nullable=0,
+        nullable=-1,
+        zeroPermSegment=-1,
+        segmentNames="{}",
         outputVolumeName=None,
         kdsOptimizationTable=None,
         kdsOptimizationWeight=None,
         fractionSmoothingWindowSize=10,
         excessKFractionThreshold=1.0,
-        useMatrixKPlugErrorTerm=False,
+        useMatrixKPlugErrorTerm=True,
         excessKPowerParamater=1.0,
     )

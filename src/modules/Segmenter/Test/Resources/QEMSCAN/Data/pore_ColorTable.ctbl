@@ -1,0 +1,4 @@
+# Color table file /home/anthony/dev/smartseg/slicerltrace/src/modules/Segmenter/Test/Resources/QEMSCAN/Data/pore_ColorTable.ctbl
+# 2 values
+0 Background 0 0 0 0
+1 pore 255 0 0 255

@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-import os
 from pathlib import Path
 import pickle
 import time
@@ -14,9 +13,8 @@ import mrml
 import numpy as np
 import scipy.ndimage as ndi
 
-from ltrace.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
+from commons.slicer.cli_utils import progressUpdate, readFrom, writeDataInto
 from skimage import measure
-from pathlib import Path
 
 
 def remove_spurious(image, binary_seg, pore_model):

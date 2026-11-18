@@ -4,10 +4,10 @@ import numpy as np
 
 from SegmentEditorEffects import *
 from SegmentStatisticsPlugins import *
-from ltrace.slicer.helpers import hide_masking_widget
-from ltrace.transforms import resample_segmentation
+from commons.slicer.helpers import hide_masking_widget
+from commons.transforms import resample_segmentation
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 RESIZE_FACTOR = 0.15
 
@@ -169,20 +169,23 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         plugin = LabelmapSegmentStatisticsPlugin()
         parameterNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLScriptedModuleNode")
-        plugin.setParameterNode(parameterNode)
-        plugin.getParameterNode().SetParameter("Segmentation", segmentationNode.GetID())
-        plugin.requestedKeys = ["volume_mm3"]
+        try:
+            plugin.setParameterNode(parameterNode)
+            plugin.getParameterNode().SetParameter("Segmentation", segmentationNode.GetID())
+            plugin.requestedKeys = ["volume_mm3"]
 
-        # for segmentIndex in range(visibleSegmentIds.GetNumberOfValues()):
-        segmentID = visibleSegmentIds.GetValue(0)
-        statistics = plugin.computeStatistics(segmentID)
+            # for segmentIndex in range(visibleSegmentIds.GetNumberOfValues()):
+            segmentID = visibleSegmentIds.GetValue(0)
+            statistics = plugin.computeStatistics(segmentID)
 
-        self.calculateVolumeResultLineEdit.setText(
-            "Total volume: " + str(np.round(statistics["volume_mm3"]).astype(int)) + " mm³."
-        )
-        self.calculateVolumeResultLineEdit.setVisible(True)
+            self.calculateVolumeResultLineEdit.setText(
+                "Total volume: " + str(np.round(statistics["volume_mm3"]).astype(int)) + " mm³."
+            )
+            self.calculateVolumeResultLineEdit.setVisible(True)
 
-        slicer.mrmlScene.RemoveNode(parameterNode)
+            slicer.mrmlScene.RemoveNode(parameterNode)
+        finally:
+            parameterNode.UnRegister(None)
 
     def margin(self, sizeInPixels):
         self.scriptedEffect.saveStateForUndo()

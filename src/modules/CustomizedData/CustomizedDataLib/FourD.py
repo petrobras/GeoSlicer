@@ -1,8 +1,8 @@
 import qt
 
-from ltrace.slicer.virtual.fourd.manager import get_manager
-from ltrace.slicer.virtual.fourd import proxy
-from ltrace.slicer.widget.fourd_player import FourDPlayerWidget
+from commons.slicer.virtual.fourd.manager import get_manager
+from commons.slicer.virtual.fourd import proxy
+from commons.slicer.widget.fourd_player import FourDPlayerWidget
 
 
 class FourDWidget(qt.QWidget):

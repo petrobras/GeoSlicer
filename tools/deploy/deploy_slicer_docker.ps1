@@ -8,6 +8,8 @@ param (
     [switch]$Help = $false
 )
 
+Write-Host "=== deploy_slicer_docker.ps1 started (PID $PID) ==="
+
 [string[]]$Arguments = $args
 
 # Function to show help information
@@ -134,7 +136,7 @@ Write-Host "Arguments: $Arguments"
 # Build docker image
 if ($BuildDocker) {
     Write-Host "Docker build flag is set. Proceeding with the Docker image build..."
-    & $dockerComposeAlias build $dockerServiceName
+    & $dockerComposeAlias build --progress=plain $dockerServiceName 2>&1 | ForEach-Object { Write-Output $_.ToString() }    
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to build the Docker image. Check the logs and try again."
         exit 4
@@ -197,10 +199,9 @@ $dockerArgs = @(
 )
 $dockerArgs += $volumeArgs
 $dockerArgs += @(
-    "--env", "CODESIGN_KEY_STRING",
     $dockerServiceName,
     "powershell",
-    "-Command", "python ${mountedRepoPath}/tools/deploy/deploy_slicer.py $mountedArchiveFilePath $Arguments --output-dir $mountedOutputDir"
+    "-Command", "uv run deploy $mountedArchiveFilePath $Arguments --output-dir $mountedOutputDir"
 )
 
 Write-Host "Executing deployment inside Docker..."

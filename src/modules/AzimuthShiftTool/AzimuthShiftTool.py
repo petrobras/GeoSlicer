@@ -3,11 +3,11 @@ import os
 import qt
 import slicer
 
-from ltrace.slicer import helpers
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer import helpers
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import ImageLogDataSelectable, NodeEnvironment
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 import numpy as np
 

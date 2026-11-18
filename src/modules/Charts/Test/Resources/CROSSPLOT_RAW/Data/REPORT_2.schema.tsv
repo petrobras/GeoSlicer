@@ -1,0 +1,17 @@
+columnName	type	componentNames
+label	int	
+voxelCount	int	
+area (mm^2)	double	
+angle (deg)	double	
+max_feret (mm)	double	
+min_feret (mm)	double	
+aspect_ratio	double	
+elongation	double	
+eccentricity	double	
+ellipse_perimeter (mm)	double	
+ellipse_area (mm^2)	double	
+ellipse_perimeter_over_ellipse_area (1/mm)	double	
+perimeter (mm)	double	
+perimeter_over_area (1/mm)	double	
+gamma	double	
+pore_size_class	string	

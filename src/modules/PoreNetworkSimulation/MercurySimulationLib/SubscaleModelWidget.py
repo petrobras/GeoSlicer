@@ -8,22 +8,22 @@ import pandas as pd
 import qt
 import slicer
 
-from ltrace.file_utils import read_csv
-from ltrace.pore_networks.simulation_parameters_node import parameter_node_to_dict
-from ltrace.pore_networks.subres_models import MODEL_DICT, estimate_radius, estimate_pressure
-from ltrace.pore_networks.subres_models import get_pore_network_volume_data
-from ltrace.pore_networks.subres_models import normalize_psd, centers_to_edges
-from ltrace.slicer import ui
-from ltrace.slicer.app import MANUAL_BASE_URL
-from ltrace.slicer.data_utils import dataFrameToTableNode
-from ltrace.slicer.node_attributes import TableType
-from ltrace.slicer.ui import (
+from commons.file_utils import read_csv
+from commons.pore_networks.simulation_parameters_node import parameter_node_to_dict
+from commons.pore_networks.subres_models import MODEL_DICT, estimate_radius, estimate_pressure
+from commons.pore_networks.subres_models import get_pore_network_volume_data
+from commons.pore_networks.subres_models import normalize_psd, centers_to_edges
+from commons.slicer import ui
+from commons.slicer.app import MANUAL_BASE_URL
+from commons.slicer.data_utils import dataFrameToTableNode
+from commons.slicer.node_attributes import TableType
+from commons.slicer.ui import (
     hierarchyVolumeInput,
     DirOrFileWidget,
     floatParam,
 )
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer_utils import dataframeFromTable, getResourcePath, slicer_is_in_developer_mode
 
 MICRON_TO_MM = 0.001
 MM_TO_MICRON = 1000.0
@@ -738,15 +738,13 @@ class LeverettWidgetBase(qt.QWidget):
         self.j_input.chooseDirButton.setVisible(False)
         self.warningsLabel = qt.QLabel("")
         self.warningsLabel.setWordWrap(True)
-        self.warningsLabel.setStyleSheet(
-            "QLabel { color: red; font: bold 14px;" "background-color: black; padding: 6px;}"
-        )
+        self.warningsLabel.setStyleSheet("QLabel { color: red; font: bold 14px;background-color: black; padding: 6px;}")
 
         self.parameters_layout.addRow("J Leverett function table: ", self.j_input)
         self.parameters_layout.addWidget(self.warningsLabel)
 
     def onLeverettTableSelect(self, path=None):
-        if path == None:
+        if path is None:
             path = self.microporeJInput.path
         if (path == "") or (path == "."):
             error_text = "No table selected"
@@ -851,7 +849,7 @@ def onImportSIRRClicked(parameter_widgets, sirr_input_selector):
 
 
 def importSIRR(file_path, parameter_widgets, sirr_input_selector):
-    from ltrace.file_utils import load_and_parse_data
+    from commons.file_utils import load_and_parse_data
 
     try:
         loaded_df = load_and_parse_data(Path(file_path), filter_empty_columns=True)

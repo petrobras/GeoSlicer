@@ -1,0 +1,20 @@
+Properties	Values
+Pixel Area (mm^2)	0.01
+ROI Voxel Count (#px)	90000
+Segment Voxel Count (#px)	16286
+Segment 1: Name	'Segment_1'
+Segment 1: %	18.09556
+Segment 1: % SOI	100.0
+Segment 1: #px	16286
+Function	'snow'
+Targets	'1'
+Mesoporo grande (%)	100.0
+parameter.sigma	0.005
+parameter.d_min_filter	5.0
+parameter.size_min_threshold	0.0
+parameter.direction	[[171, 41], [113, 99]]
+parameter.generate_throat_analysis	False
+parameter.voxel_size	None
+parameter.calculate_coordination_number	False
+parameter.is_pore	True
+parameter.do_preprocessing	True

@@ -1,6 +1,5 @@
-from ltrace.flow.thin_section import qemscanFlowWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer_utils import getResourcePath
+from commons.flow.thin_section import qemscanFlowWidget
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from pathlib import Path
 import os
 

@@ -4,13 +4,12 @@ from collections import namedtuple
 
 import ctk
 import numpy as np
-import pandas as pd
 import qt
 import slicer
 import traceback
 
-from ltrace.algorithms.measurements import instancesPropertiesDataFrame, GENERIC_PROPERTIES
-from ltrace.slicer.helpers import (
+from commons.algorithms.measurements import instancesPropertiesDataFrame, GENERIC_PROPERTIES
+from commons.slicer.helpers import (
     makeNodeTemporary,
     triggerNodeModified,
     highlight_error,
@@ -19,10 +18,10 @@ from ltrace.slicer.helpers import (
     reset_style_on_valid_text,
     tryGetNode,
 )
-from ltrace.slicer.node_attributes import ImageLogDataSelectable, NodeTemporarity
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widgets import PixelLabel, SingleShotInputWidget
-from ltrace.slicer_utils import dataFrameToTableNode
+from commons.slicer.node_attributes import ImageLogDataSelectable, NodeTemporarity
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widgets import PixelLabel, SingleShotInputWidget
+from commons.slicer_utils import dataFrameToTableNode
 from .model import ModelLogic, ModelWidget
 
 CLONED_COLUMNS = 40
@@ -51,7 +50,7 @@ class IslandsWidget(ModelWidget):
         self.instanceSegmenterWidget = None
 
     def getSizeMinThreshold(self):
-        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/sizeMinThreshold", 0.0)
+        return slicer.app.settings().value("ImageLogInstanceSegmenter/sizeMinThreshold", 0.0)
 
     def setup(self):
         self.progressBar = LocalProgressBar()

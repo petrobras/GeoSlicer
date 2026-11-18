@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
 
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer.module_utils import loadModules
-from ltrace.slicer.widget.custom_toolbar_buttons import addMenu
-from ltrace.slicer_utils import *
-from ltrace.slicer_utils import getResourcePath
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer.module_utils import loadModules
+from commons.slicer.widget.custom_toolbar_buttons import addMenu
+from commons.slicer_utils import *
+from commons.slicer_utils import getResourcePath
 
 
 #
@@ -169,7 +169,7 @@ class SegmentationEnvLogic(LTracePluginLogic):
         modules = modulesForSegmentation.intersection(modulesForThinSection)
         modules.update(modulesForSegmentation.intersection(modulesForSegmentationTools))
 
-        loadModules(modules, permanent=False, favorite=False)
+        loadModules(modules)
         self.setModules(modules)
 
         addMenu(

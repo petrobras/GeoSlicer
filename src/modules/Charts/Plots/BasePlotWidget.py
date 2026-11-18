@@ -1,7 +1,6 @@
-from abc import abstractclassmethod, abstractmethod
+from abc import abstractmethod
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-import pyqtgraph as pg
 from pathlib import Path
 
 RESOURCES_PATH = Path(__file__).absolute().with_name("Resources")

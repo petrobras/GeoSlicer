@@ -8,3 +8,5 @@ icon: Layers
 {{ include_markdown("SegmentInspector") }}
 ---
 {{ include_markdown("InteractiveSegmenter") }}
+---
+{{ include_markdown("SpectralProfile") }}

@@ -11,9 +11,9 @@ import slicer
 import vtk
 
 from ImageLogUnwrapImportLib.TomographicUnwrapBoundariesFile import TomographicUnwrapBoundariesFile
-from ltrace.image.core_box.core_box import CoreBox
-from ltrace.image.core_box.core_image import concatenate_core_boxes
-from ltrace.slicer import helpers, ui
+from commons.image.core_box.core_box import CoreBox
+from commons.image.core_box.core_image import concatenate_core_boxes
+from commons.slicer import helpers, ui
 
 
 class TomographicUnwrapLoadWidget(qt.QWidget):
@@ -299,7 +299,7 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
     def __validateWellDiameterInput(self):
         try:
             float(self.wellDiameter.text)
-        except Exception as e:
+        except Exception:
             helpers.highlight_error(self.wellDiameter)
             return False
         else:
@@ -323,4 +323,4 @@ class TomographicUnwrapLoadWidget(qt.QWidget):
         root_folder_id = subject_hierarchy.GetItemByName(dir_name)
         if root_folder_id == 0:
             root_folder_id = subject_hierarchy.CreateFolderItem(app_folder_id, dir_name)
-        volume_item_id = subject_hierarchy.CreateItem(root_folder_id, node)
+        subject_hierarchy.CreateItem(root_folder_id, node)

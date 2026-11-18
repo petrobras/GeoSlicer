@@ -1,5 +1,5 @@
-from ltrace.slicer.tests.ltrace_plugin_test import LTracePluginTest
-from ltrace.slicer.tests.utils import check_for_message_box
+from commons.slicer.tests.ltrace_plugin_test import LTracePluginTest
+from commons.slicer.tests.utils import check_for_message_box
 
 
 class {{name}}Test(LTracePluginTest):
@@ -42,3 +42,4 @@ class {{name}}Test(LTracePluginTest):
         # Simulate click on apply button
         with check_for_message_box("Please type an output prefix."):
             apply_button.clicked()
+

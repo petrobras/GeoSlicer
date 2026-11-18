@@ -12,16 +12,18 @@ from slicer.util import VTKObservationMixin
 
 from CustomizedEffects.Margin import SegmentEditorMarginEffect
 from CustomizedEffects.Threshold import SegmentEditorThresholdEffect
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, getResourcePath
-from ltrace.slicer import helpers, ui
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.widget.clone_and_rename import requestName, cloneNode
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
+from commons.slicer import helpers, ui
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.widget.clone_and_rename import requestName, cloneNode
 
 # Checks if closed source code is available
 try:
     from Test.CustomizedSegmentEditorTest import CustomizedSegmentEditorTest
+    from Test.CustomizedSegmentEditorSmartForegroundTest import CustomizedSegmentEditorSmartForegroundTest
 except ImportError:
     CustomizedSegmentEditorTest = None
+    CustomizedSegmentEditorSmartForegroundTest = None
 
 
 class CustomizedSegmentEditor(LTracePlugin):
@@ -415,7 +417,7 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         """Runs whenever the module is reopened"""
         if self.editor.turnOffLightboxes():
             slicer.util.warningDisplay(
-                "Segment Editor is not compatible with slice viewers in light box mode." "Views are being reset.",
+                "Segment Editor is not compatible with slice viewers in light box mode.Views are being reset.",
                 windowTitle="Segment Editor",
             )
 
@@ -432,6 +434,8 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
         self.editor.removeViewObservations()
 
     def onSceneStartClose(self, caller, event):
+        if self.parameterSetNode:
+            self.removeObserver(self.parameterSetNode, vtk.vtkCommand.ModifiedEvent, self.onParameterNodeModified)
         self.parameterSetNode = None
         self.editor.setSegmentationNode(None)
         self.editor.removeViewObservations()
@@ -448,5 +452,6 @@ class CustomizedSegmentEditorWidget(LTracePluginWidget, VTKObservationMixin):
 
     def cleanup(self):
         super().cleanup()
+        self.exit()
         self.removeObservers()
         self.deactivateEditorRegisteredCallback()

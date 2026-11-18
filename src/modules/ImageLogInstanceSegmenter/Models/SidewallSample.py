@@ -10,8 +10,8 @@ import qt
 import slicer
 import traceback
 
-from ltrace.file_utils import read_csv
-from ltrace.slicer.helpers import (
+from commons.file_utils import read_csv
+from commons.slicer.helpers import (
     triggerNodeModified,
     highlight_error,
     remove_highlight,
@@ -20,11 +20,11 @@ from ltrace.slicer.helpers import (
     reset_style_on_valid_text,
     tryGetNode,
 )
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
-from ltrace.slicer_utils import (
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.trained_model_selector import TrainedModelSelector
+from commons.slicer_utils import (
     is_tensorflow_gpu_enabled,
     dataFrameToTableNode,
 )
@@ -56,7 +56,7 @@ class SidewallSampleWidget(ModelWidget):
         self.instanceSegmenterWidget = None
 
     def getDepthThreshold(self):
-        return slicer.app.settings().value(f"ImageLogInstanceSegmenter/depthThreshold", 0.3)
+        return slicer.app.settings().value("ImageLogInstanceSegmenter/depthThreshold", 0.3)
 
     def setup(self):
         self.progressBar = LocalProgressBar()
@@ -278,7 +278,7 @@ class SidewallSampleLogic(ModelLogic):
             else:
                 nominalDepthsDataFrame = pd.read_excel(filePath)
 
-        except:
+        except Exception:
             raise MaskRCNNInfo("Invalid nominal depths file.")
 
         # stripping newlines from header
@@ -309,8 +309,6 @@ class SidewallSampleLogic(ModelLogic):
     def apply(self, p):
         amplitudeImageNode = p.amplitudeImageNode
         transitTimeImageNode = p.transitTimeImageNode
-        initialDepth = p.initialDepth
-        finalDepth = p.finalDepth
         self.model = p.model
 
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()

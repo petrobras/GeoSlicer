@@ -1,4 +1,3 @@
-from cv2 import transform
 import nrrd
 import numpy as np
 

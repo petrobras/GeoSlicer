@@ -3,9 +3,9 @@ from pathlib import Path
 
 import slicer
 
-from ltrace.slicer.helpers import svgToQIcon
-from ltrace.slicer.widget.custom_toolbar_buttons import addAction, addMenu
-from ltrace.slicer_utils import (
+from commons.slicer.helpers import svgToQIcon
+from commons.slicer.widget.custom_toolbar_buttons import addAction, addMenu
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginLogic,
     getResourcePath,
@@ -64,13 +64,9 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
             "FilteringTools",
             "CustomResampleScalarVolume",
             self.setupSegmentation,
+            "ImageQualityMetrics",
             "MicrotomRemote",
-            (
-                "Voxel Simulation",
-                [
-                    "PoreScaleModelling"
-                ]
-            ),
+            ("Voxel Simulation", ["PoreScaleModelling"]),
             (
                 "Microporosity",
                 [
@@ -152,6 +148,7 @@ class MicroCTEnvLogic(LTracePluginLogic, LTraceEnvironmentMixin):
                 modules["Segmenter"],
                 modules["SegmentInspector"],
                 modules["InteractiveSegmenter"],
+                modules["SpectralProfile"],
             ],
             self.modulesToolbar,
         )

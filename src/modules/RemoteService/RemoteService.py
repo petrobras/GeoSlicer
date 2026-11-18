@@ -1,22 +1,22 @@
 import logging
 import os
 import uuid as uuidlib
-from typing import Callable, Dict, List
+from typing import Callable, List
 
 from pathlib import Path
 
 
 import slicer
 
-from ltrace.slicer_utils import *
-from ltrace.remote.connections import ConnectionManager, JobExecutor
-from ltrace.remote.jobs import JobManager, start_monitor
-from ltrace.remote.targets import TargetManager, Host
-from ltrace.remote import errors
+from commons.slicer_utils import *
+from commons.remote.connections import ConnectionManager, JobExecutor
+from commons.remote.jobs import JobManager, start_monitor
+from commons.remote.targets import TargetManager, Host
+from commons.remote import errors
 
-from ltrace.slicer.widget.remote import login, accounts, connecting
-from ltrace.slicer.widget.remote.reconnect import ReconnectDialog
-from ltrace.slicer.application_observables import ApplicationObservables
+from commons.slicer.widget.remote import login, accounts, connecting
+from commons.slicer.widget.remote.reconnect import ReconnectDialog
+from commons.slicer.application_observables import ApplicationObservables
 
 from JobLoader import register_job_loaders
 
@@ -252,18 +252,18 @@ class RemoteServiceLogic:
                         if keepDialogOpen is False:
                             return target, connected
 
-                except errors.TimeoutException as e:
+                except errors.TimeoutException:
                     slicer.util.errorDisplay(
                         "Connection timed out. Check your network connection and host address, then try again."
                     )
                     raise
-                except Exception as e:
+                except Exception:
                     # TODO return for accounts instead of login
                     slicer.util.errorDisplay(
                         "Connection failed. Check your network connection and host address, then try again."
                     )
                     raise
-            except:
+            except Exception:
                 target = None
 
         return target, connected
@@ -296,7 +296,7 @@ class RemoteServiceLogic:
             JobManager.schedule(uid, "DEPLOY")
 
             return uid
-        except:
+        except Exception:
             import traceback
 
             traceback.print_exc()
@@ -311,7 +311,7 @@ class RemoteServiceLogic:
             started = JobManager.resume(job)
             if not started:
                 slicer.util.errorDisplay("Failed to automatically resume job. Please try to reconnect manually.")
-        except:
+        except Exception:
             import traceback
 
             traceback.print_exc()

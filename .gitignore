@@ -37,7 +37,7 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Tooling cache
 htmlcov/
 .tox/
 .nox/
@@ -50,6 +50,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 
 # Translations
 *.mo
@@ -162,12 +163,14 @@ TODO.md
 # Streamlit data files
 src/modules/MicrotomRemote/PNM_Report/static/
 
-# Release application file (downloaded to build Azure VM Offer Image)
-/tools/packer/resources/geoslicer-*.tar.gz
-
 # MacOS Finder
 .DS_Store
 
 # tools/slurm test cluster: local build marker and shared data tree
 tools/slurm/.build-stamp
 tools/slurm/.data/
+
+# Partner folders
+src/partners/
+agent_tmp
+

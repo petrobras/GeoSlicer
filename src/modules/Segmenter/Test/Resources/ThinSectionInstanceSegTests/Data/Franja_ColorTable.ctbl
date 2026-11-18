@@ -1,0 +1,12 @@
+# Color table file C:/Users/camba/ltrace/slicerltrace/src/modules/ThinSectionInstanceSegmenter/Test/Resources/ThinSectionInstanceSegTests/../TMP/Data/Franja_ColorTable.ctbl
+# 10 values
+0 Background 0 0 0 0
+1 Segment_1 255 0 0 255
+2 Segment_2 0 255 255 255
+3 Segment_3 0 0 255 255
+4 Segment_4 255 255 0 255
+5 Segment_5 0 128 0 255
+6 Segment_6 255 128 255 255
+7 Segment_7 86 4 75 255
+8 Segment_8 128 191 128 255
+9 Segment_9 189 5 222 255

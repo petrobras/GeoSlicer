@@ -1,0 +1,200 @@
+import time
+import qt
+import ctk
+import slicer
+
+from .table_viewer_widget import ImageLogTableViewer
+from .import_logic import (
+    blank_fn,
+    get_loader,
+    ImageLogImportError,
+)
+from commons.image.optimized_transforms import DEFAULT_NULL_VALUES, format_null_values, parse_null_values
+from commons.slicer import ui, widgets
+from commons.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import helpers
+
+
+class WellLogImportWidget(qt.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setLayout(qt.QVBoxLayout())
+        self.appFolder = None
+        self.dataLoader = None
+
+        self.loadClicked = blank_fn
+
+        self.tableView = ImageLogTableViewer(self)
+        self.tableView.setMinimumHeight(500)
+        self.tableView.loadClicked = self.onLoadClicked
+
+        self.layout().addWidget(self.buildFileInputWidget())
+        self.layout().addWidget(self.buildWellName())
+        self.layout().addWidget(self.tableView)
+
+        self.layout().addStretch()
+
+    def setAppFolder(self, folderName):
+        self.appFolder = folderName
+
+    def currentPath(self):
+        return self.ioFileInputLineEdit.currentPath
+
+    def buildWellName(self):
+        ioWellnameInputFrame = qt.QFrame()
+        ioWellnameInputGroup = qt.QHBoxLayout(ioWellnameInputFrame)
+        self.wellNameInput = qt.QLineEdit()
+        self.wellNameInput.setObjectName("Well Name Input")
+        self.wellNameInput.setReadOnly(True)
+        ioWellnameInputGroup.addWidget(qt.QLabel("Well name:"))
+        ioWellnameInputGroup.addWidget(self.wellNameInput)
+        return ioWellnameInputFrame
+
+    def buildFileInputWidget(self):
+        ioFileInputFrame = qt.QFrame()
+
+        formLayout = qt.QFormLayout(ioFileInputFrame)
+        self.ioFileInputLineEdit = ctk.ctkPathLineEdit()
+        self.ioFileInputLineEdit.setObjectName("File Input")
+        self.ioFileInputLineEdit.filters = ctk.ctkPathLineEdit.Files | ctk.ctkPathLineEdit.Readable
+        self.ioFileInputLineEdit.settingKey = "ioFileInputMicrotom"
+        # Needs to be initialized blank to allow loading the file metadata
+        self.ioFileInputLineEdit.setCurrentPath("")
+        self.ioFileInputLineEdit.findChild("QLineEdit").enabled = False
+
+        nullsLayout = qt.QHBoxLayout()
+        self.nullValuesListText = qt.QLineEdit()
+        self.nullValuesListText.setObjectName("Null Values List Text")
+        self.nullValuesListText.text = format_null_values(DEFAULT_NULL_VALUES)
+        self.nullValuesListText.textChanged.connect(lambda: self.setNullValuesFieldState(widgets.InputState.OK))
+        nullsLayout.addWidget(self.nullValuesListText)
+
+        self.resetNullValuesListButton = qt.QPushButton("Reset list")
+        self.resetNullValuesListButton.setObjectName("Reset Null Values List Button")
+        self.resetNullValuesListButton.clicked.connect(
+            lambda: self.nullValuesListText.setText(format_null_values(DEFAULT_NULL_VALUES))
+        )
+        nullsLayout.addWidget(self.resetNullValuesListButton)
+
+        self.wellDiameter = ui.floatParam("")
+        self.wellDiameter.setObjectName("Well Diameter Input")
+        self.wellDiameter.textChanged.connect(lambda: self.setWellDiameterFieldState(widgets.InputState.OK))
+
+        wellDiameterLabel = qt.QLabel("Well diameter (inches):")
+
+        formLayout.addRow("Well log file:", self.ioFileInputLineEdit)
+        formLayout.addRow("Null values list:", nullsLayout)
+        formLayout.addRow(wellDiameterLabel, self.wellDiameter)
+
+        def onPathChanged(filepath):
+            nullvalues = self.parsedNullValues()
+            if nullvalues is None:
+                self.tableView.statusLabel.setStatus("Invalid null values list.", color="red")
+                return
+
+            with ProgressBarProc() as progressBar:
+                try:
+                    progressBar.nextStep(5, "Loading metadata...")
+
+                    progressBar.nextStep(80, "Setting context variables...")
+                    self.dataLoader = get_loader(filepath, nullvalues)
+
+                    nullvalues |= self.dataLoader.null_value
+                    self.nullValuesListText.text = format_null_values(nullvalues)
+
+                    progressBar.nextStep(90, "Showing metadata...")
+                    well_name, metadata = self.dataLoader.load_metadata()
+                    self.wellNameInput.text = well_name
+                    if well_name is None:
+                        return
+                    self.tableView.setDatabase(metadata)
+                except Exception as e:
+                    slicer.util.warningDisplay(str(e))
+                    self.ioFileInputLineEdit.setCurrentPath("")
+                    progressBar.nextStep(100, "Loading completed with errors.")
+                    return
+
+                progressBar.nextStep(100, "Loading completed.")
+
+            wellDiameterApplies = getattr(self.dataLoader, "loaded_as_image", True)
+
+            self.wellDiameter.setVisible(wellDiameterApplies)
+            wellDiameterLabel.setVisible(wellDiameterApplies)
+            self.wellDiameter.setText("0" if not wellDiameterApplies else "")
+
+        self.ioFileInputLineEdit.connect("currentPathChanged(QString)", onPathChanged)
+
+        return ioFileInputFrame
+
+    def onLoadClicked(self, mnemonic_and_files):
+        if not self.wellDiameter.text and self.wellDiameter.visible:
+            self.setWellDiameterFieldState(widgets.InputState.MISSING)
+            return
+
+        nullvalues = self.parsedNullValues()
+        if nullvalues is None:
+            self.tableView.statusLabel.setStatus("Invalid null values list.", color="red")
+            return
+
+        with ProgressBarProc() as progressBar:
+
+            def progressCallback(progressLabel, progressValue):
+                percent = round((progressValue - 1) * 100 / len(mnemonic_and_files))
+                progressBar.nextStep(percent, f"Loading Files... {progressLabel}")
+                slicer.app.processEvents()
+
+            try:
+                curves = self.dataLoader.load_data(self.ioFileInputLineEdit.currentPath, mnemonic_and_files)
+
+                helpers.save_path(self.ioFileInputLineEdit)
+
+                well_diameter = float(self.wellDiameter.text) * 25.4  # inches to mm
+
+                itemIDs = self.dataLoader.load_volumes(
+                    curves,
+                    stepCallback=progressCallback,
+                    appFolder=self.appFolder,
+                    nullValue=nullvalues,
+                    well_diameter_mm=well_diameter,
+                )
+
+                self.loadClicked(itemIDs)
+                progressBar.nextStep(100, "Finished Loading Files.")
+                time.sleep(0.5)
+
+                numSelectedCurves = len(self.tableView.selected_rows)
+                self.tableView.statusLabel.setStatus(
+                    "Successfully loaded "
+                    + str(numSelectedCurves)
+                    + (" curve." if numSelectedCurves == 1 else " curves.")
+                )
+            except ImageLogImportError as e:
+                progressBar.nextStep(100, "Error Loading Files.")
+                time.sleep(0.5)
+                self.tableView.statusLabel.setStatus("Error while loading curves.", color="red")
+                slicer.util.errorDisplay(e)
+
+    def parsedNullValues(self):
+        """Null values from the field, or None if its text is malformed (the field is flagged)."""
+        try:
+            nullvalues = parse_null_values(self.nullValuesListText.text)
+        except ValueError:
+            self.setNullValuesFieldState(widgets.InputState.MISSING)
+            return None
+
+        self.setNullValuesFieldState(widgets.InputState.OK)
+        return nullvalues
+
+    def setWellDiameterFieldState(self, state):
+        color = widgets.get_input_widget_color(state)
+        if color:
+            self.wellDiameter.setStyleSheet("QLineEdit { background-color: " + color + "; }")
+        else:
+            self.wellDiameter.setStyleSheet("")
+
+    def setNullValuesFieldState(self, state):
+        color = widgets.get_input_widget_color(state)
+        if color:
+            self.nullValuesListText.setStyleSheet("QLineEdit { background-color: " + color + "; }")
+        else:
+            self.nullValuesListText.setStyleSheet("")

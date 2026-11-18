@@ -1,0 +1,19 @@
+<ParameterSet>
+	<Name>Acquisition</Name>
+	<Parameter>
+		<Name>Version</Name>
+		<Value>0.13</Value>
+	</Parameter>
+	<Parameter>
+		<Name>ObjectToWorld</Name>
+		<Value>-2.8262;204.54429999999999;0</Value>
+	</Parameter>
+	<Parameter>
+		<Name>RotationType</Name>
+		<Value>Object</Value>
+	</Parameter>
+	<Parameter>
+		<Name>StartAngle</Name>
+		<Value>0</Value>
+	</Parameter>
+</ParameterSet>

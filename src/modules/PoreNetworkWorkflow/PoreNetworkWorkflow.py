@@ -5,11 +5,10 @@ import slicer
 import logging
 from pathlib import Path
 
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer.helpers import LazyLoad2
-from ltrace.slicer.application_observables import ApplicationObservables
-from ltrace.pore_networks.report import ReportForm, ReportLogic, StreamlitServer
+from commons.slicer import ui, widgets
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.slicer.application_observables import ApplicationObservables
+from commons.pore_networks.report import ReportForm, ReportLogic, StreamlitServer
 
 try:
     from Test.PoreNetworkWorkflowTest import PoreNetworkWorkflowTest
@@ -319,7 +318,7 @@ class PoreNetworkWorkflowWidget(LTracePluginWidget):
                     shape = ["{:04d}".format(int(d)) for d in arr.shape[::-1]]
                     res = min([v for v in node.GetSpacing()])
                     nodeName = "_".join([*tokens, image_type, *shape, "{:05d}".format(int(round(res * 1e6))) + "nm"])
-                except:
+                except Exception:
                     pass
 
             self.outputPrefix.setText(nodeName)
@@ -352,7 +351,6 @@ class PoreNetworkWorkflowWidget(LTracePluginWidget):
 
             modeWidget = self.modeWidgets[self.currentMode]
 
-            uid = None
             if self.currentMode == widgets.BatchInputWidget.MODE_NAME:
                 batchDir = modeWidget.ioFileInputLineEdit.currentPath
                 segTag = modeWidget.ioBatchSegTagPattern.text
@@ -360,7 +358,7 @@ class PoreNetworkWorkflowWidget(LTracePluginWidget):
                 valTag = modeWidget.ioBatchValTagPattern.text
                 labelTag = modeWidget.ioBatchLabelPattern.text
 
-                uid = self.logic.runInBatch(
+                self.logic.runInBatch(
                     "pnm",  # Simulator name
                     None,  # Input Node (None for batch)
                     batchDir,
@@ -390,7 +388,7 @@ class PoreNetworkWorkflowWidget(LTracePluginWidget):
                 # So we pass segmentationNode=None, referenceNode=refNode?
                 # Let's assume ReportLogic handles this.
 
-                uid = self.logic.run(
+                self.logic.run(
                     "pnm",
                     None,  # segmentationNode
                     refNode,  # referenceNode

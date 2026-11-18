@@ -1,5 +1,5 @@
 from ..BasePlotWidget import BasePlotWidget
-from ltrace.slicer.graph_data import NodeGraphData
+from commons.slicer.graph_data import NodeGraphData
 from pyqtgraph.Qt import QtCore
 
 
@@ -44,7 +44,7 @@ class BarPlotWidgetModel(QtCore.QObject):
 
     def removeGraphDataFromTable(self, graphData: NodeGraphData):
         """Remove data and objects related to the GraphData object."""
-        if not graphData in self.__graphDataList:
+        if graphData not in self.__graphDataList:
             return
 
         self.__graphDataList.remove(graphData)

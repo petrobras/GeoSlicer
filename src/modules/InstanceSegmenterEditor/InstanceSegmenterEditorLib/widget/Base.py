@@ -1,6 +1,6 @@
 import qt
 
-from ltrace.slicer_utils import getResourcePath
+from commons.slicer_utils import getResourcePath
 
 
 class TableWidget(qt.QWidget):

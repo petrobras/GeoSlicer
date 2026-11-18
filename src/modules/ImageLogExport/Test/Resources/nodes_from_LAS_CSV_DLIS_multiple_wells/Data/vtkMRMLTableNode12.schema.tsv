@@ -1,0 +1,3 @@
+columnName	unitLabel	type	componentNames
+DEPTH	mm	double	
+DEPTH4 [m]	m	double	

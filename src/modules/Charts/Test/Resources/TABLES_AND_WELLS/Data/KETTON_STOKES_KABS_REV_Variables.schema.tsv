@@ -1,0 +1,6 @@
+columnName	type	componentNames
+Total Porosity	double	
+Resolved Porosity	double	
+Permeability	double	
+Total subvolume voxels	int	
+Subvolume cut info	string	

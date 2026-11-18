@@ -1,6 +1,6 @@
 from ..BasePlotWidget import BasePlotWidget
 from .HistogramInDepthPlotWidgetModel import HistogramInDepthPlotWidgetModel
-from ltrace.slicer.helpers import export_las_from_histogram_in_depth_data
+from commons.slicer.helpers import export_las_from_histogram_in_depth_data
 from pyqtgraph.Qt import QtGui, QtWidgets
 
 import pyqtgraph as pg

@@ -1,7 +1,6 @@
 import os
-import vtk, qt, ctk, slicer
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer_utils import LTracePlugin
 
 #
 # RGBThresholdEffect
@@ -9,7 +8,6 @@ from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLo
 
 
 class ColorThresholdEffect(LTracePlugin):
-
     SETTING_KEY = "ColorThresholdEffect"
 
     def __init__(self, parent):

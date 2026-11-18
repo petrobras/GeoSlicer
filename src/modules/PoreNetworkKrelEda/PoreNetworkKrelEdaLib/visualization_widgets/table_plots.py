@@ -104,5 +104,5 @@ class ThirdOrderInteractions(PlotBase):
                 gcolor[i] = 0.5
         styler = pd.DataFrame(anova_p).style
         styler.background_gradient(cmap="RdYlGn", gmap=gcolor, vmin=0, vmax=1)
-        styler.set_table_styles([{"selector": "th.row_heading.level0", "props": "text-align: right;"}]),
+        (styler.set_table_styles([{"selector": "th.row_heading.level0", "props": "text-align: right;"}]),)
         return styler.to_html()

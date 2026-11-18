@@ -8,7 +8,7 @@ A interface do módulo é apresentada de forma simples, onde o usuário pode sel
 
 - *RAW*: Arquivos binários brutos. Suporta volume /scalar/, /labelmap/ e segmentações. Exporta um arquivo separado para cada volume com a nomenclatura padrão;
 - *TIF*: Arquivos TIFF. Suporta apenas volume /scalar/. Exporta um arquivo separado para cada volume com a nomenclatura padrão;
-- *NetCDF*: Arquivos NetCDF. Suporta volume /scalar/, /labelmap/ e segmentação. Exporta um único arquivo `.nc` contendo todos os volumes;
+- *NetCDF*: Arquivos NetCDF. Suporta volume /scalar/, /labelmap/ e segmentação. Exporta um único arquivo `.nc` contendo todos os volumes. Cada volume mantém seu tipo de dado do GeoSlicer, então as profundidades de bits listadas abaixo se aplicam apenas a RAW e TIF;
 
 A interface também é pensada para funcionar seguindo uma nomenclatura padrão, definida pela Petrobras, ela segue a seguinte lógica:
 

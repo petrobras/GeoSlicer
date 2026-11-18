@@ -5,13 +5,15 @@
 
 from __future__ import print_function
 
-import vtk, slicer, slicer.util, mrml
+import slicer
+import slicer.util
+import mrml
 import numpy as np
 
-from ltrace.slicer.helpers import getVolumeNullValue
-from ltrace.slicer.cli_utils import readFrom, writeDataInto, progressUpdate
-from ltrace.algorithms.spiral_filter import filter_spiral
-from ltrace.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE as DEFAULT_NULL_VALUE
+from commons.slicer.helpers import getVolumeNullValue
+from commons.slicer.cli_utils import readFrom, writeDataInto, progressUpdate
+from commons.algorithms.spiral_filter import filter_spiral
+from commons.image.optimized_transforms import ANP_880_2022_DEFAULT_NULL_VALUE as DEFAULT_NULL_VALUE
 
 
 def calculateSpiralIndicator(data, windowSizeIndex):

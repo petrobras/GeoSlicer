@@ -9,9 +9,9 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer_utils import getResourcePath
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import ui
+from commons.slicer_utils import getResourcePath
+from commons.utils.ProgressBarProc import ProgressBarProc
 
 GEOLOG_SCRIPT_ERRORS = {
     -1: "Unknown error occurred. Please check if connection parameters are correct",

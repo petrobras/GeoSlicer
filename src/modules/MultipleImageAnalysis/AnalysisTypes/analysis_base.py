@@ -2,8 +2,8 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Union, List
 
+import pandas as pd
 import qt
-import slicer
 
 
 FILE_NOT_FOUND = "FILE NOT FOUND"

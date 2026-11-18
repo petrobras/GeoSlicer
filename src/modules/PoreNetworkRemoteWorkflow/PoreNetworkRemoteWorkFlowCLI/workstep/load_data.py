@@ -3,7 +3,7 @@ import xarray as xr
 from scipy.ndimage import zoom
 
 from .workstep import Workstep, WorkflowContext
-from ltrace.slicer.netcdf import get_origin, get_spacing
+from commons.slicer.netcdf import get_origin, get_spacing
 
 TARGET_Z_PREVIEW_SIZE = 400
 

@@ -6,10 +6,10 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer import export
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import getNodeDataPath, checkUniqueNames
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.slicer import export
+from commons.slicer import ui
+from commons.slicer.helpers import getNodeDataPath, checkUniqueNames
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 
 class ThinSectionExport(LTracePlugin):

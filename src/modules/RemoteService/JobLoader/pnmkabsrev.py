@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path, PurePosixPath
 
-from ltrace.remote.connections import JobExecutor
-from ltrace.remote.handlers.PoreNetworkKabsREVHandler import PoreNetworkKabsREVHandler
+from commons.remote.connections import JobExecutor
+from commons.remote.handlers.PoreNetworkKabsREVHandler import PoreNetworkKabsREVHandler
 
 
 def pnmkabsrev_loader(job: JobExecutor):

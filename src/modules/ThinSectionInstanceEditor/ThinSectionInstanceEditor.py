@@ -12,14 +12,13 @@ import slicer
 import vtk
 
 from ThinSectionInstanceEditorLib.widget.FilterableTableWidgets import GenericTableWidget
-from ltrace.algorithms.measurements import LabelStatistics2D
-from ltrace.slicer.helpers import highlight_error, reset_style_on_valid_text, tryGetNode, svgToQIcon
-from ltrace.slicer.node_attributes import ImageLogDataSelectable
-from ltrace.slicer.volume_operator import VolumeOperator
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer import ui
-from ltrace.slicer_utils import dataFrameToTableNode
-from ltrace.transforms import transformPoints
+from commons.algorithms.measurements import LabelStatistics2D
+from commons.slicer.helpers import highlight_error, reset_style_on_valid_text, tryGetNode, svgToQIcon
+from commons.slicer.node_attributes import ImageLogDataSelectable
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
+from commons.slicer import ui
+from commons.slicer_utils import dataFrameToTableNode
+from commons.transforms import transformPoints
 
 
 def calculate_instance_properties(mask, node):
@@ -45,9 +44,7 @@ def calculate_instance_properties(mask, node):
 
     # Statistics
     mask_filt = mask.squeeze()
-    voxel_area = np.product(spacing)
     # TODO check that the inspector API is not being used correctly
-    volumeOperator = VolumeOperator(node)
     operator = LabelStatistics2D(mask_filt, spacing, direction=None, size_filter=0, is_pore=True)
     pointsInRAS = np.array(np.where(mask_filt)).T
     stats = operator.strict_calculate(mask_filt, pointsInRAS)
@@ -287,7 +284,7 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
                     label=slicer.mrmlScene.GetNodeByID(labelmapID),
                     fit=False,
                 )
-                if self.applySegmentButton.enabled == True:
+                if self.applySegmentButton.enabled:
                     self.applySegmentButton.click()
                 self.applyCancelButtons.applyBtn.click()
             else:
@@ -364,14 +361,14 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
             for rowData in rowsData:
                 model.addRow(rowData)
                 model.sortDefault()
-                row = model.getRowByLabel(rowData["label"])
+                # row = model.getRowByLabel(rowData["label"])
                 # self.tableWidget.tableView.setCurrentIndex(model.index(row, 0)) # centralize new segments in screen
         else:
             model.editRow(self.editedRow, rowsData[0])
             for rowData in rowsData[1:]:
                 model.addRow(rowData)
                 model.sortDefault()
-                row = model.getRowByLabel(rowData["label"])
+                # row = model.getRowByLabel(rowData["label"])
                 # self.tableWidget.tableView.setCurrentIndex(model.index(row, 0)) # centralize edited segments in screen
 
         # To center the added or edited element both in the table view and slice view
@@ -399,7 +396,7 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
 
     def onApplyButtonClicked(self):
         # If a segment is still being edited, show a message to let the user decide what he wants to do
-        if self.applySegmentButton.enabled == True:
+        if self.applySegmentButton.enabled:
             slicer.util.infoDisplay("A segment is currently being edited. Please finish it by applying or cancelling.")
             return
 
@@ -566,7 +563,7 @@ class ThinSectionInstanceEditorWidget(LTracePluginWidget):
 
     def updateWarning(self):
         currentNode = self.inputTableNodeComboBox.currentNode()
-        if not type(currentNode) is slicer.vtkMRMLTableNode:
+        if type(currentNode) is not slicer.vtkMRMLTableNode:
             self.warningLabel.visible = False
             return
 
@@ -820,12 +817,12 @@ class ThinSectionInstanceEditorLogic(LTracePluginLogic):
                 rowData["label"] = new_label
                 rowsData.append(rowData)
 
-                self.editedLabelMapNodeArray[0][mask == True] = new_label
+                self.editedLabelMapNodeArray[0][mask] = new_label
                 k += 1
             except (
                 TypeError
             ):  # when single-pixel island happens a TypeError is catched by calculate_instance_properties()
-                self.editedLabelMapNodeArray[0][mask == True] = 0
+                self.editedLabelMapNodeArray[0][mask] = 0
 
         return rowsData
 

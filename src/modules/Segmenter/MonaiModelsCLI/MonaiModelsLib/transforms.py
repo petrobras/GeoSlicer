@@ -1,12 +1,10 @@
 import numpy as np
 import xarray as xr
-import sympy  # import it before torch to avoid crash
 import torch
-from scipy.ndimage import distance_transform_edt, distance_transform_cdt
+from scipy.ndimage import distance_transform_edt
 import warnings
 import pickle as pkl
 from ast import literal_eval
-import pickle as pkl
 from sklearn.preprocessing import QuantileTransformer
 
 
@@ -146,7 +144,7 @@ class ToTensorTransform:
 
     def __call__(self, sample):
         for key, dtype in self.keys.items():
-            if not key in sample:
+            if key not in sample:
                 continue
 
             tensor = torch.as_tensor(sample[key])
@@ -209,7 +207,7 @@ class XarrayToTensorsTransform:
 
                     if attr_dtype is not None:
                         attr_tensor = attr_tensor.to(dtype=get_torch_dtype(attr_dtype))
-                except:
+                except Exception:
                     pass
 
                 var_attr_name = f"{var_name}{self.out_attr_sep}{attr_name}"

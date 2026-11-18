@@ -10,15 +10,14 @@ import matplotlib.colors as mcolors
 import numpy as np
 import qt
 import slicer
-from ltrace.image.optimized_transforms import binset, DEFAULT_NULL_VALUES
-from ltrace.slicer.helpers import setDimensionFrom, getVolumeNullValue
-from ltrace.slicer.slicer_matplotlib import MatplotlibCanvasWidget
-from ltrace.slicer.ui import hierarchyVolumeInput, volumeInput
-from ltrace.slicer_utils import (
+from commons.image.optimized_transforms import binset, DEFAULT_NULL_VALUES
+from commons.slicer.helpers import setDimensionFrom, getVolumeNullValue
+from commons.slicer.slicer_matplotlib import MatplotlibCanvasWidget
+from commons.slicer.ui import hierarchyVolumeInput, volumeInput
+from commons.slicer_utils import (
     LTracePlugin,
     LTracePluginWidget,
     LTracePluginLogic,
-    LTracePluginTest,
 )
 
 from collections import deque
@@ -49,7 +48,7 @@ class Segment:
     CURRENT_COLOR_TABLE_INDEX = 0
 
     def __init__(self, name=None, value=DEFAULT_THRESH, color=None):
-        self.name = name or f"{Segment.DEFAULT_PREFIX}_{int(np.random.random()*1000)}"
+        self.name = name or f"{Segment.DEFAULT_PREFIX}_{int(np.random.random() * 1000)}"
         self.upper_threshold = value
         self.color = color or COLORS[Segment.DEFAULT_COLOR_TABLE[Segment.CURRENT_COLOR_TABLE_INDEX]]
         Segment.CURRENT_COLOR_TABLE_INDEX = (Segment.CURRENT_COLOR_TABLE_INDEX + 1) % len(Segment.DEFAULT_COLOR_TABLE)
@@ -82,11 +81,7 @@ class ColorPickerCell(qt.QWidget):
         button = qt.QPushButton("+")
         button.setFixedSize(20, 20)
         button.setStyleSheet(
-            "QPushButton {"
-            "font-size:11px;"
-            f"color:{color};"
-            f"background-color:{color};"
-            "border: 2px solid #222222 }"
+            f"QPushButton {{font-size:11px;color:{color};background-color:{color};border: 2px solid #222222 }}"
         )
 
         layout = self.layout()
@@ -453,7 +448,6 @@ class HistogramSegmenterWidget(LTracePluginWidget):
 # HistogramSegmenterLogic
 #
 class HistogramSegmenterLogic(LTracePluginLogic):
-
     MAX_SAMPLES = int(3e5)
 
     def __init__(self, view: HistogramSegmenterWidget):
@@ -561,7 +555,7 @@ class HistogramSegmenterLogic(LTracePluginLogic):
     def _addOrCreateColorMap(self, name):
         try:
             colorNode = slicer.util.getNode(name)
-        except slicer.util.MRMLNodeNotFoundException as e:
+        except slicer.util.MRMLNodeNotFoundException:
             colorNode = slicer.vtkMRMLColorTableNode()
             colorNode.SetTypeToUser()
             colorNode.SetName(name)

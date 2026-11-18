@@ -1,5 +1,6 @@
 # Allow
 !**/requirements.txt
+!**/requirements-dev.txt
 !**/pyproject.toml
 !**/setup.py
 
@@ -23,8 +24,8 @@ env
 # Specific directories
 src/modules/*/Test?
 src/modules/**/Resources
-src/ltrace/build
-src/ltrace/ltrace/assets
+src/commons/build
+src/commons/assets
 tools/deploy/GeoSlicerManual
 tools/deploy/Resources
 gs*/* 

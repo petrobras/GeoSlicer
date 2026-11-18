@@ -2,9 +2,9 @@ import pandas as pd
 import qt
 import slicer
 
-from ltrace.pore_networks.simulation_parameters_node import save_dict_to_parameter_node, TWO_PHASE_SIMULATION_TYPE
-from ltrace.slicer import ui
-from ltrace.slicer_utils import dataFrameToTableNode
+from commons.pore_networks.simulation_parameters_node import save_dict_to_parameter_node, TWO_PHASE_SIMULATION_TYPE
+from commons.slicer import ui
+from commons.slicer_utils import dataFrameToTableNode
 from PoreNetworkKrelEdaLib.visualization_widgets.plot_data import KrelResultCurves
 
 
@@ -123,9 +123,9 @@ class PoreNetworkKrelEdaExportLogic:
             )
             cycle_df = cycle_df.rename(
                 columns={
-                    f"Pc_{simulation_id}": f"Pc_0",
-                    f"Krw_{simulation_id}": f"Krw_0",
-                    f"Kro_{simulation_id}": f"Kro_0",
+                    f"Pc_{simulation_id}": "Pc_0",
+                    f"Krw_{simulation_id}": "Krw_0",
+                    f"Kro_{simulation_id}": "Kro_0",
                 }
             )
             krel_table_node = dataFrameToTableNode(cycle_df)

@@ -6,11 +6,10 @@ import ctk
 import qt
 import slicer
 
-from ltrace.slicer import helpers, ui
-from ltrace.slicer.widget.combined_inputs import CheckableSegmentListBoard
-from ltrace.slicer_utils import *
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer import helpers, ui
+from commons.slicer.widget.combined_inputs import CheckableSegmentListBoard
+from commons.slicer_utils import *
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
 
 
 class EuclideanDistanceTransform(LTracePlugin):

@@ -3,7 +3,6 @@ import os
 
 import SimpleITK as sitk
 import ctk
-import numpy as np
 import qt
 import sitkUtils
 import slicer
@@ -11,9 +10,8 @@ import vtk
 import qSlicerSegmentationsEditorEffectsPythonQt as effects
 import traceback
 
-from ltrace.slicer import helpers
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer.lazy import lazy
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 from SegmentEditorEffects import *
 from typing import Union
 
@@ -558,7 +556,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     def onApply(self):
         try:
             # Get master volume image data
-            import vtkSegmentationCorePython as vtkSegmentationCore
 
             sourceImageData = self.scriptedEffect.sourceVolumeImageData()
             # Get modifier labelmap
@@ -632,10 +629,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
 
         layoutManager = slicer.app.layoutManager()
-        if layoutManager.layout == 201:  # Side-by-side Segmentation:
-            imageLogic = layoutManager.sliceWidget("SideBySideImageSlice").sliceLogic()
-            imageComposite = imageLogic.GetSliceCompositeNode()
-        else:
+        if layoutManager.layout != 201:  # Side-by-side Segmentation:
             slicer.util.setSliceViewerLayers(background=self.filterOutputVolume, foreground=self.sourceVolumeNode)
             nodes = slicer.util.getNodes("vtkMRMLSliceCompositeNode*")
             for node in nodes.values():
@@ -644,7 +638,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         if not self.keepFilterResultCheckBox.isChecked():
             try:
                 slicer.mrmlScene.RemoveNode(self.filterOutputVolume)
-            except:
+            except Exception:
                 pass
         # restore segment selection enableling effects
         if self.selectedSegment:
@@ -698,7 +692,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             displayNode = segmentationNode.GetDisplayNode()
             if displayNode is None:
                 logging.error("preview: Invalid segmentation display node!")
-                color = [0.5, 0.5, 0.5]
             segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
 
             # Make sure we keep the currently selected segment hidden (the user may have changed selection)

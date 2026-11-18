@@ -1,0 +1,4 @@
+columnName	unitLabel	type	nullValue	componentNames
+DEPTH	mm	double		
+TCMR [m3/m3]	m3/m3	double		
+<default>		double		

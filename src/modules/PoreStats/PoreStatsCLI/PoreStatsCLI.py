@@ -5,14 +5,13 @@ from __future__ import print_function
 
 import json
 import numpy as np
-import os
 import re
 import subprocess
 import sys
 import tempfile
 
 from pathlib import Path
-from ltrace.slicer.cli_utils import progressUpdate
+from commons.slicer.cli_utils import progressUpdate
 
 
 def getProgress(bufferedLine):

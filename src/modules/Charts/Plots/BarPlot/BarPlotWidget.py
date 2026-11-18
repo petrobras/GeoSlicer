@@ -1,13 +1,12 @@
 from .BarPlotWidgetModel import BarPlotWidgetModel
 from ..BasePlotWidget import BasePlotWidget
-from ltrace.slicer.helpers import segmentListAndProportionsFromSegmentation
-from ltrace.slicer.widget.customized_pyqtgraph.AngleAxisItem import AngleAxisItem
+from commons.slicer.helpers import segmentListAndProportionsFromSegmentation
+from commons.slicer.widget.customized_pyqtgraph.AngleAxisItem import AngleAxisItem
 
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 import logging
 import numpy as np
-import os
 import pandas as pd
 from pandas.api.types import is_string_dtype
 import pyqtgraph as pg
@@ -169,9 +168,9 @@ class BarPlotWidget(BasePlotWidget):
             for column in range(dataFrame.shape[1]):
                 dataCell = dataFrameArray[row, column]
                 tableItem = None
-                if type(dataCell) == str and dataCell.isnumeric():
+                if type(dataCell) is str and dataCell.isnumeric():
                     dataCell = float(dataCell)
-                elif type(dataCell) != str and type(dataCell) != float:
+                elif type(dataCell) is not str and type(dataCell) is not float:
                     dataCell = dataCell.item()
                 else:
                     continue
@@ -245,7 +244,7 @@ class CustomBarGraph(pg.BarGraphItem):
         try:
             point = QtCore.QPoint(event.lastScreenPos().x(), event.lastScreenPos().y())
             QtWidgets.QToolTip.showText(point, str(self.name()))
-        except:
+        except Exception:
             pass
         finally:
             return True

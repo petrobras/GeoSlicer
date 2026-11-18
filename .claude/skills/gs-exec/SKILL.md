@@ -84,7 +84,7 @@ A `[...]` in the output means "this line has appeared too many times and will be
 `list_tests()` returns `{"suites": [{"name": "SuiteName", "cases": ["test_foo", ...]}]}`. The full list is large; filter by name:
 
 ```python
-from ltrace.slicer.tests.api import list_tests
+from commons.slicer.tests.api import list_tests
 import json
 result = list_tests()
 suite_name = "MyTest"  # change this
@@ -97,7 +97,7 @@ print(json.dumps(matches, indent=2))
 For debugging hard crashes, enable Python's faulthandler to write crash tracebacks to a file. This slows GeoSlicer down, so only enable it when needed.
 
 ```python
-from ltrace.slicer.tests.api import enable_faulthandler
+from commons.slicer.tests.api import enable_faulthandler
 import json
 print(json.dumps(enable_faulthandler()))
 ```
@@ -109,3 +109,4 @@ After a crash, read `agent_tmp/faulthandler.log` for the traceback.
 **Connection error** — GeoSlicer is not running or the Web Server is inactive. Ask the user to start GeoSlicer and enable the Web Server module on port 2016. In developer mode the WebServer auto-starts.
 
 **403 Forbidden** — The "Slicer API exec" option is disabled. Ask the user to enable it in the Web Server settings.
+

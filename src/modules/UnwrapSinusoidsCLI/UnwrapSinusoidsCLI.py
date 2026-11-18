@@ -1,6 +1,5 @@
 #! /usr/bin/env python-real
 
-import vtk
 
 import pickle
 from multiprocessing import Manager, Pool, cpu_count
@@ -10,7 +9,7 @@ import cv2
 import mrml
 import numpy as np
 import slicer.util
-from ltrace.transforms import getRoundedInteger
+from commons.transforms import getRoundedInteger
 from scipy import optimize
 from scipy.optimize import OptimizeWarning
 from scipy.signal import correlate

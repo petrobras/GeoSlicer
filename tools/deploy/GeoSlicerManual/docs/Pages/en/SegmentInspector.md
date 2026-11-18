@@ -112,6 +112,14 @@ Transitions Analysis focuses on examining the changes between regions or segment
 
 Enter a name to be used as a prefix for the results object (labelmap where each partition (pore element) is in a different color, a table with global parameters, and a table with the different metrics for each partition).
 
+Check _Include segment centroids in the report_ to add the __centroid_z__, __centroid_y__ and __centroid_x__ columns to the metrics table.
+
+For 3D images, check _Include principal axis orientations in the report_ and _Include ellipsoid axis lengths in the report_ to add the principal axes columns described below.
+
+Clicking a row of the metrics table, in the table view or in the Explorer panel, centers and zooms the slice views and the 3D view on that partition.
+
+To go the other way, turn on _Pick segment_ in the mouse mode toolbar and click a partition in a slice view: a tooltip shows its main metrics from the table. Ctrl+click shows the table, in the Explorer panel (or in the table view, for tables over 3000 rows), with the partition's row selected. Choosing another mouse mode turns it off.
+
 #### Properties / Metrics:
 
 1. __Label__: partition label identification.
@@ -126,7 +134,7 @@ Enter a name to be used as a prefix for the results object (labelmap where each 
 10. __mean_feret__: Average of the minimum and maximum axes.
 11. __aspect_ratio__: min_feret / max_feret.
 12. __elongation__: max_feret / min_feret.
-13. __eccentricity__: square(1 - min_feret / max_feret), related to the equivalent ellipse (0 ≤ e < 1), equal to 0 for circles.
+13. __eccentricity__: √(1 - (min_feret / max_feret)²), related to the equivalent ellipse (0 ≤ e < 1), equal to 0 for circles.
 14. __ellipse_perimeter__: Perimeter of the equivalent ellipse (equivalent ellipse with axes given by the minimum and maximum Feret diameters). Unit: mm.
 15. __ellipse_area__: Area of the equivalent ellipse (equivalent ellipse with axes given by the minimum and maximum Feret diameters). Unit: mm².
 16. __ellipse_perimeter_over_ellipse_area__: Perimeter of the equivalent ellipse divided by its area.
@@ -135,6 +143,18 @@ Enter a name to be used as a prefix for the results object (labelmap where each 
 19. __gamma__: Circularity of an area calculated as 'gamma = perimeter / (2 * square(PI * area))'.
 20. __pore_size_class__: Pore class symbol/code/id.
 21. __pore_size_class_label__: Pore class label.
+22. __centroid_z__, __centroid_y__, __centroid_x__ (optional): Centroid of the partition, the mean position of its pixels/voxels in world coordinates (z = S, y = A, x = R). Unit: mm.
+
+##### 3D shape properties
+
+For 3D images, the shape properties come from the principal component analysis (PCA) of the partition's voxels. The standard deviations along its major, intermediate and minor axes are σ1 ≥ σ2 ≥ σ3, and the equivalent ellipsoid has semi-axes √5·σ (the ellipsoid with the same second moments).
+
+* __aspect_ratio__: σ3 / σ1.
+* __elongation__: 1 - σ2 / σ1 (Kong & Fonseca). 0 when the two largest axes are equal, approaching 1 for elongated partitions.
+* __flatness__: 1 - σ3 / σ2 (Kong & Fonseca). 0 when the two smallest axes are equal, approaching 1 for flat partitions.
+* __ellipsoid_area__, __ellipsoid_volume__: Surface area and volume of the equivalent ellipsoid. Units: mm², mm³.
+* __major_axis_z__, __major_axis_y__, __major_axis_x__, and the same for __intermediate_axis__ and __minor_axis__ (optional): Direction of each principal axis, as a unit vector in world coordinates (z = S, y = A, x = R). An axis has no direction of its own, so each vector is the one pointing toward +S (z ≥ 0); horizontal axes point toward +A, and axes along x toward +R. When two axes have almost the same length, their directions are poorly defined.
+* __major_axis_length__, __intermediate_axis_length__, __minor_axis_length__ (optional): Full length of each axis of the equivalent ellipsoid, 2·√5·σ. Unit: mm.
 
 ##### Definition of pore classes:
 

@@ -7,7 +7,6 @@ from workflow.commons import no_extra_dim_read
 
 
 class NetCDFExporter:
-
     ## NetCDFExporter (Opcional): Gerador de arquivo NetCDF das segmentações
 
     # Gera um arquivo NetCDF contendo a imagem PP original e um labelmap para cada tipo de instância
@@ -42,7 +41,7 @@ class NetCDFExporter:
 
             rgb_var = nc.createVariable(image_name, "u1", ("z", "y", "x", "c"))
 
-            c_var = nc.createVariable("c", str, ("c",))
+            nc.createVariable("c", str, ("c",))
             z_var = nc.createVariable("z", "d", ("z",))
             y_var = nc.createVariable("y", "d", ("y",))
             x_var = nc.createVariable("x", "d", ("x",))

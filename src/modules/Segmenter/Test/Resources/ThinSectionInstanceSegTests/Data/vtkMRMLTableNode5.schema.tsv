@@ -1,0 +1,12 @@
+columnName	unitLabel	type	componentNames
+label	null	int	
+width (mm)	mm	float	
+height (mm)	mm	float	
+confidence (%)	%	float	
+area (mm^2)	mm^2	double	
+max_feret (mm)	mm	double	
+min_feret (mm)	mm	double	
+aspect_ratio	null	double	
+elongation	null	double	
+eccentricity	null	double	
+perimeter (mm)	mm	double	

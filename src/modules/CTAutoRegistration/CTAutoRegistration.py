@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from collections import namedtuple
@@ -11,18 +10,16 @@ import slicer
 import vtk
 from scipy.ndimage import zoom
 
-from ltrace.slicer.helpers import (
+from commons.slicer.helpers import (
     triggerNodeModified,
     highlight_error,
     reset_style_on_valid_text,
-    copy_hierarchy_attributes,
 )
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.ui import hierarchyVolumeInput, numberParamInt
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import *
-from ltrace.transforms import resample_if_needed
-from ltrace.units import global_unit_registry as ureg
+from commons.slicer.ui import hierarchyVolumeInput, numberParamInt
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import *
+from commons.transforms import resample_if_needed
+from commons.units import global_unit_registry as ureg
 
 
 class CTAutoRegistration(LTracePlugin):

@@ -3,7 +3,7 @@ import slicer
 import os
 
 from RegistrationLib import pqWidget
-from ltrace.slicer import helpers
+from commons.slicer import helpers
 
 
 class LandmarksWidget(pqWidget):
@@ -38,7 +38,7 @@ class LandmarksWidget(pqWidget):
         self.updateLandmarkArray()
 
     def iconActive(self, active):
-        pngFile = "icon_Active.png" if active == True else "icon_Inactive.png"
+        pngFile = "icon_Active.png" if active else "icon_Inactive.png"
         iconPath = os.path.join(os.path.dirname(__file__), pngFile)
         if os.path.exists(iconPath):
             return qt.QIcon(iconPath)
@@ -89,7 +89,7 @@ class LandmarksWidget(pqWidget):
             # active button - https://thenounproject.com/term/crosshair/4434/
             activeButton = qt.QPushButton()
             activeButton.setIcon(self.iconActive(False))
-            activeButton.connect("clicked()", lambda l=landmarkName: self.pickLandmark(l))
+            activeButton.connect("clicked()", lambda name=landmarkName: self.pickLandmark(name))
             rowLayout.addWidget(activeButton, 1)
 
             if landmarkName == self.selectedLandmark:
@@ -105,7 +105,7 @@ class LandmarksWidget(pqWidget):
                     )
                 )
             )
-            removeButton.connect("clicked()", lambda l=landmarkName: self.removeLandmark(l))
+            removeButton.connect("clicked()", lambda name=landmarkName: self.removeLandmark(name))
             rowLayout.addWidget(removeButton, 1)
 
             row.setLayout(rowLayout)
@@ -259,7 +259,7 @@ class LandmarksWidget(pqWidget):
         self.emit("fiducialNodeRenamed(fiducialNodeId)", (fiducialNode.GetID(),))
 
         for idx in range(fiducialNode.GetNumberOfControlPoints()):
-            fiducialNode.SetNthControlPointLabel(idx, f"F-{idx+1}")
+            fiducialNode.SetNthControlPointLabel(idx, f"F-{idx + 1}")
 
         fiducialNode.Modified()
 

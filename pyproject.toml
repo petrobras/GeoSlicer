@@ -6,54 +6,124 @@ requires = [
             "vswhere",
             "patch",
             "packaging",
-            "setuptools-scm"
+            "setuptools-scm==9.2.2"
             ]
+build-backend = "setuptools.build_meta"
 
-[tool.autopep8]
-max_line_length = 120
-ignore = [
-         "E501",
-         "W6"
-         ]
-in-place = true
-recursive = true
-aggressive = 3
+[project]
+name = "slicerltrace"
+version = "2.9.0"
+description = "GeoSlicer Extension"
+readme = "README.md"
+requires-python = "==3.12.*"
+license = {text = "Apache License 2.0"}
+dependencies = [
+    "commons",
+    "microtom",
+    "pnflow",
+    "porespy",
+    "py-pore-flow",
+    "pyflowsolver",
+]
 
-[tool.pylint.'MESSAGES CONTROL']
-disable = [
-           "C0116", # Missing function or method docstring
-           "C0114", # Missing module docstring
-           "W1203", # Use lazy % formatting in logging functions (logging-fstring-interpolation)
-           "R0913", # Too many arguments (x/y) (too-many-arguments),
-           "C0103", # snake_case naming style
-          ]
+[project.scripts]
+deploy = "deploy.deploy_slicer:main"
 
-[tool.pylint.format]
-max-line-length = 120
+[dependency-groups]
+dev = [
+    "modules",
+    "tools",
+    "ruff==0.15.19",
+    "pylic==5.0.1",
+    "pytest==7.4.4",
+    "pytest-cov==3.0.0",
+    "pytest-qt==4.4.0",
+    "mock==4.0.3",
+    "pytest-xvfb==2.0.0",
+    "pytest-env==1.0.1",
+    "python-dotenv==1.0.1",
+    "mrml==0.2.4",
+    "pre-commit==4.6.0",
+]
 
-[tool.black]
+[tool.uv]
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'"
+]
+
+[tool.uv.config-settings-package]
+commons = { editable_mode = "compat" }
+
+[tool.uv.sources]
+commons = { path = "src/commons", editable = true }
+microtom = { path = "src/modules/MicrotomRemote/Libs/microtom", editable = true }
+pnflow = { path = "src/third-parties/pnflow/python", editable = true }
+porespy = { path = "src/third-parties/porespy", editable = true }
+py-pore-flow = { path = "src/third-parties/py_pore_flow", editable = true }
+pyflowsolver = { path = "src/third-parties/pyflowsolver", editable = true }
+modules = { path = "src/modules", editable = true }
+tools = { path = "tools", editable = true }
+
+[tool.uv.workspace]
+members = [
+    "src/partners/*"
+]
+
+[tool.ruff]
 line-length = 120
-exclude = "tools/resources/*|src/submodules/*|env|venv|.eggs/*"
+src = ["src", "tools", "src/partners"]
+respect-gitignore = true
+
+exclude = [
+    "tools/resources/*",
+    "src/third-parties/*",
+    "src/partners/*/src/third-parties/*",
+    "env",
+    "venv",
+    ".venv",
+    ".eggs/*",
+    "agent_tmp",
+    "*egg-info",
+]
+lint.ignore = [
+    "F403", # from module import *
+    "F405", # possible use of module imported from wildcard improt (import *)
+    ]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-v --cov=src --cov-report=html"
 testpaths = [
     "tests/unit",
+    "src/partners",
+]
+norecursedirs = [
+    "third-parties",
+    "*.egg",
+    ".git",
+    ".tox",
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    ".pytest_cache",
 ]
 pythonpath = [
-    "src/ltrace",
+    "tests/mock_modules",  # mocks of the Slicer modules, see tests/mock_modules/_slicer_mocks.py
+    "src",
     "src/modules",
-    "src/submodules/porespy",
-    "src/submodules/biaep",
-    "src/submodules/py_pore_flow",
-    "src/submodules/pyflowsolver"
+    "tools",
+    "src/third-parties/pnflow",
+    "src/third-parties/porespy",
+    "src/third-parties/py_pore_flow",
+    "src/third-parties/pyflowsolver"
 ]
 env = [
     "QT_QPA_PLATFORM = offscreen"
 ]
 filterwarnings = [
-    "ignore:Type PySide2\\..* uses PyType_Spec with a metaclass that has custom tp_new:DeprecationWarning",
+    "ignore:.*uses PyType_Spec with a metaclass that has custom tp_new.*:DeprecationWarning",
     "ignore:The hookimpl CovPlugin\\..* uses old-style configuration options:pytest.PytestDeprecationWarning",
 ]
 
@@ -83,6 +153,7 @@ safe_licenses = [
     "LGPL-3.0-only",
     "MIT",
     "MIT License",
+    "MIT-0",
     "MIT-CMU",
     "Mozilla Public License 2.0 (MPL 2.0)",
     "MPL-2.0 AND MIT",
@@ -101,14 +172,14 @@ safe_licenses = [
 
 unsafe_packages = [
     "edt",
-    "google-crc32c",
     "matplotlib-inline",
     "namex",
     "pyflowsolver",
     "requests-unixsocket",
     "tools",
     "py_pore_flow",
-    "ltrace",
+    "pnflow",
+    "commons",
     "modules",
     "mrml",
     "cuda-toolkit"

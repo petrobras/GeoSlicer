@@ -2,25 +2,22 @@ import json
 import logging
 import os
 
-from ltrace.slicer.tests.utils import wait
 import numpy as np
 
-import vtk.util.numpy_support as vn
 
 import qt
 import slicer
-import vtk
 import qSlicerSegmentationsEditorEffectsPythonQt as effects
 import traceback
 
-from ltrace.slicer import helpers, ui, widgets
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin, getResourcePath
-from ltrace.slicer.ui import numberParamInt
-from ltrace.assets_utils import get_model_by_name, get_pth
-from ltrace.slicer.helpers import LazyLoad
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.cli_queue import CliQueue
-from ltrace.slicer.application_observables import ApplicationObservables
+from commons.slicer import helpers, ui, widgets
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin, getResourcePath
+from commons.slicer.ui import numberParamInt
+from commons.assets_utils import get_model_by_name, get_pth
+from commons.slicer.helpers import LazyLoad
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.cli_queue import CliQueue
+from commons.slicer.application_observables import ApplicationObservables
 from SegmentEditorEffects import *
 
 
@@ -247,7 +244,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
         self.fragSplitLabel.setVisible(self.__sourceIs2d)
         self.fragSplitCheckbox.setVisible(self.__sourceIs2d)
         self.setVisibleFragSplitting()
-        self.setApplyButtonEnablement()
+        self.updateApplyButtonEnablement()
 
     def createCursor(self, widget):
         # Turn off effect-specific cursor for this effect
@@ -264,14 +261,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
     def __updateTrainedModelAvailability(self):
         try:
             self.inputModelPath = get_pth(get_model_by_name("bayes_3px")).as_posix()
-        except:
+        except Exception:
             self.inputModelPath = None
         finally:
             self.setVisibleFragSplitting()
-            self.setApplyButtonEnablement()
+            self.updateApplyButtonEnablement()
             self.reactivateIfOpen()
 
-    def setApplyButtonEnablement(self):
+    def updateApplyButtonEnablement(self):
         effectIsRunning = (self.cliQueue is not None) and self.cliQueue.is_running()
 
         if self.__sourceIs2d:
@@ -311,7 +308,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
         self.setVisibleAnnotSampleSelectors(segmentsSelectionVisible)
 
-        self.setApplyButtonEnablement()
+        self.updateApplyButtonEnablement()
 
     def setVisibleFragSplitting(self):
         fragSplittingVisible = self.__sourceIs2d and self.fragSplitCheckbox.isChecked()
@@ -342,7 +339,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
 
     def onApply(self):
         def onFinish():
-            self.setApplyButtonEnablement()
+            self.updateApplyButtonEnablement()
             for node in [tmpForegroundNode, tmpSlicedReferenceNode, tmpPoreSegNode, tmpBinaryAnnotsNode]:
                 if node is not None:
                     slicer.mrmlScene.RemoveNode(node)
@@ -508,7 +505,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
                 self.cliQueue.create_cli_node(
                     slicer.modules.bayesianinferencecli,
                     poreSegParams,
-                    progress_text=f"Detecting resin region",
+                    progress_text="Detecting resin region",
                     modified_callback=hideTmpOutput if self.inputModelPath else getTrainedResinMask,
                 )
 
@@ -527,7 +524,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEdit
             )
             self.cliQueue.run()
 
-            self.setApplyButtonEnablement()
+            self.updateApplyButtonEnablement()
         except Exception as error:
             logging.debug(f"Error: {error}.\n{traceback.format_exc()}")
             slicer.util.errorDisplay(f"Failed to apply the effect.\nError: {error}")

@@ -6,18 +6,22 @@ import numpy as np
 import pyqtgraph as pg
 import PySide2 as ps
 
-import vtk, qt, slicer, ctk
+import vtk
+import qt
+import slicer
+import ctk
 from SegmentEditorEffects import *
 from SegmentEditorEffects.SegmentEditorThresholdEffect import PreviewPipeline
 
-from ltrace.algorithms.common import randomChoice
-from ltrace.image.optimized_transforms import DEFAULT_NULL_VALUES
-from ltrace.slicer.helpers import getVolumeNullValue, getPythonQtWidget, hide_masking_widget, tryGetNode
-from ltrace.slicer.ui import numberParamInt
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.algorithms.common import randomChoice
+from commons.algorithms.streaming_quantile import proportionLimit
+from commons.image.optimized_transforms import DEFAULT_NULL_VALUES
+from commons.slicer.helpers import getVolumeNullValue, getPythonQtWidget, hide_masking_widget, tryGetNode
+from commons.slicer.ui import numberParamInt
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
-from ltrace.slicer.debounce_caller import DebounceCaller
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer.debounce_caller import DebounceCaller
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):
@@ -143,6 +147,7 @@ the number of clusters equal to the number of segments added to the segmentation
         self.rederedInSideBySide = self.renderedLayout == self.SIDE_BY_SIDE_LAYOUT_ID
         self.rederedInConventional = self.renderedLayout == self.CONVENTIONAL_LAYOUT_ID
         # Setup and start preview pulse
+        self.updateGUIFromMRML()
         self.setupPreviewDisplay()
         self.timer.start(200)
 
@@ -152,6 +157,7 @@ the number of clusters equal to the number of segments added to the segmentation
         self.svalues = None
         self.clearPreviewDisplay()
         self.clearObservers()
+        self.segmentationNode = None
         self.timer.stop()
 
         if self.scriptedEffect.parameterSetNode() is None:
@@ -211,8 +217,8 @@ the number of clusters equal to the number of segments added to the segmentation
         self.hist_plot.setMenuEnabled(False)
         self.hist_plot.hideAxis("left")
 
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["min", "max"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["min", "max", "prop. (%)"])
         self.table.horizontalHeader().setSectionResizeMode(ps.QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.figureGroupPythonQt = getPythonQtWidget(self.figureGroup)
         self.parametersFormLayout.addRow(self.figureGroupPythonQt)
@@ -303,6 +309,59 @@ the number of clusters equal to the number of segments added to the segmentation
         self.applyButton.connect("clicked()", self.onApply)
         self.kMeansButton.connect("clicked()", self.applyKmeans)
         self.table.cellChanged.connect(self.onCellChanged)
+
+    def onProportionEdited(self, row: int, percent: float) -> None:
+        """Move one limit of the segment at `row` so that it holds `percent` of the source volume's voxels.
+
+        The max is moved and the min is kept, except for the last segment when there are multiple segments.
+        """
+        if percent <= 0 or percent >= 100:
+            logging.warning("Segment proportion must be between 0 and 100.")
+            self.drawTable()
+            return
+
+        parameterSetNode = self.scriptedEffect.parameterSetNode()
+        node = parameterSetNode.GetSourceVolumeNode() if parameterSetNode else None
+        if node is None:
+            logging.warning("Source volume node is not available.")
+            self.drawTable()
+            return
+
+        values = slicer.util.arrayFromVolume(node)
+        nullValue = getVolumeNullValue(node)
+
+        movesMin = len(self.ranges) > 1 and row == len(self.ranges) - 1
+        col = 0 if movesMin else 1
+        fixedLimit = self.ranges[row][1 if movesMin else 0]
+        qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
+        qt.QApplication.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+        try:
+            thresholdValue = self.thresholdForSegmentProportion(
+                values, percent / 100.0, fixedLimit, not movesMin, nullValue, getattr(self, "svalues", None)
+            )
+        finally:
+            qt.QApplication.restoreOverrideCursor()
+        if thresholdValue is None:
+            logging.warning("Source volume has no valid (non-null) voxels.")
+            self.drawTable()
+            return
+
+        self.table.item(row, col).setData(ps.QtCore.Qt.ItemDataRole.EditRole, thresholdValue)
+        # Refresh the estimated proportions even if the limit did not change (no cellChanged emitted).
+        self.drawTable()
+
+    @staticmethod
+    def thresholdForSegmentProportion(
+        values, proportion: float, fixedLimit: float, isMaxLimit: bool, nullValue=None, sample=None
+    ):
+        """Find the limit that makes the segment hold `proportion` of the valid voxels, or None if there are none.
+
+        If `isMaxLimit`, `fixedLimit` is the segment's min and the returned value is its max; otherwise `fixedLimit`
+        is the segment's max and the returned value is its min. The volume is read in chunks (see
+        `streaming_quantile`), so memory stays bounded even for volumes with billions of voxels. `sample`, a sample
+        of the volume, lets the search finish in a single pass.
+        """
+        return proportionLimit(values, proportion, fixedLimit, isMaxLimit, nullValue, sample)
 
     def onCloseScene(self, *args):
         self.redrawHistogram([], None)
@@ -398,7 +457,6 @@ the number of clusters equal to the number of segments added to the segmentation
             return []
 
         self.colorsBySegment = dict()
-        segmentIDs = vtk.vtkStringArray()
         segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
         if segmentationNode is None:
             return []
@@ -488,9 +546,9 @@ the number of clusters equal to the number of segments added to the segmentation
         nSegments = segmentation.GetNumberOfSegments()
 
         self.table.setRowCount(nSegments)
+        proportions = self.estimateProportions()
         for i in range(nSegments):
             segmentID = segmentation.GetNthSegmentID(i)
-            segment_name = segmentation.GetSegment(segmentID).GetName()
             item = ps.QtWidgets.QTableWidgetItem("")
             item.setFlags(ps.QtCore.Qt.ItemFlag.ItemIsEnabled)
             item_color = segmentation.GetSegment(segmentID).GetColor()
@@ -505,6 +563,10 @@ the number of clusters equal to the number of segments added to the segmentation
                 item2.setData(ps.QtCore.Qt.ItemDataRole.EditRole, maxThresh)
                 self.table.setItem(i, 0, item1)
                 self.table.setItem(i, 1, item2)
+            item3 = ps.QtWidgets.QTableWidgetItem()
+            item3.setData(ps.QtCore.Qt.ItemDataRole.EditRole, proportions[i] if i < len(proportions) else 0.0)
+            item3.setToolTip("Estimated from a sample of the volume. Edit to resize the segment to this proportion.")
+            self.table.setItem(i, 2, item3)
 
         self.table.blockSignals(False)
 
@@ -517,6 +579,17 @@ the number of clusters equal to the number of segments added to the segmentation
         if newTableWidth > self.tableWidth:
             self.tableWidth = newTableWidth + 10
         self.table.setFixedWidth(self.tableWidth)
+
+    def estimateProportions(self) -> list:
+        """Percentage of the sampled voxels inside each range (the last range includes its max)."""
+        svalues = getattr(self, "svalues", None)
+        if svalues is None or len(svalues) == 0:
+            return []
+        proportions = []
+        for i, (rmin, rmax) in enumerate(self.ranges):
+            inside = (svalues >= rmin) & ((svalues <= rmax) if i == len(self.ranges) - 1 else (svalues < rmax))
+            proportions.append(round(100.0 * np.count_nonzero(inside) / len(svalues), 1))
+        return proportions
 
     def _getCut(self, cutIdx):
         if cutIdx < len(self.ranges):
@@ -533,6 +606,10 @@ the number of clusters equal to the number of segments added to the segmentation
         er = ps.QtCore.Qt.ItemDataRole.EditRole
         changedItem = self.table.item(rowIdx, colIdx)
         data = changedItem.data(er)
+
+        if colIdx == 2:
+            self.onProportionEdited(rowIdx, data)
+            return
 
         self.ranges[rowIdx][colIdx] = data
 
@@ -632,7 +709,6 @@ the number of clusters equal to the number of segments added to the segmentation
                     segmentid = segmentation.GetNthSegmentID(i)
                     self.scriptedEffect.parameterSetNode().SetSelectedSegmentID(segmentid)
                     # Get master volume image data
-                    import vtkSegmentationCorePython as vtkSegmentationCore
 
                     sourceImageData = self.scriptedEffect.sourceVolumeImageData()
                     # Get modifier labelmap
@@ -777,6 +853,8 @@ the number of clusters equal to the number of segments added to the segmentation
         nsegs = segmentation.GetNumberOfSegments()
         if nsegs == 0:
             logging.debug("Invalid segmentation node. There are no segments.")
+            self.ranges = []
+            self.redrawHistogram()
             return
 
         centroids, labelmap = kmeans2(self.svalues.astype(float), int(nsegs), iter=100, minit="points")

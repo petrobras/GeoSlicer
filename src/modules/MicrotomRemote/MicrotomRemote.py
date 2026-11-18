@@ -2,7 +2,6 @@ import qt
 import slicer
 import ctk
 import vtk
-import importlib
 import json
 import logging
 import numpy as np
@@ -12,18 +11,18 @@ import uuid
 from collections import defaultdict
 
 from functools import partial
-from ltrace.image.optimized_transforms import connected_image
-from ltrace.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
-from ltrace.slicer import ui, helpers, widgets, data_utils as du
-from ltrace.slicer.node_attributes import Tag, NodeEnvironment
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.image.optimized_transforms import connected_image
+from commons.readers.microtom import KrelCompiler, PorosimetryCompiler, StokesKabsCompiler
+from commons.slicer import ui, helpers, widgets, data_utils as du
+from commons.slicer.node_attributes import Tag, NodeEnvironment
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.utils.ProgressBarProc import ProgressBarProc
 from pathlib import Path
 
-from ltrace.remote.handlers import OneResultSlurmHandler
+from commons.remote.handlers import OneResultSlurmHandler
+from commons.pore_networks.report import ReportLogic
 
-from ltrace.slicer.helpers import LazyLoad2
 
 # Checks if closed source code is available
 try:
@@ -93,7 +92,7 @@ class SaturationCorrectionWidget(ctk.ctkCollapsibleButton):
                     self._correction = total_micropor / total_porosity
                 else:
                     raise Exception()
-            except:
+            except Exception:
                 slicer.util.errorDisplay(
                     "Table needs the following rows:\nWeighted Microporosity (%)\nWeighted Total Porosity (%)\nMacroporosity Segment (%)"
                 )
@@ -908,7 +907,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                     self.currentMode = mode.MODE_NAME
                     self.optionsStack.setCurrentIndex(index)
                     break
-            except KeyError as ke:
+            except KeyError:
                 # happens only during initialization
                 pass
 
@@ -978,7 +977,7 @@ class MicrotomRemoteWidget(LTracePluginWidget):
                 workspace = amatch.group(1)
                 logging.debug(f"Cancelling {workspace}")
                 self.logic.cancelRemoteExecution(workspace)
-        except Exception as e:
+        except Exception:
             pass
 
     def onPathChanged(self, pathstring: str):
@@ -1433,7 +1432,7 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
             if sequenceIndex < 1:
                 try:
                     helpers.removeTemporaryNodes(environment=Tag(sim_info["workspace"]))
-                except Exception as e:
+                except Exception:
                     pass
 
     def runLocal(
@@ -1566,12 +1565,12 @@ class MicrotomRemoteLogic(MicrotomRemoteLogicBase):
                 uid = simulator
 
             return uid
-        except ValueError as ve:
+        except ValueError:
             slicer.util.errorDisplay(
                 "Please, select at least one segment by checking the segment box on the segment list. "
                 "The selected segment will be considered as the pore space."
             )
-        except Exception as e:
+        except Exception:
             import traceback
 
             traceback.print_exc()

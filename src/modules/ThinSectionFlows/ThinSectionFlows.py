@@ -1,5 +1,4 @@
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget
-from ltrace.slicer_utils import getResourcePath
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget
 from pathlib import Path
 import qt
 import os

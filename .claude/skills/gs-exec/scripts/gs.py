@@ -96,12 +96,10 @@ def _cmd_exec(args):
     return 0
 
 
-_STATUS_CODE = (
-    "from ltrace.slicer.tests.api import get_run_status\n" "import json\n" "print(json.dumps(get_run_status()))"
-)
+_STATUS_CODE = "from commons.slicer.tests.api import get_run_status\nimport json\nprint(json.dumps(get_run_status()))"
 
 _CANCEL_CODE = (
-    "from ltrace.slicer.tests.api import cancel_run_tests\n" "import json\n" "print(json.dumps(cancel_run_tests()))"
+    "from commons.slicer.tests.api import cancel_run_tests\nimport json\nprint(json.dumps(cancel_run_tests()))"
 )
 
 
@@ -116,8 +114,7 @@ def _hint_recovery():
 def _cmd_run_tests(args):
     filters = args.filters
     code = (
-        "from ltrace.slicer.tests.api import run_tests\n"
-        f"run_tests(filters={json.dumps(filters) if filters else None})"
+        f"from commons.slicer.tests.api import run_tests\nrun_tests(filters={json.dumps(filters) if filters else None})"
     )
     try:
         stdout, err = post_code(code, args.url, timeout=args.timeout)

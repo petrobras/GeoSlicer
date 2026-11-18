@@ -1,7 +1,6 @@
 import os
-import qt, slicer
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer_utils import LTracePlugin
 
 
 class DepthRangeSegmenterEffect(LTracePlugin):

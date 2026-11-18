@@ -11,14 +11,12 @@ import numpy as np
 import qt
 import slicer
 import vtk
-from scipy.interpolate import interp1d
-from scipy.ndimage import gaussian_filter1d
 
-from ltrace.algorithms.shading_correction import compute_polynomial_shading_correction, normalize_z
-from ltrace.flow.util import createSimplifiedSegmentEditor, onSegmentEditorEnter, onSegmentEditorExit
-from ltrace.slicer import helpers
-from ltrace.slicer.app import MANUAL_BASE_URL
-from ltrace.slicer.helpers import (
+from commons.algorithms.shading_correction import compute_polynomial_shading_correction, normalize_z
+from commons.flow.util import createSimplifiedSegmentEditor, onSegmentEditorEnter, onSegmentEditorExit
+from commons.slicer import helpers
+from commons.slicer.app import MANUAL_BASE_URL
+from commons.slicer.helpers import (
     highlight_error,
     reset_style_on_valid_text,
     copy_display,
@@ -27,13 +25,13 @@ from ltrace.slicer.helpers import (
     remove_highlight,
     copy_subject_hierarchy_item_parent,
 )
-from ltrace.slicer.lazy import lazy
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer.widget.status_panel import StatusPanel
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.lazy import lazy
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer.widget.status_panel import StatusPanel
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 
 try:
     from Test.PolynomialShadingCorrectionTest import PolynomialShadingCorrectionTest
@@ -467,7 +465,7 @@ class PolynomialShadingCorrectionWidget(LTracePluginWidget):
         reset_style_on_valid_text(self.outputImageNameLineEdit)
 
         outputNameHelp = HelpButton(
-            "The desired name for the corrected output image volume." "\n\n-----\n[More]({path_to_manual})",
+            "The desired name for the corrected output image volume.\n\n-----\n[More]({path_to_manual})",
             replacer=lambda x: x.format(path_to_manual=manualPath),
         )
 

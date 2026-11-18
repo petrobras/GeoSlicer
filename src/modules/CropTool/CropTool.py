@@ -8,17 +8,17 @@ from threading import Lock
 import ctk
 import qt
 import slicer
-from ltrace.slicer import ui, helpers
-from ltrace.slicer.helpers import (
+from commons.slicer import ui, helpers
+from commons.slicer.helpers import (
     copy_display,
     copy_attributes,
     copy_hierarchy_attributes,
 )
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer_utils import *
-from ltrace.transforms import ijkToRAS, rasToIJK
-from ltrace.utils.callback import Callback
+from commons.slicer.metadata import copy_metadata
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer_utils import *
+from commons.transforms import ijkToRAS, rasToIJK
+from commons.utils.callback import Callback
 
 try:
     from Test.CropToolTest import CropToolTest
@@ -39,7 +39,9 @@ class VectorInputWidget(qt.QWidget):
         self.setSizePolicy(qt.QSizePolicy.Minimum, qt.QSizePolicy.Fixed)
 
         if inputBoxBuilder is None:
-            inputBoxBuilder = lambda: ui.numberParam((-99999999.0, 99999999.0), step=0.5, decimals=1)
+
+            def inputBoxBuilder():
+                return ui.numberParam((-99999999.0, 99999999.0), step=0.5, decimals=1)
 
         self.xSpinBox = inputBoxBuilder()
         self.ySpinBox = inputBoxBuilder()
@@ -339,6 +341,13 @@ class CropToolWidget(LTracePluginWidget):
         )
         parametersFormLayout.addRow(self.keepROIAfterCropCheckBox)
 
+        self.enableRotationCheckBox = qt.QCheckBox("Enable ROI rotation (oblique crop)")
+        self.enableRotationCheckBox.setToolTip(
+            "If checked, the ROI can be rotated to perform an oblique crop. Leave unchecked to crop along the volume axes."
+        )
+        self.enableRotationCheckBox.toggled.connect(self.onEnableRotationToggled)
+        parametersFormLayout.addRow(self.enableRotationCheckBox)
+
         self.applyCancelButtons = ui.ApplyCancelButtons(
             onApplyClick=self.onCropButtonClicked,
             onCancelClick=self.onCancelButtonClicked,
@@ -376,7 +385,7 @@ class CropToolWidget(LTracePluginWidget):
         self.applyCancelButtons.setEnabled(False)
 
     def onRoiSelectionChanged(self, node=None):
-        if self.roiNode and self.roiObserver:
+        if self.roiNode and self.roiObserver is not None:
             self.roiNode.RemoveObserver(self.roiObserver)
             self.roiNode = None
             helpers.removeTemporaryNodes()
@@ -390,6 +399,7 @@ class CropToolWidget(LTracePluginWidget):
         )
         roiNode.SetDisplayVisibility(False)
         roiNode.GetDisplayNode().SetFillOpacity(0.5)
+        roiNode.GetDisplayNode().SetRotationHandleVisibility(self.enableRotationCheckBox.isChecked())
 
         if node:
             roiNode.CopyContent(node)
@@ -403,6 +413,10 @@ class CropToolWidget(LTracePluginWidget):
             self.roiNode.SetDisplayVisibility(True)
 
         self.updateUiFromRoi()
+
+    def onEnableRotationToggled(self, checked):
+        if self.roiNode and self.roiNode.GetDisplayNode():
+            self.roiNode.GetDisplayNode().SetRotationHandleVisibility(checked)
 
     def onVisibilityChanged(self, volume, checked):
         # if not checked:
@@ -493,6 +507,9 @@ class CropToolWidget(LTracePluginWidget):
                 self.logic.joinScene(volume, cropped)
 
             if keepROI:
+                if self.roiObserver is not None:
+                    self.roiNode.RemoveObserver(self.roiObserver)
+                    self.roiObserver = None
                 helpers.makeTemporaryNodePermanent(self.roiNode, show=True)
                 self.roiNode.SetDisplayVisibility(False)
                 # Detach the ROI node from the widget so it won't be deleted in deleteDanglingObjects
@@ -518,6 +535,7 @@ class CropToolWidget(LTracePluginWidget):
         self.gridCenterWidget.setValues(0, 0, 0)
         self.copyAttributesCheckBox.setChecked(False)
         self.keepROIAfterCropCheckBox.setChecked(False)
+        self.enableRotationCheckBox.setChecked(False)
 
     def onGridParametersChanged(self, value):
         volume = self.volumeInputTableWidget.getVisibleVolume()
@@ -527,7 +545,7 @@ class CropToolWidget(LTracePluginWidget):
         size = self.gridSizeWidget.values()
         center = self.gridCenterWidget.values()
 
-        if self.roiObserver:
+        if self.roiObserver is not None:
             self.roiNode.RemoveObserver(self.roiObserver)
 
         self.logic.setXYZRadiusFromIJK(volume, self.roiNode, size)
@@ -595,7 +613,7 @@ class CropToolWidget(LTracePluginWidget):
         super().enter()
 
     def deleteDanglingObjects(self):
-        if self.roiNode and self.roiObserver:
+        if self.roiNode and self.roiObserver is not None:
             self.roiNode.RemoveObserver(self.roiObserver)
         if self.roiNode:
             slicer.mrmlScene.RemoveNode(self.roiNode)
@@ -634,8 +652,42 @@ class CropToolWidget(LTracePluginWidget):
 
 
 class CropToolLogic(LTracePluginLogic):
+    ROTATION_TOLERANCE = 1e-6
+
     def __init__(self):
         LTracePluginLogic.__init__(self)
+
+    def isRoiRotated(self, roiNode):
+        if roiNode is None:
+            return False
+
+        matrix = roiNode.GetObjectToNodeMatrix()
+        for row in range(3):
+            for col in range(3):
+                value = matrix.GetElement(row, col)
+                if row == col:
+                    if abs(abs(value) - 1.0) > self.ROTATION_TOLERANCE:
+                        return True
+                elif abs(value) > self.ROTATION_TOLERANCE:
+                    return True
+        return False
+
+    def getObliqueOutputGeometry(self, volume, roiNode):
+        """Output extent and spacing that vtkSlicerCropVolumeLogic will produce for a rotated ROI.
+
+        Each ROI axis takes the spacing of the volume axis best aligned with it, so the values
+        cannot be derived from volume.GetSpacing() componentwise once the ROI is rotated.
+        """
+        extent = [0] * 6
+        spacing = [0.0] * 3
+        ok = slicer.modules.cropvolume.logic().GetInterpolatedCropOutputGeometry(
+            roiNode, volume, False, 1.0, extent, spacing
+        )
+        if not ok:
+            raise CropInfo(f"Could not compute the crop geometry for {volume.GetName()}.")
+
+        size = tuple(extent[2 * axis + 1] - extent[2 * axis] + 1 for axis in range(3))
+        return size, tuple(spacing)
 
     def initializeVolume(self, volume, roiNode):
         if volume is not None and roiNode is not None:
@@ -651,6 +703,9 @@ class CropToolLogic(LTracePluginLogic):
             roiNode.SetDisplayVisibility(False)
 
     def crop(self, volume, roiNode, ijkSize, deepCopy=False):
+        if self.isRoiRotated(roiNode):
+            return self.__cropOblique(volume, roiNode, deepCopy=deepCopy)
+
         try:
             position_ras = [0] * 3
             if roiNode is not None:
@@ -689,6 +744,55 @@ class CropToolLogic(LTracePluginLogic):
             logging.error(f"Error during cropping: {e}")
             raise
 
+    def __cropOblique(self, volume, roiNode, deepCopy=False):
+        isLabelMap = isinstance(volume, slicer.vtkMRMLLabelMapVolumeNode)
+
+        resultBufferNode = helpers.createTemporaryVolumeNode(
+            volume.__class__, volume.GetName() + " - Cropped", uniqueName=True
+        )
+
+        parameters = slicer.mrmlScene.AddNewNodeByClass(slicer.vtkMRMLCropVolumeParametersNode.__name__)
+        try:
+            parameters.SetInputVolumeNodeID(volume.GetID())
+            parameters.SetROINodeID(roiNode.GetID())
+            parameters.SetOutputVolumeNodeID(resultBufferNode.GetID())
+            parameters.VoxelBasedOff()
+            parameters.SetInterpolationMode(
+                slicer.vtkMRMLCropVolumeParametersNode.InterpolationNearestNeighbor
+                if isLabelMap
+                else slicer.vtkMRMLCropVolumeParametersNode.InterpolationLinear
+            )
+            parameters.SetIsotropicResampling(False)
+            parameters.SetSpacingScalingConst(1.0)
+            parameters.SetFillValue(0 if isLabelMap else volume.GetImageData().GetScalarRange()[0])
+
+            errorCode = slicer.modules.cropvolume.logic().Apply(parameters)
+            if errorCode != 0:
+                raise CropInfo(f"Failed to crop {volume.GetName()} using the rotated ROI (error {errorCode}).")
+
+            if resultBufferNode.GetImageData() is None:
+                raise CropInfo(
+                    f"Could not resample {volume.GetName()} onto the rotated ROI. "
+                    "Rotated cropping does not support this image type."
+                )
+        except Exception:
+            slicer.mrmlScene.RemoveNode(resultBufferNode)
+            raise
+        finally:
+            slicer.mrmlScene.RemoveNode(parameters)
+
+        copy_display(volume, resultBufferNode)
+        copy_metadata(volume, resultBufferNode)
+
+        if deepCopy:
+            copy_attributes(volume, resultBufferNode)
+            copy_hierarchy_attributes(volume, resultBufferNode)
+            resultBufferNode.CopyReferences(volume)
+
+        helpers.makeTemporaryNodePermanent(resultBufferNode, show=True)
+
+        return resultBufferNode
+
     def __sliceVolume(self, volume, start, end, new_origin):
         array = slicer.util.arrayFromVolume(volume)
         slices = tuple([slice(st, en) for st, en in zip(start, end)])
@@ -706,6 +810,10 @@ class CropToolLogic(LTracePluginLogic):
     def getSelectionSize(self, volume, roiNode):
         if roiNode is None:
             return 0, 0, 0
+
+        if self.isRoiRotated(roiNode):
+            size, _ = self.getObliqueOutputGeometry(volume, roiNode)
+            return size
 
         radius = [0] * 3
         roiNode.GetRadiusXYZ(radius)
@@ -729,7 +837,11 @@ class CropToolLogic(LTracePluginLogic):
         if roiNode is None:
             return
 
-        spacing = volume.GetSpacing()
+        if self.isRoiRotated(roiNode):
+            _, spacing = self.getObliqueOutputGeometry(volume, roiNode)
+        else:
+            spacing = volume.GetSpacing()
+
         rasRadius = tuple(0.5 * ijkDim * spacingDim for ijkDim, spacingDim in zip(ijkSize, spacing))
         roiNode.SetRadiusXYZ(rasRadius)
 

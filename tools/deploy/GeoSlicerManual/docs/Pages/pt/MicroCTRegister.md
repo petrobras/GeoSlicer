@@ -72,7 +72,7 @@ Os parâmetros utilizados no registro geral são:
 
 ## Registro Rápido
 
-O Registro Rápido alinha automaticamente dois volumes de MicroCT de uma mesma amostra (por exemplo, uma aquisição seca e outra saturada) casando a constelação de inclusões compactas e de alta atenuação ("blobs") visíveis em ambos. Ele recupera uma transformação rígida (rotação e translação) e é indicado para amostras que compartilham essas feições densas. Os dois volumes devem estar na mesma grade e no mesmo espaçamento de voxel.
+O Registro Rápido alinha automaticamente dois volumes de MicroCT de uma mesma amostra (por exemplo, uma aquisição seca e outra saturada) casando a constelação de inclusões compactas e de alta atenuação ("blobs") visíveis em ambos. Ele recupera uma transformação rígida (rotação e translação) e é indicado para amostras que compartilham essas feições densas. Os volumes podem ter tamanhos de voxel diferentes (testado até uma diferença de 3x), desde que o espaçamento de cada volume esteja correto: a escala não é estimada.
 
 Selecione o *Fixed volume*, que permanece parado, e o *Moving volume*, que recebe a transformação de alinhamento, e clique em *Apply*. Uma barra de progresso informa a detecção de feições e o casamento, o que normalmente leva apenas alguns segundos.
 

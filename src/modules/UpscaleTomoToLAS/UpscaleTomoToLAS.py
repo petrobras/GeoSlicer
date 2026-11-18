@@ -5,12 +5,12 @@ import lasio
 import numpy as np
 import qt
 import slicer
-from ltrace.slicer.cli_utils import writeToTable
-from ltrace.slicer.slicer_matplotlib import MatplotlibCanvasWidget
+from commons.slicer.cli_utils import writeToTable
+from commons.slicer.slicer_matplotlib import MatplotlibCanvasWidget
 
-from ltrace.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
-from ltrace.units import global_unit_registry as ureg
-from ltrace import lmath
+from commons.slicer_utils import LTracePlugin, LTracePluginLogic, LTracePluginWidget
+from commons.units import global_unit_registry as ureg
+from commons import lmath
 from pathlib import Path
 from scipy.stats import norm
 import pandas as pd
@@ -18,7 +18,6 @@ import vtk
 
 
 class UpscaleTomoToLAS(LTracePlugin):
-
     SETTING_KEY = "UpscaleTomoToLAS"
 
     def __init__(self, parent):
@@ -35,7 +34,6 @@ class UpscaleTomoToLAS(LTracePlugin):
 
 
 class UpscaleTomoToLASLogic(LTracePluginLogic):
-
     UpscaleResult = namedtuple(
         "UpscaleResult",
         [

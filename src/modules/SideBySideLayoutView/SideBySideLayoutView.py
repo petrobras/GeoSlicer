@@ -4,10 +4,10 @@ import qt
 import slicer
 import vtk
 
-from ltrace.slicer.app.layouts import customLayout
-from ltrace.slicer.side_by_side_image_layout import enable_zoom_sync, SideBySideImageManager
-from ltrace.slicer_utils import LTracePlugin
-from ltrace.constants import (
+from commons.slicer.app.layouts import customLayout
+from commons.slicer.side_by_side_image_layout import enable_zoom_sync, SideBySideImageManager
+from commons.slicer_utils import LTracePlugin
+from commons.constants import (
     SIDE_BY_SIDE_IMAGE_LAYOUT_ID,
     SIDE_BY_SIDE_SEGMENTATION_LAYOUT_ID,
     SIDE_BY_SIDE_DUMB_LAYOUT_ID,
@@ -248,7 +248,7 @@ class SideBySideLayoutView(LTracePlugin):
         layout = slicer.app.layoutManager()
         toLogic = layout.sliceWidget(toSlice).sliceLogic()
         toComposite = toLogic.GetSliceCompositeNode()
-        if toComposite.GetBackgroundVolumeID() != None:
+        if toComposite.GetBackgroundVolumeID() is not None:
             # This slice already has a background, don't change it
             return
         fromLogic = layout.sliceWidget(fromSlice).sliceLogic()
@@ -264,7 +264,7 @@ class SideBySideLayoutView(LTracePlugin):
         layout = slicer.app.layoutManager()
         toLogic = layout.sliceWidget(toSlice).sliceLogic()
         toComposite = toLogic.GetSliceCompositeNode()
-        if toComposite.GetForegroundVolumeID() != None:
+        if toComposite.GetForegroundVolumeID() is not None:
             # This slice already has a foreground, don't change it
             return
         fromLogic = layout.sliceWidget(fromSlice).sliceLogic()

@@ -1,10 +1,8 @@
 from typing import Tuple
 
 import qt
-import slicer
-import numpy as np
 
-from ltrace.slicer import helpers, widgets
+from commons.slicer import helpers, widgets
 
 
 class LitePorosityOutputWidget(qt.QFrame):

@@ -9,7 +9,7 @@ import pickle
 import shutil
 from pathlib import Path
 
-from ltrace.slicer.thin_section.instance_segmenter_widget import (
+from commons.slicer.thin_section.instance_segmenter_widget import (
     ThinSectionInstanceSegmenterWidget,
 )
 
@@ -24,10 +24,10 @@ import vtk
 from recordtype import recordtype  # mutable
 
 from SegmenterMethods.correlation_distance import CorrelationDistance
-from ltrace.algorithms.gabor import get_gabor_kernels
-from ltrace.assets_utils import get_metadata, get_pth
-from ltrace.slicer import ui, helpers, widgets
-from ltrace.slicer.helpers import (
+from commons.algorithms.gabor import get_gabor_kernels
+from commons.assets_utils import get_metadata, get_pth
+from commons.slicer import ui, helpers, widgets
+from commons.slicer.helpers import (
     clearPattern,
     createLabelmapInput,
     validateSourceVolume,
@@ -37,19 +37,19 @@ from ltrace.slicer.helpers import (
     hex2Rgb,
     getCurrentEnvironment,
 )
-from ltrace.slicer.node_attributes import NodeEnvironment
-from ltrace.slicer.nodes.binary_node import createBinaryNode, getBinary
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer.widget.help_button import HelpButton
-from ltrace.slicer.widget.trained_model_selector import TrainedModelSelector
-from ltrace.slicer.widgets import BaseSettingsWidget, PixelLabel
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, getResourcePath
-from ltrace.slicer.cli_queue import CliQueue
+from commons.slicer.node_attributes import NodeEnvironment
+from commons.slicer.nodes.binary_node import createBinaryNode, getBinary
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer.widget.help_button import HelpButton
+from commons.slicer.widget.trained_model_selector import TrainedModelSelector
+from commons.slicer.widgets import BaseSettingsWidget, PixelLabel
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer.cli_queue import CliQueue
 
 # Checks if closed source code is available
 try:
     from Test.SegmenterTest import SegmenterTest
-except ImportError as e:
+except ImportError:
     SegmenterTest = None  # tests not deployed to final version or closed source
 
 SegmentLabel = recordtype("SegmentLabel", ["name", "color", "id", "value", ("property", "Solid")])
@@ -719,7 +719,7 @@ class SegmenterWidget(LTracePluginWidget):
         space = 2 * " "
 
         if "description" in metadata:
-            model_description = "\n".join([f"**Description:**", "\n", metadata["description"], "\n"])
+            model_description = "\n".join(["**Description:**", "\n", metadata["description"], "\n"])
         else:
             model_description = ""
 
@@ -808,8 +808,8 @@ class SegmenterWidget(LTracePluginWidget):
 * **Model type:** {model.__class__.__name__}
 * **Classes:**
 * {model_classes}
-* **Number of input images:** {content['props']['Number of Extra images'] + 1}
-* **Color channels:** {content['props']['Total color channels']}
+* **Number of input images:** {content["props"]["Number of Extra images"] + 1}
+* **Color channels:** {content["props"]["Total color channels"]}
 """
         html = markdown.markdown(msg)
         self.classifierInfo.setText(html)
@@ -863,15 +863,15 @@ class SegmenterWidget(LTracePluginWidget):
 
     def _checkHaveFilters(self):
         if self.createClassifierRadio.isChecked() and self.methodSelector.currentWidget().METHOD == "random_forest":
-            valid = len(self.methodSelector.currentWidget().customFilters) and (self.refNodeId != None)
+            valid = len(self.methodSelector.currentWidget().customFilters) and (self.refNodeId is not None)
             return valid
         return True
 
     def _checkRequirementsForApply(self):
-        if self.methodSelector.currentWidget() == None:
+        if self.methodSelector.currentWidget() is None:
             return
 
-        if self.cliQueue == None or not self.cliQueue.is_running():
+        if self.cliQueue is None or not self.cliQueue.is_running():
             self.applyCancelButtons.setEnabled(self.refNodeId is not None)
         else:
             self.applyCancelButtons.setEnabled(False)
@@ -916,7 +916,7 @@ class SegmenterWidget(LTracePluginWidget):
             sameMinSpacing, relativeError = compareVolumeSpacings(node, referenceVolumeNode)
             if relativeError > 0.01:
                 slicer.util.warningDisplay(
-                    "The selected volume nodes have too different voxel sizes " " (difference > 1%)"
+                    "The selected volume nodes have too different voxel sizes  (difference > 1%)"
                 )
                 return
 
@@ -1115,7 +1115,7 @@ def revertColorTable(invMap, destinationNode):
             segment.SetName(name)
             segment.SetColor(color[:3])
             # segment.SetLabelValue(index)
-        except Exception as e:
+        except Exception:
             logging.error(
                 f"Failed during segment {j} [id: {segmentation.GetNthSegmentID(j)}, name: {segment.GetName()}, label: {segment.GetLabelValue()}]"
             )
@@ -1480,7 +1480,7 @@ class SegmenterLogic(LogicBase):
                 if error != "":
                     slicer.util.errorDisplay(error)
 
-            except Exception as e:
+            except Exception:
                 logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
@@ -1488,7 +1488,6 @@ class SegmenterLogic(LogicBase):
                 raise
 
         def onFinish():
-            caller = cliQueue.get_current_node()
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             self.progressUpdate(1.0)
@@ -1641,7 +1640,7 @@ class MonaiModelsLogic(LogicBase):
 
                 self.nodeCreated.emit(outNode.GetID())
 
-            except Exception as e:
+            except Exception:
                 logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
@@ -1650,7 +1649,6 @@ class MonaiModelsLogic(LogicBase):
                 raise
 
         def onFinish():
-            caller = cliQueue.get_current_node()
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             clearPattern("TMP_P*_ROCK_AREA*")
@@ -1875,7 +1873,7 @@ class BayesianInferenceLogic(LogicBase):
 
                 self.nodeCreated.emit(outNode.GetID())
 
-            except Exception as e:
+            except Exception:
                 logging.error(f"Handle errors on state: {caller.GetStatusString()}")
                 tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
                 clearPattern(tmpPrefix)
@@ -1884,7 +1882,6 @@ class BayesianInferenceLogic(LogicBase):
                 raise
 
         def onFinish():
-            caller = cliQueue.get_current_node()
             tmpPrefix = outputPrefix.replace("_{type}", "_TMP_*")
             clearPattern(tmpPrefix)
             clearPattern("TMP_P*_ROCK_AREA*")
@@ -2035,7 +2032,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
         try:
             row = item.row()
             filter_func = self.tableFilters.item(row, 0).text()
-        except:
+        except Exception:
             row = self.tableFilters.rowCount
             filter_func = self.customFilterInput.currentData
 
@@ -2193,7 +2190,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
                         kernel_image = cv2.resize(
                             kernel_image, (0, 0), fx=ratio, fy=ratio, interpolation=cv2.INTER_NEAREST
                         )
-                    except:
+                    except Exception:
                         kernel_image = np.zeros((100, preview_size), dtype=np.uint8)
 
                     # Normalize
@@ -2273,7 +2270,7 @@ class RandomForestSettingsWidget(BaseSettingsWidget):
 
             status = dialog.exec()
 
-            if status == True:
+            if status:
                 options = {}
                 if filter_func == "gaussian" or filter_func == "winvar":
                     options["sigma"] = list(map(float, sigmaValues.text.split(",")))

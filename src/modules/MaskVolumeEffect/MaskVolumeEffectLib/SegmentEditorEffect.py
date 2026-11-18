@@ -1,11 +1,14 @@
 import os
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 import logging
 from SegmentEditorEffects import *
-from ltrace.slicer.helpers import getVolumeNullValue, setVolumeNullValue, copy_attributes, copy_hierarchy_attributes
-from ltrace.slicer.metadata import copy_metadata
+from commons.slicer.helpers import getVolumeNullValue, setVolumeNullValue, copy_attributes, copy_hierarchy_attributes
+from commons.slicer.metadata import copy_metadata
 
-from ltrace.slicer_utils import LTraceSegmentEditorEffectMixin
+from commons.slicer_utils import LTraceSegmentEditorEffectMixin
 
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect, LTraceSegmentEditorEffectMixin):

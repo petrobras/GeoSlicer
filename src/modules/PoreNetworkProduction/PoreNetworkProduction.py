@@ -16,17 +16,22 @@ from pyqtgraph import QtCore
 from scipy import optimize, ndimage, interpolate
 import re
 
-from ltrace.slicer import ui
-from ltrace.slicer.helpers import highlight_error
-from ltrace.slicer.ui import hierarchyVolumeInput
-from ltrace.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic, dataframeFromTable, getResourcePath
-from ltrace.slicer_utils import tableNodeToDict, dataFrameToTableNode
-from ltrace.utils.ProgressBarProc import ProgressBarProc
+from commons.slicer import ui
+from commons.slicer.helpers import highlight_error
+from commons.slicer.ui import hierarchyVolumeInput
+from commons.slicer.widget.customized_pyqtgraph.GraphicsLayoutWidget import GraphicsLayoutWidget
+from commons.slicer_utils import (
+    LTracePlugin,
+    LTracePluginWidget,
+    LTracePluginLogic,
+    dataframeFromTable,
+)
+from commons.slicer_utils import tableNodeToDict, dataFrameToTableNode
+from commons.utils.ProgressBarProc import ProgressBarProc
 
 try:
     from Test.PoreNetworkProductionTest import PoreNetworkProductionTest
-except ImportError as e:
+except ImportError:
     PoreNetworkProductionTest = None  # tests not deployed to final version or closed source
 
 
@@ -636,17 +641,26 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
             enriched_fw,
             maxfev=1000000,
         )
-        fitted_logistic = lambda x: _general_logistic(x, *coef)
-        fitted_logistic_diff = lambda x: _general_logistic_diff(x, *coef)
+
+        def fitted_logistic(x):
+            return _general_logistic(x, *coef)
+
+        def fitted_logistic_diff(x):
+            return _general_logistic_diff(x, *coef)
+
         swi = krel_dict["Sw"][fw_left_index]
         sw_max = krel_dict["Sw"][fw_right_index]
         if origin_at_zero_f:
-            fw_delta = lambda x: (fitted_logistic(x)) / (x - swi)
-            # derivative of shock tangent if shock is at x
+
+            def fw_delta(x):
+                return (fitted_logistic(x)) / (x - swi)  # derivative of shock tangent if shock is at x
+
         else:
-            fw_delta = lambda x: (fitted_logistic(x) - fitted_logistic(swi)) / (
-                x - swi
-            )  # derivative of shock tangent if shock is at x
+
+            def fw_delta(x):
+                return (fitted_logistic(x) - fitted_logistic(swi)) / (
+                    x - swi
+                )  # derivative of shock tangent if shock is at x
 
         symbols = {}
         for key in "xABCDEFG":
@@ -684,7 +698,7 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
         try:
             middle_logistic_curve = float(sym.solve(sym.Eq(second_derivative, 0), symbols["x"])[0].subs(vals))
         except TypeError as e:
-            print(f"Error found while searching for middle of logistic curve: ", e)
+            print("Error found while searching for middle of logistic curve: ", e)
             middle_logistic_curve = krel_dict["Sw"].min()
 
         no_shock = False
@@ -695,7 +709,7 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                 b=sw_max,
             )
         except ValueError as e:
-            print(f"Found error while searching for shock: ", e)
+            print("Found error while searching for shock: ", e)
             gradient_at_swi = fitted_logistic_diff(swi)
             if gradient_at_swi >= 0.5:
                 sws_solution = swi
@@ -728,7 +742,9 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                 "Sw_mean": np.array((0, 0, 0)),
                 "vD": np.array((0, 0, 0)),
             }
-            NtD_function = lambda x: sw_max - swi
+
+            def NtD_function(x):
+                return sw_max - swi
 
         else:
             t_breakthrough = (fitted_logistic_diff(sws)) ** (-1)
@@ -764,8 +780,10 @@ class PoreNetworkProductionLogic(LTracePluginLogic):
                     fill_value="extrapolate",
                 )
             except ValueError as e:
-                print(f"found error while interpolating NtD: ", e)
-                NtD_function = lambda x: sw_max - swi
+                print("found error while interpolating NtD: ", e)
+
+                def NtD_function(x):
+                    return sw_max - swi
 
         details = {
             "coef_A": coef[0],

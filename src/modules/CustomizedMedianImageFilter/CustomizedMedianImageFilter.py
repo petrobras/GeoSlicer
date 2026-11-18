@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from collections import namedtuple
@@ -7,12 +6,11 @@ from pathlib import Path
 import ctk
 import qt
 import slicer
-from ltrace.slicer import helpers
-from ltrace.slicer.metadata import copy_metadata
-from ltrace.slicer.widget.global_progress_bar import LocalProgressBar
-from ltrace.slicer_utils import *
+from commons.slicer import helpers
+from commons.slicer.widget.global_progress_bar import LocalProgressBar
+from commons.slicer_utils import *
 
-from ltrace.slicer.node_attributes import NodeEnvironment
+from commons.slicer.node_attributes import NodeEnvironment
 
 
 class CustomizedMedianImageFilter(LTracePlugin):
@@ -179,7 +177,7 @@ class CustomizedMedianImageFilterWidget(LTracePluginWidget):
         self.logic.cancel()
 
     def onInputChanged(self, inputNode):
-        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode != None else ""
+        newOutputName = inputNode.GetName() + self.OUTPUT_SUFFIX if inputNode is not None else ""
         self.outputVolumeNameLineEdit.setText(newOutputName)
 
 

@@ -25,10 +25,10 @@ from scipy.ndimage import gaussian_filter
 from scipy import signal
 from sklearn.ensemble import RandomForestClassifier
 
-from ltrace import transforms
-import ltrace.algorithms.feature_extraction as fe
+from commons import transforms
+import commons.algorithms.feature_extraction as fe
 from Minkowsky.minkowsky import minkowsky_filter, minkowsky_filter_2d
-from ltrace.algorithms.gabor import get_gabor_kernels
+from commons.algorithms.gabor import get_gabor_kernels
 
 DEFAULT_SETTINGS = "settings.json"
 
@@ -108,14 +108,6 @@ def gabor(img, sigma, lambd, n_rotations, size):
     is_2d = len(ref_shape) == 2
 
     if is_2d:
-        params = {
-            "sigma": sigma,
-            "lambd": lambd,
-            "gamma": 1.0,
-            "psi": 0.0,
-            "ktype": cv2.CV_32F,
-        }
-
         while size > 1:
             try:
                 fimg = []
@@ -229,19 +221,19 @@ class RGBImageTargets:
         filter_index = 0
 
         if "raw" in custom_filters:
-            if custom_filters["raw"] == True:
+            if custom_filters["raw"]:
                 yield from self.channels()
                 filter_index += 1
                 progressUpdate(filter_index / (total_filters + 1))
 
         if "quantized" in custom_filters:
-            if custom_filters["quantized"] == True:
+            if custom_filters["quantized"]:
                 yield self.reduced()
                 filter_index += 1
                 progressUpdate(filter_index / (total_filters + 1))
 
         if "petrobras" in custom_filters:
-            if custom_filters["petrobras"] == True:
+            if custom_filters["petrobras"]:
                 yield from self.channels()
 
                 yield self.reduced()
@@ -309,7 +301,7 @@ class RGBImageTargets:
             initial_progress_value = filter_index / float(total_filters)
             final_progress_value = (filter_index + 1) / float(total_filters)
             yield variogram(
-                f"variogram",
+                "variogram",
                 kernel_size,
                 self.grayscale,
                 self.spacing,
@@ -370,7 +362,7 @@ class ScalarImageTargets:
             progressUpdate(filter_index / (total_filters + 1))
 
         if "petrobras" in custom_filters:
-            if custom_filters["petrobras"] == True:
+            if custom_filters["petrobras"]:
                 yield from self.channels()
 
                 yield self.reduced()
@@ -484,7 +476,7 @@ def select_first_guess_2d(components, locations):
         for j, comp in enumerate(components):
             try:
                 seeds[i, j] = comp[int(row[0]), int(row[1])]
-            except:
+            except Exception:
                 pass
     return seeds
 
@@ -511,7 +503,7 @@ def rf_fit(components, annotations, is_2d, **kwargs):
         n_estimators=64,
         n_jobs=4,
         warm_start=False,
-        random_state=(RandomState(5423) if random_seed == None else random_seed),
+        random_state=(RandomState(5423) if random_seed is None else random_seed),
         bootstrap=True,
         oob_score=True,
         min_impurity_decrease=0.001,

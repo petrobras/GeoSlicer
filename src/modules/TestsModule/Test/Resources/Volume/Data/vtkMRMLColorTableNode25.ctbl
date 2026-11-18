@@ -1,0 +1,6 @@
+# Color table file /home/git/slicerltrace/src/modules/TestsModule/Test/Resources/Volume/Data/vtkMRMLColorTableNode25.ctbl
+# 5 values
+1 Segment_1 63 255 255 255
+2 Segment_2 170 29 29 255
+3 Segment_3 234 234 234 255
+4 capillary 183 156 220 255

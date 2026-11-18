@@ -1,0 +1,72 @@
+{
+  "uid-completed": {
+    "uid": "uid-completed",
+    "job_type": "pore_network_simulation",
+    "name": "PNS Run Alpha",
+    "polling_enabled": false,
+    "host": {"username": "user1", "name": "Atena 02", "address": "10.0.0.2", "rsa_key": null, "port": 22, "opening_command": null, "remote_mount": "", "gpu_partition": "gpu", "cpu_partition": "cpu", "protocol": "ssh"},
+    "progress": 100.0,
+    "status": "COMPLETED",
+    "start_time": 1713100000.0,
+    "end_time": 1713103600.0,
+    "message": "Done",
+    "traceback": null,
+    "details": null
+  },
+  "uid-running": {
+    "uid": "uid-running",
+    "job_type": "instance_segmenter",
+    "name": "Segmenter Beta",
+    "polling_enabled": true,
+    "host": {"username": "user1", "name": "Atena 02", "address": "10.0.0.2", "rsa_key": null, "port": 22, "opening_command": null, "remote_mount": "", "gpu_partition": "gpu", "cpu_partition": "cpu", "protocol": "ssh"},
+    "progress": 45.0,
+    "status": "RUNNING",
+    "start_time": 1713200000.0,
+    "end_time": null,
+    "message": "Processing step 3/7",
+    "traceback": null,
+    "details": null
+  },
+  "uid-idle": {
+    "uid": "uid-idle",
+    "job_type": "pore_network_simulation",
+    "name": "PNS Run Gamma",
+    "polling_enabled": false,
+    "host": {"username": "user2", "name": "Zeus 01", "address": "10.0.0.3", "rsa_key": null, "port": 22, "opening_command": null, "remote_mount": "", "gpu_partition": "gpu", "cpu_partition": "cpu", "protocol": "ssh"},
+    "progress": 0.0,
+    "status": "IDLE",
+    "start_time": 1713300000.0,
+    "end_time": null,
+    "message": null,
+    "traceback": null,
+    "details": null
+  },
+  "uid-notconn": {
+    "uid": "uid-notconn",
+    "job_type": "pore_network_extractor",
+    "name": "Extractor Delta",
+    "polling_enabled": false,
+    "host": {"username": "user1", "name": "Atena 02", "address": "10.0.0.2", "rsa_key": null, "port": 22, "opening_command": null, "remote_mount": "", "gpu_partition": "gpu", "cpu_partition": "cpu", "protocol": "ssh"},
+    "progress": 0.0,
+    "status": "NOT CONNECTED",
+    "start_time": 1713400000.0,
+    "end_time": null,
+    "message": null,
+    "traceback": null,
+    "details": null
+  },
+  "uid-failed": {
+    "uid": "uid-failed",
+    "job_type": "puc_model",
+    "name": "PUC Model Epsilon",
+    "polling_enabled": false,
+    "host": {"username": "user2", "name": "Zeus 01", "address": "10.0.0.3", "rsa_key": null, "port": 22, "opening_command": null, "remote_mount": "", "gpu_partition": "gpu", "cpu_partition": "cpu", "protocol": "ssh"},
+    "progress": 72.0,
+    "status": "FAILED",
+    "start_time": 1713500000.0,
+    "end_time": 1713502000.0,
+    "message": "Segmentation fault",
+    "traceback": {"error": "Process exited with code 139"},
+    "details": null
+  }
+}

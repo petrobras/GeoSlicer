@@ -7,22 +7,18 @@ from __future__ import print_function
 
 # These imports should go first to guarantee the transversing of wrapped classes by instantiation time
 # Refer to github.com/Slicer/Slicer/issues/6484
-import vtk, slicer, slicer.util, mrml
 import json
 
-from ltrace.slicer.lazy import lazy
+from commons.slicer.lazy import lazy
 
-import dask
 import dask.array as da
-from ltrace.slicer import netcdf
-from ltrace.algorithms.big_image.multiple_threshold import apply_multiple_threshold
-from ltrace.algorithms.big_image.boundary_removal import remove_boundaries
-from ltrace.algorithms.big_image.expand_segments import expand_segments
-from ltrace.algorithms.big_image.common import DaskCLICallback
+from commons.slicer import netcdf
+from commons.algorithms.big_image.multiple_threshold import apply_multiple_threshold
+from commons.algorithms.big_image.boundary_removal import remove_boundaries
+from commons.algorithms.big_image.expand_segments import expand_segments
+from commons.algorithms.big_image.common import DaskCLICallback
 
-import numpy as np
 import xarray as xr
-import slicer
 
 
 def _run_all(scalar, origin, spacing, multiple_thresholds, boundary_thresholds, microporosity_index):

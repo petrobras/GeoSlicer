@@ -5,9 +5,8 @@
 
 from __future__ import print_function
 
-import vtk
 import mrml
-from ltrace.slicer.cli_utils import writeDataInto, progressUpdate, readFrom
+from commons.slicer.cli_utils import writeDataInto, progressUpdate, readFrom
 
 from InstanceSegmenterCLILib.model.imagelog import ImageLogSidewallSampleModel, ImageLogSidewallSampleModelParameters
 

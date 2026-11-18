@@ -3,8 +3,8 @@ import os
 import qt
 import slicer
 
-from ltrace.slicer import ui
-from ltrace.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
+from commons.slicer import ui
+from commons.slicer_utils import LTracePlugin, LTracePluginWidget, LTracePluginLogic
 from pathlib import Path
 
 try:
@@ -116,3 +116,4 @@ class {{name}}Logic(LTracePluginLogic):
 
     def apply(self, data):
         pass
+

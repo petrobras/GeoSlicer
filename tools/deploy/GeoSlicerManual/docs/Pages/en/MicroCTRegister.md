@@ -72,7 +72,7 @@ The parameters used in general registration are:
 
 ## Fast Registration
 
-Fast Registration automatically aligns two MicroCT volumes of the same sample (for example a dry and a saturated scan) by matching the constellation of compact, high-attenuation inclusions ("blobs") visible in both. It recovers a rigid transform (rotation and translation) and is well suited to samples that share such dense features. Both volumes must be on the same voxel grid and spacing.
+Fast Registration automatically aligns two MicroCT volumes of the same sample (for example a dry and a saturated scan) by matching the constellation of compact, high-attenuation inclusions ("blobs") visible in both. It recovers a rigid transform (rotation and translation) and is well suited to samples that share such dense features. The volumes may have different voxel sizes (tested up to a 3x difference), as long as each volume's spacing is correct: the scale is not estimated.
 
 Select the *Fixed volume*, which stays in place, and the *Moving volume*, which receives the alignment transform, then click *Apply*. A progress bar reports feature detection and matching, which usually takes only a few seconds.
 

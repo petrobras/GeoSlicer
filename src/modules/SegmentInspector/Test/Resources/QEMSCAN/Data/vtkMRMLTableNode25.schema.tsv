@@ -1,0 +1,6 @@
+columnName	type	nullValue	componentNames
+<default>	double		
+Label	int		
+ID	string		
+Orientation (deg)	string		
+Length (mm)	double		

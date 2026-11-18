@@ -1,0 +1,8 @@
+columnName	type	nullValue	componentNames
+<default>	double		
+Start Depth [m]	double		
+Stop Depth [m]	double		
+K_dst [m.MD]	double		
+K_ro [frac]	double		
+DEPTH	double		
+PERMEABILITY	double		

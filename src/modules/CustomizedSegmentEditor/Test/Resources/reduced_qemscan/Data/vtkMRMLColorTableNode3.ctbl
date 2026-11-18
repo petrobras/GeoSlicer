@@ -1,0 +1,22 @@
+# Color table file C:/Users/LTrace/Desktop/slicerltrace/src/modules/CustomizedSegmentEditor/Test/Resources/reduced_qemscan/Data/vtkMRMLColorTableNode3.ctbl
+# 20 values
+0 Background 0 0 0 0
+1 Al-Micas+Ilita+Al-Esmectitas 0 192 0 255
+2 Apatita 255 128 128 255
+3 Barita 196 189 151 255
+4 Calcita_(0%_a_1%MgO) 0 255 255 255
+5 Caulinita 192 64 0 255
+6 Clorita+Clorita-Esmectita 0 255 0 255
+7 Dolomita 0 112 192 255
+8 Fluorita 110 135 178 255
+9 Goyazita 143 59 211 255
+10 K-Feldspato 206 107 10 255
+11 Material_Rico_em_Carbono_(MC) 255 0 255 255
+12 Mg-Argilominerais 218 165 32 255
+13 Mg-Micas+Mg-Esmectitas 128 0 0 255
+14 Outros 255 255 255 255
+15 Óxido_de_Titânio 192 255 255 255
+16 Pirita 151 71 6 255
+17 Poros 0 0 0 255
+18 Quartzo 255 255 0 255
+19 Sr-Barita 128 0 128 255
